@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- Bun 1.3 or newer (build time only)
+- Bun 1.4.1 or newer (build time only); the project is pinned to Bun 1.4.1 in `mise.toml`
 
 ## Build
 
@@ -49,7 +49,7 @@ The model receives `task` for asynchronous commands and `subagent` for asynchron
 - Delegate one prompt or multiple concurrent prompts through the higher-level `subagent` tool
 - Manage sub-agents by task ID through `task list`, `task inspect`, and `task kill`
 - Inherit the parent model and thinking level for sub-agents unless explicitly overridden
-- Keep sub-agents as leaves: they retain `task` but cannot spawn additional sub-agents
+- Delegate through two sub-agent levels: a first-level sub-agent can create a second-level sub-agent, and the second level is a leaf
 - Batch burst completions into a single model/TUI notification capped at 5,000 characters
 - Inspect retained completed-task output when a notification contains only previews
 - List running or completed tasks through bounded, paginated command previews without changing the commands themselves
@@ -65,7 +65,7 @@ Tasks are currently scoped to one session and are terminated when that session s
 
 The model-facing `execute` tool replaces `read`, `edit`, `write`, `bash`, and `powershell`. It transpiles submitted TypeScript in memory using `Bun.Transpiler`, then executes it as a module in an isolated child process in the current working directory. It supports top-level await, static imports and exports, dynamic imports, CommonJS `require`, local modules, Bun APIs, Node built-ins, installed packages, and subprocesses. Results are returned through stdout and stderr; no temporary source file is created.
 
-The root agent's active tools are `execute`, `task`, and `subagent`. Sub-agents receive `execute` and `task` but remain unable to recursively invoke `subagent`.
+The root agent and first-level sub-agents receive `execute`, `task`, and `subagent`. Second-level sub-agents receive `execute` and `task` and cannot delegate further.
 
 ## Interactive TUI harness
 

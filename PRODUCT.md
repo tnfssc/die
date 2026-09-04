@@ -7,6 +7,7 @@
 - The product and executable are named lowercase `die`.
 - `die` is a CLI coding agent built from Pi. Whether this is described as a fork or a packaged version is unimportant; Pi runs underneath it.
 - Bun compile produces a standalone binary so using the resulting CLI does not require a separate Bun, Node.js, Pi, or project dependency installation.
+- Builds use the latest confirmed stable Bun release. The current pinned build version is Bun 1.4.1.
 - Development follows three phases in order.
 
 ## Configuration and installation
@@ -71,8 +72,9 @@
 - The parent manages them through the generic task lifecycle and receives automatic completion notifications.
 - Sub-agents inherit the parent's model and thinking level by default, with overrides available when requested.
 - A sub-agent can use normal coding capabilities and generic asynchronous command tasks.
-- Sub-agents are leaf agents: they do not receive the model-facing `subagent` capability and cannot use it to recursively spawn additional sub-agents.
-- The leaf rule is functional behavior, not a security boundary against a process deliberately modifying its environment and invoking executables itself.
+- Delegation supports two sub-agent levels below the root: the root can create a first-level sub-agent, and a first-level sub-agent can create a second-level sub-agent.
+- Second-level sub-agents are leaves: they do not receive the model-facing `subagent` capability and cannot delegate further.
+- The two-level rule is functional behavior, not a security boundary against a process deliberately modifying its environment and invoking executables itself.
 
 ### Tool selection
 

@@ -42,18 +42,23 @@ describe("sub-agent recursion guard", () => {
     for (const replaced of ["read", "edit", "write", "bash"]) expect(extension.active()).not.toContain(replaced);
   });
 
-  test("sub-agents do not receive subagent as an active tool", () => {
+  test("first-level sub-agents can delegate one more level", () => {
     const extension = loadExtension("1");
-    expect(extension.active().sort()).toEqual(["execute", "task"]);
-    expect(extension.active()).not.toContain("subagent");
+    expect(extension.active().sort()).toEqual(["execute", "subagent", "task"]);
     for (const replaced of ["read", "edit", "write", "bash"]) expect(extension.active()).not.toContain(replaced);
   });
 
-  test("sub-agent invocation is rejected even if externally reactivated", async () => {
-    const extension = loadExtension("1");
+  test("second-level sub-agents are leaves", () => {
+    const extension = loadExtension("2");
+    expect(extension.active().sort()).toEqual(["execute", "task"]);
+    expect(extension.active()).not.toContain("subagent");
+  });
+
+  test("delegation past the second level is rejected even if externally reactivated", async () => {
+    const extension = loadExtension("2");
     const tool = extension.tools.get("subagent");
     await expect(tool.execute("call", { prompt: "recurse" }, undefined, undefined, {})).rejects.toThrow(
-      "Sub-agents cannot spawn other sub-agents",
+      "Sub-agent delegation is limited to 2 levels",
     );
   });
 

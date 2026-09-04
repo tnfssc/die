@@ -12,6 +12,7 @@ const ThinkingLevel = StringEnum(["off", "minimal", "low", "medium", "high", "xh
 const DEFAULT_LIST_COUNT = 50;
 const MAX_LIST_COUNT = 100;
 const MAX_LIST_COMMAND_CHARS = 500;
+const MAX_SUBAGENT_DEPTH = 2;
 
 const TaskParameters = Type.Object({
   action: TaskAction,
@@ -48,7 +49,7 @@ function formatInspection(task: TaskInspection): string {
 
 export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
   const subagentDepth = Math.max(0, Number.parseInt(process.env.DIE_SUBAGENT_DEPTH ?? "0", 10) || 0);
-  const isSubagent = subagentDepth > 0;
+  const canSpawnSubagent = subagentDepth < MAX_SUBAGENT_DEPTH;
   let manager: TaskManager | undefined;
   registerExecuteTool(pi);
   const completions = new CompletionBatcher<TaskInspection>((tasks) => {
@@ -160,7 +161,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
     name: "subagent",
     label: "Sub-agent",
     description:
-      "Delegate work to one or more isolated background die agents. Returns task IDs immediately; each sub-agent is managed by the task system, so use task list, inspect, or kill with those IDs. Omit model and thinking to inherit the parent agent's current configuration. Multiple prompts can be started concurrently. Completion is reported automatically.",
+      "Delegate work to one or more isolated background die agents, with at most two delegation levels below the root agent. Returns task IDs immediately; each sub-agent is managed by the task system, so use task list, inspect, or kill with those IDs. Omit model and thinking to inherit the parent agent's current configuration. Multiple prompts can be started concurrently. Completion is reported automatically.",
     promptSnippet: "Delegate independent work to asynchronous agents with isolated context",
     promptGuidelines: [
       "Use subagent for independent research, review, planning, or implementation that benefits from an isolated context.",
@@ -170,7 +171,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
     parameters: SubagentParameters,
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      if (isSubagent) throw new Error("Sub-agents cannot spawn other sub-agents");
+      if (!canSpawnSubagent) throw new Error(`Sub-agent delegation is limited to ${MAX_SUBAGENT_DEPTH} levels`);
       const prompts = params.prompts ?? (params.prompt?.trim() ? [params.prompt] : []);
       if (prompts.length === 0) throw new Error("subagent requires prompt or prompts");
       if (params.prompts && params.prompt) throw new Error("subagent accepts prompt or prompts, not both");
@@ -212,7 +213,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", () => {
-    pi.setActiveTools(["execute", "task", ...(!isSubagent ? ["subagent"] : [])]);
+    pi.setActiveTools(["execute", "task", ...(canSpawnSubagent ? ["subagent"] : [])]);
   });
 
   pi.on("session_shutdown", () => {
