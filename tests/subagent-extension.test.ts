@@ -38,13 +38,13 @@ function loadExtension(depth?: string) {
 describe("sub-agent recursion guard", () => {
   test("root agents can use subagent", () => {
     const extension = loadExtension();
-    expect(extension.active().sort()).toEqual(["subagent", "task", "typescript"]);
+    expect(extension.active().sort()).toEqual(["execute", "subagent", "task"]);
     for (const replaced of ["read", "edit", "write", "bash"]) expect(extension.active()).not.toContain(replaced);
   });
 
   test("sub-agents do not receive subagent as an active tool", () => {
     const extension = loadExtension("1");
-    expect(extension.active().sort()).toEqual(["task", "typescript"]);
+    expect(extension.active().sort()).toEqual(["execute", "task"]);
     expect(extension.active()).not.toContain("subagent");
     for (const replaced of ["read", "edit", "write", "bash"]) expect(extension.active()).not.toContain(replaced);
   });

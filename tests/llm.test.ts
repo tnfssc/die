@@ -31,7 +31,7 @@ test.skipIf(!enabled)(
 );
 
 test.skipIf(!enabled)(
-  "GPT-5.6 Luna uses the TypeScript tool for a realistic file workflow",
+  "GPT-5.6 Luna uses execute for a realistic TypeScript file workflow",
   async () => {
     const directory = await mkdtemp(join(tmpdir(), "die-llm-typescript-"));
     const expected = "typescript-tool-automation-passed";
@@ -46,7 +46,7 @@ test.skipIf(!enabled)(
         "minimal",
         "--no-session",
         "-p",
-        `Use the typescript tool to create result.txt containing exactly ${expected}, then use the typescript tool to read it back. Do not use task. Reply with exactly: ${expected}`,
+        `Use execute to create result.txt containing exactly ${expected}, then use execute to read it back. Do not use task. Reply with exactly: ${expected}`,
       ], { cwd: directory });
 
       expect(result.code).toBe(0);

@@ -6,7 +6,7 @@ import { INTERNAL_TYPESCRIPT_RUNNER_ARG } from "./runner";
 
 const MAX_STREAM_BYTES = 1_000_000;
 
-const TypeScriptParameters = Type.Object({
+const ExecuteParameters = Type.Object({
   code: Type.String({ description: "TypeScript source to transpile and execute" }),
   timeoutSeconds: Type.Optional(Type.Number({ minimum: 0.1, description: "Optional execution timeout" })),
 });
@@ -93,7 +93,7 @@ async function executeIsolated(code: string, cwd: string, signal: AbortSignal | 
 
 function formatResult(result: ExecutionResult): string {
   const sections = [
-    `TypeScript ${result.exitCode === 0 ? "completed" : "failed"}${result.exitCode !== undefined ? ` with exit code ${result.exitCode}` : ""}${result.signal ? ` (${result.signal})` : ""}${result.timedOut ? " after timing out" : ""}.`,
+    `Execution ${result.exitCode === 0 ? "completed" : "failed"}${result.exitCode !== undefined ? ` with exit code ${result.exitCode}` : ""}${result.signal ? ` (${result.signal})` : ""}${result.timedOut ? " after timing out" : ""}.`,
   ];
   if (result.stdout) sections.push(`stdout${result.stdoutLost ? " (earlier output discarded)" : ""}:\n${result.stdout}`);
   if (result.stderr) sections.push(`stderr${result.stderrLost ? " (earlier output discarded)" : ""}:\n${result.stderr}`);
@@ -101,21 +101,22 @@ function formatResult(result: ExecutionResult): string {
   return sections.join("\n\n");
 }
 
-export function registerTypeScriptTool(pi: ExtensionAPI): void {
+export function registerExecuteTool(pi: ExtensionAPI): void {
   pi.registerTool({
-    name: "typescript",
-    label: "TypeScript",
+    name: "execute",
+    label: "Execute",
     description:
-      "Transpile TypeScript in memory with Bun.Transpiler and execute it in an isolated child process in the current working directory. Use this single code tool for filesystem reads, writes, edits, and synchronous command execution. Print results with console.log. Bun APIs, Web APIs, dynamic import(), Node built-ins, and installed packages are available. No temporary source file is written.",
-    promptSnippet: "Execute TypeScript for filesystem, process, and general coding operations",
+      "Transpile and execute TypeScript as a module in an isolated child process in the current working directory. Use this single code tool for filesystem reads, writes, edits, and synchronous command execution. Top-level await, static imports, dynamic imports, exports, CommonJS require(), Bun APIs, Web APIs, Node built-ins, local modules, and installed packages are supported. Print results with console.log. No temporary source file is written.",
+    promptSnippet: "Execute code for filesystem, process, and general coding operations",
     promptGuidelines: [
-      "Use typescript instead of read, edit, write, bash, or powershell.",
+      "Use execute instead of read, edit, write, bash, or powershell.",
+      "Submit TypeScript with top-level await when useful.",
+      "Use import, dynamic import(), or require() for Node built-ins, packages, and local modules.",
       "Use Bun.file and Bun.write or node:fs APIs for files, and Bun.spawn/Bun.spawnSync for commands.",
       "Print information needed by the agent with console.log because module exports are not returned.",
-      "For local modules, dynamically import an absolute file URL; the submitted module itself uses a data URL and has no relative filesystem location.",
       "Use task when command execution specifically needs to continue asynchronously in the background.",
     ],
-    parameters: TypeScriptParameters,
+    parameters: ExecuteParameters,
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const result = await executeIsolated(
         params.code,

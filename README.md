@@ -1,6 +1,6 @@
 # die
 
-`die` is a Bun-compiled coding agent built on [Pi](https://pi.dev). It packages Pi as a standalone executable, provides asynchronous tasks and sub-agents, and replaces Pi's general-purpose file/shell tools with one TypeScript execution tool. See [`PRODUCT.md`](./PRODUCT.md).
+`die` is a Bun-compiled coding agent built on [Pi](https://pi.dev). It packages Pi as a standalone executable, provides asynchronous tasks and sub-agents, and replaces Pi's general-purpose file/shell tools with one code execution tool. See [`PRODUCT.md`](./PRODUCT.md).
 
 ## Prerequisites
 
@@ -61,11 +61,11 @@ The model receives `task` for asynchronous commands and `subagent` for asynchron
 
 Tasks are currently scoped to one session and are terminated when that session shuts down. Because the tool model is fixed, Pi's generic `--no-tools`, `--no-builtin-tools`, `--tools`, and `--exclude-tools` options are not exposed or accepted by `die`.
 
-## TypeScript execution
+## Code execution
 
-The model-facing `typescript` tool replaces `read`, `edit`, `write`, `bash`, and `powershell`. It transpiles submitted TypeScript in memory using `Bun.Transpiler`, then executes it in an isolated child process in the current working directory. Bun APIs, Node built-ins, installed packages, and subprocesses are available. Results are returned through stdout and stderr; no temporary source file is created.
+The model-facing `execute` tool replaces `read`, `edit`, `write`, `bash`, and `powershell`. It transpiles submitted TypeScript in memory using `Bun.Transpiler`, then executes it as a module in an isolated child process in the current working directory. It supports top-level await, static imports and exports, dynamic imports, CommonJS `require`, local modules, Bun APIs, Node built-ins, installed packages, and subprocesses. Results are returned through stdout and stderr; no temporary source file is created.
 
-The root agent's active tools are `typescript`, `task`, and `subagent`. Sub-agents receive `typescript` and `task` but remain unable to recursively invoke `subagent`.
+The root agent's active tools are `execute`, `task`, and `subagent`. Sub-agents receive `execute` and `task` but remain unable to recursively invoke `subagent`.
 
 ## Interactive TUI harness
 

@@ -50,6 +50,25 @@ describe("isolated TypeScript runner", () => {
     expect(await readdir(directory)).toEqual(["result.txt"]);
   });
 
+  test("supports top-level modules, lazy imports, and require", async () => {
+    await Bun.write(join(directory, "static.ts"), "export const staticValue: number = 20;");
+    await Bun.write(join(directory, "lazy.ts"), "export const lazyValue: number = 21;");
+    await Bun.write(join(directory, "common.cjs"), "module.exports = { commonValue: 1 };");
+
+    const result = await runTypeScript(`
+      import { staticValue } from "./static.ts";
+      const { lazyValue } = await import("./lazy.ts");
+      const { commonValue } = require("./common.cjs");
+      export const total: number = staticValue + lazyValue + commonValue;
+      await Promise.resolve();
+      console.log(total);
+    `);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("42");
+    expect(result.stderr).toBe("");
+  });
+
   test("reports transpilation or execution failures", async () => {
     const result = await runTypeScript("throw new Error('runner-failed')");
 
