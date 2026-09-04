@@ -15,6 +15,26 @@ import highlight from "../runtime-assets/export-html/vendor/highlight.min.js" wi
 import marked from "../runtime-assets/export-html/vendor/marked.min.js" with { type: "file" };
 import asynchronousTasksExtension from "./tasks/extension";
 
+const cliArgs = process.argv.slice(2);
+const removedToolOptions = new Set([
+  "--no-tools",
+  "-nt",
+  "--no-builtin-tools",
+  "-nbt",
+  "--tools",
+  "-t",
+  "--exclude-tools",
+  "-xt",
+]);
+for (const argument of cliArgs) {
+  if (argument === "--") break;
+  const option = argument.split("=", 1)[0];
+  if (removedToolOptions.has(option)) {
+    console.error(`${option} is not supported by die; its core tool set is fixed by the current product phase.`);
+    process.exit(1);
+  }
+}
+
 const runtimeRoot = join(homedir(), ".die", "runtime", diePackage.version);
 const embeddedAssets: Array<[string, string]> = [
   [metadata as unknown as string, "package.json"],
@@ -56,7 +76,7 @@ process.env.PI_PACKAGE_DIR = runtimeRoot;
 // die has no self-update channel yet; suppress Pi's update lookup and banner.
 process.env.PI_SKIP_VERSION_CHECK = "1";
 
-if (process.argv[2] === "update") {
+if (cliArgs[0] === "update") {
   console.error("die updates are disabled until an update channel is available.");
   process.exit(1);
 }
@@ -67,6 +87,40 @@ registerBunOAuthFlows();
 // This must be dynamic: PI_PACKAGE_DIR has to be set before Pi initializes its
 // product metadata and asset paths.
 const { main } = await import("@earendil-works/pi-coding-agent");
-await main(process.argv.slice(2), {
-  extensionFactories: [{ name: "asynchronous-tasks", factory: asynchronousTasksExtension, hidden: true }],
-});
+
+function filterHelp(text: string): string {
+  if (!text.includes("Usage:") || !text.includes("Options:")) return text;
+  const lines = text.split("\n");
+  const filtered: string[] = [];
+  let skipNextExample = false;
+  for (const line of lines) {
+    if (skipNextExample) {
+      skipNextExample = false;
+      continue;
+    }
+    if (line.includes(" update [source|self|pi]")) continue;
+    if (["--no-tools", "--no-builtin-tools", "--tools,", "--exclude-tools"].some((option) => line.includes(option))) continue;
+    if (line.trim() === "Applies to built-in, extension, and custom tools") continue;
+    if (line.trim() === "# Read-only mode (no file modifications possible)" || line.trim() === "# Disable one tool while keeping the rest available") {
+      skipNextExample = true;
+      continue;
+    }
+    filtered.push(line.replace("AI coding assistant with read, bash, edit, write tools", "AI coding assistant"));
+  }
+  return filtered.join("\n");
+}
+
+const optionBoundary = cliArgs.indexOf("--");
+const optionArgs = optionBoundary === -1 ? cliArgs : cliArgs.slice(0, optionBoundary);
+const topLevelHelp = optionArgs.includes("--help") || optionArgs.includes("-h");
+const originalLog = console.log;
+if (topLevelHelp) {
+  console.log = (...values: unknown[]) => originalLog(...values.map((value) => (typeof value === "string" ? filterHelp(value) : value)));
+}
+try {
+  await main(cliArgs, {
+    extensionFactories: [{ name: "asynchronous-tasks", factory: asynchronousTasksExtension, hidden: true }],
+  });
+} finally {
+  console.log = originalLog;
+}

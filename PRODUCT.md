@@ -78,7 +78,7 @@
 
 - `task` is a core capability, and `subagent` is a core capability for root agents.
 - Pi's model-facing `bash` and `powershell` tools are disabled in favor of `task`.
-- Generic Pi options intended to disable or select model-facing tools are not needed for `die`; they should not override the core `die` tool model.
+- Generic Pi options intended to disable or select model-facing tools are removed from `die`; they must not override the core `die` tool model.
 - Other file tools remain until Phase 3.
 
 ## Phase 3 — One TypeScript execution tool

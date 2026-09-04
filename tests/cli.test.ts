@@ -33,6 +33,12 @@ describe("compiled die CLI", () => {
 
     expect(result.code).toBe(0);
     expect(result.stdout).toStartWith("die - AI coding assistant");
+    expect(result.stdout).not.toContain("bash, edit, write tools");
+    expect(result.stdout).not.toContain("--no-tools");
+    expect(result.stdout).not.toContain("--no-builtin-tools");
+    expect(result.stdout).not.toContain("--exclude-tools");
+    expect(result.stdout).not.toContain("--tools,");
+    expect(result.stdout).not.toContain(" update [source|self|pi]");
     expect(await Bun.file(join(home, ".die", "runtime", "0.1.0", "package.json")).exists()).toBe(true);
     expect(await Bun.file(join(home, ".pi", "agent", "settings.json")).exists()).toBe(false);
   });
@@ -50,6 +56,14 @@ describe("compiled die CLI", () => {
     const after = await Promise.all(before.map(async ([file]) => (await stat(file)).mtimeMs));
 
     expect(after).toEqual(before.map(([, mtime]) => mtime));
+  });
+
+  test("rejects removed generic tool-selection options", async () => {
+    for (const option of ["--no-tools", "--no-builtin-tools", "--tools=read", "--exclude-tools=bash"]) {
+      const result = await run([binary, option], { env: isolatedEnv() });
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("is not supported by die");
+    }
   });
 
   test("disables self-update until die has an update channel", async () => {

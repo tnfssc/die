@@ -59,7 +59,7 @@ The model receives one `task` tool in place of Pi's `bash`/`powershell` tools. I
 - Terminate tasks
 - Continue other work until an automatic completion message arrives
 
-Tasks are currently scoped to one session and are terminated when that session shuts down.
+Tasks are currently scoped to one session and are terminated when that session shuts down. Because the Phase 2 tool model is fixed, Pi's generic `--no-tools`, `--no-builtin-tools`, `--tools`, and `--exclude-tools` options are not exposed or accepted by `die`.
 
 ## Interactive TUI harness
 
