@@ -1,0 +1,32 @@
+{
+  "name": "die",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "die": "dist/die"
+  },
+  "scripts": {
+    "prepare:assets": "bun ./scripts/prepare-assets.ts",
+    "build": "bun run prepare:assets && bun build --compile --minify ./src/cli.ts --outfile ./dist/die",
+    "check": "bun run prepare:assets && tsc --noEmit",
+    "test": "bun run build && bun test ./tests",
+    "test:llm": "bun run build && DIE_RUN_LLM_TESTS=1 bun test ./tests/llm.test.ts",
+    "install:local": "./scripts/install-local.sh",
+    "smoke": "./scripts/smoke.sh",
+    "tui": "bun ./scripts/tui-harness.ts"
+  },
+  "dependencies": {
+    "@earendil-works/pi-ai": "0.84.4",
+    "@earendil-works/pi-coding-agent": "0.84.4",
+    "typebox": "1.3.7"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.11",
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "license": "MIT"
+}
