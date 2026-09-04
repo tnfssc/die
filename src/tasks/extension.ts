@@ -80,6 +80,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
       "Use task instead of bash for command execution.",
       "Use task spawn with commands when starting multiple independent commands; each array entry becomes a separately managed concurrent task.",
       "After spawning with task, continue other useful work; task completion is reported automatically.",
+      "If an answer depends on unfinished background work, do not invent placeholders or present a final answer before its completion notification. A brief acknowledgement that work is still running is acceptable.",
       "Do not use task list or inspect merely to check whether a task completed, and never spawn sleep or wait commands solely to wait for another task.",
       "Use task inspect only when incremental output is needed for an interactive decision, and task input for interactive standard input.",
     ],
@@ -161,13 +162,21 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
     name: "subagent",
     label: "Sub-agent",
     description:
-      "Delegate work to one or more isolated background die agents, with at most two delegation levels below the root agent. Returns task IDs immediately; each sub-agent is managed by the task system, so use task list, inspect, or kill with those IDs. Omit model and thinking to inherit the parent agent's current configuration. Multiple prompts can be started concurrently. Completion is reported automatically.",
+      subagentDepth === 0
+        ? "Delegate work to one or more isolated background die agents, with at most two delegation levels below the root agent. Returns task IDs immediately; each sub-agent is managed by the task system, so use task list, inspect, or kill with those IDs. Omit model and thinking to inherit the parent agent's current configuration. Multiple prompts can be started concurrently. Completion is reported automatically."
+        : "Delegate work to second-level isolated die agents. Nested delegation waits inside this tool call so the second-level results are returned before this first-level agent can exit. Multiple prompts run concurrently. Omit model and thinking to inherit the current configuration.",
     promptSnippet: "Delegate independent work to asynchronous agents with isolated context",
-    promptGuidelines: [
-      "Use subagent for independent research, review, planning, or implementation that benefits from an isolated context.",
-      "After subagent returns task IDs, continue useful parent-agent work; do not poll because completion is reported automatically.",
-      "Manage a spawned sub-agent with task inspect or task kill using its task ID.",
-    ],
+    promptGuidelines: subagentDepth === 0
+      ? [
+          "Use subagent for independent research, review, planning, or implementation that benefits from an isolated context.",
+          "After subagent returns task IDs, continue useful parent-agent work; do not poll because completion is reported automatically.",
+          "Do not invent placeholder findings or present a final answer that depends on a sub-agent before its completion notification. A brief acknowledgement that delegated work is still running is acceptable.",
+          "Manage a spawned sub-agent with task inspect or task kill using its task ID.",
+        ]
+      : [
+          "Use subagent to delegate independent work to the second and final sub-agent level.",
+          "The call returns only after the nested work finishes; use the returned output directly and do not poll.",
+        ],
     parameters: SubagentParameters,
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -179,6 +188,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
       const model = params.model?.trim() || inheritedModel;
       if (!model) throw new Error("No model is available for the sub-agent");
       const thinking = params.thinking ?? ctx.thinkingLevel;
+      const tasks = getManager();
       const spawned = prompts.map((prompt) => {
         const childArgs = [
           "--no-session",
@@ -189,7 +199,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
           "--",
           prompt,
         ];
-        return getManager().spawn({
+        return tasks.spawn({
           kind: "agent",
           command: process.execPath,
           args: childArgs,
@@ -198,8 +208,21 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
           env: { ...process.env, DIE_SUBAGENT_DEPTH: String(subagentDepth + 1) },
           timeoutMs: params.timeoutSeconds ? params.timeoutSeconds * 1000 : undefined,
           closeStdin: true,
+          notifyOnComplete: subagentDepth === 0,
         });
       });
+
+      if (subagentDepth > 0) {
+        const completed = await Promise.all(spawned.map((task) => tasks.wait(task.id)));
+        const text = completed
+          .map((task) => [
+            `${task.id} ${task.status}${task.exitCode !== undefined ? ` exit=${task.exitCode}` : ""}`,
+            task.output || "No output.",
+          ].join("\n"))
+          .join("\n\n");
+        return { content: [{ type: "text", text }], details: { tasks: completed } };
+      }
+
       return {
         content: [{
           type: "text",

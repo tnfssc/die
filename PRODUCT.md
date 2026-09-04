@@ -43,6 +43,7 @@
 - The agent can spawn a task, inspect it, and interact with it through standard input or an equivalent channel.
 - Spawning does not block the agent loop. While work runs, the agent remains free to reason, call tools, start or manage other tasks, and do useful work.
 - Completion automatically notifies the agent, analogous to an event arriving on the JavaScript event loop.
+- While an answer depends on unfinished work, the agent may acknowledge that work is running but should not invent placeholder results or present a premature final answer.
 - The model-facing generic task operations are `spawn`, `list`, `inspect`, `input`, and `kill`.
 - Spawn responses include task IDs.
 - A completed task remains inspectable for the rest of the current session. Because retained results are inspectable, completion overflow does not need to be written to a file.
@@ -73,6 +74,7 @@
 - Sub-agents inherit the parent's model and thinking level by default, with overrides available when requested.
 - A sub-agent can use normal coding capabilities and generic asynchronous command tasks.
 - Delegation supports two sub-agent levels below the root: the root can create a first-level sub-agent, and a first-level sub-agent can create a second-level sub-agent.
+- Root-to-level-one delegation remains asynchronous. Because first-level agents run in non-interactive print mode, their level-two delegation waits inside the `subagent` tool call and returns the nested output before the first-level process can exit.
 - Second-level sub-agents are leaves: they do not receive the model-facing `subagent` capability and cannot delegate further.
 - The two-level rule is functional behavior, not a security boundary against a process deliberately modifying its environment and invoking executables itself.
 

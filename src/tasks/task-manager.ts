@@ -44,6 +44,7 @@ export interface TaskLaunch {
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
   closeStdin?: boolean;
+  notifyOnComplete?: boolean;
 }
 
 export interface TaskSummary {
@@ -68,6 +69,9 @@ interface ManagedTask extends TaskSummary {
   timeout?: ReturnType<typeof setTimeout>;
   killTimer?: ReturnType<typeof setTimeout>;
   killRequested: boolean;
+  notifyOnComplete: boolean;
+  completion: Promise<TaskInspection>;
+  resolveCompletion: (task: TaskInspection) => void;
 }
 
 export interface TaskInspection extends TaskSummary {
@@ -99,6 +103,10 @@ export class TaskManager {
       detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     });
+    let resolveCompletion!: (task: TaskInspection) => void;
+    const completion = new Promise<TaskInspection>((resolve) => {
+      resolveCompletion = resolve;
+    });
     const task: ManagedTask = {
       id,
       kind: launch.kind,
@@ -113,6 +121,9 @@ export class TaskManager {
       process: child,
       output: new BoundedOutputBuffer(MAX_CAPTURE_BYTES),
       killRequested: false,
+      notifyOnComplete: launch.notifyOnComplete ?? true,
+      completion,
+      resolveCompletion,
     };
     this.#tasks.set(id, task);
     if (launch.closeStdin) child.stdin.end();
@@ -129,7 +140,9 @@ export class TaskManager {
       task.signal = signal ?? undefined;
       task.completedAt = new Date().toISOString();
       task.status = task.killRequested ? "killed" : code === 0 ? "completed" : "failed";
-      if (!this.#shuttingDown) this.#onComplete(this.inspect(id, Math.max(task.baseOffset, task.outputEnd - 16_000)));
+      const inspection = this.inspect(id, Math.max(task.baseOffset, task.outputEnd - 16_000));
+      task.resolveCompletion(inspection);
+      if (!this.#shuttingDown && task.notifyOnComplete) this.#onComplete(inspection);
     });
 
     if (launch.timeoutMs) {
@@ -164,6 +177,12 @@ export class TaskManager {
       outputLost: result.outputLost || safe.start > 0,
       hasMore: nextOffset < task.outputEnd,
     };
+  }
+
+  wait(id: string): Promise<TaskInspection> {
+    const task = this.#require(id);
+    if (task.status !== "running") return Promise.resolve(this.inspect(id, Math.max(task.baseOffset, task.outputEnd - 16_000)));
+    return task.completion;
   }
 
   async write(id: string, input: string, close = false): Promise<TaskSummary> {
@@ -229,7 +248,17 @@ export class TaskManager {
   }
 
   #summary(task: ManagedTask): TaskSummary {
-    const { process: _process, output: _output, timeout: _timeout, killTimer: _killTimer, killRequested: _killRequested, ...summary } = task;
+    const {
+      process: _process,
+      output: _output,
+      timeout: _timeout,
+      killTimer: _killTimer,
+      killRequested: _killRequested,
+      notifyOnComplete: _notifyOnComplete,
+      completion: _completion,
+      resolveCompletion: _resolveCompletion,
+      ...summary
+    } = task;
     return summary;
   }
 }

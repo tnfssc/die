@@ -65,7 +65,7 @@ Tasks are currently scoped to one session and are terminated when that session s
 
 The model-facing `execute` tool replaces `read`, `edit`, `write`, `bash`, and `powershell`. It transpiles submitted TypeScript in memory using `Bun.Transpiler`, then executes it as a module in an isolated child process in the current working directory. It supports top-level await, static imports and exports, dynamic imports, CommonJS `require`, local modules, Bun APIs, Node built-ins, installed packages, and subprocesses. Results are returned through stdout and stderr; no temporary source file is created.
 
-The root agent and first-level sub-agents receive `execute`, `task`, and `subagent`. Second-level sub-agents receive `execute` and `task` and cannot delegate further.
+The root agent and first-level sub-agents receive `execute`, `task`, and `subagent`. Root delegation returns immediately. A first-level agent's nested delegation waits for level two inside the tool call so the first-level print-mode process cannot exit early. Second-level sub-agents receive `execute` and `task` and cannot delegate further.
 
 ## Interactive TUI harness
 

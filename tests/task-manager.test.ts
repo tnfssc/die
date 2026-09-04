@@ -75,6 +75,18 @@ describe("asynchronous task manager", () => {
     expect(third.hasMore).toBe(false);
   });
 
+  test("can await completion without emitting an automatic notification", async () => {
+    let notificationCount = 0;
+    const manager = new TaskManager(() => notificationCount++);
+    managers.push(manager);
+    const task = manager.spawn({ ...commandLaunch("printf nested-result"), notifyOnComplete: false });
+
+    const completed = await manager.wait(task.id);
+    expect(completed.status).toBe("completed");
+    expect(completed.output).toBe("nested-result");
+    expect(notificationCount).toBe(0);
+  });
+
   test("writes standard input and can close it", async () => {
     const { manager, completion } = managerWithCompletion();
     const task = manager.spawn(commandLaunch("IFS= read -r value; printf 'received:%s' \"$value\""));
