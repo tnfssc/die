@@ -47,7 +47,8 @@
 - The model-facing generic task operations are `spawn`, `list`, `inspect`, `input`, and `kill`.
 - Spawn responses include task IDs.
 - A completed task remains inspectable for the rest of the current session. Because retained results are inspectable, completion overflow does not need to be written to a file.
-- Task output is buffered without rendering every output chunk. Retention is bounded per task and implemented to avoid repeated whole-buffer copying.
+- Task output is buffered without rendering every output chunk. Retention is bounded per task and implemented to avoid repeated whole-buffer copying or retaining oversized pooled backing buffers for small chunks.
+- Completed tasks retain inspectable metadata and bounded output, but release their child-process objects, streams, and completion machinery immediately.
 - Aggregate session memory and global concurrency limits are not required at this stage.
 - The command task intentionally uses the user's configured shell. Shell-specific behavior is expected.
 - Session shutdown terminates running task process groups and escalates termination when necessary.

@@ -64,14 +64,14 @@ export interface TaskSummary {
 }
 
 interface ManagedTask extends TaskSummary {
-  process: ChildProcessWithoutNullStreams;
+  process?: ChildProcessWithoutNullStreams;
   output: BoundedOutputBuffer;
   timeout?: ReturnType<typeof setTimeout>;
   killTimer?: ReturnType<typeof setTimeout>;
   killRequested: boolean;
   notifyOnComplete: boolean;
-  completion: Promise<TaskInspection>;
-  resolveCompletion: (task: TaskInspection) => void;
+  completion?: Promise<TaskInspection>;
+  resolveCompletion?: (task: TaskInspection) => void;
 }
 
 export interface TaskInspection extends TaskSummary {
@@ -141,7 +141,11 @@ export class TaskManager {
       task.completedAt = new Date().toISOString();
       task.status = task.killRequested ? "killed" : code === 0 ? "completed" : "failed";
       const inspection = this.inspect(id, Math.max(task.baseOffset, task.outputEnd - 16_000));
-      task.resolveCompletion(inspection);
+      const resolveTask = task.resolveCompletion;
+      task.process = undefined;
+      task.completion = undefined;
+      task.resolveCompletion = undefined;
+      resolveTask?.(inspection);
       if (!this.#shuttingDown && task.notifyOnComplete) this.#onComplete(inspection);
     });
 
@@ -182,21 +186,21 @@ export class TaskManager {
   wait(id: string): Promise<TaskInspection> {
     const task = this.#require(id);
     if (task.status !== "running") return Promise.resolve(this.inspect(id, Math.max(task.baseOffset, task.outputEnd - 16_000)));
-    return task.completion;
+    return task.completion!;
   }
 
   async write(id: string, input: string, close = false): Promise<TaskSummary> {
     const task = this.#requireRunning(id);
     await new Promise<void>((resolve, reject) => {
-      task.process.stdin.write(input, (error) => (error ? reject(error) : resolve()));
+      task.process!.stdin.write(input, (error) => (error ? reject(error) : resolve()));
     });
-    if (close) task.process.stdin.end();
+    if (close) task.process!.stdin.end();
     return this.#summary(task);
   }
 
   closeInput(id: string): TaskSummary {
     const task = this.#requireRunning(id);
-    task.process.stdin.end();
+    task.process!.stdin.end();
     return this.#summary(task);
   }
 
@@ -229,9 +233,9 @@ export class TaskManager {
   #signal(task: ManagedTask, signal: NodeJS.Signals): void {
     try {
       if (process.platform !== "win32" && task.pid) process.kill(-task.pid, signal);
-      else task.process.kill(signal);
+      else task.process?.kill(signal);
     } catch {
-      task.process.kill(signal);
+      task.process?.kill(signal);
     }
   }
 

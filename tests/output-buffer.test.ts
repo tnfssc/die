@@ -16,6 +16,17 @@ describe("bounded task output buffer", () => {
     expect(result.buffer.toString()).toBe("67890abcde");
   });
 
+  test("copies incoming buffer slices instead of retaining pooled backing slabs", () => {
+    const output = new BoundedOutputBuffer(100);
+    const backing = Buffer.alloc(64_000, 0);
+    const slice = backing.subarray(100, 103);
+    slice.set(Buffer.from("abc"));
+    output.append(slice);
+    slice.set(Buffer.from("xyz"));
+
+    expect(output.read(0, 100).buffer.toString()).toBe("abc");
+  });
+
   test("supports cursor pagination across chunks", () => {
     const output = new BoundedOutputBuffer(100);
     output.append("abc");
