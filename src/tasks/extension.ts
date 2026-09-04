@@ -5,6 +5,7 @@ import { CompletionBatcher } from "./completion-batcher";
 import { formatCompletionNotification } from "./completion-notification";
 import { TaskManager, type TaskInspection } from "./task-manager";
 import { boundedMiddlePreview } from "./text-preview";
+import { registerTypeScriptTool } from "../typescript/extension";
 
 const TaskAction = StringEnum(["spawn", "list", "inspect", "input", "kill"] as const);
 const ThinkingLevel = StringEnum(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const);
@@ -49,6 +50,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
   const subagentDepth = Math.max(0, Number.parseInt(process.env.DIE_SUBAGENT_DEPTH ?? "0", 10) || 0);
   const isSubagent = subagentDepth > 0;
   let manager: TaskManager | undefined;
+  registerTypeScriptTool(pi);
   const completions = new CompletionBatcher<TaskInspection>((tasks) => {
     const summaries = tasks.map(({ output: _output, ...summary }) => summary);
     pi.sendMessage(
@@ -210,10 +212,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", () => {
-    const active = pi
-      .getActiveTools()
-      .filter((name) => name !== "bash" && name !== "powershell" && (!isSubagent || name !== "subagent"));
-    pi.setActiveTools([...new Set([...active, "task", ...(!isSubagent ? ["subagent"] : [])])]);
+    pi.setActiveTools(["typescript", "task", ...(!isSubagent ? ["subagent"] : [])]);
   });
 
   pi.on("session_shutdown", () => {

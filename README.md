@@ -1,6 +1,6 @@
 # die
 
-`die` is a Bun-compiled coding agent built on [Pi](https://pi.dev). It packages Pi as a standalone executable and replaces model-facing shell execution with an asynchronous task primitive. The single TypeScript execution tool remains planned for Phase 3; see [`PRODUCT.md`](./PRODUCT.md).
+`die` is a Bun-compiled coding agent built on [Pi](https://pi.dev). It packages Pi as a standalone executable, provides asynchronous tasks and sub-agents, and replaces Pi's general-purpose file/shell tools with one TypeScript execution tool. See [`PRODUCT.md`](./PRODUCT.md).
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ The automated suite verifies the compiled executable in an isolated home directo
 
 ## Asynchronous tasks
 
-The model receives one `task` tool in place of Pi's `bash`/`powershell` tools. It can:
+The model receives `task` for asynchronous commands and `subagent` for asynchronous agents. It can:
 
 - Spawn one command or multiple separately managed concurrent commands in a batch
 - Delegate one prompt or multiple concurrent prompts through the higher-level `subagent` tool
@@ -59,7 +59,13 @@ The model receives one `task` tool in place of Pi's `bash`/`powershell` tools. I
 - Terminate tasks
 - Continue other work until an automatic completion message arrives
 
-Tasks are currently scoped to one session and are terminated when that session shuts down. Because the Phase 2 tool model is fixed, Pi's generic `--no-tools`, `--no-builtin-tools`, `--tools`, and `--exclude-tools` options are not exposed or accepted by `die`.
+Tasks are currently scoped to one session and are terminated when that session shuts down. Because the tool model is fixed, Pi's generic `--no-tools`, `--no-builtin-tools`, `--tools`, and `--exclude-tools` options are not exposed or accepted by `die`.
+
+## TypeScript execution
+
+The model-facing `typescript` tool replaces `read`, `edit`, `write`, `bash`, and `powershell`. It transpiles submitted TypeScript in memory using `Bun.Transpiler`, then executes it in an isolated child process in the current working directory. Bun APIs, Node built-ins, installed packages, and subprocesses are available. Results are returned through stdout and stderr; no temporary source file is created.
+
+The root agent's active tools are `typescript`, `task`, and `subagent`. Sub-agents receive `typescript` and `task` but remain unable to recursively invoke `subagent`.
 
 ## Interactive TUI harness
 

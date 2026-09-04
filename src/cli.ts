@@ -14,8 +14,18 @@ import exportTemplate from "../runtime-assets/export-html/template.html" with { 
 import highlight from "../runtime-assets/export-html/vendor/highlight.min.js" with { type: "file" };
 import marked from "../runtime-assets/export-html/vendor/marked.min.js" with { type: "file" };
 import asynchronousTasksExtension from "./tasks/extension";
+import { INTERNAL_TYPESCRIPT_RUNNER_ARG, runTypeScriptFromStdin } from "./typescript/runner";
 
 const cliArgs = process.argv.slice(2);
+if (cliArgs[0] === INTERNAL_TYPESCRIPT_RUNNER_ARG) {
+  try {
+    await runTypeScriptFromStdin();
+    process.exit(0);
+  } catch (error) {
+    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    process.exit(1);
+  }
+}
 const removedToolOptions = new Set([
   "--no-tools",
   "-nt",
@@ -119,7 +129,7 @@ if (topLevelHelp) {
 }
 try {
   await main(cliArgs, {
-    extensionFactories: [{ name: "asynchronous-tasks", factory: asynchronousTasksExtension, hidden: true }],
+    extensionFactories: [{ name: "die-tools", factory: asynchronousTasksExtension, hidden: true }],
   });
 } finally {
   console.log = originalLog;

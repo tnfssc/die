@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { run } from "./helpers";
 
 const enabled = process.env.DIE_RUN_LLM_TESTS === "1";
@@ -24,6 +26,35 @@ test.skipIf(!enabled)(
 
     expect(result.code).toBe(0);
     expect(result.stdout.trim()).toBe(expected);
+  },
+  180_000,
+);
+
+test.skipIf(!enabled)(
+  "GPT-5.6 Luna uses the TypeScript tool for a realistic file workflow",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "die-llm-typescript-"));
+    const expected = "typescript-tool-automation-passed";
+    try {
+      const result = await run([
+        binary,
+        "--provider",
+        "openai-codex",
+        "--model",
+        "gpt-5.6-luna",
+        "--thinking",
+        "minimal",
+        "--no-session",
+        "-p",
+        `Use the typescript tool to create result.txt containing exactly ${expected}, then use the typescript tool to read it back. Do not use task. Reply with exactly: ${expected}`,
+      ], { cwd: directory });
+
+      expect(result.code).toBe(0);
+      expect(result.stdout.trim()).toBe(expected);
+      expect(await readFile(join(directory, "result.txt"), "utf8")).toBe(expected);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   },
   180_000,
 );

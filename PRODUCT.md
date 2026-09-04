@@ -84,11 +84,14 @@
 ## Phase 3 — One TypeScript execution tool
 
 - Remove the model-facing `read`, `edit`, `write`, and shell tools.
-- Replace them with exactly one model-facing tool that accepts and executes TypeScript.
-- The model performs reads, writes, edits, and command execution by writing TypeScript for this tool.
+- Replace them with exactly one general-purpose model-facing execution tool that accepts and executes TypeScript. The specialized asynchronous `task` and `subagent` capabilities remain alongside it.
+- The model performs reads, writes, edits, and synchronous command execution by writing TypeScript for this tool.
 - The tool executes the submitted TypeScript and returns its output or result.
 - TypeScript is the initial language.
-- Phase 3 begins only after Phase 2 is accepted.
+- Submitted source is transpiled in memory with Bun's internal `Bun.Transpiler` and executed in an isolated child process.
+- No temporary source file is written.
+- The isolated process uses the agent's current working directory and may use Bun APIs, Node built-ins, installed packages, and subprocesses.
+- Isolation protects the main agent process from crashes, exits, and global mutations in submitted code; it is not specified as a filesystem or operating-system security sandbox.
 
 ## Disk-write policy
 
@@ -111,4 +114,4 @@
 
 ## Current phase
 
-Phase 1 is established. Phase 2 is the current implementation scope. Phase 3 has not started.
+Phase 1 and Phase 2 are established. Phase 3 implementation is now in progress.
