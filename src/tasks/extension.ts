@@ -1,4 +1,4 @@
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
 import { CompletionBatcher } from "./completion-batcher";
@@ -11,7 +11,7 @@ const TaskAction = StringEnum(["spawn", "list", "inspect", "input", "kill"] as c
 const ThinkingLevel = StringEnum(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const);
 const DEFAULT_LIST_COUNT = 50;
 const MAX_LIST_COUNT = 100;
-const MAX_LIST_COMMAND_CHARS = 500;
+const MAX_LIST_COMMAND_CHARS = 72;
 const MAX_SUBAGENT_DEPTH = 2;
 
 const TaskParameters = Type.Object({
@@ -37,10 +37,18 @@ const SubagentParameters = Type.Object({
   timeoutSeconds: Type.Optional(Type.Number({ minimum: 0.1, maximum: 86_400 })),
 });
 
+function elapsed(task: { startedAt: string; completedAt?: string }): string {
+  const milliseconds = Math.max(0, Date.parse(task.completedAt ?? new Date().toISOString()) - Date.parse(task.startedAt));
+  const seconds = Math.floor(milliseconds / 1_000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m${String(seconds % 60).padStart(2, "0")}s`;
+}
+
 function formatInspection(task: TaskInspection): string {
   const lines = [
-    `${task.id} ${task.status}${task.pid ? ` pid=${task.pid}` : ""}`,
-    `kind=${task.kind} command=${task.command}`,
+    `${task.id} ${task.status}${task.pid ? ` pid=${task.pid}` : ""} elapsed=${elapsed(task)}`,
+    `kind=${task.kind} command=${boundedMiddlePreview(task.command, 160)}`,
     `output cursor ${task.nextOffset}/${task.outputEnd}${task.outputLost ? " (earlier output discarded)" : ""}${task.hasMore ? " (more available)" : ""}`,
   ];
   if (task.output) lines.push("", task.output);
@@ -51,8 +59,14 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
   const subagentDepth = Math.max(0, Number.parseInt(process.env.DIE_SUBAGENT_DEPTH ?? "0", 10) || 0);
   const canSpawnSubagent = subagentDepth < MAX_SUBAGENT_DEPTH;
   let manager: TaskManager | undefined;
+  let taskUi: ExtensionContext["ui"] | undefined;
+  const updateTaskStatus = () => {
+    const running = manager?.list().filter((task) => task.status === "running").length ?? 0;
+    taskUi?.setStatus("die-tasks", running > 0 ? `${running} task${running === 1 ? "" : "s"} running` : undefined);
+  };
   registerExecuteTool(pi);
   const completions = new CompletionBatcher<TaskInspection>((tasks) => {
+    updateTaskStatus();
     const summaries = tasks.map(({ output: _output, ...summary }) => summary);
     pi.sendMessage(
       {
@@ -87,6 +101,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
     parameters: TaskParameters,
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      taskUi = ctx.ui;
       const tasks = getManager();
       switch (params.action) {
         case "spawn": {
@@ -106,6 +121,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
               timeoutMs: params.timeoutSeconds ? params.timeoutSeconds * 1000 : undefined,
             });
           });
+          updateTaskStatus();
           return {
             content: [{
               type: "text",
@@ -126,7 +142,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
           const text = page.length
             ? [
                 `Tasks ${cursor + 1}-${cursor + page.length} of ${all.length}${nextCursor !== undefined ? `; next cursor=${nextCursor}` : ""}`,
-                ...page.map((task) => `${task.id}\t${task.status}\t${task.kind}\t${boundedMiddlePreview(task.command, MAX_LIST_COMMAND_CHARS)}`),
+                ...page.map((task) => `${task.id}\t${task.status} ${elapsed(task)}\t${task.kind}\t${boundedMiddlePreview(task.command, MAX_LIST_COMMAND_CHARS)}`),
               ].join("\n")
             : all.length === 0
               ? "No tasks have been spawned in this session."
@@ -180,6 +196,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
     parameters: SubagentParameters,
 
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      taskUi = ctx.ui;
       if (!canSpawnSubagent) throw new Error(`Sub-agent delegation is limited to ${MAX_SUBAGENT_DEPTH} levels`);
       const prompts = params.prompts ?? (params.prompt?.trim() ? [params.prompt] : []);
       if (prompts.length === 0) throw new Error("subagent requires prompt or prompts");
@@ -211,6 +228,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
           notifyOnComplete: subagentDepth === 0,
         });
       });
+      updateTaskStatus();
 
       if (subagentDepth > 0) {
         const completed = await Promise.all(spawned.map((task) => tasks.wait(task.id)));
@@ -240,6 +258,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", () => {
+    taskUi?.setStatus("die-tasks", undefined);
     completions.dispose();
     manager?.shutdown();
     manager = undefined;

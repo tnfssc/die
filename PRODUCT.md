@@ -61,7 +61,9 @@
 
 ### Listing and inspection
 
-- `task list` must not produce unbounded model-context output. It is paginated and displays bounded command previews; the exact preview presentation is an implementation choice that should remain understandable and must never alter execution.
+- `task list` must not produce unbounded model-context output. It is paginated and displays concise command previews and elapsed time; the exact preview presentation is an implementation choice that should remain understandable and must never alter execution.
+- While tasks are running, the TUI footer shows a persistent running-task count so an idle agent does not look stalled.
+- Background sub-agents currently emit their final answer only, so an inspection may show `0/0` while the model is still reasoning. The persistent count and elapsed time distinguish this from having no active task; richer live sub-agent progress is deferred.
 - Commands are always executed in full. Display shortening applies only to presentation.
 - Inspection uses cursors and preserves UTF-8 characters at page boundaries.
 - Standard output and standard error are currently merged. Separating and labeling them is deferred and should remain noted in the code.
@@ -93,7 +95,8 @@
 - The tool executes the submitted TypeScript and returns its output or result.
 - TypeScript is the initial language.
 - Submitted source is transpiled in memory with Bun's internal `Bun.Transpiler` and executed as a module in an isolated child process.
-- Module execution supports top-level await, top-level static imports and exports, dynamic/lazy imports, and CommonJS `require`, including local modules resolved from the working directory.
+- Module execution supports top-level await, top-level static imports and exports, dynamic/lazy imports, and CommonJS `require`, including local modules and installed packages resolved from the working directory.
+- Errors from in-memory modules must use a readable placeholder instead of exposing long base64 data URLs.
 - No temporary source file is written.
 - The isolated process uses the agent's current working directory and may use Bun APIs, Node built-ins, installed packages, and subprocesses.
 - Isolation protects the main agent process from crashes, exits, and global mutations in submitted code; it is not specified as a filesystem or operating-system security sandbox.

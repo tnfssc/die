@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { INTERNAL_TYPESCRIPT_RUNNER_ARG } from "../src/typescript/runner";
@@ -15,9 +15,9 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-async function runTypeScript(source: string) {
+async function runTypeScript(source: string, cwd = directory) {
   const child = Bun.spawn([binary, INTERNAL_TYPESCRIPT_RUNNER_ARG], {
-    cwd: directory,
+    cwd,
     env: { HOME: join(directory, "home"), PATH: process.env.PATH ?? "" },
     stdin: "pipe",
     stdout: "pipe",
@@ -60,13 +60,48 @@ describe("isolated TypeScript runner", () => {
       const { lazyValue } = await import("./lazy.ts");
       const { commonValue } = require("./common.cjs");
       export const total: number = staticValue + lazyValue + commonValue;
+      const importLikeText = \`from "./static.ts"\`;
+      // from "./static.ts" must remain a comment, not become a file URL.
       await Promise.resolve();
-      console.log(total);
+      console.log(total, importLikeText);
     `);
 
     expect(result.code).toBe(0);
-    expect(result.stdout.trim()).toBe("42");
+    expect(result.stdout.trim()).toBe(`42 from "./static.ts"`);
     expect(result.stderr).toBe("");
+  });
+
+  test("provides filesystem-style module globals in paths containing spaces", async () => {
+    const spaced = join(directory, "space dir");
+    await mkdir(spaced);
+    const result = await runTypeScript("console.log(__dirname, __filename)", spaced);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe(`${spaced} ${join(spaced, "__die_execute__.ts")}`);
+    expect(result.stdout).not.toContain("%20");
+  });
+
+  test("resolves installed packages for static and lazy imports", async () => {
+    const projectRoot = resolve(import.meta.dir, "..");
+    const result = await runTypeScript(`
+      import { Type } from "typebox";
+      const lazy = await import("typebox");
+      const required = require("typebox");
+      console.log(typeof Type.Object, typeof lazy.Type.String, typeof required.Type.Number);
+    `, projectRoot);
+
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("function function function");
+    expect(result.stderr).toBe("");
+  });
+
+  test("sanitizes in-memory module URLs in failures", async () => {
+    const result = await runTypeScript("throw new Error('runner-failed')");
+
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain("runner-failed");
+    expect(result.stderr).toContain("<execute-module>");
+    expect(result.stderr).not.toContain("data:text/javascript;base64");
   });
 
   test("reports transpilation or execution failures", async () => {

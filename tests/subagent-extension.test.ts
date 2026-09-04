@@ -15,6 +15,12 @@ function loadExtension(depth?: string) {
   const tools = new Map<string, any>();
   const handlers = new Map<string, (...args: any[]) => any>();
   let active = ["read", "write", "edit", "bash", "task", "subagent"];
+  const statuses = new Map<string, string | undefined>();
+  const ui = {
+    setStatus(key: string, value: string | undefined) {
+      statuses.set(key, value);
+    },
+  };
   const pi = {
     registerTool(tool: any) {
       tools.set(tool.name, tool);
@@ -32,7 +38,7 @@ function loadExtension(depth?: string) {
   };
   asynchronousTasksExtension(pi as any);
   handlers.get("session_start")?.({}, {});
-  return { tools, handlers, active: () => active };
+  return { tools, handlers, ui, statuses, active: () => active };
 }
 
 describe("sub-agent recursion guard", () => {
@@ -81,5 +87,18 @@ describe("sub-agent recursion guard", () => {
     expect(second.details.tasks).toHaveLength(1);
     expect(second.details.nextCursor).toBeUndefined();
     extension.handlers.get("session_shutdown")?.({}, {});
+  });
+
+  test("publishes and clears a persistent running-task status", async () => {
+    const extension = loadExtension();
+    const tool = extension.tools.get("task");
+    await tool.execute("spawn", { action: "spawn", command: "sleep 30" }, undefined, undefined, {
+      cwd: process.cwd(),
+      ui: extension.ui,
+    });
+
+    expect(extension.statuses.get("die-tasks")).toBe("1 task running");
+    extension.handlers.get("session_shutdown")?.({}, {});
+    expect(extension.statuses.get("die-tasks")).toBeUndefined();
   });
 });

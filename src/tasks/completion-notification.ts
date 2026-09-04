@@ -2,7 +2,7 @@ import type { TaskInspection } from "./task-manager";
 import { boundedMiddlePreview } from "./text-preview";
 
 export const MAX_COMPLETION_NOTIFICATION_CHARS = 5_000;
-const MAX_COMMAND_PREVIEW_CHARS = 500;
+const MAX_COMMAND_PREVIEW_CHARS = 160;
 const MAX_OUTPUT_PREVIEW_CHARS = 1_000;
 
 function tail(value: string, limit: number): string {

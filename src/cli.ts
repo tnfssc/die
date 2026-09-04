@@ -22,7 +22,8 @@ if (cliArgs[0] === INTERNAL_TYPESCRIPT_RUNNER_ARG) {
     await runTypeScriptFromStdin();
     process.exit(0);
   } catch (error) {
-    console.error(error instanceof Error ? error.stack ?? error.message : String(error));
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    console.error(message.replaceAll(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g, "<execute-module>"));
     process.exit(1);
   }
 }

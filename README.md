@@ -52,14 +52,14 @@ The model receives `task` for asynchronous commands and `subagent` for asynchron
 - Delegate through two sub-agent levels: a first-level sub-agent can create a second-level sub-agent, and the second level is a leaf
 - Batch burst completions into a single model/TUI notification capped at 5,000 characters
 - Inspect retained completed-task output when a notification contains only previews
-- List running or completed tasks through bounded, paginated command previews without changing the commands themselves
+- List running or completed tasks through concise, paginated command previews with elapsed time, without changing the commands themselves
 - Inspect tasks and read output incrementally with byte cursors that preserve UTF-8 character boundaries
 - Retain only the latest 1 MB per task using a chunked bounded buffer
 - Write to or close a task's standard input
 - Terminate tasks
 - Continue other work until an automatic completion message arrives
 
-Tasks are currently scoped to one session and are terminated when that session shuts down. Because the tool model is fixed, Pi's generic `--no-tools`, `--no-builtin-tools`, `--tools`, and `--exclude-tools` options are not exposed or accepted by `die`.
+The TUI footer shows a persistent count while background tasks are running, and task listings include elapsed time. Sub-agents currently expose their final output rather than streaming intermediate reasoning, so inspection can show `0/0` while a sub-agent is still working. Tasks are currently scoped to one session and are terminated when that session shuts down. Because the tool model is fixed, Pi's generic `--no-tools`, `--no-builtin-tools`, `--tools`, and `--exclude-tools` options are not exposed or accepted by `die`.
 
 ## Code execution
 
