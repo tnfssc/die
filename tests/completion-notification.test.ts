@@ -31,8 +31,10 @@ describe("completion notifications", () => {
     const tasks = Array.from({ length: 50 }, (_, index) => completedTask(index, "x".repeat(2_000)));
     const notification = formatCompletionNotification(tasks);
 
+    expect(notification.length).toBeLessThan(2_500);
     expect(notification.length).toBeLessThanOrEqual(MAX_COMPLETION_NOTIFICATION_CHARS);
     expect(notification).toContain("50 asynchronous tasks completed");
+    expect(notification).toContain("Result previews:");
     expect(notification).toContain("additional completions omitted");
     expect(notification).toContain("task inspect");
     for (const task of tasks) expect(notification).toContain(task.id);

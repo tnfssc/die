@@ -56,7 +56,7 @@
 ### Completion delivery
 
 - Completion notifications arriving in bursts are batched before delivery to the model.
-- A completion notification is limited to 5,000 characters.
+- A completion notification is limited to 5,000 characters. Large batches should normally use much less by showing a few compact result previews plus the remaining task IDs instead of filling the terminal with repetitive blocks.
 - The notification provides previews; full retained output remains available through task inspection.
 - Task IDs for completion blocks omitted from the preview are included compactly when they fit within the same limit, with `task list` available to recover all IDs.
 

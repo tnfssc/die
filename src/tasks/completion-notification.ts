@@ -4,6 +4,9 @@ import { boundedMiddlePreview } from "./text-preview";
 export const MAX_COMPLETION_NOTIFICATION_CHARS = 5_000;
 const MAX_COMMAND_PREVIEW_CHARS = 160;
 const MAX_OUTPUT_PREVIEW_CHARS = 1_000;
+const LARGE_BATCH_THRESHOLD = 10;
+const LARGE_BATCH_PREVIEW_COUNT = 5;
+const LARGE_BATCH_OUTPUT_CHARS = 80;
 
 function tail(value: string, limit: number): string {
   return value.length <= limit ? value : `…${value.slice(-(limit - 1))}`;
@@ -29,7 +32,23 @@ function formatOmitted(tasks: TaskInspection[], limit: number): string {
   return result.slice(0, limit);
 }
 
+function formatLargeBatch(tasks: TaskInspection[]): string {
+  let content = `${tasks.length} asynchronous tasks completed.\n\nResult previews:`;
+  for (const task of tasks.slice(0, LARGE_BATCH_PREVIEW_COUNT)) {
+    const output = task.output.trim().replaceAll(/\s+/g, " ");
+    const exit = task.exitCode !== undefined ? ` exit=${task.exitCode}` : task.signal ? ` signal=${task.signal}` : "";
+    content += `\n${task.id} ${task.status}${exit}${output ? ` — ${tail(output, LARGE_BATCH_OUTPUT_CHARS)}` : ""}`;
+  }
+  const omitted = tasks.slice(LARGE_BATCH_PREVIEW_COUNT);
+  if (omitted.length > 0) {
+    const available = MAX_COMPLETION_NOTIFICATION_CHARS - content.length - 2;
+    content += `\n\n${formatOmitted(omitted, available)}`;
+  }
+  return content.slice(0, MAX_COMPLETION_NOTIFICATION_CHARS);
+}
+
 export function formatCompletionNotification(tasks: TaskInspection[]): string {
+  if (tasks.length > LARGE_BATCH_THRESHOLD) return formatLargeBatch(tasks);
   let content = `${tasks.length} asynchronous task${tasks.length === 1 ? "" : "s"} completed.`;
 
   for (let index = 0; index < tasks.length; index++) {
