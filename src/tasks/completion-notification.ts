@@ -1,4 +1,5 @@
 import type { TaskInspection } from "./task-manager";
+import { boundedMiddlePreview } from "./text-preview";
 
 export const MAX_COMPLETION_NOTIFICATION_CHARS = 5_000;
 const MAX_COMMAND_PREVIEW_CHARS = 500;
@@ -36,7 +37,7 @@ export function formatCompletionNotification(tasks: TaskInspection[]): string {
     const output = task.output.trim();
     const block = [
       `${task.id} ${task.status}`,
-      `Command: ${tail(task.command, MAX_COMMAND_PREVIEW_CHARS)}`,
+      `Command: ${boundedMiddlePreview(task.command, MAX_COMMAND_PREVIEW_CHARS)}`,
       task.exitCode !== undefined ? `Exit code: ${task.exitCode}` : undefined,
       task.signal ? `Signal: ${task.signal}` : undefined,
       task.timedOut ? "Timed out: yes" : undefined,

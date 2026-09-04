@@ -38,6 +38,17 @@ describe("completion notifications", () => {
     for (const task of tasks) expect(notification).toContain(task.id);
   });
 
+  test("makes shortened commands explicit and preserves both ends", () => {
+    const task = completedTask(1);
+    task.command = `begin-${"x".repeat(1_000)}-end`;
+    const notification = formatCompletionNotification([task]);
+
+    expect(notification).toContain("Command: begin-");
+    expect(notification).toContain("characters omitted");
+    expect(notification).toContain("-end");
+    expect(notification.length).toBeLessThanOrEqual(MAX_COMPLETION_NOTIFICATION_CHARS);
+  });
+
   test("includes complete summaries when the batch fits", () => {
     const notification = formatCompletionNotification([completedTask(1), completedTask(2)]);
 

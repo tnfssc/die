@@ -45,15 +45,15 @@ The automated suite verifies the compiled executable in an isolated home directo
 
 The model receives one `task` tool in place of Pi's `bash`/`powershell` tools. It can:
 
-- Spawn one command or up to 100 separately managed concurrent commands in a batch
-- Delegate one prompt or up to 8 concurrent prompts through the higher-level `subagent` tool
+- Spawn one command or multiple separately managed concurrent commands in a batch
+- Delegate one prompt or multiple concurrent prompts through the higher-level `subagent` tool
 - Manage sub-agents by task ID through `task list`, `task inspect`, and `task kill`
 - Inherit the parent model and thinking level for sub-agents unless explicitly overridden
 - Keep sub-agents as leaves: they retain `task` but cannot spawn additional sub-agents
 - Batch burst completions into a single model/TUI notification capped at 5,000 characters
 - Inspect retained completed-task output when a notification contains only previews
-- List and inspect running or completed tasks
-- Read output incrementally with byte cursors
+- List running or completed tasks through bounded, paginated command previews without changing the commands themselves
+- Inspect tasks and read output incrementally with byte cursors that preserve UTF-8 character boundaries
 - Retain only the latest 1 MB per task using a chunked bounded buffer
 - Write to or close a task's standard input
 - Terminate tasks

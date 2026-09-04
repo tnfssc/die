@@ -67,6 +67,9 @@ describe("sub-agent recursion guard", () => {
     expect(first.details.tasks).toHaveLength(2);
     expect(first.details.nextCursor).toBe(2);
     expect(first.content[0].text).toContain("Tasks 1-2 of 3; next cursor=2");
+    expect(first.content[0].text).toContain("printf ok");
+    expect(first.content[0].text).toContain("characters omitted");
+    expect(first.content[0].text).toEndWith("printf two");
     expect(first.content[0].text.length).toBeLessThan(longCommand.length);
 
     const second = await tool.execute("list", { action: "list", cursor: 2, count: 2 }, undefined, undefined, {});

@@ -4,6 +4,7 @@ import { Type } from "typebox";
 import { CompletionBatcher } from "./completion-batcher";
 import { formatCompletionNotification } from "./completion-notification";
 import { TaskManager, type TaskInspection } from "./task-manager";
+import { boundedMiddlePreview } from "./text-preview";
 
 const TaskAction = StringEnum(["spawn", "list", "inspect", "input", "kill"] as const);
 const ThinkingLevel = StringEnum(["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const);
@@ -11,14 +12,10 @@ const DEFAULT_LIST_COUNT = 50;
 const MAX_LIST_COUNT = 100;
 const MAX_LIST_COMMAND_CHARS = 500;
 
-function tail(value: string, limit: number): string {
-  return value.length <= limit ? value : `…${value.slice(-(limit - 1))}`;
-}
-
 const TaskParameters = Type.Object({
   action: TaskAction,
   command: Type.Optional(Type.String({ description: "One shell command to run as a command task" })),
-  commands: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: 100, description: "Shell commands to spawn as separate concurrent tasks in one call" })),
+  commands: Type.Optional(Type.Array(Type.String(), { minItems: 1, description: "Shell commands to spawn as separate concurrent tasks in one call" })),
 
   id: Type.Optional(Type.String({ description: "Task ID for inspect, input, or kill" })),
   data: Type.Optional(Type.String({ description: "Data to write to the task's standard input" })),
@@ -32,7 +29,7 @@ const TaskParameters = Type.Object({
 
 const SubagentParameters = Type.Object({
   prompt: Type.Optional(Type.String({ description: "Task delegated to one isolated background agent" })),
-  prompts: Type.Optional(Type.Array(Type.String(), { minItems: 1, maxItems: 8, description: "Tasks delegated to separate concurrent background agents" })),
+  prompts: Type.Optional(Type.Array(Type.String(), { minItems: 1, description: "Tasks delegated to separate concurrent background agents" })),
   model: Type.Optional(Type.String({ description: "Optional model ID or provider/model ID; defaults to the parent model" })),
   thinking: Type.Optional(ThinkingLevel),
   timeoutSeconds: Type.Optional(Type.Number({ minimum: 0.1, maximum: 86_400 })),
@@ -74,7 +71,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
     name: "task",
     label: "Task",
     description:
-      "Manage asynchronous tasks. Spawn returns immediately. Provide command for one command task or commands for up to 100 separate concurrent command tasks in one call. Sub-agents are spawned with the subagent tool and then managed here by ID. Use list or inspect while tasks run, input to write stdin, and kill to stop one. Completions are delivered automatically and burst completions are batched. List results are paginated with cursor/count. Inspection output is capped at 50,000 bytes per call and can be continued with the returned offset.",
+      "Manage asynchronous tasks. Spawn returns immediately. Provide command for one command task or commands for multiple separate concurrent command tasks in one call. Sub-agents are spawned with the subagent tool and then managed here by ID. Use list or inspect while tasks run, input to write stdin, and kill to stop one. Completions are delivered automatically and burst completions are batched. List results are paginated with cursor/count. Inspection output is capped at 50,000 bytes per call and can be continued with the returned offset.",
     promptSnippet: "Spawn, inspect, interact with, and stop asynchronous commands or sub-agents",
     promptGuidelines: [
       "Use task instead of bash for command execution.",
@@ -125,7 +122,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
           const text = page.length
             ? [
                 `Tasks ${cursor + 1}-${cursor + page.length} of ${all.length}${nextCursor !== undefined ? `; next cursor=${nextCursor}` : ""}`,
-                ...page.map((task) => `${task.id}\t${task.status}\t${task.kind}\t${tail(task.command, MAX_LIST_COMMAND_CHARS)}`),
+                ...page.map((task) => `${task.id}\t${task.status}\t${task.kind}\t${boundedMiddlePreview(task.command, MAX_LIST_COMMAND_CHARS)}`),
               ].join("\n")
             : all.length === 0
               ? "No tasks have been spawned in this session."
@@ -161,7 +158,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
     name: "subagent",
     label: "Sub-agent",
     description:
-      "Delegate work to one or more isolated background die agents. Returns task IDs immediately; each sub-agent is managed by the task system, so use task list, inspect, or kill with those IDs. Omit model and thinking to inherit the parent agent's current configuration. Up to 8 prompts can be started concurrently. Completion is reported automatically.",
+      "Delegate work to one or more isolated background die agents. Returns task IDs immediately; each sub-agent is managed by the task system, so use task list, inspect, or kill with those IDs. Omit model and thinking to inherit the parent agent's current configuration. Multiple prompts can be started concurrently. Completion is reported automatically.",
     promptSnippet: "Delegate independent work to asynchronous agents with isolated context",
     promptGuidelines: [
       "Use subagent for independent research, review, planning, or implementation that benefits from an isolated context.",
