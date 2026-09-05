@@ -5,6 +5,7 @@ import { TaskManager, type TaskSummary } from "./task-manager";
 import { SUBAGENT_TYPES, canDelegate, loadProfiles, resolveProfile } from "./subagent-profiles";
 import { prepareAgentSession } from "./agent-session";
 import { boundedMiddlePreview } from "./text-preview";
+import { JobAttentionScheduler, MAX_SNOOZE_MINUTES } from "./job-attention";
 
 const waitSeconds = z.optional(z.number().check(z.minimum(0),z.maximum(86400)));
 const timeoutSeconds = z.optional(z.number().check(z.minimum(0.1),z.maximum(86400)));
@@ -14,6 +15,8 @@ const List = z.strictObject({cursor:z.optional(z.int().check(z.minimum(0))),coun
 const Inspect = z.strictObject({id:z.string(),offset:z.optional(z.int().check(z.minimum(0))),limit:z.optional(z.int().check(z.minimum(1),z.maximum(5000)))});
 const Input = z.strictObject({id:z.string(),data:z.optional(z.string()),closeInput:z.optional(z.boolean())});
 const Id = z.strictObject({id:z.string()});
+const Snooze = z.strictObject({id:z.string(),minutes:z.number().check(z.minimum(Number.MIN_VALUE),z.maximum(MAX_SNOOZE_MINUTES))});
+const Watch = z.strictObject({id:z.string(),enabled:z.boolean()});
 function flatten(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   const {options, ...rest} = value as Record<string,unknown>;
@@ -29,7 +32,7 @@ function preview<T extends TaskSummary>(job: T): T {
     ...(job.agent ? {quietForMs: Math.max(0,end-Date.parse(job.agent.lastActivityAt ?? job.startedAt))} : {})};
 }
 export class JobService {
-  constructor(readonly manager: TaskManager, private policy: ()=>{depth:number;type?:string}, private changed: ()=>void, private profilesPath?: string) {}
+  constructor(readonly manager: TaskManager, private policy: ()=>{depth:number;type?:string}, private changed: ()=>void, private profilesPath?: string, private attention?: JobAttentionScheduler) {}
   async handle(method: string, value: unknown, ctx: ExtensionContext, signal: AbortSignal): Promise<unknown> {
     signal.throwIfAborted();
     const input=flatten(value ?? {});
@@ -96,6 +99,16 @@ export class JobService {
       case "jobs.closeInput": return preview(this.manager.closeInput(z.parse(Id,input).id));
       case "jobs.stop": {
         const result=this.manager.kill(z.parse(Id,input).id);this.changed();return preview(result);
+      }
+      case "jobs.snooze": {
+        if (!this.attention) throw new Error("Job attention is unavailable");
+        const params=z.parse(Snooze,input), result=this.attention.snooze(params.id,params.minutes);
+        return {...preview(result),watchEnabled:this.attention.isWatched(params.id),snoozedMinutes:params.minutes};
+      }
+      case "jobs.setWatch": {
+        if (!this.attention) throw new Error("Job attention is unavailable");
+        const params=z.parse(Watch,input), result=this.attention.setWatch(params.id,params.enabled);
+        return {...preview(result),watchEnabled:params.enabled};
       }
       default: throw new Error("Unknown job method: "+method);
     }

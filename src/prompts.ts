@@ -7,6 +7,9 @@ import normal from "./prompts/normal.md" with { type: "text" };
 import orchestrator from "./prompts/orchestrator.md" with { type: "text" };
 import delegationEnabled from "./prompts/delegation-enabled.md" with { type: "text" };
 import delegationDisabled from "./prompts/delegation-disabled.md" with { type: "text" };
+import mainFast from "./prompts/main-fast.md" with { type: "text" };
+import mainNormal from "./prompts/main-normal.md" with { type: "text" };
+import mainOrchestrator from "./prompts/main-orchestrator.md" with { type: "text" };
 
 // Text imports embed the Markdown in the standalone executable.
 const bullets = (text: string): string[] => text.split("\n").filter(line => line.startsWith("- ")).map(line => line.slice(2));
@@ -29,6 +32,29 @@ export function backgroundHandoff(ids: string[]): string {
 export function subagentGuidance(role: string, canDelegate: boolean): string {
   const template = role === "fast" ? fast : role === "orchestrator" ? orchestrator : normal;
   return template.trimEnd().replace("{{role}}", () => role).replace("{{delegation}}", () => (canDelegate ? delegationEnabled : delegationDisabled).trimEnd());
+}
+
+export const MAIN_AGENT_MODES = ["fast", "normal", "orchestrator"] as const;
+export type MainAgentMode = typeof MAIN_AGENT_MODES[number];
+function mainModeMarkers(owner: string): [string, string] {
+  // owner is generated internally, not derived from project or user text.
+  return [`<!-- die:main-agent-mode:${owner}:start -->`, `<!-- die:main-agent-mode:${owner}:end -->`];
+}
+
+export function mainAgentGuidance(mode: MainAgentMode, owner: string): string {
+  const source = mode === "fast" ? mainFast : mode === "normal" ? mainNormal : mainOrchestrator;
+  const [start, end] = mainModeMarkers(owner);
+  return start + "\n" + source.trimEnd() + "\n" + end;
+}
+
+/** Replace only the region carrying this die session's unguessable owner marker. */
+export function replaceMainAgentGuidance(prompt: string, mode: MainAgentMode, owner: string): string {
+  const [startMarker, endMarker] = mainModeMarkers(owner);
+  const start = prompt.indexOf(startMarker);
+  if (start < 0) return prompt;
+  const end = prompt.indexOf(endMarker, start + startMarker.length);
+  if (end < 0) return prompt;
+  return prompt.slice(0, start) + mainAgentGuidance(mode, owner) + prompt.slice(end + endMarker.length);
 }
 
 /** Adapt only the upstream default block; callers leave user system prompts alone. */
