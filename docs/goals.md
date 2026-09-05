@@ -77,8 +77,9 @@ Goal state is bounded so it cannot become an unbounded evidence store:
 
 These are storage limits, not quality guarantees. Completion evidence is a concise
 model-authored claim. Verify important acceptance criteria with tests, file inspection,
-or external review. Repeated automatic turns that make no meaningful state progress
-are paused, as are interrupted turns and queued user intervention.
+or external review. Repeated automatic turns that add no new explicit, verified progress
+milestone are paused. Waiting-state changes and revision bumps do not count as milestone evidence;
+interrupted turns and queued user intervention also pause automatic continuation.
 
 ## Running jobs, attention, and resume
 
@@ -91,9 +92,10 @@ The job-attention defaults are:
 
 - a quiet checkpoint after **5 minutes** without observed activity;
 - a review checkpoint every **10 minutes** while a job remains running;
-- `jobs.snooze(id, minutes)` for a positive delay of at most **55 minutes**;
-- `jobs.setWatch(id, false)` to disable attention for an expected persistent service,
-  and `jobs.setWatch(id, true)` to re-enable it with a fresh grace period.
+- `jobs.snooze(id, { minutes })` for a positive delay of at most **55 minutes**;
+- `jobs.setWatch(id, { enabled: false })` to disable attention for an expected persistent
+  service, and `jobs.setWatch(id, { enabled: true })` to re-enable it with a fresh grace
+  period.
 
 Attention messages contain bounded observations and recent output; jobs continue
 running until they finish or are explicitly stopped. These intervals are current
