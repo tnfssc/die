@@ -81,6 +81,11 @@ interface ManagedTask extends TaskSummary {
   resolveCompletion?: (task: TaskInspection) => void;
 }
 
+export interface TaskManagerEvent {
+  type: "spawn" | "output" | "status";
+  task: TaskSummary;
+}
+
 export interface TaskInspection extends TaskSummary {
   output: string;
   requestedOffset: number;
@@ -95,10 +100,17 @@ export class TaskManager {
   readonly #killGraceMs: number;
   #shuttingDown = false;
   #shutdown?: Promise<void>;
+  readonly #listeners = new Set<(event: TaskManagerEvent) => void>();
 
   constructor(onComplete: (task: TaskInspection) => void, killGraceMs = DEFAULT_KILL_GRACE_MS) {
     this.#onComplete = onComplete;
     this.#killGraceMs = killGraceMs;
+  }
+
+  /** Observe registry/output changes without taking ownership of completion delivery. */
+  subscribe(listener: (event: TaskManagerEvent) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
   }
 
   spawn(launch: TaskLaunch): TaskSummary {
@@ -136,6 +148,7 @@ export class TaskManager {
       resolveCompletion,
     };
     this.#tasks.set(id, task);
+    this.#changed(task, "spawn");
     if (launch.closeStdin) child.stdin.end();
 
     // Intentionally merge stdout and stderr for now. Stream labels and strict
@@ -167,6 +180,7 @@ export class TaskManager {
       task.completedAt = new Date().toISOString();
       task.status = task.killRequested ? "killed" : code === 0 && !progress?.failed ? "completed" : "failed";
       if (task.agent) task.agent.phase = task.status;
+      this.#changed(task, "status");
       const inspection = this.inspect(id, Math.max(task.baseOffset, task.outputEnd - MAX_INSPECT_BYTES));
       // Notifications carry the answer, while inspect retains the activity log.
       if (progress && task.status === "completed" && progress.final.retainedBytes) {
@@ -304,6 +318,7 @@ export class TaskManager {
     const task = this.#require(id);
     if (task.status !== "running" || task.killRequested) return this.#summary(task);
     task.killRequested = true;
+    this.#changed(task, "status");
     this.#signal(task, "SIGTERM");
     task.killTimer = setTimeout(() => {
       if (task.status === "running") this.#signal(task, "SIGKILL");
@@ -342,6 +357,14 @@ export class TaskManager {
     task.output.append(value);
     task.baseOffset = task.output.baseOffset;
     task.outputEnd = task.output.endOffset;
+    this.#changed(task, "output");
+  }
+
+  #changed(task: ManagedTask, type: TaskManagerEvent["type"]): void {
+    const event={type,task:this.#summary(task)};
+    for (const listener of this.#listeners) {
+      try { listener(event); } catch { /* A monitor must never affect task ownership. */ }
+    }
   }
 
   #signal(task: ManagedTask, signal: NodeJS.Signals): void {
