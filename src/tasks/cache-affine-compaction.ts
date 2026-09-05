@@ -97,6 +97,13 @@ export function setCurrentInstructionFrame(sessionManager: object, systemPrompt:
   return true;
 }
 
+/** Rewrite a prepared frame after a session-scoped instruction change. */
+export function updateCurrentInstructionFrame(sessionManager: object, update: (prompt: string) => string): boolean {
+  const frame = currentInstructionFrame(sessionManager);
+  if (!frame || frame.systemPrompt === undefined) return false;
+  return setCurrentInstructionFrame(sessionManager, update(frame.systemPrompt));
+}
+
 /** Bind an owning classic session; also usable by embedders with explicit session construction. */
 export function bindCurrentCompactionSession(session: ClassicSession): void {
   if (session.sessionManager && typeof session.sessionManager === "object") classicSessions.set(session.sessionManager, session);

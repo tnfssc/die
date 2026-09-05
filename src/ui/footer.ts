@@ -115,9 +115,11 @@ export function renderCompactFooter(ctx: ExtensionContext, data: ReadonlyFooterD
   if (width < 1) return [];
   const project = singleLine(basename(ctx.sessionManager.getCwd()) || "/");
   const branch = data.getGitBranch();
-  const task = singleLine(data.getExtensionStatuses().get("die-tasks") ?? "").replace(/^(\d+ tasks?) running$/, "$1");
+  const statuses = data.getExtensionStatuses();
+  const task = singleLine(statuses.get("die-tasks") ?? "").replace(/^(\d+ tasks?) running$/, "$1");
   const shortTask = task.replace(/^(\d+) tasks?$/, "$1t");
-  const otherCount = [...data.getExtensionStatuses().keys()].filter((key) => key !== "die-tasks").length;
+  const mode = singleLine(statuses.get("die-mode") ?? "");
+  const otherCount = [...statuses.keys()].filter((key) => key !== "die-tasks" && key !== "die-mode").length;
   const extra = otherCount ? `+${otherCount} status` : "";
   const cost = `$${(footerUsage(ctx).cost + descendantCost).toFixed(3)}`;
   const percent = ctx.getContextUsage()?.percent;
@@ -127,10 +129,10 @@ export function renderCompactFooter(ctx: ExtensionContext, data: ReadonlyFooterD
   const modelWithThinking = model + (ctx.model?.reasoning ? ` · ${ctx.thinkingLevel ?? "off"}` : "");
   const accent = (text: string) => text ? theme.fg("accent", text) : "";
   const candidates: [string[], string, string][] = [
-    [[branch ? `${project}:${singleLine(branch)}` : project, accent(task), cost, context("ctx "), extra], modelWithThinking, " · "],
-    [[project, accent(task), cost, context("ctx "), extra], modelWithThinking, " · "],
-    [[accent(shortTask), cost, context("C"), project, extra], model, " "],
-    [[accent(shortTask), cost, context("C"), extra], model, " "],
+    [[branch ? `${project}:${singleLine(branch)}` : project, accent(task), accent(mode), cost, context("ctx "), extra], modelWithThinking, " · "],
+    [[project, accent(task), accent(mode), cost, context("ctx "), extra], modelWithThinking, " · "],
+    [[accent(shortTask), accent(mode), cost, context("C"), project, extra], model, " "],
+    [[accent(shortTask), accent(mode), cost, context("C"), extra], model, " "],
   ];
   for (const [parts, right, separator] of candidates) {
     const left = parts.filter(Boolean).join(separator);

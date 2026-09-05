@@ -35,6 +35,8 @@ test("root values are part of the agent frame and explicit user prompts retain p
   const framed = await e.fire("before_agent_start", {systemPrompt:"base", systemPromptOptions:{}}, {});
   expect(framed.systemPrompt).toContain("Working together");
   expect(framed.systemPrompt).toContain("Responsive collaboration");
+  expect(framed.systemPrompt).toContain("main agent in orchestrator instruction mode");
+  expect(framed.systemPrompt).toContain("delegation permissions remain available");
   const custom = await e.fire("before_agent_start", {systemPrompt:"user custom", systemPromptOptions:{customPrompt:"user custom"}}, {});
   expect(custom).toBeUndefined();
 });

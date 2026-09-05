@@ -63,6 +63,9 @@ describe("compact extension footer", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain("die:develop · 30 tasks · $0.002 · ctx 1%");
     expect(lines[0]).toEndWith("gpt-5.6-luna · medium");
+    statuses.set("die-mode", "mode: fast");
+    expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("mode: fast");
+    expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).not.toContain("+1 status");
     statuses.set("review", "review in progress");
     expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("+1 status");
     for (const width of [1, 4, 10, 20, 40, 44, 80, 120]) {

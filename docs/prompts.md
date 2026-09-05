@@ -17,6 +17,12 @@ the Markdown files beside the executable. This is the actual source, not a copie
 prompt dump. Pi still composes its base instructions and dynamic session/project
 context around it. The Markdown extraction preserves the existing prompt text.
 
+## Main-agent instruction modes
+
+The root session starts in `orchestrator` mode. `/mode fast`, `/mode normal`, and `/mode orchestrator` switch only the root agent's behavioral Markdown frame; `/mode` reports the current session-scoped setting. The selection is recorded in session history and restored on resume. Explicit custom system prompts keep their override semantics, and child agents continue to derive their fixed role and delegation depth from child-session metadata.
+
+Mode selection intentionally does **not** select a model or thinking level. Sub-agent model/thinking profiles remain owned by `src/tasks/subagent-profiles.ts` and `/subagents`. Fast and normal root modes also keep root delegation available: a main-agent mode describes how the root approaches work, not a lower-capability role. The mode sources are `src/prompts/main-*.md`; session state and command handling are isolated in `src/tasks/instruction-mode.ts`.
+
 ## Values before procedures
 
 The agent needs a model of good work, not a growing checklist of forbidden moves.
