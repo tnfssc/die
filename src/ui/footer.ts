@@ -6,6 +6,7 @@ import type { Usage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, ReadonlyFooterDataProvider, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { CompactEditor } from "./editor";
+import type { CacheCountdown, CacheEstimate } from "../tasks/cache-countdown";
 
 function singleLine(text: string): string {
   return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
@@ -71,7 +72,13 @@ function footerUsage(ctx: ExtensionContext) {
   return { input, output, read, write, cost, cacheHit };
 }
 
-export function renderDetailedFooter(ctx: ExtensionContext, data: ReadonlyFooterDataProvider, theme: Theme, width: number, descendantCost = 0): string[] {
+function cacheBadge(estimate: CacheEstimate | undefined, theme: Theme): string | undefined {
+  if (!estimate) return undefined;
+  const color = estimate.state === "expired" || estimate.state === "urgent" ? "error" : estimate.state === "warning" ? "warning" : "dim";
+  return theme.fg(color, estimate.text);
+}
+
+export function renderDetailedFooter(ctx: ExtensionContext, data: ReadonlyFooterDataProvider, theme: Theme, width: number, descendantCost = 0, cache?: CacheEstimate): string[] {
   if (width < 1) return [];
   const { input, output, read, write, cost, cacheHit } = footerUsage(ctx);
   let path = footerPath(ctx.sessionManager.getCwd());
@@ -94,6 +101,8 @@ export function renderDetailedFooter(ctx: ExtensionContext, data: ReadonlyFooter
   // The extension API exposes context usage, but not auto-compaction settings;
   // omit the native '(auto)' suffix rather than displaying an assumed setting.
   stats.push(theme.fg(percent != null && percent > 90 ? "error" : percent != null && percent > 70 ? "warning" : "dim", contextText));
+  const detailedCache = cacheBadge(cache, theme);
+  if (detailedCache) stats.push(detailedCache);
   let modelText = model?.id ?? "no-model";
   if (model?.reasoning) modelText += ` • ${ctx.thinkingLevel ?? "off"}`;
   if (model && data.getAvailableProviderCount() > 1) {
@@ -111,7 +120,7 @@ export function renderDetailedFooter(ctx: ExtensionContext, data: ReadonlyFooter
   return lines;
 }
 
-export function renderCompactFooter(ctx: ExtensionContext, data: ReadonlyFooterDataProvider, theme: Theme, width: number, descendantCost = 0): string[] {
+export function renderCompactFooter(ctx: ExtensionContext, data: ReadonlyFooterDataProvider, theme: Theme, width: number, descendantCost = 0, cache?: CacheEstimate): string[] {
   if (width < 1) return [];
   const project = singleLine(basename(ctx.sessionManager.getCwd()) || "/");
   const branch = data.getGitBranch();
@@ -128,11 +137,12 @@ export function renderCompactFooter(ctx: ExtensionContext, data: ReadonlyFooterD
   const model = singleLine(ctx.model?.id ?? "no-model");
   const modelWithThinking = model + (ctx.model?.reasoning ? ` · ${ctx.thinkingLevel ?? "off"}` : "");
   const accent = (text: string) => text ? theme.fg("accent", text) : "";
+  const cacheText = cacheBadge(cache, theme) ?? "";
   const candidates: [string[], string, string][] = [
-    [[branch ? `${project}:${singleLine(branch)}` : project, accent(task), accent(mode), cost, context("ctx "), extra], modelWithThinking, " · "],
-    [[project, accent(task), accent(mode), cost, context("ctx "), extra], modelWithThinking, " · "],
-    [[accent(shortTask), accent(mode), cost, context("C"), project, extra], model, " "],
-    [[accent(shortTask), accent(mode), cost, context("C"), extra], model, " "],
+    [[branch ? `${project}:${singleLine(branch)}` : project, accent(task), accent(mode), cost, context("ctx "), cacheText, extra], modelWithThinking, " · "],
+    [[project, accent(task), accent(mode), cost, context("ctx "), cacheText, extra], modelWithThinking, " · "],
+    [[accent(shortTask), accent(mode), cost, context("C"), cacheText, project, extra], model, " "],
+    [[accent(shortTask), accent(mode), cost, context("C"), cacheText, extra], model, " "],
   ];
   for (const [parts, right, separator] of candidates) {
     const left = parts.filter(Boolean).join(separator);
@@ -144,7 +154,7 @@ export function renderCompactFooter(ctx: ExtensionContext, data: ReadonlyFooterD
   return [columns(theme.fg("dim", parts.filter(Boolean).join(separator)), theme.fg("dim", right), width)];
 }
 
-export function createCompactUI(pi: ExtensionAPI): (ctx: ExtensionContext) => void {
+export function createCompactUI(pi: ExtensionAPI, cache?: CacheCountdown): (ctx: ExtensionContext) => void {
   let expanded = false;
   let tracker: SessionCostTracker | undefined;
   let disposeFooter: (() => void) | undefined;
@@ -153,7 +163,7 @@ export function createCompactUI(pi: ExtensionAPI): (ctx: ExtensionContext) => vo
     if (!root) tracker = undefined;
     else if (tracker?.rootFile !== root.file) tracker = new SessionCostTracker(root.file, root.directory);
     disposeFooter?.();
-    disposeFooter = installCompactFooter(ctx, () => expanded, tracker);
+    disposeFooter = installCompactFooter(ctx, () => expanded, tracker, cache);
   };
   pi.on("session_shutdown", () => {
     disposeFooter?.();
@@ -175,7 +185,7 @@ export function createCompactUI(pi: ExtensionAPI): (ctx: ExtensionContext) => vo
       ctx.ui.setEditorComponent((tui, theme, bindings) =>
         new CompactEditor(tui, theme, bindings, { paddingX: 0, embedWorkingStatus: true }));
     }
-    installCompactFooter(ctx, () => expanded);
+    install(ctx);
   };
 }
 
@@ -183,6 +193,7 @@ export function installCompactFooter(
   ctx: ExtensionContext,
   expanded: () => boolean = () => false,
   tracker?: SessionCostTracker,
+  cache?: CacheCountdown,
 ): () => void {
   if (ctx.mode !== "tui") return () => {};
   if (!tracker) {
@@ -206,19 +217,44 @@ export function installCompactFooter(
         // A transient filesystem error must not interrupt the terminal.
       } finally { busy = false; }
     };
-    const timer = active && tracker ? setInterval(() => { void refresh(); }, 1000) : undefined;
+    // Cost is ancillary and disk-backed; a coarse poll avoids requiring a one-second timer.
+    const timer = active && tracker ? setInterval(() => { void refresh(); }, 2_000) : undefined;
     timer?.unref?.();
     void refresh();
+    let cacheTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastCacheText = cache?.estimate(ctx).text;
+    const scheduleCache = () => {
+      if (cacheTimer) clearTimeout(cacheTimer);
+      if (!active || !cache) return;
+      const estimate = cache.estimate(ctx);
+      if (estimate.nextUpdateMs === undefined) return;
+      cacheTimer = setTimeout(() => {
+        if (!active) return;
+        const next = cache.estimate(ctx);
+        if (next.text !== lastCacheText) { lastCacheText = next.text; tui.requestRender(); }
+        scheduleCache();
+      }, Math.min(60_000, Math.max(1, estimate.nextUpdateMs)));
+      cacheTimer.unref?.();
+    };
+    const unsubscribeCache = cache?.subscribe(() => {
+      if (!active) return;
+      const next = cache.estimate(ctx).text;
+      if (next !== lastCacheText) { lastCacheText = next; tui.requestRender(); }
+      scheduleCache();
+    }) ?? (() => {});
+    scheduleCache();
     let disposed = false;
     dispose = () => {
       if (disposed) return;
       disposed = true;
       active = false;
       if (timer) clearInterval(timer);
+      if (cacheTimer) clearTimeout(cacheTimer);
+      unsubscribeCache();
       unsubscribe();
     };
     return {
-      render: (width) => (expanded() ? renderDetailedFooter : renderCompactFooter)(ctx, data, theme, width, tracker?.descendantCost ?? 0),
+      render: (width) => (expanded() ? renderDetailedFooter : renderCompactFooter)(ctx, data, theme, width, tracker?.descendantCost ?? 0, cache?.estimate(ctx)),
       invalidate() { theme = ctx.ui.theme; },
       dispose,
     };

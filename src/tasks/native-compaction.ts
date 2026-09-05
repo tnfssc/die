@@ -2,6 +2,7 @@ import { getPiUserAgent } from "@earendil-works/pi-ai/utils/pi-user-agent";
 import { isDeepStrictEqual } from "node:util";
 import noticeTemplate from "../prompts/native-compaction.md" with { type: "text" };
 import jobsTemplate from "../prompts/compaction-jobs.md" with { type: "text" };
+import { reportProviderAttempt } from "./provider-attempts";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { calculateCost, type Model, type Usage } from "@earendil-works/pi-ai";
 import type { CompactionEntry, CompactionResult, ExtensionAPI, ExtensionContext, SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
@@ -156,12 +157,15 @@ export function buildCodexCompactionHeaders(captured:Record<string,string|null>,
   for(const name of ["host","content-length","connection","upgrade","sec-websocket-key","sec-websocket-version","sec-websocket-extensions"])headers.delete(name);
   headers.set("originator","pi");headers.set("User-Agent",getPiUserAgent());headers.set("accept","text/event-stream");headers.set("content-type","application/json");headers.set("OpenAI-Beta","responses=experimental");return headers;
 }
-export async function requestNativeCodexCompaction(args:{model:Model<any>;payload:unknown;headers:Record<string,string|null>;auth?:{apiKey?:string;headers?:Record<string,string|null>};signal?:AbortSignal;sessionId?:string;fetch?:typeof globalThis.fetch}):Promise<NativeResponse>{
+export async function requestNativeCodexCompaction(args:{model:Model<any>;payload:unknown;headers:Record<string,string|null>;auth?:{apiKey?:string;headers?:Record<string,string|null>};signal?:AbortSignal;sessionId?:string;fetch?:typeof globalThis.fetch;onDispatch?:(model:Model<any>)=>void}):Promise<NativeResponse>{
   args.signal?.throwIfAborted();
   const body=buildNativeCodexRequest(args.payload); if(!body)throw new Error("Codex native compaction request is not compatible with the captured payload");
   const headers=buildCodexCompactionHeaders(args.headers,args.model,args.auth);
   const cacheKey=args.sessionId??(typeof body.prompt_cache_key==="string"?body.prompt_cache_key:undefined);if(cacheKey){headers.set("session-id",cacheKey);headers.set("x-client-request-id",cacheKey);}
-  const response=await(args.fetch??globalThis.fetch)(resolveCodexResponsesUrl(args.model.baseUrl),{method:"POST",headers,body:JSON.stringify(body),signal:args.signal});
+  const url=resolveCodexResponsesUrl(args.model.baseUrl);
+  const init:RequestInit={method:"POST",headers,body:JSON.stringify(body),signal:args.signal};
+  args.signal?.throwIfAborted();args.onDispatch?.(args.model);
+  const response=await(args.fetch??globalThis.fetch)(url,init);
   if(!response.ok){await response.body?.cancel().catch(()=>{});throw new Error("Codex native compaction HTTP "+response.status);}
   return consumeNativeCodexEvents(response,args.model,args.signal);
 }
@@ -212,7 +216,7 @@ export function registerNativeCodexCompaction(pi:ExtensionAPI,pendingJobs:()=>re
       ctx.ui?.notify?.("Codex native compaction unavailable for this captured request; using plaintext compaction.","warning");return;}
     try{const resolved=await ctx.modelRegistry.getApiKeyAndHeaders(request.model);if(!resolved.ok)throw new Error(resolved.error);for(const [key,value] of Object.entries(request.headers)){if(["x-api-key","api-key"].includes(key.toLowerCase())&&!Object.entries(resolved.headers??{}).some(([name,current])=>name.toLowerCase()===key.toLowerCase()&&current===value))throw new Error("Dynamic credential headers require a fresh normal request");}
       const resolvedModel={...request.model,baseUrl:resolved.baseUrl??request.model.baseUrl};
-      const native=await requestNativeCodexCompaction({model:resolvedModel,payload:request.payload,headers:request.headers,auth:{apiKey:resolved.apiKey,headers:resolved.headers},sessionId:request.sessionId,signal:event.signal});if(event.signal.aborted){pi.appendEntry(NATIVE_CODEX_USAGE_ENTRY,{strategy:"codex-native",status:"cancelled",usage:native.usage,timestamp:Date.now()});return{cancel:true};}
+      const native=await requestNativeCodexCompaction({model:resolvedModel,payload:request.payload,headers:request.headers,auth:{apiKey:resolved.apiKey,headers:resolved.headers},sessionId:request.sessionId,signal:event.signal,onDispatch:model=>reportProviderAttempt(ctx.sessionManager as object,model,"dispatch")});if(event.signal.aborted){pi.appendEntry(NATIVE_CODEX_USAGE_ENTRY,{strategy:"codex-native",status:"cancelled",usage:native.usage,timestamp:Date.now()});return{cancel:true};}
       const jobs=pendingJobs();const runtimeState=jobs.length?jobsTemplate.trimEnd().replace("{{jobs}}",()=>jobs.map(job=>`- ${job.id}: ${job.kind}, ${job.status}`).join("\n")):undefined;
       const details:NativeCodexCompactionDetails={strategy:"codex-native",version:1,api:"openai-codex-responses",provider:request.model.provider,model:request.model.id,thinkingLevel:request.thinkingLevel,runtimeState,readFiles:[...event.preparation.fileOps.read],modifiedFiles:[...new Set([...event.preparation.fileOps.written,...event.preparation.fileOps.edited])],item:native.item};
       const result:CompactionResult<NativeCodexCompactionDetails>={summary:NATIVE_CODEX_SUMMARY+(runtimeState?"\n\n"+runtimeState:""),firstKeptEntryId:event.preparation.firstKeptEntryId,tokensBefore:event.preparation.tokensBefore,

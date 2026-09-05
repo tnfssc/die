@@ -14,9 +14,12 @@ import { registerNativeCodexCompaction } from "./native-compaction";
 import { registerTaskMonitor } from "./task-monitor";
 import { registerResumeSafeguards } from "./resume-safeguards";
 import { registerInstructionMode } from "./instruction-mode";
+import { CacheCountdown, registerCacheCountdown } from "./cache-countdown";
 
-export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string } = {}): void {
-  const installUI = createCompactUI(pi);
+export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string; cacheSettingsPath?: string } = {}): void {
+  const cacheCountdown = new CacheCountdown();
+  registerCacheCountdown(pi, cacheCountdown, options.cacheSettingsPath);
+  const installUI = createCompactUI(pi, cacheCountdown);
   pi.registerMessageRenderer("task-complete", (message, options, theme) =>
     completionPreview(message.content, options.expanded, theme, options.outputPad));
   registerSubagentSettings(pi, options.profilesPath);
