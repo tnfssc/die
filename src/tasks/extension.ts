@@ -11,16 +11,20 @@ import { createCompactUI } from "../ui/footer";
 import { JobService } from "./job-service";
 import { clearInstructionContinuity, registerCacheAffineCompaction, scopeInstructionContinuity } from "./cache-affine-compaction";
 import { registerNativeCodexCompaction } from "./native-compaction";
+import { JobAttentionScheduler, formatAttentionNotification, type AttentionNotice, type AttentionOptions } from "./job-attention";
 
-export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string } = {}): void {
+export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string; attention?: AttentionOptions } = {}): void {
   const installUI = createCompactUI(pi);
   pi.registerMessageRenderer("task-complete", (message, options, theme) =>
+    completionPreview(message.content, options.expanded, theme, options.outputPad));
+  pi.registerMessageRenderer("task-attention", (message, options, theme) =>
     completionPreview(message.content, options.expanded, theme, options.outputPad));
   registerSubagentSettings(pi, options.profilesPath);
   let subagentDepth = Math.max(0, Number.parseInt(process.env.DIE_SUBAGENT_DEPTH ?? "0", 10) || 0);
   let agentType = process.env.DIE_SUBAGENT_TYPE;
   let canSpawnSubagent = canDelegate(subagentDepth, agentType);
   let manager: TaskManager | undefined;
+  let attention: JobAttentionScheduler | undefined;
   registerNativeCodexCompaction(pi, () => manager?.list().filter(task => task.status === "running")
     .map(({id,kind,status}) => ({id,kind,status})) ?? []);
   registerCacheAffineCompaction(pi, () => manager?.list().filter(task => task.status === "running")
@@ -31,29 +35,50 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     taskUi?.setStatus("die-tasks", running > 0 ? `${running} task${running === 1 ? "" : "s"} running` : undefined);
   };
 
-  const completions = new CompletionBatcher<TaskInspection>((tasks) => {
+  type Notification = { kind: "completion"; task: TaskInspection } | { kind: "attention"; notice: AttentionNotice };
+  const notificationBatch = new CompletionBatcher<Notification>((items) => {
     updateTaskStatus();
-    const summaries = tasks.map(({ output: _output, ...summary }) => summary);
-    pi.sendMessage(
-      {
-        customType: "task-complete",
-        content: formatCompletionNotification(tasks),
-        display: true,
-        details: { tasks: summaries },
+    const completionMap = new Map(items.filter(item => item.kind === "completion").map(item => [item.task.id, item.task]));
+    const runningIds = new Set(manager?.pending().map(task => task.id) ?? []);
+    const attentionMap = new Map(items.filter(item => item.kind === "attention")
+      .filter(item => runningIds.has(item.notice.id) && !completionMap.has(item.notice.id))
+      .map(item => [item.notice.id, item.notice]));
+    const tasks = [...completionMap.values()], notices = [...attentionMap.values()];
+    if (!tasks.length && !notices.length) return;
+    const content = [tasks.length ? formatCompletionNotification(tasks) : "", notices.length ? formatAttentionNotification(notices) : ""].filter(Boolean).join("\n\n").slice(0, 5_000);
+    pi.sendMessage({
+      customType: tasks.length ? "task-complete" : "task-attention", content, display: true,
+      details: {
+        tasks: tasks.map(({ output: _output, ...summary }) => summary),
+        attention: notices.map(({ task: _task, ...notice }) => notice),
       },
-      { deliverAs: "steer", triggerTurn: true },
-    );
+    }, { deliverAs: "steer", triggerTurn: true });
   });
+  const completions = {
+    add: (task: TaskInspection) => notificationBatch.add({ kind: "completion", task }),
+    flush: () => notificationBatch.flush(),
+    dispose: () => notificationBatch.dispose(),
+  };
+  const attentions = {
+    add: (notice: AttentionNotice) => notificationBatch.add({ kind: "attention", notice }),
+    flush: () => notificationBatch.flush(),
+    // Completion owns the shared batcher's disposal.
+    dispose: () => {},
+  };
 
   const getManager = () => {
-    manager ??= new TaskManager((task) => completions.add(task));
+    if (!manager) {
+      manager = new TaskManager((task) => completions.add(task));
+      attention = new JobAttentionScheduler(manager, notices => { for (const notice of notices) attentions.add(notice); }, options.attention);
+    }
     return manager;
   };
 
   let service: JobService | undefined;
   registerExecuteTool(pi, (ctx, method, params, signal) => {
     taskUi = ctx.ui;
-    service ??= new JobService(getManager(), () => ({ depth: subagentDepth, type: agentType }), updateTaskStatus, options.profilesPath);
+    const tasks = getManager();
+    service ??= new JobService(tasks, () => ({ depth: subagentDepth, type: agentType }), updateTaskStatus, options.profilesPath, attention);
     return service.handle(method, params, ctx, signal);
   });
 
@@ -66,22 +91,29 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     if (ctx.signal?.aborted || lastAssistant?.stopReason === "aborted" || lastAssistant?.stopReason === "error") return;
     const tasks = manager;
     const running = tasks?.list().filter((task) => task.status === "running") ?? [];
+    let boundary: "completion" | "attention" | "abort" = "abort";
     if (tasks && running.length > 0) {
       let onAbort: (() => void) | undefined;
+      const attentionWait = new AbortController();
       try {
-        await Promise.race([
-          ...running.map((task) => tasks.wait(task.id)),
-          new Promise<void>((resolve) => {
-            onAbort = resolve;
+        boundary = await Promise.race([
+          ...running.map((task) => tasks.wait(task.id).then(() => "completion" as const)),
+          ...(attention ? [attention.waitForNotice(ctx.signal ? AbortSignal.any([ctx.signal, attentionWait.signal]) : attentionWait.signal).then(() => "attention" as const)] : []),
+          new Promise<"abort">((resolve) => {
+            onAbort = () => resolve("abort");
             ctx.signal?.addEventListener("abort", onAbort, { once: true });
-            if (ctx.signal?.aborted) resolve();
+            if (ctx.signal?.aborted) resolve("abort");
           }),
         ]);
       } finally {
+        attentionWait.abort();
         if (onAbort) ctx.signal?.removeEventListener("abort", onAbort);
       }
     }
-    if (!ctx.signal?.aborted) completions.flush();
+    // Attention uses the short shared debounce so a completion racing the
+    // checkpoint becomes one parent wakeup. Completion must flush immediately
+    // because print mode can otherwise exit before delivery.
+    if (!ctx.signal?.aborted && (!running.length || boundary !== "attention")) completions.flush();
   });
 
   pi.on("before_agent_start", (event, ctx) => {
@@ -119,8 +151,11 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     clearInstructionContinuity(ctx.sessionManager as object);
     taskUi?.setStatus("die-tasks", undefined);
     completions.dispose();
+    attentions.dispose();
+    attention?.dispose();
     await manager?.shutdown();
     manager = undefined;
+    attention = undefined;
     service = undefined;
   });
 }

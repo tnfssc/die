@@ -252,3 +252,10 @@ test("handler failure releases inline ownership from a partial batch", async () 
     expect(notifications[0].output.trim()).toBe("inline result");
   } finally { await manager.shutdown(); }
 });
+
+test("execute exposes attention helper RPCs through the single bridge",async()=>{
+  const seen:any[]=[];
+  const result=await executeIsolated('console.log(JSON.stringify([await jobs.snooze("task_1",{minutes:5}),await jobs.setWatch("task_1",{enabled:false})]))',process.cwd(),undefined,3000,{executablePath:binary,jobHandler:async(method,params)=>{seen.push([method,params]);return params;}});
+  expect(result.exitCode).toBe(0);expect(result.stderr).toBe("");
+  expect(seen).toEqual([["jobs.snooze",{minutes:5,id:"task_1"}],["jobs.setWatch",{enabled:false,id:"task_1"}]]);
+});

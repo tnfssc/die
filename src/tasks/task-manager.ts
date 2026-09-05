@@ -38,6 +38,14 @@ function utf8SafeSlice(buffer: Buffer, limit: number): { start: number; end: num
 
 export type TaskStatus = "running" | "completed" | "failed" | "killed";
 
+/** Lightweight lifecycle events. Payloads are snapshots; subscribers cannot mutate manager state. */
+export type TaskEvent =
+  | { type: "spawned"; task: TaskSummary }
+  | { type: "activity"; task: TaskSummary; source: "output" | "input" }
+  | { type: "completed"; task: TaskSummary }
+  | { type: "stopping"; task: TaskSummary };
+export type TaskEventListener = (event: TaskEvent) => void;
+
 export interface TaskLaunch {
   id?: string;
   agent?: AgentInfo;
@@ -67,6 +75,10 @@ export interface TaskSummary {
   baseOffset: number;
   outputEnd: number;
   timedOut: boolean;
+  /** Last observable output/input activity. This is evidence, not a liveness diagnosis. */
+  lastActivityAt?: string;
+  /** Whether the manager has not closed child stdin. The child may not be reading it. */
+  stdinOpen?: boolean;
 }
 
 interface ManagedTask extends TaskSummary {
@@ -93,6 +105,7 @@ export class TaskManager {
   readonly #tasks = new Map<string, ManagedTask>();
   readonly #onComplete: (task: TaskInspection) => void;
   readonly #killGraceMs: number;
+  readonly #listeners = new Set<TaskEventListener>();
   #shuttingDown = false;
   #shutdown?: Promise<void>;
 
@@ -128,6 +141,8 @@ export class TaskManager {
       baseOffset: 0,
       outputEnd: 0,
       timedOut: false,
+      lastActivityAt: new Date().toISOString(),
+      stdinOpen: !launch.closeStdin,
       process: child,
       output: new BoundedOutputBuffer(MAX_CAPTURE_BYTES),
       killRequested: false,
@@ -137,6 +152,7 @@ export class TaskManager {
     };
     this.#tasks.set(id, task);
     if (launch.closeStdin) child.stdin.end();
+    this.#emit({ type: "spawned", task: this.#summary(task) });
 
     // Intentionally merge stdout and stderr for now. Stream labels and strict
     // cross-stream ordering require a structured output format; add that later.
@@ -166,6 +182,7 @@ export class TaskManager {
       task.signal = signal ?? undefined;
       task.completedAt = new Date().toISOString();
       task.status = task.killRequested ? "killed" : code === 0 && !progress?.failed ? "completed" : "failed";
+      task.stdinOpen = false;
       if (task.agent) task.agent.phase = task.status;
       const inspection = this.inspect(id, Math.max(task.baseOffset, task.outputEnd - MAX_INSPECT_BYTES));
       // Notifications carry the answer, while inspect retains the activity log.
@@ -180,6 +197,7 @@ export class TaskManager {
       task.completion = undefined;
       task.resolveCompletion = undefined;
       resolveTask?.(inspection);
+      this.#emit({ type: "completed", task: this.#summary(task) });
       if (!this.#shuttingDown && task.notifyOnComplete) this.#notify(inspection);
     });
 
@@ -192,6 +210,17 @@ export class TaskManager {
     }
 
     return this.#summary(task);
+  }
+
+  /** Running snapshots for monitors/goal mode; no process handles are exposed. */
+  pending(): ReadonlyArray<TaskSummary> {
+    return this.list().filter((task) => task.status === "running");
+  }
+
+  /** Subscribe to event-driven state changes. The returned disposer is idempotent. */
+  subscribe(listener: TaskEventListener): () => void {
+    this.#listeners.add(listener);
+    return () => { this.#listeners.delete(listener); };
   }
 
   list(): TaskSummary[] {
@@ -290,13 +319,16 @@ export class TaskManager {
     await new Promise<void>((resolve, reject) => {
       stdin.write(input, (error) => (error ? reject(error) : resolve()));
     });
-    if (close && !stdin.destroyed) stdin.end();
+    if (close && !stdin.destroyed) { stdin.end(); task.stdinOpen = false; }
+    this.#activity(task, "input");
     return this.#summary(task);
   }
 
   closeInput(id: string): TaskSummary {
     const task = this.#requireRunning(id);
     task.process!.stdin.end();
+    task.stdinOpen = false;
+    this.#activity(task, "input");
     return this.#summary(task);
   }
 
@@ -304,6 +336,7 @@ export class TaskManager {
     const task = this.#require(id);
     if (task.status !== "running" || task.killRequested) return this.#summary(task);
     task.killRequested = true;
+    this.#emit({ type: "stopping", task: this.#summary(task) });
     this.#signal(task, "SIGTERM");
     task.killTimer = setTimeout(() => {
       if (task.status === "running") this.#signal(task, "SIGKILL");
@@ -326,7 +359,7 @@ export class TaskManager {
     // The session must not dispose its runtime (or exit) before escalation and
     // stream/process cleanup finish. Merely scheduling an unref'ed timer is
     // insufficient in the compiled CLI.
-    this.#shutdown = Promise.all(pending).then(() => {});
+    this.#shutdown = Promise.all(pending).then(() => { this.#listeners.clear(); });
     return this.#shutdown;
   }
 
@@ -342,6 +375,19 @@ export class TaskManager {
     task.output.append(value);
     task.baseOffset = task.output.baseOffset;
     task.outputEnd = task.output.endOffset;
+    this.#activity(task, "output");
+  }
+
+  #activity(task: ManagedTask, source: "output" | "input"): void {
+    if (task.status !== "running") return;
+    task.lastActivityAt = new Date().toISOString();
+    this.#emit({ type: "activity", task: this.#summary(task), source });
+  }
+
+  #emit(event: TaskEvent): void {
+    for (const listener of this.#listeners) {
+      try { listener(event); } catch (error) { console.error("Task event listener failed:", error); }
+    }
   }
 
   #signal(task: ManagedTask, signal: NodeJS.Signals): void {
