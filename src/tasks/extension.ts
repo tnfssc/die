@@ -1,4 +1,4 @@
-import { subagentGuidance, collaborationGuidance, mainAgentGuidance, productSystemPrompt } from "../prompts";
+import { subagentGuidance, collaborationGuidance, productSystemPrompt } from "../prompts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { CompletionBatcher } from "./completion-batcher";
 import { formatCompletionNotification } from "./completion-notification";
@@ -18,19 +18,31 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
   pi.registerMessageRenderer("task-complete", (message, options, theme) =>
     completionPreview(message.content, options.expanded, theme, options.outputPad));
   registerSubagentSettings(pi, options.profilesPath);
-  let subagentDepth = Math.max(0, Number.parseInt(process.env.DIE_SUBAGENT_DEPTH ?? "0", 10) || 0);
-  let agentType = process.env.DIE_SUBAGENT_TYPE;
+  // Environment identity is the floor for genuinely spawned child processes.
+  // A root process may switch among root and child sessions in the same closure.
+  const environmentDepth = Math.max(0, Number.parseInt(process.env.DIE_SUBAGENT_DEPTH ?? "0", 10) || 0);
+  const environmentType = process.env.DIE_SUBAGENT_TYPE;
+  let subagentDepth = environmentDepth;
+  let agentType = environmentType;
   let canSpawnSubagent = canDelegate(subagentDepth, agentType);
   const instructionMode = registerInstructionMode(pi, () => subagentDepth === 0);
   const restoreAgentIdentity = (ctx: ExtensionContext) => {
-    const entry = ctx.sessionManager?.getEntries().find(entry => entry.type === "custom" && entry.customType === "die-agent");
-    if (entry?.type !== "custom") return;
-    const data = entry.data as { type?: string; depth?: number } | undefined;
-    if (data && SUBAGENT_TYPES.includes(data.type as typeof SUBAGENT_TYPES[number]) && Number.isInteger(data.depth) && data.depth! >= 1) {
+    const sessionManager = ctx.sessionManager as { getBranch?: () => any[]; getEntries?: () => any[] } | undefined;
+    const entries = sessionManager?.getBranch?.() ?? sessionManager?.getEntries?.() ?? [];
+    const entry = entries.find(entry => entry.type === "custom" && entry.customType === "die-agent");
+    const data = entry?.type === "custom" ? entry.data as { type?: string; depth?: number } | undefined : undefined;
+    const validChild = data && SUBAGENT_TYPES.includes(data.type as typeof SUBAGENT_TYPES[number])
+      && Number.isInteger(data.depth) && data.depth! >= 1;
+    if (validChild && data.depth! >= environmentDepth) {
       agentType = data.type;
       subagentDepth = data.depth!;
-      canSpawnSubagent = canDelegate(subagentDepth, agentType);
+    } else {
+      // No active-branch child metadata means root in a root process. Do not
+      // retain identity from a previously resumed child session.
+      agentType = environmentType;
+      subagentDepth = environmentDepth;
     }
+    canSpawnSubagent = canDelegate(subagentDepth, agentType);
   };
   let manager: TaskManager | undefined;
   registerNativeCodexCompaction(pi, () => manager?.list().filter(task => task.status === "running")
@@ -108,7 +120,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     const custom = !!event.systemPromptOptions?.customPrompt;
     const base = custom ? event.systemPrompt : productSystemPrompt(event.systemPrompt);
     const values = custom ? "" : collaborationGuidance();
-    const role = subagentDepth > 0 ? subagentGuidance(agentType ?? "normal", canSpawnSubagent) : custom ? "" : mainAgentGuidance(instructionMode.get());
+    const role = subagentDepth > 0 ? subagentGuidance(agentType ?? "normal", canSpawnSubagent) : instructionMode.guidance(ctx, custom);
     const additions = [values, role].filter(Boolean).join("\n\n");
     if (additions) return { systemPrompt: base + "\n\n" + additions };
   });

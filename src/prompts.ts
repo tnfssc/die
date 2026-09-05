@@ -36,21 +36,25 @@ export function subagentGuidance(role: string, canDelegate: boolean): string {
 
 export const MAIN_AGENT_MODES = ["fast", "normal", "orchestrator"] as const;
 export type MainAgentMode = typeof MAIN_AGENT_MODES[number];
-const MAIN_MODE_START = "<!-- die:main-agent-mode:start -->";
-const MAIN_MODE_END = "<!-- die:main-agent-mode:end -->";
-
-export function mainAgentGuidance(mode: MainAgentMode): string {
-  const source = mode === "fast" ? mainFast : mode === "normal" ? mainNormal : mainOrchestrator;
-  return MAIN_MODE_START + "\n" + source.trimEnd() + "\n" + MAIN_MODE_END;
+function mainModeMarkers(owner: string): [string, string] {
+  // owner is generated internally, not derived from project or user text.
+  return [`<!-- die:main-agent-mode:${owner}:start -->`, `<!-- die:main-agent-mode:${owner}:end -->`];
 }
 
-/** Replace only die's bounded main-agent block, preserving all custom extension framing. */
-export function replaceMainAgentGuidance(prompt: string, mode: MainAgentMode): string {
-  const start = prompt.indexOf(MAIN_MODE_START);
+export function mainAgentGuidance(mode: MainAgentMode, owner: string): string {
+  const source = mode === "fast" ? mainFast : mode === "normal" ? mainNormal : mainOrchestrator;
+  const [start, end] = mainModeMarkers(owner);
+  return start + "\n" + source.trimEnd() + "\n" + end;
+}
+
+/** Replace only the region carrying this die session's unguessable owner marker. */
+export function replaceMainAgentGuidance(prompt: string, mode: MainAgentMode, owner: string): string {
+  const [startMarker, endMarker] = mainModeMarkers(owner);
+  const start = prompt.indexOf(startMarker);
   if (start < 0) return prompt;
-  const end = prompt.indexOf(MAIN_MODE_END, start);
+  const end = prompt.indexOf(endMarker, start + startMarker.length);
   if (end < 0) return prompt;
-  return prompt.slice(0, start) + mainAgentGuidance(mode) + prompt.slice(end + MAIN_MODE_END.length);
+  return prompt.slice(0, start) + mainAgentGuidance(mode, owner) + prompt.slice(end + endMarker.length);
 }
 
 /** Adapt only the upstream default block; callers leave user system prompts alone. */
