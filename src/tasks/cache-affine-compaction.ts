@@ -1,9 +1,8 @@
 import { adjustMaxTokensForThinking } from "@earendil-works/pi-ai/api/simple-options";
 import prefixScopeTemplate from "../prompts/compaction-prefix-scope.md" with { type: "text" };
 import wholeScopeTemplate from "../prompts/compaction-whole-scope.md" with { type: "text" };
-import type { Agent, AgentMessage } from "@earendil-works/pi-agent-core";
-import { AgentSession } from "@earendil-works/pi-coding-agent";
-import type { AssistantMessage, ImageContent, Message, Model, Tool } from "@earendil-works/pi-ai";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AssistantMessage, Message, Model, Tool } from "@earendil-works/pi-ai";
 import { buildSessionContext, convertToLlm, estimateTokens, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
 import promptTemplate from "../prompts/compaction.md" with { type: "text" };
 
@@ -33,122 +32,23 @@ type PreparedConversation = {
   complete: (request: CacheAffineRequest, maxTokens: number, onPayload: (payload: unknown) => unknown) => Promise<AssistantMessage>;
 };
 
-type ClassicSession = {
-  agent: Agent;
-  sessionManager: object;
-  _buildRuntime(options: unknown): void;
-  _systemPromptOverride?: string;
-  _runAgentPrompt(messages: unknown): Promise<void>;
-  _extensionRunner?: { emitBeforeAgentStart(prompt: string, images: ImageContent[] | undefined, systemPrompt: string, options: unknown): Promise<{messages?: Array<{customType:string;content:unknown[];display?:boolean;details?:unknown}>;systemPrompt?:string}|undefined> };
-  _baseSystemPrompt?: string;
-  _baseSystemPromptOptions?: unknown;
-};
+import {
+  getInstructionContinuitySession,
+  installCurrentConversationAdapter,
+  setCurrentInstructionFrame,
+} from "./instruction-continuity";
 
-const classicSessions = new WeakMap<object, ClassicSession>();
-
-type InstructionFrame = { sessionId: string; systemPrompt?: string };
-// A persisted session id is not an owner identity: two in-memory managers may
-// legitimately load the same session. Key by the manager and guard every access
-// with its current id so a manager reused for new/resume cannot inherit a frame.
-const dieInstructionFrames = new WeakMap<object, InstructionFrame>();
-
-function currentSessionId(sessionManager: object | undefined): string | undefined {
-  if (!sessionManager) return undefined;
-  const getSessionId = (sessionManager as { getSessionId?: () => string }).getSessionId;
-  return typeof getSessionId === "function" ? getSessionId.call(sessionManager) : undefined;
-}
-
-function currentInstructionFrame(sessionManager: object | undefined): InstructionFrame | undefined {
-  const id = currentSessionId(sessionManager);
-  const frame = sessionManager ? dieInstructionFrames.get(sessionManager) : undefined;
-  if (frame && frame.sessionId === id) return frame;
-  // A SessionManager can change its active session in place. Delete stale state
-  // eagerly rather than allowing a later switch back to revive it.
-  if (frame && sessionManager) dieInstructionFrames.delete(sessionManager);
-  return undefined;
-}
-
-/** Mark a session as owned by die. Non-die AgentSessions remain entirely untouched. */
-export function scopeInstructionContinuity(sessionManager: object | undefined): void {
-  const sessionId = currentSessionId(sessionManager);
-  if (!sessionManager || !sessionId) return;
-  if (!currentInstructionFrame(sessionManager)) dieInstructionFrames.set(sessionManager, { sessionId });
-}
-
-export function clearInstructionContinuity(sessionManager: object | undefined): void {
-  if (sessionManager) {
-    dieInstructionFrames.delete(sessionManager);
-    classicSessions.delete(sessionManager);
-  }
-}
-
-/** Keep a frame prepared outside AgentSession.prompt(), notably fresh compaction. */
-export function setCurrentInstructionFrame(sessionManager: object, systemPrompt: string): boolean {
-  const frame = currentInstructionFrame(sessionManager);
-  if (!frame) return false;
-  frame.systemPrompt = systemPrompt;
-  // Pi refreshes tool continuations from this private override, not agent.state.
-  // Synchronize it immediately, including compaction within an existing run.
-  const owner = classicSessions.get(sessionManager);
-  if (owner) {
-    owner._systemPromptOverride = systemPrompt;
-    owner.agent.state.systemPrompt = systemPrompt;
-  }
-  return true;
-}
-
-/** Rewrite a prepared frame after a session-scoped instruction change. */
-export function updateCurrentInstructionFrame(sessionManager: object, update: (prompt: string) => string): boolean {
-  const frame = currentInstructionFrame(sessionManager);
-  if (!frame || frame.systemPrompt === undefined) return false;
-  return setCurrentInstructionFrame(sessionManager, update(frame.systemPrompt));
-}
-
-/** Bind an owning classic session; also usable by embedders with explicit session construction. */
-export function bindCurrentCompactionSession(session: ClassicSession): void {
-  if (session.sessionManager && typeof session.sessionManager === "object") classicSessions.set(session.sessionManager, session);
-}
-let classicAdapterInstalled = false;
-
-/**
- * Classic Pi does not expose request preparation or custom-turn framing on its
- * public ExtensionContext. This compatibility adapter therefore monkey-patches
- * the private AgentSession._buildRuntime and _runAgentPrompt seams. It does not
- * patch node_modules on disk or synthesize an agent turn, but it is intentionally
- * version-coupled and must fail visibly if either required seam disappears.
- */
-export function installCurrentConversationAdapter(): void {
-  if (classicAdapterInstalled) return;
-  const prototype = AgentSession.prototype as unknown as ClassicSession;
-  const runAgentPrompt = prototype._runAgentPrompt;
-  const buildRuntime = prototype._buildRuntime;
-  if (typeof runAgentPrompt !== "function" || typeof buildRuntime !== "function") {
-    throw new Error("die instruction continuity is unsupported by this Pi runtime: required private AgentSession._runAgentPrompt/_buildRuntime seams are unavailable");
-  }
-  classicAdapterInstalled = true;
-  prototype._runAgentPrompt = async function(this: ClassicSession, messages: unknown) {
-      const frame = currentInstructionFrame(this.sessionManager);
-      if (frame) {
-        // prompt() has already run the entire before_agent_start chain. Capture
-        // that final override; custom-message turns have no override, so restore
-        // it once for the whole agent loop (including every tool continuation).
-        if (this._systemPromptOverride !== undefined) frame.systemPrompt = this._systemPromptOverride;
-        else if (frame.systemPrompt !== undefined) {
-          this._systemPromptOverride = frame.systemPrompt;
-          this.agent.state.systemPrompt = frame.systemPrompt;
-        }
-      }
-      return runAgentPrompt.call(this, messages);
-    };
-  prototype._buildRuntime = function(this: ClassicSession, options: unknown) {
-    bindCurrentCompactionSession(this);
-    const result = buildRuntime.call(this, options);
-    return result;
-  };
-}
+export {
+  bindCurrentCompactionSession,
+  clearInstructionContinuity,
+  installCurrentConversationAdapter,
+  scopeInstructionContinuity,
+  setCurrentInstructionFrame,
+  updateCurrentInstructionFrame,
+} from "./instruction-continuity";
 
 async function prepareCurrentConversation(event: SessionBeforeCompactEvent, ctx: ExtensionContext, snapshot?: Snapshot): Promise<PreparedConversation | undefined> {
-  const session = classicSessions.get(ctx.sessionManager as object);
+  const session = getInstructionContinuitySession(ctx.sessionManager as object);
   const agent = session?.agent;
   if (!agent || !ctx.model) return undefined;
   // Build from the event's current branch, not agent state or the prior wire
