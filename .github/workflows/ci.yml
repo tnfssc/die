@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Bun 1.4.1 / Linux x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.1
+      - name: Prepare logs
+        run: mkdir -p artifacts/ci
+      - name: Install locked dependencies
+        shell: bash
+        run: bun install --frozen-lockfile 2>&1 | tee artifacts/ci/install.log
+      - name: Typecheck
+        shell: bash
+        run: bun run check 2>&1 | tee artifacts/ci/typecheck.log
+      - name: Build
+        shell: bash
+        run: bun run build 2>&1 | tee artifacts/ci/build.log
+      - name: Deterministic tests
+        shell: bash
+        env:
+          DIE_RUN_LLM_TESTS: "0"
+        run: bun test ./tests 2>&1 | tee artifacts/ci/tests.log
+      - name: Standalone smoke test
+        shell: bash
+        run: bun run smoke 2>&1 | tee artifacts/ci/smoke.log
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-logs
+          path: artifacts/ci/
+          if-no-files-found: warn
+          retention-days: 14

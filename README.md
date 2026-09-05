@@ -2,9 +2,16 @@
 
 `die` is a Bun-compiled coding agent built on [Pi](https://pi.dev). It packages Pi as a standalone executable, provides asynchronous tasks and sub-agents, and replaces Pi's general-purpose file/shell tools with one code execution tool. See [`PRODUCT.md`](./PRODUCT.md) and the validated [`0.1.0` baseline](./docs/phase3-baseline.md).
 
-## Prerequisites
+## Getting started
 
-- Bun 1.4.1 or newer (build time only); the project is pinned to Bun 1.4.1 in `mise.toml`
+Released binaries currently support **Linux x64 only**. Download `die-linux-x64` and
+`die-linux-x64.sha256` from a GitHub release, verify it with `sha256sum -c`, make it
+executable, and place it in a directory on your `PATH`. Release source links, the MIT
+license, and third-party notices are published alongside each binary. Other platforms
+have not been validated as release targets.
+
+To build from source, install Bun 1.4.1 (the version pinned in `mise.toml`), clone the
+repository, and enter the checkout.
 
 ## Build
 
@@ -171,13 +178,17 @@ bun run tui stop demo
 
 Each session gets a continuous ANSI transcript plus initial/final frame captures. `record` saves timestamped ANSI frames at the requested interval, making intermediate TUI states inspectable. The session named `demo` is automatically killed after 60 minutes; other sessions have no automatic timeout. Use `bun run tui --help` for the command reference.
 
-## Cross-compilation
+## Releases and contributing
 
-Pass a Bun compile target when producing release artifacts, for example:
+Git tags of the form `v<package version>` trigger the release workflow. The workflow
+rejects a tag that does not exactly match `package.json`; it does not rewrite source
+versions. Releases build and smoke-test the current supported `bun-linux-x64` target
+and publish the binary, SHA-256 checksum, license notices, and source revision.
 
-```sh
-bun build --compile --target=bun-linux-x64 ./src/cli.ts --outfile ./dist/die-linux-x64
-```
+See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for checkout, deterministic tests, opt-in
+model tests, architecture, and pull-request guidance. Die is distributed under the
+[`MIT License`](./LICENSE); bundled dependencies and runtime assets remain subject to
+the terms summarized in [`THIRD_PARTY_NOTICES.md`](./THIRD_PARTY_NOTICES.md).
 
 See [`PRODUCT.md`](./PRODUCT.md) for the product direction and phase acceptance criteria.
 

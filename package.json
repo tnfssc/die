@@ -14,7 +14,9 @@
     "test:llm": "bun run build && DIE_RUN_LLM_TESTS=1 bun test ./tests/llm.test.ts",
     "install:local": "./scripts/install-local.sh",
     "smoke": "./scripts/smoke.sh",
-    "tui": "bun ./scripts/tui-harness.ts"
+    "tui": "bun ./scripts/tui-harness.ts",
+    "test:ci": "DIE_RUN_LLM_TESTS=0 bun test ./tests",
+    "validate:release-tag": "bun ./scripts/validate-release-tag.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.85.0",
