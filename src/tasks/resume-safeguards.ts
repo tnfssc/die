@@ -1,11 +1,26 @@
 import { open } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
-import { SessionManager, type ExtensionAPI, type SessionInfo } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type SessionInfo, SessionManager } from "@earendil-works/pi-coding-agent";
+import { stripTerminalSequences } from "@earendil-works/pi-tui";
 
 const METADATA_LIMIT=128*1024;
 const METADATA_CONCURRENCY=8;
 const METADATA_CACHE_LIMIT=256;
-export type SessionRole={kind:"root"|"orchestrator"|"worker"|"unknown";type?:string;taskId?:string};
+const TASK_ID_LIMIT=80;
+type AgentRoleType="fast"|"normal"|"orchestrator";
+export type SessionRole=
+  | {kind:"root"|"unknown";type?:never;taskId?:never}
+  | {kind:"orchestrator";type:"orchestrator";taskId?:string}
+  | {kind:"worker";type:"fast"|"normal";taskId?:string};
+
+function parseRoleType(value:unknown):AgentRoleType|undefined{
+  return value==="fast" || value==="normal" || value==="orchestrator"?value:undefined;
+}
+function sanitizeTaskId(value:unknown):string|undefined{
+  if(typeof value!=="string")return;
+  const sanitized=stripTerminalSequences(value).replace(/[^A-Za-z0-9_.:-]/g,"").slice(0,TASK_ID_LIMIT);
+  return sanitized || undefined;
+}
 
 export async function readSessionRole(path:string):Promise<SessionRole>{
   let handle;
@@ -13,17 +28,20 @@ export async function readSessionRole(path:string):Promise<SessionRole>{
     handle=await open(path,"r");
     const buffer=Buffer.allocUnsafe(METADATA_LIMIT);
     const {bytesRead}=await handle.read(buffer,0,buffer.length,0);
+    let malformedAgentMetadata=false;
     for(const line of buffer.subarray(0,bytesRead).toString("utf8").split("\n")){
       if(!line.includes('"die-agent"'))continue;
       try{
         const entry=JSON.parse(line);
         if(entry?.type==="custom" && entry.customType==="die-agent"){
-          const type=typeof entry.data?.type==="string"?entry.data.type:"normal";
-          return {kind:type==="orchestrator"?"orchestrator":"worker",type,taskId:typeof entry.data?.taskId==="string"?entry.data.taskId:undefined};
+          const type=parseRoleType(entry.data?.type);
+          if(!type)return {kind:"unknown"};
+          const taskId=sanitizeTaskId(entry.data?.taskId);
+          return type==="orchestrator"?{kind:"orchestrator",type,taskId}:{kind:"worker",type,taskId};
         }
-      }catch{/* A partial final line is expected at the diagnostic bound. */}
+      }catch{malformedAgentMetadata=true;/* A partial final line is expected at the diagnostic bound. */}
     }
-    return {kind:"root"};
+    return malformedAgentMetadata?{kind:"unknown"}:{kind:"root"};
   }catch{return {kind:"unknown"};}
   finally{await handle?.close().catch(()=>{});}
 }
@@ -61,6 +79,7 @@ async function decorate(sessions:SessionInfo[]):Promise<SessionInfo[]>{
     if(!active.some(root=>isWithin(session.path,root)))return session;
     const label=roleLabel(await cachedRole(session.path));
     if(!label)return session; // unreadable is unknown, never falsely called root
+    if(session.name?.startsWith(label+" · ") || (!session.name && session.firstMessage?.startsWith(label+" · ")))return session;
     return session.name ? {...session,name:label+" · "+session.name} : {...session,firstMessage:label+" · "+session.firstMessage};
   });
 }
@@ -73,10 +92,12 @@ let listAllAdapter:typeof SessionManager.listAll|undefined;
 function installPickerAdapter(root:string):()=>void{
   const key=resolve(root);roots.set(key,(roots.get(key)??0)+1);installs++;
   if(installs===1){
-    originalList=SessionManager.list;
-    originalListAll=SessionManager.listAll;
-    listAdapter=(async(...args:any[])=>decorate(await (originalList as any).apply(SessionManager,args))) as typeof SessionManager.list;
-    listAllAdapter=(async(...args:any[])=>decorate(await (originalListAll as any).apply(SessionManager,args))) as typeof SessionManager.listAll;
+    const capturedList=SessionManager.list;
+    const capturedListAll=SessionManager.listAll;
+    originalList=capturedList;
+    originalListAll=capturedListAll;
+    listAdapter=(async(...args:any[])=>decorate(await (capturedList as any).apply(SessionManager,args))) as typeof SessionManager.list;
+    listAllAdapter=(async(...args:any[])=>decorate(await (capturedListAll as any).apply(SessionManager,args))) as typeof SessionManager.listAll;
     (SessionManager as any).list=listAdapter;(SessionManager as any).listAll=listAllAdapter;
   }
   let active=true;
