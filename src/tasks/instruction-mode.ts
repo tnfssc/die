@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MAIN_AGENT_MODES, mainAgentGuidance, replaceMainAgentGuidance, type MainAgentMode } from "../prompts";
-import { updateCurrentInstructionFrame } from "./cache-affine-compaction";
+import { updateCurrentInstructionFrame } from "./instruction-continuity";
 
 export const INSTRUCTION_MODE_ENTRY = "die-instruction-mode";
 
