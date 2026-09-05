@@ -140,10 +140,21 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     let boundary: "completion" | "attention" | "abort" = "abort";
     if (tasks && running.length > 0) {
       let onAbort: (() => void) | undefined;
+      let resolveCompletion!: () => void;
+      const completion = new Promise<void>(resolve => { resolveCompletion = resolve; });
+      // One manager listener covers every running job and, unlike Promise.then,
+      // can be detached when attention or cancellation wins this boundary.
+      const unsubscribe = tasks.subscribe(event => {
+        if (event.type === "completed") resolveCompletion();
+      });
       const attentionWait = new AbortController();
       try {
+        // A child can exit after the running snapshot but before subscription.
+        // Rechecking after subscribing closes that gap without per-job waits.
+        const current = new Map(tasks.list().map(task => [task.id, task.status]));
+        if (running.some(task => current.get(task.id) !== "running")) resolveCompletion();
         boundary = await Promise.race([
-          ...running.map((task) => tasks.wait(task.id).then(() => "completion" as const)),
+          completion.then(() => "completion" as const),
           ...(attention ? [attention.waitForNotice(ctx.signal ? AbortSignal.any([ctx.signal, attentionWait.signal]) : attentionWait.signal).then(() => "attention" as const)] : []),
           new Promise<"abort">((resolve) => {
             onAbort = () => resolve("abort");
@@ -152,6 +163,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
           }),
         ]);
       } finally {
+        unsubscribe();
         attentionWait.abort();
         if (onAbort) ctx.signal?.removeEventListener("abort", onAbort);
       }
