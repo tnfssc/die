@@ -93,30 +93,29 @@ describe("goal durable state", () => {
   });
 });
 
-test("no-progress guard ignores revision bumps and tool activity", () => {
+test("no-progress guard counts each run and ignores revision bumps", () => {
   const controller = new GoalContinuationController();
   let goal: any = { id: "g", status: "active", revision: 1 };
   expect(controller.settle(goal)).toBe("continue");
+  controller.markAutomaticStart(goal);
 
   for (let turn = 1; turn <= MAX_NO_PROGRESS_CONTINUATIONS; turn++) {
-    controller.markAutomaticStart(goal);
     goal = { ...goal, revision: goal.revision + 1 };
-    const expected = turn === MAX_NO_PROGRESS_CONTINUATIONS ? "pause" : "continue";
-    expect(controller.settle(goal)).toBe(expected);
+    const expected = turn === MAX_NO_PROGRESS_CONTINUATIONS ? "pause" : "none";
+    expect(controller.endRun(goal)).toBe(expected);
+    expect(controller.settle(goal)).toBe("continue");
   }
 });
 
 test("explicit progress resets the guard once, while repeated evidence does not", () => {
   const controller = new GoalContinuationController();
   let goal: any = { id: "g", status: "active", revision: 1, progress: [] };
-  controller.settle(goal);
   controller.markAutomaticStart(goal);
   goal = { ...goal, revision: 2, progress: ["verified parser test"] };
-  expect(controller.settle(goal)).toBe("continue");
+  expect(controller.endRun(goal)).toBe("none");
   for (let turn = 0; turn < MAX_NO_PROGRESS_CONTINUATIONS; turn++) {
-    controller.markAutomaticStart(goal);
     goal = { ...goal, revision: goal.revision + 1, progress: ["verified parser test"] };
-    expect(controller.settle(goal)).toBe(turn === MAX_NO_PROGRESS_CONTINUATIONS - 1 ? "pause" : "continue");
+    expect(controller.endRun(goal)).toBe(turn === MAX_NO_PROGRESS_CONTINUATIONS - 1 ? "pause" : "none");
   }
 });
 
@@ -212,9 +211,41 @@ test("successful execute handoff waits only when owned work is running", () => {
   expect(empty.runtime.get()?.status).toBe("active");
 });
 
+test("helper-created goal bounds repeated direct handoff completion cycles", () => {
+  const h = harness();
+  h.runtime.handle("goal.set", input);
+  const handoff = {
+    toolName: "execute",
+    isError: false,
+    result: { details: { handoff: "Waiting after custom completion" } },
+  };
+
+  // No slash-start or initial reminder occurs before the helper's first
+  // direct handoff. Job completions then trigger custom continuation turns.
+  expect(h.sent).toHaveLength(0);
+  for (let turn = 0; turn < MAX_NO_PROGRESS_CONTINUATIONS; turn++) {
+    h.statuses.set("job_1", "running");
+    h.handlers.tool_execution_end[0](handoff, h.ctx);
+    h.handlers.agent_end[0]({ messages: [{ role: "assistant", stopReason: "toolUse" }] }, h.ctx);
+    h.handlers.agent_settled[0]({}, h.ctx);
+    if (turn < MAX_NO_PROGRESS_CONTINUATIONS - 1) {
+      expect(h.runtime.get()?.status).toBe("waiting");
+      h.statuses.set("job_1", "finished");
+      h.runtime.jobsChanged();
+      expect(h.runtime.get()?.status).toBe("active");
+    }
+  }
+  expect(h.sent).toHaveLength(0);
+  expect(h.runtime.get()).toMatchObject({
+    status: "paused",
+    pauseReason: expect.stringContaining("no meaningful progress"),
+  });
+});
+
 test("failed-job waiting and completion turns retain the no-progress bound", () => {
   const h = harness();
   h.runtime.handle("goal.set", input);
+  h.handlers.agent_end[0]({ messages: [{ role: "assistant", stopReason: "stop" }] }, h.ctx);
   h.handlers.agent_settled[0]({}, h.ctx);
   const handoff = {
     toolName: "execute",
@@ -225,6 +256,7 @@ test("failed-job waiting and completion turns retain the no-progress bound", () 
   for (let turn = 0; turn < MAX_NO_PROGRESS_CONTINUATIONS; turn++) {
     h.statuses.set("job_1", "running");
     h.handlers.tool_execution_end[0](handoff, h.ctx);
+    h.handlers.agent_end[0]({ messages: [{ role: "assistant", stopReason: "toolUse" }] }, h.ctx);
     h.handlers.agent_settled[0]({}, h.ctx);
     if (turn < MAX_NO_PROGRESS_CONTINUATIONS - 1) {
       h.statuses.set("job_1", "finished");
@@ -241,6 +273,7 @@ test("failed-job waiting and completion turns retain the no-progress bound", () 
 test("distinct explicit milestones sustain repeated waiting completion turns", () => {
   const h = harness();
   h.runtime.handle("goal.set", input);
+  h.handlers.agent_end[0]({ messages: [{ role: "assistant", stopReason: "stop" }] }, h.ctx);
   h.handlers.agent_settled[0]({}, h.ctx);
   const handoff = {
     toolName: "execute",
@@ -252,6 +285,7 @@ test("distinct explicit milestones sustain repeated waiting completion turns", (
     h.runtime.handle("goal.update", { status: "active", progress: `verified milestone ${turn}` });
     h.statuses.set("job_1", "running");
     h.handlers.tool_execution_end[0](handoff, h.ctx);
+    h.handlers.agent_end[0]({ messages: [{ role: "assistant", stopReason: "toolUse" }] }, h.ctx);
     h.handlers.agent_settled[0]({}, h.ctx);
     expect(h.runtime.get()?.status).toBe("waiting");
     h.statuses.set("job_1", "finished");
@@ -263,10 +297,12 @@ test("distinct explicit milestones sustain repeated waiting completion turns", (
 test("same-status helper revisions cannot evade the automatic-turn bound", () => {
   const h = harness();
   h.runtime.handle("goal.set", input);
+  h.handlers.agent_end[0]({ messages: [{ role: "assistant", stopReason: "stop" }] }, h.ctx);
   h.handlers.agent_settled[0]({}, h.ctx);
 
   for (let turn = 0; turn < MAX_NO_PROGRESS_CONTINUATIONS; turn++) {
     h.runtime.handle("goal.update", { status: "active" });
+    h.handlers.agent_end[0]({ messages: [{ role: "assistant", stopReason: "toolUse" }] }, h.ctx);
     h.handlers.agent_settled[0]({}, h.ctx);
   }
   expect(h.runtime.get()).toMatchObject({
