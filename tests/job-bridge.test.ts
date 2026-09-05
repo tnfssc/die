@@ -259,3 +259,4 @@ test("execute exposes attention helper RPCs through the single bridge",async()=>
   expect(result.exitCode).toBe(0);expect(result.stderr).toBe("");
   expect(seen).toEqual([["jobs.snooze",{minutes:5,id:"task_1"}],["jobs.setWatch",{enabled:false,id:"task_1"}]]);
 });
+test("goal helpers share the single execute bridge and do not print implicitly",async()=>{const seen:any[]=[];const result=await executeIsolated('const before=await goal.get(); await goal.set({objective:"o",criteria:["c"],constraints:[]}); console.log((await goal.update({status:"completed",evidence:"verified"})).status)',process.cwd(),undefined,3000,{executablePath:binary,jobHandler:async(method,params)=>{seen.push([method,params]);return method==="goal.update"?{status:"completed"}:null}});expect(result.exitCode).toBe(0);expect(result.stdout.trim()).toBe("completed");expect(seen.map(x=>x[0])).toEqual(["goal.get","goal.set","goal.update"])});
