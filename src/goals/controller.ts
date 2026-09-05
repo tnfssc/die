@@ -1,0 +1,3 @@
+import type { GoalState } from "./types";
+export const MAX_NO_PROGRESS_CONTINUATIONS=3;
+export class GoalContinuationController {#lastRevision?:number;#noProgress=0;#automatic=false;markAutomaticStart(g:GoalState){this.#automatic=true;this.#lastRevision=g.revision}settle(g:GoalState|undefined,work:boolean):"continue"|"pause"|"none"{if(!g||g.status!=="active"){this.reset();return "none"}if(!this.#automatic){this.#noProgress=0;return "continue"}const changed=g.revision!==this.#lastRevision;this.#noProgress=changed||work?0:this.#noProgress+1;this.#lastRevision=g.revision;if(this.#noProgress>=MAX_NO_PROGRESS_CONTINUATIONS){this.reset();return "pause"}return "continue"}reset(){this.#automatic=false;this.#noProgress=0;this.#lastRevision=undefined}}

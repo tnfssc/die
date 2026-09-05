@@ -12,8 +12,12 @@ import { JobService } from "./job-service";
 import { clearInstructionContinuity, registerCacheAffineCompaction, scopeInstructionContinuity } from "./cache-affine-compaction";
 import { registerNativeCodexCompaction } from "./native-compaction";
 import { JobAttentionScheduler, formatAttentionNotification, type AttentionNotice, type AttentionOptions } from "./job-attention";
+import { registerGoalMode } from "../goals/extension";
 
-export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string; attention?: AttentionOptions } = {}): void {
+export default function asynchronousTasksExtension(
+  pi: ExtensionAPI,
+  options: { profilesPath?: string; executablePath?: string; attention?: AttentionOptions } = {},
+): void {
   const installUI = createCompactUI(pi);
   pi.registerMessageRenderer("task-complete", (message, options, theme) =>
     completionPreview(message.content, options.expanded, theme, options.outputPad));
@@ -74,13 +78,15 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     return manager;
   };
 
+  const goals = registerGoalMode(pi, () => new Set(manager?.list().filter(task => task.status === "running").map(task => task.id) ?? []));
   let service: JobService | undefined;
   registerExecuteTool(pi, (ctx, method, params, signal) => {
+    if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
     taskUi = ctx.ui;
     const tasks = getManager();
     service ??= new JobService(tasks, () => ({ depth: subagentDepth, type: agentType }), updateTaskStatus, options.profilesPath, attention);
     return service.handle(method, params, ctx, signal);
-  });
+  }, options.executablePath);
 
   pi.on("agent_end", async (event, ctx) => {
     // Print/JSON sessions otherwise dispose their runtime immediately when the
