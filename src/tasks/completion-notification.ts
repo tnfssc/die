@@ -14,7 +14,7 @@ function tail(value: string, limit: number): string {
 
 function formatOmitted(tasks: TaskInspection[], limit: number): string {
   const heading = `${tasks.length} additional completion${tasks.length === 1 ? "" : "s"} omitted from this notification.`;
-  const instruction = "Use task inspect with an ID below, or task list, to read retained output.";
+  const instruction = "Use execute with jobs.inspect(id) or jobs.list() to read retained output.";
   if (limit <= heading.length) return heading.slice(0, limit);
 
   let result = `${heading}\nIDs:`;
@@ -60,7 +60,8 @@ export function formatCompletionNotification(tasks: TaskInspection[]): string {
       task.exitCode !== undefined ? `Exit code: ${task.exitCode}` : undefined,
       task.signal ? `Signal: ${task.signal}` : undefined,
       task.timedOut ? "Timed out: yes" : undefined,
-      output ? `Final output preview:\n${tail(output, MAX_OUTPUT_PREVIEW_CHARS)}` : "No output.",
+      task.agent ? `Session: ${boundedMiddlePreview(task.agent.sessionFile, 400)}` : undefined,
+      output ? `${task.agent && task.status !== "completed" ? "Diagnostic preview (last progress, not a final answer)" : "Final output preview"}:\n${tail(output, MAX_OUTPUT_PREVIEW_CHARS)}` : "No output.",
     ]
       .filter(Boolean)
       .join("\n");

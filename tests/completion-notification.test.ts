@@ -36,7 +36,7 @@ describe("completion notifications", () => {
     expect(notification).toContain("50 asynchronous tasks completed");
     expect(notification).toContain("Result previews:");
     expect(notification).toContain("additional completions omitted");
-    expect(notification).toContain("task inspect");
+    expect(notification).toContain("jobs.inspect");
     for (const task of tasks) expect(notification).toContain(task.id);
   });
 
@@ -60,4 +60,13 @@ describe("completion notifications", () => {
     expect(notification).toContain("output-2");
     expect(notification).not.toContain("omitted");
   });
+});
+
+test("failed agent progress is not labeled as a successful final answer", () => {
+  const task = completedTask(1, "Still waiting for workers");
+  task.kind = "agent"; task.status = "killed"; task.timedOut = true;
+  task.agent = { type: "orchestrator", depth: 1, model: "provider/model", sessionFile: "/tmp/session.jsonl" };
+  const text = formatCompletionNotification([task]);
+  expect(text).toContain("Diagnostic preview (last progress, not a final answer)");
+  expect(text).not.toContain("Final output preview:");
 });

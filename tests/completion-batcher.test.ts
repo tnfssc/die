@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { CompletionBatcher } from "../src/tasks/completion-batcher";
 
 describe("task completion batching", () => {
@@ -28,4 +28,35 @@ describe("task completion batching", () => {
     expect(batches.flat()).toEqual([0, 1, 2, 3, 4]);
     batcher.dispose();
   });
+  test("contains batch flush callback failures without retrying", async () => {
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    let calls = 0;
+    const batcher = new CompletionBatcher<number>(() => {
+      calls++;
+      throw new Error("notification failed");
+    }, 10, 50);
+    try {
+      batcher.add(1);
+      batcher.add(2);
+      await Bun.sleep(30);
+
+      expect(calls).toBe(1);
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(() => batcher.flush()).not.toThrow();
+    } finally {
+      batcher.dispose();
+      error.mockRestore();
+    }
+  });
+
+  test("dispose prevents later additions from rearming timers", async () => {
+    let calls = 0;
+    const batcher = new CompletionBatcher<number>(() => calls++, 10, 20);
+    batcher.dispose();
+    batcher.add(1);
+
+    await Bun.sleep(30);
+    expect(calls).toBe(0);
+  });
+
 });

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,6 +44,56 @@ describe("asynchronous task manager", () => {
     expect(finished.status).toBe("completed");
     expect(finished.exitCode).toBe(0);
     expect(finished.output).toBe("completed");
+  });
+
+  test("contains completion callback failures on normal process close", async () => {
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    let notifications = 0;
+    const manager = new TaskManager(() => {
+      notifications++;
+      throw new Error("notification failed");
+    });
+    managers.push(manager);
+    try {
+      const task = manager.spawn(commandLaunch("printf preserved"));
+      const finished = await manager.wait(task.id);
+
+      expect(finished.status).toBe("completed");
+      expect(finished.output).toBe("preserved");
+      expect(manager.inspect(task.id).output).toBe("preserved");
+      expect(notifications).toBe(1);
+      expect(error).toHaveBeenCalledTimes(1);
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  test("contains callback failures in an aborted-completed foreground race", async () => {
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    let notifications = 0;
+    const manager = new TaskManager(() => {
+      notifications++;
+      throw new Error("notification failed");
+    });
+    managers.push(manager);
+    try {
+      const task = manager.spawn({ ...commandLaunch("printf preserved"), notifyOnComplete: false });
+      await manager.wait(task.id);
+      const signal = AbortSignal.abort();
+
+      const result = await manager.foreground(task.id, 1_000, signal);
+      const repeated = await manager.foreground(task.id, 1_000, signal);
+
+      expect(result.background).toBe(true);
+      expect(result.status).toBe("completed");
+      expect(result.output).toBe("preserved");
+      expect(repeated.background).toBe(true);
+      expect(notifications).toBe(1);
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(manager.inspect(task.id).output).toBe("preserved");
+    } finally {
+      error.mockRestore();
+    }
   });
 
   test("supports incremental inspection with output cursors", async () => {
@@ -116,8 +166,29 @@ describe("asynchronous task manager", () => {
     expect(summary.outputEnd).toBe(5_000_000);
     expect(summary.outputEnd - summary.baseOffset).toBe(1_000_000);
     const tail = manager.inspect(task.id, summary.baseOffset, 50_000);
-    expect(Buffer.byteLength(tail.output)).toBe(50_000);
+    expect(Buffer.byteLength(tail.output)).toBe(5_000);
+    expect(Buffer.byteLength(manager.inspect(task.id).output)).toBe(5_000);
     expect(tail.hasMore).toBe(true);
+  });
+
+  test("completion and wait preserve the final output with the smaller page cap", async () => {
+    const { manager, completion } = managerWithCompletion();
+    const task = manager.spawn({kind: "command", command: process.execPath,
+      args: ["-e", "process.stdout.write('a'.repeat(20000) + 'FINAL')"],
+      displayCommand: "large result", cwd: process.cwd()});
+    const finished = await completion;
+    expect(Buffer.byteLength(finished.output)).toBe(5_000);
+    expect(finished.output).toEndWith("FINAL");
+    expect((await manager.wait(task.id)).output).toBe(finished.output);
+    let output = "", offset = 0;
+    for (;;) {
+      const page = manager.inspect(task.id, offset);
+      expect(Buffer.byteLength(page.output)).toBeLessThanOrEqual(5_000);
+      output += page.output;
+      offset = page.nextOffset;
+      if (!page.hasMore) break;
+    }
+    expect(output).toBe("a".repeat(20000) + "FINAL");
   });
 
   test("runs 50 concurrent tasks without losing results", async () => {
@@ -213,8 +284,12 @@ describe("asynchronous task manager", () => {
   test("shutdown escalates when a process ignores SIGTERM", async () => {
     const manager = new TaskManager(() => {}, 25);
     managers.push(manager);
-    const task = manager.spawn(commandLaunch("trap '' TERM; sleep 30"));
-    await Bun.sleep(25);
+    const task = manager.spawn(commandLaunch("trap '' TERM; printf 'ready\\n'; sleep 30"));
+    // Login-shell startup can exceed a fixed 25ms sleep under load. Signal only
+    // once the fixture has actually installed its SIGTERM handler.
+    const readyDeadline = Date.now() + 2_000;
+    while (!manager.inspect(task.id).output.includes("ready") && Date.now() < readyDeadline) await Bun.sleep(10);
+    expect(manager.inspect(task.id).output).toContain("ready");
 
     manager.shutdown();
     const deadline = Date.now() + 1_000;
@@ -224,4 +299,54 @@ describe("asynchronous task manager", () => {
     expect(finished.status).toBe("killed");
     expect(finished.signal).toBe("SIGKILL");
   });
+});
+
+test("live agent inspection survives kill and success delivers only the final answer", async () => {
+  const { manager, completion } = managerWithCompletion();
+  const code = `const emit=e=>console.log(JSON.stringify(e));
+    emit({type:"tool_execution_start",toolName:"execute",args:{code:"inspect source"}});
+    await Bun.stdin.text();
+    emit({type:"tool_execution_end",toolName:"execute",result:{content:[{type:"text",text:"evidence"}]}});
+    emit({type:"message_end",message:{role:"assistant",stopReason:"stop",content:[{type:"text",text:"final answer"}]}});
+    emit({type:"agent_end"});`;
+  const launch = {kind:"agent" as const, command:process.execPath,args:["-e",code],displayCommand:"test agent",cwd:process.cwd(),
+    agent:{type:"normal",model:"p/model",depth:1,sessionFile:"/test.jsonl"}};
+  const task=manager.spawn(launch);
+  const deadline=Date.now()+2000;
+  while (!manager.inspect(task.id).agent?.currentTool && Date.now()<deadline) await Bun.sleep(10);
+  const live=manager.inspect(task.id);
+  expect(live.status).toBe("running");
+  expect(live.agent?.currentTool).toBe("execute");
+  expect(live.output).toContain("inspect source");
+  await manager.write(task.id,"",true);
+  const done=await completion;
+  expect(done.output).toBe("final answer");
+  expect((await manager.wait(task.id)).output).toBe("final answer");
+  expect(manager.inspect(task.id).output).toContain("evidence");
+  const stuck=manager.spawn(launch);
+  const until=Date.now()+2000;
+  while (!manager.inspect(stuck.id).agent?.currentTool && Date.now()<until) await Bun.sleep(10);
+  manager.kill(stuck.id);
+  await manager.wait(stuck.id);
+  expect(manager.inspect(stuck.id).status).toBe("killed");
+  expect(manager.inspect(stuck.id).output).toContain("Tool started");
+});
+test("JSON-mode model errors count as failure even when the child exits zero", async () => {
+  const {manager,completion}=managerWithCompletion();
+  manager.spawn({kind:"agent",command:process.execPath,args:["-e",'console.log(JSON.stringify({type:"message_end",message:{role:"assistant",stopReason:"error",errorMessage:"provider unavailable"}}))'],
+    displayCommand:"failed model",cwd:process.cwd(),agent:{type:"normal",model:"p/m",depth:1,sessionFile:"/test.jsonl"}});
+  const result=await completion;
+  expect(result.exitCode).toBe(0);
+  expect(result.status).toBe("failed");
+  expect(result.agent?.lastError).toBe("provider unavailable");
+});
+
+test("foreground/background completion races deliver each result exactly once",async()=>{
+  const notifications:TaskInspection[]=[];const manager=new TaskManager(t=>notifications.push(t));managers.push(manager);
+  const jobs=Array.from({length:30},()=>manager.spawn({...commandLaunch("printf done"),notifyOnComplete:false}));
+  const results=await Promise.all(jobs.map((job,i)=>manager.foreground(job.id,i%2 ? 1000 : 0)));
+  await Promise.all(jobs.map(job=>manager.wait(job.id)));
+  const inline=results.filter(result=>!result.background);
+  expect(inline.length+notifications.length).toBe(30);
+  expect(new Set([...inline,...notifications].map(job=>job.id)).size).toBe(30);
 });

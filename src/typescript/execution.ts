@@ -1,6 +1,10 @@
 import { spawn } from "node:child_process";
+import type { Readable } from "node:stream";
+import type { ImageContent } from "@earendil-works/pi-ai";
+import { decodeImageChannel, IMAGE_CHANNEL_ENV, MAX_IMAGE_CHANNEL_BYTES } from "./images";
 import { BoundedOutputBuffer } from "../tasks/output-buffer";
 import { INTERNAL_TYPESCRIPT_RUNNER_ARG } from "./runner";
+import { JOB_BRIDGE_ENV, serveJobBridge, openParentJobBridge } from "./job-bridge";
 
 // Leave room for stream labels, status, and truncation guidance within 50 KB /
 // 2,000 lines overall. Details retain the same bounded output as model content.
@@ -16,6 +20,8 @@ export interface ExecutionResult {
   stderrLost: boolean;
   timedOut: boolean;
   cancelled: boolean;
+  images: ImageContent[];
+  imageError?: string;
 }
 
 function signalProcessGroup(child: ReturnType<typeof spawn>, signal: NodeJS.Signals): void {
@@ -49,20 +55,35 @@ export async function executeIsolated(
   cwd: string,
   signal?: AbortSignal,
   timeoutMs?: number,
-  options: { executablePath?: string; killGraceMs?: number } = {},
+  options: {
+    executablePath?: string;
+    killGraceMs?: number;
+    jobHandler?: (method: string, params: unknown, signal: AbortSignal) => Promise<unknown>;
+  } = {},
 ): Promise<ExecutionResult> {
   if (signal?.aborted) {
-    return { stdout: "", stderr: "", stdoutLost: false, stderrLost: false, timedOut: false, cancelled: true };
+    return { stdout: "", stderr: "", stdoutLost: false, stderrLost: false, timedOut: false, cancelled: true, images: [] };
   }
+  const childEnv: NodeJS.ProcessEnv = { ...process.env, [IMAGE_CHANNEL_ENV]: "1" };
+  if (options.jobHandler) childEnv[JOB_BRIDGE_ENV] = "1";
+  else delete childEnv[JOB_BRIDGE_ENV];
   const child = spawn(options.executablePath ?? process.execPath, [INTERNAL_TYPESCRIPT_RUNNER_ARG], {
     cwd,
-    env: process.env,
+    env: childEnv,
     shell: false,
     detached: process.platform !== "win32",
-    stdio: ["pipe", "pipe", "pipe"],
+    stdio: ["pipe", "pipe", "pipe", "pipe", ...(options.jobHandler ? ["ipc" as const] : [])],
   });
   const stdout = new BoundedOutputBuffer(MAX_STREAM_BYTES);
   const stderr = new BoundedOutputBuffer(MAX_STREAM_BYTES);
+  const imageOutput = new BoundedOutputBuffer(MAX_IMAGE_CHANNEL_BYTES);
+  const imagePipe = child.stdio[3] as Readable | undefined;
+  const jobPipe = options.jobHandler ? openParentJobBridge(child) : undefined;
+  const executionController = new AbortController();
+  const jobBridge = options.jobHandler && jobPipe
+    ? serveJobBridge(jobPipe, options.jobHandler, executionController.signal)
+    : undefined;
+  let imageError: string | undefined;
   let timedOut = false;
   let cancelled = false;
   let killTimer: ReturnType<typeof setTimeout> | undefined;
@@ -71,6 +92,7 @@ export async function executeIsolated(
   const terminate = (fromTimeout = false) => {
     if (fromTimeout) timedOut = true;
     else cancelled = true;
+    executionController.abort();
     signalProcessGroup(child, "SIGTERM");
     killTimer ??= setTimeout(() => signalProcessGroup(child, "SIGKILL"), options.killGraceMs ?? 5_000);
     killTimer.unref?.();
@@ -87,9 +109,21 @@ export async function executeIsolated(
     });
     child.once("close", (exitCode, exitSignal) => resolve({ exitCode, exitSignal }));
   });
-  child.stdout.on("data", (chunk: Buffer) => stdout.append(chunk));
-  child.stderr.on("data", (chunk: Buffer) => stderr.append(chunk));
-  child.stdin.on("error", () => {
+  imagePipe?.on("data", (chunk: Buffer) => {
+    if (imageError) return;
+    imageOutput.append(chunk);
+    if (imageOutput.baseOffset > 0) {
+      imageError = "Image output channel exceeded its byte limit";
+      signalProcessGroup(child, "SIGKILL");
+    }
+  });
+  imagePipe?.on("error", () => {
+    imageError = "Could not read image output channel";
+    signalProcessGroup(child, "SIGKILL");
+  });
+  child.stdout!.on("data", (chunk: Buffer) => stdout.append(chunk));
+  child.stderr!.on("data", (chunk: Buffer) => stderr.append(chunk));
+  child.stdin!.on("error", () => {
     // Early exits (including EPIPE while sending source) are reported by status.
   });
   signal?.addEventListener("abort", onAbort, { once: true });
@@ -98,17 +132,38 @@ export async function executeIsolated(
     timeout = setTimeout(() => terminate(true), timeoutMs);
     timeout.unref?.();
   }
-  child.stdin.end(code);
+  child.stdin!.end(code);
 
-  const { exitCode, exitSignal } = await completion.finally(() => {
+  let completed: { exitCode: number | null; exitSignal: NodeJS.Signals | null } | undefined;
+  try {
+    completed = await completion;
+  } finally {
+    // Commit response ACKs only at clean worker completion. Until this point a
+    // received ACK is provisional and bridge teardown restores notification
+    // ownership for any foreground task results.
+    jobBridge?.close(completed?.exitCode === 0 && !timedOut && !cancelled);
+    executionController.abort();
     signal?.removeEventListener("abort", onAbort);
     if (timeout) clearTimeout(timeout);
     if (killTimer) clearTimeout(killTimer);
-    child.stdin.destroy();
-    child.stdout.destroy();
-    child.stderr.destroy();
-  });
+    child.stdin!.destroy();
+    child.stdout!.destroy();
+    child.stderr!.destroy();
+    imagePipe?.destroy();
+    jobPipe?.destroy();
+  }
+  const { exitCode, exitSignal } = completed!;
 
+  let images: ImageContent[] = [];
+  // Images are atomic results: never attach partial output from failed,
+  // cancelled, timed-out, or malformed executions.
+  if (exitCode === 0 && !timedOut && !cancelled && !imageError) {
+    try {
+      images = decodeImageChannel(imageOutput.read(0, MAX_IMAGE_CHANNEL_BYTES).buffer);
+    } catch (error) {
+      imageError = error instanceof Error ? error.message : "Invalid image output";
+    }
+  }
   const out = streamTail(stdout);
   const err = streamTail(stderr);
   return {
@@ -120,19 +175,23 @@ export async function executeIsolated(
     stderrLost: err.lost,
     timedOut,
     cancelled,
+    images,
+    imageError,
   };
 }
 
 export function formatResult(result: ExecutionResult): string {
-  const status = result.cancelled ? "cancelled" : result.timedOut ? "timed out" : result.exitCode === 0 ? "completed" : "failed";
+  const status = result.cancelled ? "cancelled" : result.timedOut ? "timed out" : result.exitCode === 0 && !result.imageError ? "completed" : "failed";
   const sections = [
     `Execution ${status}${result.exitCode !== undefined ? ` with exit code ${result.exitCode}` : ""}${result.signal ? ` (${result.signal})` : ""}.`,
   ];
   if (result.stdout) sections.push(`stdout${result.stdoutLost ? " (earlier output discarded)" : ""}:\n${result.stdout}`);
   if (result.stderr) sections.push(`stderr${result.stderrLost ? " (earlier output discarded)" : ""}:\n${result.stderr}`);
   if (result.stdoutLost || result.stderrLost) {
-    sections.push("Output truncated to the last 24,000 bytes / 900 lines per stream. Discarded output is not saved; print a smaller selection or use task for cursor-based inspection. Do not rerun side-effecting code merely to recover output.");
+    sections.push("Output truncated to the last 24,000 bytes / 900 lines per stream. Discarded output is not saved; print a smaller selection or use shell() and jobs.inspect() for cursor-based inspection. Targeted inspection preserves evidence without repeating side effects.");
   }
-  if (!result.stdout && !result.stderr) sections.push("No output. Use console.log(...) to return information to the agent.");
+  if (result.imageError) sections.push(`Image output error: ${result.imageError}`);
+  if (result.images.length) sections.push(`Returned ${result.images.length} image${result.images.length === 1 ? "" : "s"}.`);
+  if (!result.stdout && !result.stderr && !result.images.length && !result.imageError) sections.push("No output. Use console.log(...) for text or await emitImage(...) for images.");
   return sections.join("\n\n");
 }

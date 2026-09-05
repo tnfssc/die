@@ -1,9 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { BoundedOutputBuffer } from "./output-buffer";
+import { getJobResponseDeliverySignal, JOB_RESPONSE_ACK_EVENT, supportsJobResponseAcknowledgement } from "../typescript/job-bridge";
+
+import { AgentProgress, type AgentInfo } from "./agent-progress";
 
 const MAX_CAPTURE_BYTES = 1_000_000;
-const MAX_INSPECT_BYTES = 50_000;
+const MAX_INSPECT_BYTES = 5_000;
 const DEFAULT_KILL_GRACE_MS = 5_000;
 
 function utf8SequenceLength(byte: number): number {
@@ -36,6 +39,8 @@ function utf8SafeSlice(buffer: Buffer, limit: number): { start: number; end: num
 export type TaskStatus = "running" | "completed" | "failed" | "killed";
 
 export interface TaskLaunch {
+  id?: string;
+  agent?: AgentInfo;
   kind: "command" | "agent";
   command: string;
   args?: string[];
@@ -48,6 +53,7 @@ export interface TaskLaunch {
 }
 
 export interface TaskSummary {
+  agent?: AgentInfo;
   id: string;
   kind: "command" | "agent";
   command: string;
@@ -64,6 +70,7 @@ export interface TaskSummary {
 }
 
 interface ManagedTask extends TaskSummary {
+  completionOutput?: string;
   process?: ChildProcessWithoutNullStreams;
   output: BoundedOutputBuffer;
   timeout?: ReturnType<typeof setTimeout>;
@@ -96,7 +103,8 @@ export class TaskManager {
 
   spawn(launch: TaskLaunch): TaskSummary {
     if (this.#shuttingDown) throw new Error("Task manager is shutting down");
-    const id = `task_${randomUUID().slice(0, 8)}`;
+    const id = launch.id ?? `task_${randomUUID().slice(0, 8)}`;
+    if (this.#tasks.has(id)) throw new Error("Duplicate task ID");
     const child = spawn(launch.command, launch.args ?? [], {
       cwd: launch.cwd,
       env: launch.env ?? process.env,
@@ -110,6 +118,7 @@ export class TaskManager {
     });
     const task: ManagedTask = {
       id,
+      agent: launch.agent ? { ...launch.agent, phase: "starting", events: 0 } : undefined,
       kind: launch.kind,
       command: launch.displayCommand,
       cwd: launch.cwd,
@@ -131,8 +140,15 @@ export class TaskManager {
 
     // Intentionally merge stdout and stderr for now. Stream labels and strict
     // cross-stream ordering require a structured output format; add that later.
-    child.stdout.on("data", (data: Buffer) => this.#append(task, data));
-    child.stderr.on("data", (data: Buffer) => this.#append(task, data));
+    const progress = task.agent ? new AgentProgress(task.agent, value => this.#append(task, value)) : undefined;
+    child.stdout.on("data", (data: Buffer) => progress ? progress.push(data) : this.#append(task, data));
+    child.stderr.on("data", (data: Buffer) => {
+      if (task.agent) {
+        task.agent.lastActivityAt = new Date().toISOString();
+        task.agent.lastError = data.toString("utf8").slice(-2000);
+      }
+      this.#append(task, data);
+    });
     child.on("error", (error) => this.#append(task, `\n[spawn error] ${error.message}\n`));
     child.on("exit", () => {
       // A shell can exit on SIGTERM while descendants ignore it, even after
@@ -141,6 +157,7 @@ export class TaskManager {
       if (task.killRequested) this.#signal(task, "SIGKILL");
     });
     child.on("close", (code, signal) => {
+      progress?.finish();
       if (task.timeout) clearTimeout(task.timeout);
       if (task.killTimer) clearTimeout(task.killTimer);
       task.timeout = undefined;
@@ -148,14 +165,22 @@ export class TaskManager {
       task.exitCode = code ?? undefined;
       task.signal = signal ?? undefined;
       task.completedAt = new Date().toISOString();
-      task.status = task.killRequested ? "killed" : code === 0 ? "completed" : "failed";
-      const inspection = this.inspect(id, Math.max(task.baseOffset, task.outputEnd - 16_000));
+      task.status = task.killRequested ? "killed" : code === 0 && !progress?.failed ? "completed" : "failed";
+      if (task.agent) task.agent.phase = task.status;
+      const inspection = this.inspect(id, Math.max(task.baseOffset, task.outputEnd - MAX_INSPECT_BYTES));
+      // Notifications carry the answer, while inspect retains the activity log.
+      if (progress && task.status === "completed" && progress.final.retainedBytes) {
+        const answer = progress.final.read(progress.final.baseOffset, MAX_INSPECT_BYTES).buffer;
+        const safe = utf8SafeSlice(answer, MAX_INSPECT_BYTES);
+        inspection.output = answer.subarray(safe.start, safe.end).toString("utf8");
+        task.completionOutput = inspection.output;
+      }
       const resolveTask = task.resolveCompletion;
       task.process = undefined;
       task.completion = undefined;
       task.resolveCompletion = undefined;
       resolveTask?.(inspection);
-      if (!this.#shuttingDown && task.notifyOnComplete) this.#onComplete(inspection);
+      if (!this.#shuttingDown && task.notifyOnComplete) this.#notify(inspection);
     });
 
     if (launch.timeoutMs) {
@@ -194,16 +219,78 @@ export class TaskManager {
 
   wait(id: string): Promise<TaskInspection> {
     const task = this.#require(id);
-    if (task.status !== "running") return Promise.resolve(this.inspect(id, Math.max(task.baseOffset, task.outputEnd - 16_000)));
+    if (task.status !== "running") {
+      const inspection = this.inspect(id, Math.max(task.baseOffset, task.outputEnd - MAX_INSPECT_BYTES));
+      if (task.completionOutput !== undefined) inspection.output = task.completionOutput;
+      return Promise.resolve(inspection);
+    }
     return task.completion!;
+  }
+
+  /** Hand off notification ownership exactly once when a foreground wait expires. */
+  async foreground(id: string, waitMs: number, signal?: AbortSignal): Promise<TaskInspection & { background: boolean }> {
+    const task = this.#require(id);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
+    try {
+      if (waitMs > 0 && !signal?.aborted) {
+        await Promise.race([
+          this.wait(id),
+          new Promise<void>(resolve => { timer = setTimeout(resolve, waitMs); }),
+          new Promise<void>(resolve => {
+            onAbort = resolve;
+            signal?.addEventListener("abort", onAbort, { once: true });
+            if (signal?.aborted) resolve();
+          }),
+        ]);
+      }
+      if (task.status !== "running" && !signal?.aborted) {
+        const result = { ...await this.wait(id), background: false };
+        // Bridge responses are only owned by the foreground caller once the
+        // worker acknowledges receipt. A disconnect before that point returns
+        // ownership to session notification delivery.
+        const deliverySignal = getJobResponseDeliverySignal(signal);
+        if (deliverySignal && supportsJobResponseAcknowledgement(deliverySignal)) {
+          let settled = false;
+          const cleanup = () => {
+            deliverySignal.removeEventListener(JOB_RESPONSE_ACK_EVENT, acknowledged);
+            deliverySignal.removeEventListener("abort", disconnected);
+          };
+          const acknowledged = () => { if (!settled) { settled = true; cleanup(); } };
+          const disconnected = () => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            if (!task.notifyOnComplete) {
+              task.notifyOnComplete = true;
+              if (!this.#shuttingDown) this.#notify(result);
+            }
+          };
+          deliverySignal.addEventListener(JOB_RESPONSE_ACK_EVENT, acknowledged, { once: true });
+          deliverySignal.addEventListener("abort", disconnected, { once: true });
+          if (deliverySignal.aborted) disconnected();
+        }
+        return result;
+      }
+      if (!task.notifyOnComplete) {
+        task.notifyOnComplete = true;
+        // A disconnect may race completion, before its result reached the worker.
+        if (task.status !== "running" && !this.#shuttingDown) this.#notify(await this.wait(id));
+      }
+      return { ...this.inspect(id), background: true };
+    } finally {
+      if (timer) clearTimeout(timer);
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
+    }
   }
 
   async write(id: string, input: string, close = false): Promise<TaskSummary> {
     const task = this.#requireRunning(id);
+    const stdin = task.process!.stdin;
     await new Promise<void>((resolve, reject) => {
-      task.process!.stdin.write(input, (error) => (error ? reject(error) : resolve()));
+      stdin.write(input, (error) => (error ? reject(error) : resolve()));
     });
-    if (close) task.process!.stdin.end();
+    if (close && !stdin.destroyed) stdin.end();
     return this.#summary(task);
   }
 
@@ -243,6 +330,14 @@ export class TaskManager {
     return this.#shutdown;
   }
 
+  #notify(task: TaskInspection): void {
+    try {
+      this.#onComplete(task);
+    } catch (error) {
+      console.error(`Task completion callback failed for ${task.id}:`, error);
+    }
+  }
+
   #append(task: ManagedTask, value: Buffer | string): void {
     task.output.append(value);
     task.baseOffset = task.output.baseOffset;
@@ -272,6 +367,7 @@ export class TaskManager {
 
   #summary(task: ManagedTask): TaskSummary {
     const {
+      completionOutput: _completionOutput,
       process: _process,
       output: _output,
       timeout: _timeout,
@@ -282,6 +378,6 @@ export class TaskManager {
       resolveCompletion: _resolveCompletion,
       ...summary
     } = task;
-    return summary;
+    return { ...summary, ...(summary.agent ? { agent: { ...summary.agent } } : {}) };
   }
 }

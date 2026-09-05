@@ -5,6 +5,7 @@ export class CompletionBatcher<T> {
   #items: T[] = [];
   #debounceTimer?: ReturnType<typeof setTimeout>;
   #maxWaitTimer?: ReturnType<typeof setTimeout>;
+  #disposed = false;
 
   constructor(flushCallback: (items: T[]) => void, debounceMs = 100, maxWaitMs = 500) {
     this.#flushCallback = flushCallback;
@@ -13,6 +14,7 @@ export class CompletionBatcher<T> {
   }
 
   add(item: T): void {
+    if (this.#disposed) return;
     this.#items.push(item);
     if (this.#debounceTimer) clearTimeout(this.#debounceTimer);
     this.#debounceTimer = setTimeout(() => this.flush(), this.#debounceMs);
@@ -27,10 +29,15 @@ export class CompletionBatcher<T> {
     if (this.#items.length === 0) return;
     const items = this.#items;
     this.#items = [];
-    this.#flushCallback(items);
+    try {
+      this.#flushCallback(items);
+    } catch (error) {
+      console.error("Completion batch callback failed:", error);
+    }
   }
 
   dispose(): void {
+    this.#disposed = true;
     if (this.#debounceTimer) clearTimeout(this.#debounceTimer);
     if (this.#maxWaitTimer) clearTimeout(this.#maxWaitTimer);
     this.#debounceTimer = undefined;

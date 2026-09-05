@@ -13,7 +13,6 @@ import themeSchema from "../runtime-assets/theme/theme-schema.json" with { type:
 import exportTemplate from "../runtime-assets/export-html/template.html" with { type: "file" };
 import highlight from "../runtime-assets/export-html/vendor/highlight.min.js" with { type: "file" };
 import marked from "../runtime-assets/export-html/vendor/marked.min.js" with { type: "file" };
-import asynchronousTasksExtension from "./tasks/extension";
 import { INTERNAL_TYPESCRIPT_RUNNER_ARG, runTypeScriptFromStdin } from "./typescript/runner";
 
 const cliArgs = process.argv.slice(2);
@@ -98,6 +97,11 @@ registerBunOAuthFlows();
 // This must be dynamic: PI_PACKAGE_DIR has to be set before Pi initializes its
 // product metadata and asset paths.
 const { main } = await import("@earendil-works/pi-coding-agent");
+// The UI extension imports Pi's CustomEditor, so it must also load only after
+// die's runtime paths and product metadata are configured.
+const { default: asynchronousTasksExtension } = await import("./tasks/extension");
+const { installQuietStartup } = await import("./ui/startup");
+const restoreStartupSettings = installQuietStartup();
 
 function filterHelp(text: string): string {
   if (!text.includes("Usage:") || !text.includes("Options:")) return text;
@@ -133,5 +137,6 @@ try {
     extensionFactories: [{ name: "die-tools", factory: asynchronousTasksExtension, hidden: true }],
   });
 } finally {
+  restoreStartupSettings();
   console.log = originalLog;
 }
