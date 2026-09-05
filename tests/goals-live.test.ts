@@ -25,7 +25,13 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
     const evidenceFile = join(evidenceDir, "live-" + Date.now() + ".json");
     const marker = "DIE_GOAL_CRITERION=" + randomUUID();
     const criterionFile = join(dir, "criterion.txt");
-    const evidence: Record<string, unknown> = { phase: "setup", requests: [], usage: [] };
+    const transport = "sse";
+    const evidence: Record<string, unknown> = {
+      phase: "setup",
+      transport,
+      requests: [],
+      usage: [],
+    };
     const requestEvidence: LiveDispatchEvidence[] = [];
     const usageEvidence: Array<Record<string, unknown>> = [];
     let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
@@ -36,15 +42,12 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
     let workflow: Promise<void> | undefined;
 
     try {
-      const modelId = process.env.DIE_GOAL_MODEL
-        ?? process.env.DIE_COMPACTION_MODEL
-        ?? "gpt-5.6-luna";
-      const model = getModels("openai-codex").find(candidate => candidate.id === modelId);
+      const modelId = process.env.DIE_GOAL_MODEL ?? process.env.DIE_COMPACTION_MODEL ?? "gpt-5.6-luna";
+      const model = getModels("openai-codex").find((candidate) => candidate.id === modelId);
       if (!model) throw new Error("Unknown DIE_GOAL_MODEL: " + modelId);
       evidence.model = model.provider + "/" + model.id;
 
-      const agentDir = process.env.DIE_CODING_AGENT_DIR
-        ?? join(homedir(), ".die", "agent");
+      const agentDir = process.env.DIE_CODING_AGENT_DIR ?? join(homedir(), ".die", "agent");
       const runtime = await ModelRuntime.create({
         authPath: join(agentDir, "auth.json"),
         modelsPath: null,
@@ -52,7 +55,7 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
       });
       // This guard is on the real runtime method, outside extension error handling.
       // maxRetries=0 makes each admitted call correspond to at most one paid dispatch.
-      budget = installLiveDispatchBudget(runtime, 4, item => requestEvidence.push(item));
+      budget = installLiveDispatchBudget(runtime, 4, (item) => requestEvidence.push(item));
       manager = SessionManager.create(dir, join(dir, "sessions"));
       const loader = new DefaultResourceLoader({
         cwd: dir,
@@ -61,12 +64,15 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
         noSkills: true,
         noThemes: true,
         noPromptTemplates: true,
-        extensionFactories: [{
-          name: "die-tasks",
-          factory: pi => tasks(pi, {
-            executablePath: resolve(import.meta.dir, "../dist/die"),
-          }),
-        }],
+        extensionFactories: [
+          {
+            name: "die-tasks",
+            factory: (pi) =>
+              tasks(pi, {
+                executablePath: resolve(import.meta.dir, "../dist/die"),
+              }),
+          },
+        ],
       });
       await loader.reload();
       ({ session } = await createAgentSession({
@@ -77,27 +83,29 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
         modelRuntime: runtime,
         sessionManager: manager,
         settingsManager: SettingsManager.inMemory({
-          transport: "sse",
+          transport,
           compaction: { enabled: false },
         }),
         thinkingLevel: "medium",
         tools: ["execute"],
       }));
-      session.subscribe(event => {
+      session.subscribe((event) => {
         if (event.type !== "message_end" || event.message.role !== "assistant") return;
         if (usageEvidence.length >= 6) return;
         usageEvidence.push({
           stopReason: event.message.stopReason,
           usage: event.message.usage,
           toolNames: event.message.content
-            .filter(part => part.type === "toolCall")
-            .map(part => part.name)
+            .filter((part) => part.type === "toolCall")
+            .map((part) => part.name)
             .slice(0, 8),
         });
       });
 
       let rejectWall!: (reason: Error) => void;
-      const wallFailure = new Promise<never>((_resolve, reject) => { rejectWall = reject; });
+      const wallFailure = new Promise<never>((_resolve, reject) => {
+        rejectWall = reject;
+      });
       wallTimer = setTimeout(() => {
         wallAbort = session?.abort() ?? Promise.resolve();
         rejectWall(new Error("Goal live smoke exceeded its 120-second wall limit"));
@@ -106,20 +114,20 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
       workflow = (async () => {
         evidence.phase = "goal-command";
         await session!.prompt(
-          "/goal set Create and verify the harmless temporary criterion artifact at "
-            + criterionFile
-            + " --criteria Write that file with the exact UTF-8 text "
-            + marker
-            + "; Read it back and confirm exact contents; Persist completed goal evidence after verification"
-            + " --constraints Use only the local temporary directory; Do not start background jobs or subagents; Keep evidence concise",
+          "/goal set Create and verify the harmless temporary criterion artifact at " +
+            criterionFile +
+            " --criteria Write that file with the exact UTF-8 text " +
+            marker +
+            "; Read it back and confirm exact contents; Persist completed goal evidence after verification" +
+            " --constraints Use only the local temporary directory; Do not start background jobs or subagents; Keep evidence concise",
         );
         await session!.waitForIdle();
 
         const artifact = await readFile(criterionFile);
         expect(artifact.toString("utf8")).toBe(marker);
-        const goalEntries = manager!.getEntries().filter(
-          (entry: any) => entry.type === "custom" && entry.customType === "die-goal",
-        ) as any[];
+        const goalEntries = manager!
+          .getEntries()
+          .filter((entry: any) => entry.type === "custom" && entry.customType === "die-goal") as any[];
         const completed = goalEntries.at(-1)?.data?.goal;
         expect(completed).toMatchObject({ status: "completed" });
         expect(typeof completed.evidence).toBe("string");
@@ -131,12 +139,14 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
         const sessionFile = manager!.getSessionFile();
         expect(sessionFile).toBeDefined();
         const durableLines = (await readFile(sessionFile!, "utf8")).trim().split("\n");
-        expect(durableLines.some(line => {
-          const entry = JSON.parse(line);
-          return entry.type === "custom"
-            && entry.customType === "die-goal"
-            && entry.data?.goal?.status === "completed";
-        })).toBe(true);
+        expect(
+          durableLines.some((line) => {
+            const entry = JSON.parse(line);
+            return (
+              entry.type === "custom" && entry.customType === "die-goal" && entry.data?.goal?.status === "completed"
+            );
+          }),
+        ).toBe(true);
 
         evidence.phase = "complete";
         evidence.goal = {

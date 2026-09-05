@@ -21,11 +21,15 @@ messages are easiest to review.
 3. Run the deterministic checks:
 
    ```sh
+   bun run format:check
    bun run check
    bun run build
    bun test ./tests
    bun run smoke
    ```
+
+The formatting check is required: both pull-request CI and the release workflow
+enforce it. Use the pinned Biome version in `devDependencies` when formatting changes.
 
 Do not commit generated `dist/`, `runtime-assets/`, test artifacts, credentials,
 or local configuration.
