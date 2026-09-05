@@ -17,7 +17,8 @@
     "tui": "bun ./scripts/tui-harness.ts",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "lint": "biome lint ."
+    "lint": "biome lint .",
+    "generate:notices": "bun ./scripts/generate-third-party-notices.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.85.0",

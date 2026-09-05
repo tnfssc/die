@@ -1,0 +1,91 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  linux-x64:
+    name: Linux x64 release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.1
+      - name: Install required PTY tooling
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - name: Prepare logs
+        run: mkdir -p artifacts/release dist/release
+      - name: Validate tag matches package version
+        shell: bash
+        run: bun scripts/validate-release-tag.ts "$GITHUB_REF_NAME" 2>&1 | tee artifacts/release/version.log
+      - name: Install locked dependencies
+        shell: bash
+        run: bun install --frozen-lockfile 2>&1 | tee artifacts/release/install.log
+      - name: Lint
+        shell: bash
+        run: bun run lint 2>&1 | tee artifacts/release/lint.log
+      - name: Typecheck
+        shell: bash
+        run: bun run check 2>&1 | tee artifacts/release/typecheck.log
+      - name: Build compiled test binary
+        shell: bash
+        run: bun run build 2>&1 | tee artifacts/release/test-build.log
+      - name: Deterministic tests
+        shell: bash
+        env:
+          DIE_RUN_LLM_TESTS: "0"
+        run: bun test ./tests 2>&1 | tee artifacts/release/tests.log
+      - name: Standalone smoke test
+        shell: bash
+        run: bun run smoke 2>&1 | tee artifacts/release/smoke.log
+      - name: Build supported Linux x64 binary
+        shell: bash
+        run: |
+          bun run prepare:assets 2>&1 | tee artifacts/release/assets.log
+          bun build --compile --minify --target=bun-linux-x64-baseline ./src/cli.ts --outfile ./dist/release/die-linux-x64 2>&1 | tee artifacts/release/build.log
+          test "$(./dist/release/die-linux-x64 --version)" = "${GITHUB_REF_NAME#v}"
+          chmod 0755 ./dist/release/die-linux-x64
+      - name: Generate production dependency notices
+        shell: bash
+        run: bun run generate:notices 2>&1 | tee artifacts/release/notices.log
+      - name: Create checksums and source information
+        shell: bash
+        run: |
+          cd dist/release
+          sha256sum die-linux-x64 > die-linux-x64.sha256
+          cp ../../LICENSE ../../THIRD_PARTY_NOTICES.md .
+          printf 'Source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\nTarget: bun-linux-x64-baseline\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REF_NAME" > SOURCE.txt
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME" \
+            dist/release/die-linux-x64 \
+            dist/release/die-linux-x64.sha256 \
+            dist/release/LICENSE \
+            dist/release/THIRD_PARTY_NOTICES.md \
+            dist/release/THIRD_PARTY_LICENSES.txt \
+            dist/release/SOURCE.txt
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-failure-logs
+          path: artifacts/release/
+          if-no-files-found: warn
+          retention-days: 14

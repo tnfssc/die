@@ -6,6 +6,7 @@ import { run } from "./helpers";
 
 const root = resolve(import.meta.dir, "..");
 const binary = join(root, "dist/die");
+const packageVersion = (await Bun.file(join(root, "package.json")).json() as { version: string }).version;
 let home: string;
 
 beforeEach(async () => {
@@ -25,7 +26,7 @@ describe("compiled die CLI", () => {
     const result = await run([binary, "--version"], { env: isolatedEnv() });
 
     expect(result.code).toBe(0);
-    expect(result.stdout.trim()).toBe("0.1.0");
+    expect(result.stdout.trim()).toBe(packageVersion);
   });
 
   test("exposes branded help and uses ~/.die instead of ~/.pi", async () => {
@@ -39,12 +40,12 @@ describe("compiled die CLI", () => {
     expect(result.stdout).not.toContain("--exclude-tools");
     expect(result.stdout).not.toContain("--tools,");
     expect(result.stdout).not.toContain(" update [source|self|pi]");
-    expect(await Bun.file(join(home, ".die", "runtime", "0.1.0", "package.json")).exists()).toBe(true);
+    expect(await Bun.file(join(home, ".die", "runtime", packageVersion, "package.json")).exists()).toBe(true);
     expect(await Bun.file(join(home, ".pi", "agent", "settings.json")).exists()).toBe(false);
   });
 
   test("does not rewrite materialized runtime assets on later launches", async () => {
-    const runtime = join(home, ".die", "runtime", "0.1.0");
+    const runtime = join(home, ".die", "runtime", packageVersion);
     expect((await run([binary, "--version"], { env: isolatedEnv() })).code).toBe(0);
     const files = (await readdir(runtime, { recursive: true, withFileTypes: true }))
       .filter((entry) => entry.isFile())
@@ -89,6 +90,6 @@ describe("compiled die CLI", () => {
     expect(result.stdout).toContain(`Installed die to ${join(installDir, "die")}`);
     const installed = await run([join(installDir, "die"), "--version"], { env: isolatedEnv() });
     expect(installed.code).toBe(0);
-    expect(installed.stdout.trim()).toBe("0.1.0");
+    expect(installed.stdout.trim()).toBe(packageVersion);
   });
 });
