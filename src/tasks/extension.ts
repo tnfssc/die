@@ -16,6 +16,7 @@ import { registerResumeSafeguards } from "./resume-safeguards";
 import { registerInstructionMode } from "./instruction-mode";
 import { CacheCountdown, registerCacheCountdown } from "./cache-countdown";
 import { JobAttentionScheduler, formatAttentionNotification, type AttentionNotice, type AttentionOptions } from "./job-attention";
+import { registerGoalMode, type GoalRuntime } from "../goals/extension";
 
 export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string; cacheSettingsPath?: string; attention?: AttentionOptions; executablePath?: string } = {}): void {
   const cacheCountdown = new CacheCountdown();
@@ -109,9 +110,13 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     dispose: () => {},
   };
 
+  let goals: GoalRuntime;
   const getManager = () => {
     if (!manager) {
-      manager = new TaskManager((task) => completions.add(task));
+      manager = new TaskManager((task) => {
+        completions.add(task);
+        goals.jobsChanged();
+      });
       attention = new JobAttentionScheduler(manager, notices => { for (const notice of notices) attentions.add(notice); }, options.attention);
     }
     return manager;
@@ -120,8 +125,19 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
   registerTaskMonitor(pi, getManager);
   registerResumeSafeguards(pi);
 
+  goals = registerGoalMode(pi, {
+    runningIds: () => new Set(manager?.list()
+      .filter(task => task.status === "running")
+      .map(task => task.id) ?? []),
+    status: (id) => {
+      const task = manager?.list().find(item => item.id === id);
+      if (!task) return "unavailable";
+      return task.status === "running" ? "running" : "finished";
+    },
+  });
   let service: JobService | undefined;
   registerExecuteTool(pi, (ctx, method, params, signal) => {
+    if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
     taskUi = ctx.ui;
     const tasks = getManager();
     service ??= new JobService(tasks, () => ({ depth: subagentDepth, type: agentType }), updateTaskStatus, options.profilesPath, attention);

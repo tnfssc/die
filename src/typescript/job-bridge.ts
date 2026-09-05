@@ -64,6 +64,12 @@ export interface ExecuteJobGlobals {
   shell(command: string, options?: Options): Promise<unknown>;
   subagent(options: Options): Promise<unknown>;
   handoff(message: string): Promise<never>;
+  goal: {
+    get(): Promise<unknown>;
+    set(input: { objective: string; criteria: string[]; constraints: string[] }): Promise<unknown>;
+    update(input: Options): Promise<unknown>;
+    clear(): Promise<unknown>;
+  };
   jobs: {
     list(options?: Options): Promise<unknown>;
     inspect(id: string, options?: Options): Promise<unknown>;
@@ -79,6 +85,7 @@ declare global {
   var shell: ExecuteJobGlobals["shell"];
   var subagent: ExecuteJobGlobals["subagent"];
   var handoff: ExecuteJobGlobals["handoff"];
+  var goal: ExecuteJobGlobals["goal"];
   var jobs: ExecuteJobGlobals["jobs"];
 }
 
@@ -207,6 +214,12 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
     handoff: async (message): Promise<never> => {
       await request("handoff", { message });
       throw new HandoffSignal();
+    },
+    goal: {
+      get: async () => request("goal.get", {}),
+      set: async (input) => request("goal.set", input),
+      update: async (input) => request("goal.update", input),
+      clear: async () => request("goal.clear", {}),
     },
     jobs: {
       list: async (options) => request("jobs.list", options ?? {}),
