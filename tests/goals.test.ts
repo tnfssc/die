@@ -106,6 +106,31 @@ test("no-progress guard ignores revision bumps and tool activity", () => {
   }
 });
 
+test("explicit progress resets the guard once, while repeated evidence does not", () => {
+  const controller = new GoalContinuationController();
+  let goal: any = { id: "g", status: "active", revision: 1, progress: [] };
+  controller.settle(goal);
+  controller.markAutomaticStart(goal);
+  goal = { ...goal, revision: 2, progress: ["verified parser test"] };
+  expect(controller.settle(goal)).toBe("continue");
+  for (let turn = 0; turn < MAX_NO_PROGRESS_CONTINUATIONS; turn++) {
+    controller.markAutomaticStart(goal);
+    goal = { ...goal, revision: goal.revision + 1, progress: ["verified parser test"] };
+    expect(controller.settle(goal)).toBe(turn === MAX_NO_PROGRESS_CONTINUATIONS - 1 ? "pause" : "continue");
+  }
+});
+
+test("active progress is bounded and duplicate milestones are idempotent", () => {
+  const store = new GoalStore(() => {});
+  store.set(input);
+  store.update({ status: "active", progress: "same evidence" });
+  store.update({ status: "active", progress: "same evidence" });
+  expect(store.get()?.progress).toEqual(["same evidence"]);
+  for (let i = 0; i < 12; i++) store.update({ status: "active", progress: "milestone " + i });
+  expect(store.get()?.progress).toHaveLength(8);
+  expect(() => store.update({ status: "active", progress: "x".repeat(501) })).toThrow("too long");
+});
+
 function harness(entries: any[] = []) {
   const handlers: Record<string, Function[]> = {};
   const commands: Record<string, any> = {};
@@ -196,11 +221,10 @@ test("waiting job completion reactivates at the next turn boundary", () => {
   h.statuses.set("job_1", "finished");
   h.runtime.jobsChanged();
 
-  h.handlers.agent_settled[0]({}, h.ctx);
-  expect(h.runtime.get()?.status).toBe("waiting");
-  const result = h.handlers.before_agent_start[0]({ systemPrompt: "base" }, h.ctx);
   expect(h.runtime.get()?.status).toBe("active");
-  expect(result.systemPrompt).toContain("Persistent goal state");
+  const result = h.handlers.context[0]({ messages: [] }, h.ctx);
+  expect(result.messages.at(-1).content).toContain("Persistent goal state");
+  expect(result.messages.at(-1).content).toContain("Status: active");
 });
 
 test("resumed waiting work that is no longer owned pauses visibly", () => {
@@ -209,11 +233,23 @@ test("resumed waiting work that is no longer owned pauses visibly", () => {
   original.runtime.handle("goal.update", { status: "waiting", pendingJobIds: ["job_1"] });
   const resumed = harness(original.appended);
   resumed.statuses.clear();
-  resumed.handlers.before_agent_start[0]({ systemPrompt: "base" }, resumed.ctx);
+  resumed.handlers.context[0]({ messages: [] }, resumed.ctx);
   expect(resumed.runtime.get()).toMatchObject({
     status: "paused",
     pauseReason: expect.stringContaining("unavailable"),
   });
+});
+
+test("continuation preserves literal replacement syntax", async () => {
+  const h = harness();
+  const objective = "Keep " + "$&" + " and " + "$$" + " literal";
+  const criterion = "preserve " + "$'" + " exactly";
+  await h.commands.goal.handler(
+    "set " + objective + " --criteria " + criterion + " --constraints no rewrite",
+    h.ctx,
+  );
+  expect(h.sent.at(-1)).toContain(objective);
+  expect(h.sent.at(-1)).toContain(criterion);
 });
 
 test("slash command initializes before session_start and invalidates reminders", async () => {
@@ -232,6 +268,30 @@ test("slash command initializes before session_start and invalidates reminders",
   expect(h.handlers.input[0]({ source: "extension", text: reminder }, h.ctx)).toEqual({
     action: "handled",
   });
+});
+
+test("runtime refreshes goal state after same-manager branch navigation", () => {
+  const handlers: Record<string, Function[]> = {};
+  let leaf = "a";
+  const branches: Record<string, any[]> = { a: [], b: [] };
+  const manager = {
+    getLeafId: () => leaf,
+    getBranch: () => branches[leaf]!,
+    getEntries: () => branches[leaf]!,
+  };
+  const pi: any = {
+    on: (name: string, handler: Function) => (handlers[name] ??= []).push(handler),
+    registerCommand() {},
+    sendUserMessage() {},
+    appendEntry(customType: string, data: any) { branches[leaf]!.push({ type: "custom", customType, data }); leaf += ".next"; branches[leaf] = [...branches[leaf.split(".next")[0]!]!]; },
+  };
+  const runtime = registerGoalMode(pi, { runningIds: () => new Set(), status: () => "unavailable" });
+  const ctx: any = { sessionManager: manager, ui: { notify() {} } };
+  handlers.session_start[0]({}, ctx);
+  runtime.handle("goal.set", input);
+  expect(runtime.get()?.objective).toBe(input.objective);
+  leaf = "b";
+  expect(runtime.get()).toBeUndefined();
 });
 
 test("goal history is durable JSONL and branch scoped", async () => {

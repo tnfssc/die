@@ -17,6 +17,8 @@ export interface GoalState {
   status: GoalStatus;
   createdAt: string;
   updatedAt: string;
+  /** Bounded, explicit evidence of concrete progress while the goal remains active. */
+  progress?: string[];
   evidence?: string;
   blocker?: string;
   pendingJobIds?: string[];

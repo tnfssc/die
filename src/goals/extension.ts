@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import goalContinuation from "../prompts/goal-continuation.md" with { type: "text" };
 import { GoalContinuationController } from "./controller";
@@ -17,6 +18,7 @@ function formatGoal(goal?: GoalState): string {
     `Status: ${goal.status}`,
     `Criteria: ${goal.criteria.join("; ")}`,
     `Constraints: ${goal.constraints.join("; ") || "none"}`,
+    goal.progress?.length && `Progress:\n${goal.progress.map(item => `- ${item}`).join("\n")}`,
     goal.evidence && `Evidence: ${goal.evidence}`,
     goal.blocker && `Blocker: ${goal.blocker}`,
     goal.pendingJobIds?.length && `Waiting on: ${goal.pendingJobIds.join(", ")}`,
@@ -26,9 +28,9 @@ function formatGoal(goal?: GoalState): string {
 
 function continuation(goal: GoalState, generation: number): string {
   return goalContinuation.trimEnd()
-    .replace("{{objective}}", goal.objective)
-    .replace("{{criteria}}", goal.criteria.map(item => `- ${item}`).join("\n"))
-    .replace("{{constraints}}", goal.constraints.length
+    .replace("{{objective}}", () => goal.objective)
+    .replace("{{criteria}}", () => goal.criteria.map(item => `- ${item}`).join("\n"))
+    .replace("{{constraints}}", () => goal.constraints.length
       ? goal.constraints.map(item => `- ${item}`).join("\n")
       : "- None")
     + `\n\n<!-- die-goal-generation:${generation} -->`;
@@ -50,24 +52,48 @@ function parseSet(args: string): { objective: string; criteria: string[]; constr
 
 export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): GoalRuntime {
   let store: GoalStore | undefined;
+  let loadedManager: object | undefined;
+  let loadedLeaf: string | undefined;
   let context: ExtensionContext | undefined;
   let generation = 0;
   let jobsDirty = false;
   let queuedUserInput = false;
-  const queuedReminders = new Map<string, number>();
+  let reminderEpoch = randomUUID();
+  let reminderSequence = 0;
+  const queuedReminderIds = new Set<string>();
   const controller = new GoalContinuationController();
 
+  const leafOf = (ctx: ExtensionContext) => ctx.sessionManager?.getLeafId?.() ?? undefined;
   const ensureStore = (ctx: ExtensionContext): GoalStore => {
     context = ctx;
-    if (!store) {
+    const manager = ctx.sessionManager as object | undefined;
+    const leaf = leafOf(ctx);
+    if (!store || loadedManager !== manager || (leaf !== undefined && leaf !== loadedLeaf)) {
       const entries = ctx.sessionManager?.getBranch?.()
         ?? ctx.sessionManager?.getEntries()
         ?? [];
-      store = new GoalStore((type, data) => pi.appendEntry(type, data), entries);
+      const candidate = new GoalStore((type, data) => {
+        pi.appendEntry(type, data);
+        loadedLeaf = leafOf(ctx);
+      }, entries);
+      const branchChanged = !store
+        || loadedManager !== manager
+        || JSON.stringify(candidate.get()) !== JSON.stringify(store.get());
+      loadedManager = manager;
+      loadedLeaf = leaf;
+      // Ordinary messages also advance the leaf. Preserve controller state when
+      // branch-derived goal state is unchanged, but refresh after navigation.
+      if (branchChanged) {
+        store = candidate;
+        jobsDirty = store.get()?.status === "waiting";
+        queuedReminderIds.clear();
+        controller.reset();
+      }
     }
-    return store;
+    return store!;
   };
   const requireStore = () => {
+    if (context) return ensureStore(context);
     if (!store) throw new Error("Goal state is not initialized");
     return store;
   };
@@ -76,6 +102,7 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
   };
   const bumpGeneration = () => {
     generation++;
+    queuedReminderIds.clear();
   };
   const invalidate = () => {
     bumpGeneration();
@@ -89,8 +116,11 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     }
   };
   const sendContinuation = (goal: GoalState) => {
-    const message = continuation(goal, generation);
-    queuedReminders.set(message, generation);
+    const id = String(++reminderSequence);
+    if (queuedReminderIds.size >= 16) queuedReminderIds.delete(queuedReminderIds.values().next().value!);
+    queuedReminderIds.add(id);
+    const message = continuation(goal, generation)
+      + `\n\n<!-- die-goal-reminder:${reminderEpoch}:${generation}:${id} -->`;
     controller.markAutomaticStart(goal);
     pi.sendUserMessage(message, { deliverAs: "followUp" });
   };
@@ -101,8 +131,9 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     const statuses = goal.pendingJobIds!.map(id => jobs.status(id));
     if (statuses.some(status => status === "unavailable")) {
       pause("Paused because waiting work is unavailable in this process");
-    } else if (statuses.every(status => status === "finished")) {
-      store!.update({ status: "active" });
+    } else if (statuses.some(status => status === "finished")) {
+      const settled = goal.pendingJobIds!.filter((_, index) => statuses[index] === "finished");
+      store!.update({ status: "active", progress: `Owned jobs settled: ${settled.join(", ")}` });
       invalidate();
     }
   };
@@ -141,28 +172,43 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
   pi.on("session_start", (_event, ctx) => {
     context = ctx;
     store = undefined;
-    const loaded = ensureStore(ctx);
-    jobsDirty = loaded.get()?.status === "waiting";
+    loadedManager = undefined;
+    loadedLeaf = undefined;
+    reminderEpoch = randomUUID();
+    queuedReminderIds.clear();
+    ensureStore(ctx);
     invalidate();
   });
 
-  pi.on("before_agent_start", (event, ctx) => {
+  // Runs before every provider request, including tool and custom-message
+  // continuations. Mutable goal state stays out of the cache-sensitive system
+  // prefix and participates in the ordinary context filtering lifecycle.
+  pi.on("context", (event, ctx) => {
     ensureStore(ctx);
     reconcileWaiting();
     const goal = store?.get();
     if (!goal) return;
     return {
-      systemPrompt: `${event.systemPrompt}\n\nPersistent goal state (authoritative):\n${formatGoal(goal)}`,
+      messages: [...event.messages, {
+        role: "custom" as const,
+        customType: "die-goal-state",
+        content: `Persistent goal state (authoritative):\n${formatGoal(goal)}`,
+        display: false,
+        timestamp: Date.now(),
+      }],
     };
   });
 
   pi.on("input", (event, ctx) => {
     context = ctx;
+    ensureStore(ctx);
     if (event.source === "extension") {
-      const reminderGeneration = queuedReminders.get(event.text);
-      if (reminderGeneration !== undefined) {
-        queuedReminders.delete(event.text);
-        if (reminderGeneration !== generation) return { action: "handled" as const };
+      const match = /<!-- die-goal-reminder:([^:>]+):(\d+):(\d+) -->/.exec(event.text);
+      if (match) {
+        const accepted = match[1] === reminderEpoch
+          && Number(match[2]) === generation
+          && queuedReminderIds.delete(match[3]!);
+        if (!accepted) return { action: "handled" as const };
       }
       return;
     }
@@ -181,6 +227,8 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
 
   pi.on("agent_settled", (_event, ctx) => {
     context = ctx;
+    ensureStore(ctx);
+    reconcileWaiting();
     const goal = store?.get();
     if (!goal || goal.status !== "active") {
       queuedUserInput = false;
@@ -211,10 +259,22 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     }
   });
 
+  pi.on("session_shutdown", () => {
+    queuedReminderIds.clear();
+    reminderEpoch = randomUUID();
+    controller.reset();
+    store = undefined;
+    context = undefined;
+    loadedManager = undefined;
+    loadedLeaf = undefined;
+    jobsDirty = false;
+  });
+
   return {
-    get: () => store?.get(),
+    get: () => context ? ensureStore(context).get() : store?.get(),
     jobsChanged() {
       jobsDirty = true;
+      reconcileWaiting();
     },
     handle(method, params) {
       const input = (params && typeof params === "object" ? params : {}) as Record<string, unknown>;

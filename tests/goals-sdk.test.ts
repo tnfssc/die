@@ -25,7 +25,7 @@ const usage = {
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-test("real SDK continues an active goal and executes its terminal update", async () => {
+test("real SDK reconciles helper waiting through task-complete and completes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "die-goal-sdk-"));
   let session: any;
   try {
@@ -45,23 +45,32 @@ test("real SDK continues an active goal and executes its terminal update", async
       calls++;
       prompts.push(JSON.stringify(context));
       const stream = createAssistantMessageEventStream();
-      const content: any[] = calls === 2
+      const content: any[] = calls === 1
         ? [{
             type: "toolCall",
-            id: "goal_done",
+            id: "goal_wait",
             name: "execute",
             arguments: {
-              code: 'console.log(await goal.update({status:"completed", evidence:"SDK execute helper completed"}))',
+              code: 'const job=await shell("sleep 0.1; echo sdk-job",{waitSeconds:0}); console.log(await goal.update({status:"waiting",pendingJobIds:[job.id]})); await handoff("Waiting for owned SDK job")',
             },
           }]
-        : [{ type: "text", text: calls === 1 ? "First step finished." : "Done." }];
+        : calls === 2
+          ? [{
+              type: "toolCall",
+              id: "goal_done",
+              name: "execute",
+              arguments: {
+                code: 'console.log(await goal.update({status:"completed", evidence:"SDK task-complete continuation verified"}))',
+              },
+            }]
+          : [{ type: "text", text: "Done." }];
       const message: AssistantMessage = {
         role: "assistant",
         api: model.api,
         provider: model.provider,
         model: model.id,
         content,
-        stopReason: calls === 2 ? "toolUse" : "stop",
+        stopReason: calls <= 2 ? "toolUse" : "stop",
         usage,
         timestamp: Date.now(),
       };
@@ -82,7 +91,7 @@ test("real SDK continues an active goal and executes its terminal update", async
       goal: {
         id: "g",
         revision: 1,
-        objective: "Finish SDK flow",
+        objective: "Finish SDK FILTER_RAW flow",
         criteria: ["record evidence"],
         constraints: ["offline"],
         status: "active",
@@ -105,6 +114,14 @@ test("real SDK continues an active goal and executes its terminal update", async
             executablePath: resolve(import.meta.dir, "../dist/die"),
           }),
         },
+        {
+          name: "goal-context-filter",
+          factory: pi => pi.on("context", event => ({
+            messages: event.messages.map((message: any) => message.role === "custom" && message.customType === "die-goal-state"
+              ? { ...message, content: message.content.replaceAll("FILTER_RAW", "FILTERED") }
+              : message),
+          })),
+        },
       ],
     });
     await loader.reload();
@@ -122,16 +139,27 @@ test("real SDK continues an active goal and executes its terminal update", async
     await session.prompt("Begin");
     for (let attempt = 0; attempt < 100 && calls < 3; attempt++) await Bun.sleep(10);
     expect({ calls, settled }).toMatchObject({ calls: 3 });
-    expect(prompts[1]).toContain("Goal mode remains active");
-    expect(prompts[1]).toContain("Finish SDK flow");
-    expect(prompts[0]).toContain("Persistent goal state");
+    expect(prompts[0]).toContain("Status: active");
+    expect(prompts[0]).toContain("Finish SDK FILTERED flow");
+    expect(prompts[0]).not.toContain("FILTER_RAW");
+    expect(prompts[1]).toContain("sdk-job");
+    expect(prompts[1]).toContain("Status: active");
+    expect(prompts[1]).toContain("Owned jobs settled");
+    expect(JSON.parse(prompts[1]!).systemPrompt).toBe(JSON.parse(prompts[0]!).systemPrompt);
 
-    const last = manager.getEntries()
+    const entries = manager.getEntries();
+    const goalStatuses = entries
+      .filter((entry: any) => entry.type === "custom" && entry.customType === "die-goal")
+      .map((entry: any) => entry.data.goal?.status)
+      .filter(Boolean);
+    expect(goalStatuses.slice(-3)).toEqual(["waiting", "active", "completed"]);
+    expect(entries.some((entry: any) => entry.customType === "task-complete")).toBe(true);
+    const last = entries
       .filter((entry: any) => entry.type === "custom" && entry.customType === "die-goal")
       .at(-1) as any;
     expect(last.data.goal).toMatchObject({
       status: "completed",
-      evidence: "SDK execute helper completed",
+      evidence: "SDK task-complete continuation verified",
     });
     expect(calls).toBeLessThanOrEqual(3);
   } finally {

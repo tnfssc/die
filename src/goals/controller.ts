@@ -9,6 +9,7 @@ function meaningfulState(goal: GoalState): string {
     criteria: goal.criteria,
     constraints: goal.constraints,
     status: goal.status,
+    progress: goal.progress,
     evidence: goal.evidence,
     blocker: goal.blocker,
     pendingJobIds: goal.pendingJobIds,

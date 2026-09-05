@@ -7,7 +7,11 @@ import {
 } from "./types";
 
 export const GOAL_ENTRY_TYPE = "die-goal";
-const MAX_FIELD = 8_000;
+const MAX_FIELD = 4_000;
+const MAX_ITEMS = 20;
+const MAX_PROGRESS_ITEMS = 8;
+const MAX_PROGRESS_FIELD = 500;
+const MAX_AGGREGATE_TEXT = 12_000;
 
 function text(value: unknown, name: string): string {
   if (typeof value !== "string" || !value.trim()) {
@@ -22,12 +26,28 @@ function strings(value: unknown, name: string, required = false): string[] {
     throw new Error(`${name} must be an array of nonempty strings`);
   }
   if (required && value.length === 0) throw new Error(`${name} is required`);
-  if (value.length > 50) throw new Error(`${name} has too many items`);
+  if (value.length > MAX_ITEMS) throw new Error(`${name} has too many items`);
   return value.map(item => text(item, name));
 }
 
 function optionalText(value: unknown, name: string): string | undefined {
   return value === undefined ? undefined : text(value, name);
+}
+
+function aggregateText(goal: GoalState): number {
+  return [goal.objective, ...goal.criteria, ...goal.constraints, ...(goal.progress ?? []), ...(goal.pendingJobIds ?? []), goal.evidence, goal.blocker, goal.pauseReason]
+    .filter((item): item is string => typeof item === "string")
+    .reduce((total, item) => total + item.length, 0);
+}
+
+function validateAggregate(goal: GoalState): void {
+  if (aggregateText(goal) > MAX_AGGREGATE_TEXT) throw new Error("Goal payload is too large");
+}
+
+function progressText(value: unknown): string {
+  const result = text(value, "progress evidence");
+  if (result.length > MAX_PROGRESS_FIELD) throw new Error("progress evidence is too long");
+  return result;
 }
 
 function parseGoal(value: unknown): GoalState | undefined {
@@ -49,10 +69,15 @@ function parseGoal(value: unknown): GoalState | undefined {
       updatedAt: text(raw.updatedAt, "updatedAt"),
     };
 
+    if (raw.progress !== undefined) {
+      goal.progress = strings(raw.progress, "progress").map(progressText);
+      if (goal.progress.length > MAX_PROGRESS_ITEMS) return undefined;
+    }
     if (goal.status === "completed") goal.evidence = text(raw.evidence, "completion evidence");
     if (goal.status === "blocked") goal.blocker = text(raw.blocker, "blocker explanation");
     if (goal.status === "waiting") goal.pendingJobIds = strings(raw.pendingJobIds, "pendingJobIds", true);
     if (goal.status === "paused") goal.pauseReason = text(raw.pauseReason, "pause reason");
+    validateAggregate(goal);
     return goal;
   } catch {
     return undefined;
@@ -124,6 +149,7 @@ export class GoalStore {
       createdAt: at,
       updatedAt: at,
     };
+    validateAggregate(goal);
     return this.#save("set", goal);
   }
 
@@ -134,6 +160,7 @@ export class GoalStore {
       blocker?: unknown;
       pendingJobIds?: unknown;
       reason?: unknown;
+      progress?: unknown;
     },
     runningJobs: ReadonlySet<string> = new Set(),
   ): GoalState {
@@ -166,6 +193,13 @@ export class GoalStore {
     if (status === "paused") {
       goal.pauseReason = optionalText(input.reason, "pause reason") ?? "Paused";
     }
+    if (input.progress !== undefined) {
+      if (status !== "active") throw new Error("progress evidence requires active status");
+      const milestone = progressText(input.progress);
+      const prior = goal.progress ?? [];
+      if (!prior.includes(milestone)) goal.progress = [...prior, milestone].slice(-MAX_PROGRESS_ITEMS);
+    }
+    validateAggregate(goal);
     return this.#save("update", goal);
   }
 
