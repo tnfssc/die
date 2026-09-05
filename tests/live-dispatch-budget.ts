@@ -9,31 +9,45 @@ export interface LiveDispatchEvidence {
 
 type StreamSimple = (...args: any[]) => unknown;
 
-interface StreamRuntime {
+interface StreamProvider {
   streamSimple: StreamSimple;
 }
 
+interface StreamRuntime {
+  streamSimple: StreamSimple;
+  getProvider(providerId: string): StreamProvider | undefined;
+}
+
 /**
- * Installs a synchronous guard at the ModelRuntime boundary. Unlike extension
- * events, an error here propagates to the agent and cannot be swallowed by an
- * extension runner. Retries are disabled so one admitted stream call can make
- * at most one provider dispatch; all other stream options, including the
- * explicitly configured transport, pass through unchanged.
+ * Installs a hard synchronous guard at the concrete provider boundary. The
+ * runtime wrapper disables retries before request preparation, while the
+ * provider wrapper records only calls that actually survive preparation and
+ * reach provider dispatch. A preparation/auth failure is therefore an
+ * invocation, not falsely reported as a paid request.
  */
 export function installLiveDispatchBudget(
   runtime: StreamRuntime,
+  providerId: string,
   limit: number,
   onDispatch: (evidence: LiveDispatchEvidence) => void,
 ) {
   if (!Number.isInteger(limit) || limit < 1) {
     throw new Error("Dispatch limit must be a positive integer");
   }
-  const original = runtime.streamSimple;
+  const provider = runtime.getProvider(providerId);
+  if (!provider) throw new Error("Runtime provider is not initialized: " + providerId);
+
+  const originalRuntimeStream = runtime.streamSimple;
+  const originalProviderStream = provider.streamSimple;
+  let invocations = 0;
   let dispatches = 0;
-  let attempts = 0;
 
   runtime.streamSimple = ((model: any, context: unknown, options?: Record<string, unknown>) => {
-    attempts++;
+    invocations++;
+    return originalRuntimeStream.call(runtime, model, context, { ...options, maxRetries: 0 });
+  }) as StreamSimple;
+
+  provider.streamSimple = ((model: any, context: unknown, options?: Record<string, unknown>) => {
     if (dispatches >= limit) {
       throw new Error(`Live smoke exceeded its ${limit}-request dispatch limit`);
     }
@@ -46,18 +60,19 @@ export function installLiveDispatchBudget(
       transport: String(options?.transport),
       dispatchedAt: new Date().toISOString(),
     });
-    return original.call(runtime, model, context, { ...options, maxRetries: 0 });
+    return originalProviderStream.call(provider, model, context, options);
   }) as StreamSimple;
 
   return {
-    get attempts() {
-      return attempts;
+    get invocations() {
+      return invocations;
     },
     get dispatches() {
       return dispatches;
     },
     restore() {
-      runtime.streamSimple = original;
+      runtime.streamSimple = originalRuntimeStream;
+      provider.streamSimple = originalProviderStream;
     },
   };
 }

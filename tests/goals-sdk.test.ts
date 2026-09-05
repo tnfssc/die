@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { createAssistantMessageEventStream, getModel, type AssistantMessage } from "@earendil-works/pi-ai/compat";
+import { type AssistantMessage, createAssistantMessageEventStream, getModel } from "@earendil-works/pi-ai/compat";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -10,8 +10,9 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import tasks from "../src/tasks/extension";
 import { MAX_NO_PROGRESS_CONTINUATIONS } from "../src/goals/controller";
+import tasks from "../src/tasks/extension";
+import { installLiveDispatchBudget } from "./live-dispatch-budget";
 
 const usage = {
   input: 1,
@@ -332,4 +333,98 @@ test("real SDK print completion cycles accept distinct explicit milestones", asy
     status: "completed",
     evidence: "distinct print milestones survived automatic completion runs",
   });
+}, 15_000);
+
+test("live goal fixture reaches an intercepted real-runtime provider offline", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-goal-provider-sdk-"));
+  let session: any;
+  let restoreBudget: (() => void) | undefined;
+  let restoreProvider: (() => void) | undefined;
+  try {
+    const model = getModel("openai-codex", "gpt-5.6-luna")!;
+    const runtime = await ModelRuntime.create({
+      authPath: join(dir, "auth.json"),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    const provider = runtime.getProvider(model.provider)!;
+    expect(provider).toBeDefined();
+
+    runtime.hasConfiguredAuth = (() => true) as any;
+    runtime.getAuth = (async () => ({ auth: { apiKey: "offline" } })) as any;
+    const originalProviderStream = provider.streamSimple;
+    let intercepted = 0;
+    let interceptedOptions: any;
+    provider.streamSimple = ((_model: any, _context: any, options: any) => {
+      intercepted++;
+      interceptedOptions = options;
+      throw new Error("OFFLINE_PROVIDER_INTERCEPT");
+    }) as any;
+    restoreProvider = () => {
+      provider.streamSimple = originalProviderStream;
+    };
+
+    const dispatches: unknown[] = [];
+    const budget = installLiveDispatchBudget(runtime, model.provider, 1, (item) => dispatches.push(item));
+    restoreBudget = budget.restore;
+    const manager = SessionManager.create(dir, join(dir, "sessions"));
+    const loader = new DefaultResourceLoader({
+      cwd: dir,
+      agentDir: dir,
+      noExtensions: true,
+      noSkills: true,
+      noThemes: true,
+      noPromptTemplates: true,
+      extensionFactories: [
+        {
+          name: "die-tasks",
+          factory: (pi) => tasks(pi, { executablePath: resolve(import.meta.dir, "../dist/die") }),
+        },
+      ],
+    });
+    await loader.reload();
+    ({ session } = await createAgentSession({
+      cwd: dir,
+      agentDir: dir,
+      resourceLoader: loader,
+      model,
+      modelRuntime: runtime,
+      sessionManager: manager,
+      settingsManager: SettingsManager.inMemory({ transport: "sse", compaction: { enabled: false } }),
+      thinkingLevel: "medium",
+      tools: ["execute"],
+    }));
+
+    let assistant: any;
+    session.subscribe((event: any) => {
+      if (event.type === "message_end" && event.message.role === "assistant") assistant = event.message;
+    });
+    await session.prompt(
+      "/goal set Verify offline provider interception --criteria Reach provider dispatch --constraints Do not retry",
+    );
+    for (let attempt = 0; attempt < 100 && !assistant; attempt++) await Bun.sleep(10);
+    await session.waitForIdle();
+    expect({ intercepted, invocations: budget.invocations, dispatches: budget.dispatches }).toEqual({
+      intercepted: 1,
+      invocations: 1,
+      dispatches: 1,
+    });
+    expect(dispatches).toHaveLength(1);
+    expect(interceptedOptions).toMatchObject({ maxRetries: 0, transport: "sse" });
+    expect(assistant).toMatchObject({ stopReason: "error" });
+    expect(assistant.errorMessage).toContain("OFFLINE_PROVIDER_INTERCEPT");
+    const latestGoal = manager
+      .getEntries()
+      .filter((entry: any) => entry.type === "custom" && entry.customType === "die-goal")
+      .at(-1) as any;
+    expect(latestGoal.data.goal).toMatchObject({
+      status: "paused",
+      pauseReason: expect.stringContaining("interrupted agent turn"),
+    });
+  } finally {
+    session?.dispose();
+    restoreBudget?.();
+    restoreProvider?.();
+    await rm(dir, { recursive: true, force: true });
+  }
 }, 15_000);

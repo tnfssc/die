@@ -55,7 +55,7 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
       });
       // This guard is on the real runtime method, outside extension error handling.
       // maxRetries=0 makes each admitted call correspond to at most one paid dispatch.
-      budget = installLiveDispatchBudget(runtime, 4, (item) => requestEvidence.push(item));
+      budget = installLiveDispatchBudget(runtime, model.provider, 4, (item) => requestEvidence.push(item));
       manager = SessionManager.create(dir, join(dir, "sessions"));
       const loader = new DefaultResourceLoader({
         cwd: dir,
@@ -94,6 +94,8 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
         if (usageEvidence.length >= 6) return;
         usageEvidence.push({
           stopReason: event.message.stopReason,
+          errorMessage:
+            event.message.errorMessage === undefined ? undefined : String(event.message.errorMessage).slice(0, 2_000),
           usage: event.message.usage,
           toolNames: event.message.content
             .filter((part) => part.type === "toolCall")
@@ -121,8 +123,18 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
             "; Read it back and confirm exact contents; Persist completed goal evidence after verification" +
             " --constraints Use only the local temporary directory; Do not start background jobs or subagents; Keep evidence concise",
         );
+        for (let attempt = 0; attempt < 12_000 && usageEvidence.length === 0; attempt++) await Bun.sleep(10);
+        if (usageEvidence.length === 0) throw new Error("Provider response was not observed before the wall limit");
         await session!.waitForIdle();
 
+        const lastAssistant = usageEvidence.at(-1);
+        if (!lastAssistant || lastAssistant.stopReason === "error") {
+          throw new Error(
+            "Provider failed before artifact verification: " +
+              String(lastAssistant?.errorMessage ?? "assistant response was not observed"),
+          );
+        }
+        expect(budget!.dispatches).toBeGreaterThan(0);
         const artifact = await readFile(criterionFile);
         expect(artifact.toString("utf8")).toBe(marker);
         const goalEntries = manager!
@@ -171,10 +183,21 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
       else if (session) await session.abort();
       if (workflow) await Promise.allSettled([workflow]);
       budget?.restore();
-      evidence.providerRequestAttempts = budget?.attempts ?? 0;
-      evidence.providerRequests = budget?.dispatches ?? 0;
+      evidence.runtimeInvocations = budget?.invocations ?? 0;
+      evidence.providerDispatches = budget?.dispatches ?? 0;
       evidence.requests = requestEvidence;
       evidence.usage = usageEvidence;
+      const goalEntries =
+        manager?.getEntries().filter((entry: any) => entry.type === "custom" && entry.customType === "die-goal") ?? [];
+      const latestGoal = (goalEntries.at(-1) as any)?.data?.goal;
+      if (latestGoal) {
+        evidence.goal = {
+          status: latestGoal.status,
+          revisions: goalEntries.length,
+          evidenceChars: typeof latestGoal.evidence === "string" ? latestGoal.evidence.length : 0,
+          pauseReason: latestGoal.pauseReason,
+        };
+      }
       evidence.sessionEntries ??= manager?.getEntries().length ?? 0;
       session?.dispose();
       await mkdir(evidenceDir, { recursive: true });
