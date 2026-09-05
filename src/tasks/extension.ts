@@ -15,12 +15,15 @@ import { registerTaskMonitor } from "./task-monitor";
 import { registerResumeSafeguards } from "./resume-safeguards";
 import { registerInstructionMode } from "./instruction-mode";
 import { CacheCountdown, registerCacheCountdown } from "./cache-countdown";
+import { JobAttentionScheduler, formatAttentionNotification, type AttentionNotice, type AttentionOptions } from "./job-attention";
 
-export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string; cacheSettingsPath?: string } = {}): void {
+export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string; cacheSettingsPath?: string; attention?: AttentionOptions; executablePath?: string } = {}): void {
   const cacheCountdown = new CacheCountdown();
   registerCacheCountdown(pi, cacheCountdown, options.cacheSettingsPath);
   const installUI = createCompactUI(pi, cacheCountdown);
   pi.registerMessageRenderer("task-complete", (message, options, theme) =>
+    completionPreview(message.content, options.expanded, theme, options.outputPad));
+  pi.registerMessageRenderer("task-attention", (message, options, theme) =>
     completionPreview(message.content, options.expanded, theme, options.outputPad));
   registerSubagentSettings(pi, options.profilesPath);
   // Environment identity is the floor for genuinely spawned child processes.
@@ -57,6 +60,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     canSpawnSubagent = canDelegate(subagentDepth, agentType);
   };
   let manager: TaskManager | undefined;
+  let attention: JobAttentionScheduler | undefined;
   registerNativeCodexCompaction(pi, () => manager?.list().filter(task => task.status === "running")
     .map(({id,kind,status}) => ({id,kind,status})) ?? []);
   registerCacheAffineCompaction(pi, () => manager?.list().filter(task => task.status === "running")
@@ -67,22 +71,49 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     taskUi?.setStatus("die-tasks", running > 0 ? `${running} task${running === 1 ? "" : "s"} running` : undefined);
   };
 
-  const completions = new CompletionBatcher<TaskInspection>((tasks) => {
+  type Notification = { kind: "completion"; task: TaskInspection } | { kind: "attention"; notice: AttentionNotice };
+  const notificationBatch = new CompletionBatcher<Notification>((items) => {
     updateTaskStatus();
-    const summaries = tasks.map(({ output: _output, ...summary }) => summary);
-    pi.sendMessage(
-      {
-        customType: "task-complete",
-        content: formatCompletionNotification(tasks),
-        display: true,
-        details: { tasks: summaries },
+    const completionMap = new Map(items.filter(item => item.kind === "completion").map(item => [item.task.id, item.task]));
+    const runningIds = new Set(manager?.pending().map(task => task.id) ?? []);
+    const attentionMap = new Map(items.filter(item => item.kind === "attention")
+      .filter(item => runningIds.has(item.notice.id) && !completionMap.has(item.notice.id))
+      .map(item => [item.notice.id, item.notice]));
+    const tasks = [...completionMap.values()], notices = [...attentionMap.values()];
+    if (!tasks.length && !notices.length) return;
+    const mixed = tasks.length > 0 && notices.length > 0;
+    const separator = mixed ? 2 : 0;
+    const completionBudget = mixed ? 2_499 : 5_000;
+    const attentionBudget = mixed ? 5_000 - separator - completionBudget : 5_000;
+    const content = [tasks.length ? formatCompletionNotification(tasks, completionBudget) : "",
+      notices.length ? formatAttentionNotification(notices, attentionBudget) : ""].filter(Boolean).join("\n\n");
+    pi.sendMessage({
+      customType: tasks.length ? "task-complete" : "task-attention", content, display: true,
+      details: {
+        tasks: tasks.slice(0, 50).map(({ output: _output, command, ...summary }) => ({ ...summary, command: command.slice(0, 400) })),
+        attention: notices.slice(0, 50).map(({ task: _task, ...notice }) => notice),
+        omittedTasks: Math.max(0, tasks.length - 50),
+        omittedAttention: Math.max(0, notices.length - 50),
       },
-      { deliverAs: "steer", triggerTurn: true },
-    );
-  });
+    }, { deliverAs: "steer", triggerTurn: true });
+  }, 250, 500);
+  const completions = {
+    add: (task: TaskInspection) => notificationBatch.add({ kind: "completion", task }),
+    flush: () => notificationBatch.flush(),
+    dispose: () => notificationBatch.dispose(),
+  };
+  const attentions = {
+    add: (notice: AttentionNotice) => notificationBatch.add({ kind: "attention", notice }),
+    flush: () => notificationBatch.flush(),
+    // Completion owns the shared batcher's disposal.
+    dispose: () => {},
+  };
 
   const getManager = () => {
-    manager ??= new TaskManager((task) => completions.add(task));
+    if (!manager) {
+      manager = new TaskManager((task) => completions.add(task));
+      attention = new JobAttentionScheduler(manager, notices => { for (const notice of notices) attentions.add(notice); }, options.attention);
+    }
     return manager;
   };
 
@@ -92,9 +123,10 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
   let service: JobService | undefined;
   registerExecuteTool(pi, (ctx, method, params, signal) => {
     taskUi = ctx.ui;
-    service ??= new JobService(getManager(), () => ({ depth: subagentDepth, type: agentType }), updateTaskStatus, options.profilesPath);
+    const tasks = getManager();
+    service ??= new JobService(tasks, () => ({ depth: subagentDepth, type: agentType }), updateTaskStatus, options.profilesPath, attention);
     return service.handle(method, params, ctx, signal);
-  });
+  }, options.executablePath);
 
   pi.on("agent_end", async (event, ctx) => {
     // Print/JSON sessions otherwise dispose their runtime immediately when the
@@ -105,22 +137,44 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     if (ctx.signal?.aborted || lastAssistant?.stopReason === "aborted" || lastAssistant?.stopReason === "error") return;
     const tasks = manager;
     const running = tasks?.list().filter((task) => task.status === "running") ?? [];
+    let boundary: "completion" | "attention" | "abort" = "abort";
     if (tasks && running.length > 0) {
       let onAbort: (() => void) | undefined;
+      const attentionWait = new AbortController();
       try {
-        await Promise.race([
-          ...running.map((task) => tasks.wait(task.id)),
-          new Promise<void>((resolve) => {
-            onAbort = resolve;
+        boundary = await Promise.race([
+          ...running.map((task) => tasks.wait(task.id).then(() => "completion" as const)),
+          ...(attention ? [attention.waitForNotice(ctx.signal ? AbortSignal.any([ctx.signal, attentionWait.signal]) : attentionWait.signal).then(() => "attention" as const)] : []),
+          new Promise<"abort">((resolve) => {
+            onAbort = () => resolve("abort");
             ctx.signal?.addEventListener("abort", onAbort, { once: true });
-            if (ctx.signal?.aborted) resolve();
+            if (ctx.signal?.aborted) resolve("abort");
           }),
         ]);
       } finally {
+        attentionWait.abort();
         if (onAbort) ctx.signal?.removeEventListener("abort", onAbort);
       }
     }
-    if (!ctx.signal?.aborted) completions.flush();
+    // Keep the print boundary until the shared batch is actually delivered.
+    // For attention, retain the normal short coalescing window so a completion
+    // racing the checkpoint supersedes stale attention in one parent wakeup.
+    if (!ctx.signal?.aborted) {
+      if (boundary === "attention" && tasks) {
+        // Give a task already racing the checkpoint one bounded chance to
+        // complete; its completion supersedes stale attention for that task.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            ...running.map(task => tasks.wait(task.id)),
+            new Promise<void>(resolve => { timer = setTimeout(resolve, 200); timer.unref?.(); }),
+          ]);
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      }
+      notificationBatch.flush();
+    }
   });
 
   pi.on("before_agent_start", (event, ctx) => {
@@ -156,8 +210,11 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     taskUi?.setStatus("die-tasks", undefined);
     instructionMode.shutdown();
     completions.dispose();
+    attentions.dispose();
+    attention?.dispose();
     await manager?.shutdown();
     manager = undefined;
+    attention = undefined;
     service = undefined;
   });
 }

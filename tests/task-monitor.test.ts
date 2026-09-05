@@ -75,6 +75,6 @@ test("subscribe supplies events while zero-argument listeners remain compatible"
  const manager=new TaskManager(()=>{},20),types:string[]=[];let legacy=0;
  const off=manager.subscribe(event=>types.push(event.type+":"+event.task.id));
  const offLegacy=manager.subscribe(()=>legacy++);const task=launch(manager,"printf event");await manager.wait(task.id);
- expect(types.some(value=>value==="spawn:"+task.id)).toBe(true);expect(types.some(value=>value==="output:"+task.id)).toBe(true);expect(types.some(value=>value==="status:"+task.id)).toBe(true);expect(legacy).toBeGreaterThan(0);
+ expect(types.some(value=>value==="spawned:"+task.id)).toBe(true);expect(types.some(value=>value==="activity:"+task.id)).toBe(true);expect(types.some(value=>value==="completed:"+task.id)).toBe(true);expect(legacy).toBeGreaterThan(0);
  off();offLegacy();await manager.shutdown();
 });

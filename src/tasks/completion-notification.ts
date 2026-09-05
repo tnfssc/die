@@ -32,7 +32,7 @@ function formatOmitted(tasks: TaskInspection[], limit: number): string {
   return result.slice(0, limit);
 }
 
-function formatLargeBatch(tasks: TaskInspection[]): string {
+function formatLargeBatch(tasks: TaskInspection[], maxChars: number): string {
   let content = `${tasks.length} asynchronous tasks completed.\n\nResult previews:`;
   for (const task of tasks.slice(0, LARGE_BATCH_PREVIEW_COUNT)) {
     const output = task.output.trim().replaceAll(/\s+/g, " ");
@@ -41,14 +41,14 @@ function formatLargeBatch(tasks: TaskInspection[]): string {
   }
   const omitted = tasks.slice(LARGE_BATCH_PREVIEW_COUNT);
   if (omitted.length > 0) {
-    const available = MAX_COMPLETION_NOTIFICATION_CHARS - content.length - 2;
+    const available = maxChars - content.length - 2;
     content += `\n\n${formatOmitted(omitted, available)}`;
   }
-  return content.slice(0, MAX_COMPLETION_NOTIFICATION_CHARS);
+  return content.slice(0, maxChars);
 }
 
-export function formatCompletionNotification(tasks: TaskInspection[]): string {
-  if (tasks.length > LARGE_BATCH_THRESHOLD) return formatLargeBatch(tasks);
+export function formatCompletionNotification(tasks: TaskInspection[], maxChars = MAX_COMPLETION_NOTIFICATION_CHARS): string {
+  if (tasks.length > LARGE_BATCH_THRESHOLD) return formatLargeBatch(tasks, maxChars);
   let content = `${tasks.length} asynchronous task${tasks.length === 1 ? "" : "s"} completed.`;
 
   for (let index = 0; index < tasks.length; index++) {
@@ -67,16 +67,16 @@ export function formatCompletionNotification(tasks: TaskInspection[]): string {
       .join("\n");
     const part = `\n\n${block}`;
     const futureOmitted = index < tasks.length - 1
-      ? `\n\n${formatOmitted(tasks.slice(index + 1), MAX_COMPLETION_NOTIFICATION_CHARS)}`
+      ? `\n\n${formatOmitted(tasks.slice(index + 1), maxChars)}`
       : "";
 
-    if (content.length + part.length + futureOmitted.length > MAX_COMPLETION_NOTIFICATION_CHARS) {
-      const available = MAX_COMPLETION_NOTIFICATION_CHARS - content.length - 2;
+    if (content.length + part.length + futureOmitted.length > maxChars) {
+      const available = maxChars - content.length - 2;
       if (available > 0) content += `\n\n${formatOmitted(tasks.slice(index), available)}`;
       break;
     }
     content += part;
   }
 
-  return content.slice(0, MAX_COMPLETION_NOTIFICATION_CHARS);
+  return content.slice(0, maxChars);
 }
