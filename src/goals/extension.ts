@@ -233,10 +233,19 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     bumpGeneration();
   });
 
-  pi.on("agent_end", event => {
+  pi.on("agent_end", (event, ctx) => {
     const last = [...event.messages].reverse().find(message => message.role === "assistant");
-    if (last?.stopReason === "aborted" || last?.stopReason === "error") {
+    if (ctx.signal?.aborted || last?.stopReason === "aborted" || last?.stopReason === "error") {
       pause("Paused after interrupted agent turn");
+      return;
+    }
+    if (controller.endRun(store?.get()) === "pause") {
+      store!.update({
+        status: "paused",
+        reason: "Paused after repeated automatic turns made no meaningful progress",
+      });
+      invalidate();
+      notify("Goal paused: repeated continuations made no meaningful progress", "warning");
     }
   });
 
@@ -260,15 +269,7 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
       return;
     }
 
-    const action = controller.settle(goal);
-    if (action === "pause") {
-      store!.update({
-        status: "paused",
-        reason: "Paused after repeated automatic turns made no meaningful progress",
-      });
-      invalidate();
-      notify("Goal paused: repeated continuations made no meaningful progress", "warning");
-    } else if (action === "continue") {
+    if (controller.settle(goal) === "continue") {
       sendContinuation(store!.get()!);
     }
   });

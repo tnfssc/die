@@ -26,28 +26,32 @@ export class GoalContinuationController {
     this.#startingMilestones = milestoneState(goal);
   }
 
-  settle(goal: GoalState | undefined): "continue" | "pause" | "none" {
-    if (!goal) return "none";
-    if (!this.#automatic) return goal.status === "active" ? "continue" : "none";
+  // AgentSession can run several automatic completion turns before it emits
+  // agent_settled. Account at the boundary that occurs exactly once per model
+  // run so those turns cannot evade the no-progress guard.
+  endRun(goal: GoalState | undefined): "pause" | "none" {
+    if (!goal || !this.#automatic) return "none";
 
     // A helper can create a goal during a turn that would have run anyway. Do
-    // not charge that turn when it settles normally, but retain automatic
+    // not charge that turn when it ends normally, but retain automatic
     // tracking when its first turn hands off into waiting work.
     if (this.#helperActivated) {
       this.#helperActivated = false;
-      if (goal.status !== "waiting") return goal.status === "active" ? "continue" : "none";
+      if (goal.status !== "waiting") return "none";
     }
 
+    if (goal.status !== "active" && goal.status !== "waiting") return "none";
     const milestones = milestoneState(goal);
     const progressed = milestones !== this.#startingMilestones;
     this.#noProgress = progressed ? 0 : this.#noProgress + 1;
     this.#startingMilestones = milestones;
+    return this.#noProgress >= MAX_NO_PROGRESS_CONTINUATIONS ? "pause" : "none";
+  }
 
-    if (this.#noProgress >= MAX_NO_PROGRESS_CONTINUATIONS
-      && (goal.status === "active" || goal.status === "waiting")) {
-      return "pause";
-    }
-    return goal.status === "active" ? "continue" : "none";
+  // Reminder scheduling remains at the fully-settled boundary. No accounting
+  // happens here: every completed run was already observed by endRun().
+  settle(goal: GoalState | undefined): "continue" | "none" {
+    return goal?.status === "active" ? "continue" : "none";
   }
 
   reset(): void {
