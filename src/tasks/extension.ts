@@ -12,7 +12,7 @@ import { JobService } from "./job-service";
 import { clearInstructionContinuity, registerCacheAffineCompaction, scopeInstructionContinuity } from "./cache-affine-compaction";
 import { registerNativeCodexCompaction } from "./native-compaction";
 import { JobAttentionScheduler, formatAttentionNotification, type AttentionNotice, type AttentionOptions } from "./job-attention";
-import { registerGoalMode } from "../goals/extension";
+import { registerGoalMode, type GoalRuntime } from "../goals/extension";
 
 export default function asynchronousTasksExtension(
   pi: ExtensionAPI,
@@ -70,15 +70,28 @@ export default function asynchronousTasksExtension(
     dispose: () => {},
   };
 
+  let goals: GoalRuntime;
   const getManager = () => {
     if (!manager) {
-      manager = new TaskManager((task) => completions.add(task));
+      manager = new TaskManager((task) => {
+        completions.add(task);
+        goals.jobsChanged();
+      });
       attention = new JobAttentionScheduler(manager, notices => { for (const notice of notices) attentions.add(notice); }, options.attention);
     }
     return manager;
   };
 
-  const goals = registerGoalMode(pi, () => new Set(manager?.list().filter(task => task.status === "running").map(task => task.id) ?? []));
+  goals = registerGoalMode(pi, {
+    runningIds: () => new Set(manager?.list()
+      .filter(task => task.status === "running")
+      .map(task => task.id) ?? []),
+    status: (id) => {
+      const task = manager?.list().find(item => item.id === id);
+      if (!task) return "unavailable";
+      return task.status === "running" ? "running" : "finished";
+    },
+  });
   let service: JobService | undefined;
   registerExecuteTool(pi, (ctx, method, params, signal) => {
     if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
