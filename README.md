@@ -42,6 +42,33 @@ die
 
 The compiled executable includes its runtime and can be copied to another location on a compatible OS/architecture. API credentials and user configuration are still supplied at runtime as they are for Pi. `die` stores its configuration and persistent state under `~/.die` rather than `~/.pi`. Automatic update checks and the `die update` command are disabled until `die` has its own update channel.
 
+## Command and interactive help
+
+Run `die --help` for the complete command-line option list. Common entry points are:
+
+```sh
+die                         # Start the interactive TUI
+die -p "Describe this tree" # Run one print-mode prompt
+die -c                      # Continue the most recent session
+die -r                      # Choose a saved session to resume
+```
+
+Inside the TUI, type `/` to browse all commands supplied by die, Pi, installed
+extensions, prompt templates, and skills. Die's user-facing additions are:
+
+| Command | Supported behavior |
+| --- | --- |
+| `/goal` | Show goal status, or `set`, `pause`, `resume`, and `clear` an opt-in durable goal. See [Goal mode](./docs/goals.md). |
+| `/mode` | Show or select `fast`, `normal`, or `orchestrator` instructions for the main agent. This changes instructions only—not the model or thinking level. |
+| `/ps` | Open the interactive monitor for running jobs owned by this session; inspect bounded recent output or explicitly stop a selected job. TUI only. |
+| `/subagents` | Configure model and thinking inheritance for fast, normal, and orchestrator sub-agents. |
+| `/cache-ttl [duration]` | Show or set the local cache-expiry estimate (for example, `30m`, `1h`, or `1d`). It is informational, not a provider cache guarantee. |
+| `/status` | Show the compact session status, including combined descendant cost estimates. |
+
+Pi's session commands, including `/resume`, `/new`, `/session`, `/tree`, and
+`/compact`, remain available. Resumed worker/orchestrator child sessions are labeled
+and require confirmation in the TUI because their role and delegation limits persist.
+
 ## Tests
 
 ```sh
@@ -200,7 +227,7 @@ Session names begin with `[orchestrator agent]` or `[subagent · fast/normal]` f
 
 Use `execute` with `jobs.inspect(id)` on unexpectedly slow agents to see the last observed event, current tool, quiet duration, recent output/errors, and the full session path. The activity log remains available after failure or cancellation for the rest of the parent session. Full completed messages/tool history remain on disk after that. Successful completion notifications return the answer rather than the event stream, with a session link for further inspection.
 
-Progress keeps the last 1 MB per job; inspections return at most 5 KB of log output. Individual JSON events exceeding 1 MB are skipped with a diagnostic notice; the session file is the durable source. Progress is observational—not a heartbeat, CPU profile, or guaranteed indication of provider/network liveness. Session files and tool previews can contain sensitive workspace data; they receive the same care as normal agent history. `/ps` remains planned.
+Progress keeps the last 1 MB per job; inspections return at most 5 KB of log output. Individual JSON events exceeding 1 MB are skipped with a diagnostic notice; the session file is the durable source. Progress is observational—not a heartbeat, CPU profile, or guaranteed indication of provider/network liveness. Session files and tool previews can contain sensitive workspace data; they receive the same care as normal agent history. `/ps` provides the interactive running-job monitor described above.
 
 ### Compact tool and completion views
 
