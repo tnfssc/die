@@ -4,7 +4,7 @@ import {join} from "node:path";
 import {tmpdir} from "node:os";
 import type {ExtensionAPI,ExtensionContext} from "@earendil-works/pi-coding-agent";
 import {CACHE_CALL_ENTRY,CacheCountdown,DEFAULT_CACHE_TTL_MS,loadCacheSettings,parseCacheSettings,parseCacheTtl,registerCacheCountdown} from "../src/tasks/cache-countdown";
-import {reportProviderAttempt} from "../src/tasks/provider-attempts";
+import {reportProviderAttempt,subscribeProviderAttempts} from "../src/tasks/provider-attempts";
 
 function context(provider="openai",id="alpha",entries:any[]=[]){return {model:{provider,id},sessionManager:{getEntries:()=>entries},ui:{notify(){}}} as unknown as ExtensionContext;}
 
@@ -69,8 +69,13 @@ describe("cache countdown",()=>{
   handlers.get("before_provider_request")!({payload:{}},ctx);
   (ctx as any).model={provider:"p",id:"selected-later"};
   handlers.get("after_provider_response")!({status:429,headers:{},model:{provider:"p",id:"actual"}},ctx);
+  handlers.get("before_provider_request")!({payload:{}},ctx); // provider retry is a new attempt
   handlers.get("after_provider_response")!({status:200,headers:{},model:{provider:"p",id:"actual"}},ctx);
-  expect(appended.map(entry=>entry.data.model)).toEqual(["actual","actual"]);
+  handlers.get("before_provider_request")!({payload:{}},ctx);
+  (ctx as any).model={provider:"p",id:"selected-after-dispatch"};
+  handlers.get("message_end")!({message:{role:"assistant",provider:"p",model:"actual-ws",stopReason:"stop"}},ctx);
+  handlers.get("message_end")!({message:{role:"assistant",provider:"p",model:"duplicate",stopReason:"stop"}},ctx);
+  expect(appended.map(entry=>entry.data.model)).toEqual(["actual","actual","actual-ws"]);
  });
  test("warns about corrupt cache settings without changing them",async()=>{
   const dir=await mkdtemp(join(tmpdir(),"die-cache-corrupt-"));const path=join(dir,"cache-settings.json");
@@ -85,4 +90,18 @@ describe("cache countdown",()=>{
    expect(await readFile(path,"utf8")).toBe(corrupt);
   } finally {await rm(dir,{recursive:true,force:true});}
  });
+ test("provider observers are nonfatal and append failure causes no model drift",()=>{
+  const owner={}; let observed="";
+  subscribeProviderAttempts(owner,()=>{throw new Error("broken optional telemetry");});
+  subscribeProviderAttempts(owner,event=>{observed=event.model.id;});
+  expect(()=>reportProviderAttempt(owner,{provider:"p",id:"native"},"dispatch",1000)).not.toThrow();
+  expect(observed).toBe("native");
+
+  const countdown=new CacheCountdown(()=>2000);
+  countdown.record({appendEntry(){}} as unknown as ExtensionAPI,{provider:"p",id:"stable"},1000);
+  expect(()=>countdown.record({appendEntry(){throw new Error("disk full");}} as unknown as ExtensionAPI,{provider:"p",id:"drift"},1500)).toThrow("disk full");
+  expect(countdown.estimate(context("p","stable"),2000).state).toBe("active");
+  expect(countdown.estimate(context("p","drift"),2000).state).toBe("unknown");
+ });
+
 });

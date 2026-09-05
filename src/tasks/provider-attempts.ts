@@ -1,8 +1,8 @@
 import type { Model } from "@earendil-works/pi-ai";
 
 /** A conservatively observed provider attempt. Ordinary requests are reported
- * only once an HTTP response exists; direct native requests report at fetch
- * dispatch. No queue or history is retained here. */
+ * after an HTTP response or a transport-independent successful terminal event;
+ * direct native requests report at fetch dispatch. No queue or history is retained here. */
 export interface ProviderAttemptEvent {
   model: Pick<Model<any>, "provider" | "id">;
   timestamp: number;
@@ -27,5 +27,10 @@ export function subscribeProviderAttempts(owner: object, listener: ProviderAttem
  * drift across an await or model switch. */
 export function reportProviderAttempt(owner: object, model: Pick<Model<any>, "provider" | "id">, observedAt: ProviderAttemptEvent["observedAt"], timestamp = Date.now()): void {
   const event = { model, observedAt, timestamp };
-  for (const listener of listeners.get(owner) ?? []) listener(event);
+  // Telemetry is optional: a broken persistence/UI observer must never abort the
+  // provider request (including native fetch dispatch). Notify each observer in
+  // isolation so one failure cannot starve the others.
+  for (const listener of listeners.get(owner) ?? []) {
+    try { listener(event); } catch { /* non-fatal observer */ }
+  }
 }

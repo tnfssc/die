@@ -65,8 +65,9 @@ function validCall(value: unknown): value is CacheCall {
 }
 
 /**
- * Informational estimate only. A record means an HTTP provider request was
- * attempted; it does not assert cache creation, compatibility, or a cache hit.
+ * Informational estimate only. A record means a provider request was observed
+ * at an HTTP response or successful terminal message; it does not assert cache
+ * creation, compatibility, or a cache hit.
  */
 export class CacheCountdown {
   ttlMs = DEFAULT_CACHE_TTL_MS;
@@ -74,7 +75,11 @@ export class CacheCountdown {
   private listeners = new Set<()=>void>();
   constructor(private now:()=>number=Date.now) {}
   subscribe(listener:()=>void) { this.listeners.add(listener); return ()=>this.listeners.delete(listener); }
-  private changed() { for (const listener of this.listeners) listener(); }
+  private changed() {
+    for (const listener of this.listeners) {
+      try { listener(); } catch { /* optional UI observer */ }
+    }
+  }
   setTtl(ttlMs:number) { if (this.ttlMs !== ttlMs) { this.ttlMs=ttlMs; this.changed(); } }
   modelChanged() { this.changed(); }
   restore(ctx: ExtensionContext) {
@@ -89,8 +94,10 @@ export class CacheCountdown {
   record(pi:ExtensionAPI,model:Pick<Model<any>, "provider" | "id"> | undefined,timestamp=this.now()) {
     if (!model) return;
     const call={timestamp,provider:model.provider,model:model.id};
-    this.calls.set(call.provider+"/"+call.model,timestamp);
+    // Persist first. An append failure must not leave an in-memory estimate that
+    // claims an observation which cannot survive resume.
     pi.appendEntry(CACHE_CALL_ENTRY,call);
+    this.calls.set(call.provider+"/"+call.model,timestamp);
     this.changed();
   }
   estimate(ctx:Pick<ExtensionContext,"model">, now=this.now()):CacheEstimate {
@@ -113,25 +120,49 @@ export function registerCacheCountdown(pi:ExtensionAPI, countdown:CacheCountdown
     loadError=error instanceof Error ? error : new Error(String(error));
   });
   let unsubscribe=()=>{};
-  let preparedModel: Pick<Model<any>, "provider" | "id"> | undefined;
+  let owner: object | undefined;
+  let attempt: {model: Pick<Model<any>, "provider" | "id">; startedAt: number; observed: boolean} | undefined;
+  const observe=(model:Pick<Model<any>, "provider" | "id">,timestamp:number)=>{
+    if (!attempt || attempt.observed) return;
+    attempt.observed=true;
+    // Provider hooks are on the inference path. Persistence/UI telemetry is not.
+    try { countdown.record(pi,model,timestamp); } catch { /* non-fatal observer */ }
+  };
   pi.on("session_start",async(_event,ctx)=>{
     unsubscribe();
     countdown.restore(ctx);
-    preparedModel=undefined;
-    if (ctx.sessionManager && typeof ctx.sessionManager === "object") unsubscribe=subscribeProviderAttempts(ctx.sessionManager,event=>countdown.record(pi,event.model,event.timestamp));
+    attempt=undefined;
+    owner=ctx.sessionManager && typeof ctx.sessionManager === "object" ? ctx.sessionManager : undefined;
+    if (owner) unsubscribe=subscribeProviderAttempts(owner,event=>countdown.record(pi,event.model,event.timestamp));
     await ready;
     if (loadError) ctx.ui?.notify?.(loadError.message+". The file was left unchanged; using the default cache estimate.","warning");
   });
-  pi.on("session_shutdown",()=>{unsubscribe();unsubscribe=()=>{};preparedModel=undefined;});
-  // Pi 0.85 response events do not carry model identity. Capture it synchronously
-  // at payload preparation, then prefer event.model when runtimes expose it.
+  pi.on("session_shutdown",()=>{unsubscribe();unsubscribe=()=>{};owner=undefined;attempt=undefined;});
+  // Keep model identity and dispatch time request-local. The HTTP hook observes
+  // SSE immediately; a successful terminal assistant message covers transports
+  // (notably Codex WebSocket) that do not invoke onResponse.
   pi.on("before_provider_request",(_event,ctx)=>{
     const model=ctx.model;
-    preparedModel=model ? {provider:model.provider,id:model.id} : undefined;
+    attempt=model ? {model:{provider:model.provider,id:model.id},startedAt:Date.now(),observed:false} : undefined;
   });
   pi.on("after_provider_response",(event)=>{
     const actual=(event as typeof event & {model?:Pick<Model<any>, "provider" | "id">}).model;
-    countdown.record(pi,actual??preparedModel);
+    if (attempt) observe(actual??attempt.model,Date.now());
+  });
+  pi.on("message_end",(event)=>{
+    if (event.message.role !== "assistant" || !attempt) return;
+    const current=attempt;
+    if (current.observed || event.message.stopReason === "error" || event.message.stopReason === "aborted") {
+      attempt=undefined;
+      return;
+    }
+    // For WebSocket there is no response-header timestamp. Using request start
+    // is deliberately conservative: the displayed TTL never gains stream time.
+    const message=event.message as typeof event.message & {provider?:string;model?:string};
+    const model=typeof message.provider === "string" && typeof message.model === "string"
+      ? {provider:message.provider,id:message.model} : current.model;
+    observe(model,current.startedAt);
+    attempt=undefined;
   });
   pi.on("model_select",()=>countdown.modelChanged());
   pi.registerCommand("cache-ttl",{

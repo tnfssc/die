@@ -8,7 +8,7 @@ import tasks from "../src/tasks/extension";
 import {CACHE_CALL_ENTRY} from "../src/tasks/cache-countdown";
 
 const usage={input:1,output:1,cacheRead:0,cacheWrite:0,totalTokens:2,cost:{input:0,output:0,cacheRead:0,cacheWrite:0,total:0}};
-async function make(root:string,rejectPayload=false) {
+async function make(root:string,rejectPayload=false,noHttpHook=false) {
  let network=0;
  const model=getModel("anthropic","claude-sonnet-4-5")!;
  const runtime=await ModelRuntime.create({authPath:join(root,"auth.json"),modelsPath:null,refreshOnCreate:false});
@@ -19,7 +19,7 @@ async function make(root:string,rejectPayload=false) {
    if(rejectPayload) throw new Error("payload rejected before fetch");
    await o?.transformHeaders?.({});
    network++;
-   await o?.onResponse?.({status:200,headers:{}},m);
+   if (!noHttpHook) await o?.onResponse?.({status:200,headers:{}},m);
    const message:AssistantMessage={role:"assistant",api:m.api,provider:m.provider,model:m.id,content:[{type:"text",text:"offline"}],stopReason:"stop",usage,timestamp:Date.now()};
    out.push({type:"done",reason:"stop",message});out.end(message);
   })().catch(error=>{const message:any={role:"assistant",api:m.api,provider:m.provider,model:m.id,content:[],stopReason:"error",errorMessage:String(error),usage,timestamp:Date.now()};out.push({type:"error",reason:"error",error:message});out.end(message);});return out;};
@@ -54,6 +54,20 @@ test("payload rejection before fetch does not reset the estimate",async()=>{
   await run.session.prompt("reject before network").catch(()=>{});
   expect(run.network).toBe(0);
   expect(run.manager.getEntries().filter(e=>e.type==="custom"&&e.customType===CACHE_CALL_ENTRY)).toHaveLength(0);
+  run.session.dispose();
+ } finally {await rm(root,{recursive:true,force:true});}
+});
+
+
+test("successful terminal observation covers transports without an HTTP hook",async()=>{
+ const root=await mkdtemp(join(tmpdir(),"die-cache-terminal-"));
+ try {
+  const run=await make(root,false,true);
+  await run.session.prompt("scripted WebSocket success");
+  expect(run.network).toBe(1);
+  const calls=run.manager.getEntries().filter(e=>e.type==="custom"&&e.customType===CACHE_CALL_ENTRY);
+  expect(calls).toHaveLength(1);
+  expect((calls[0] as any).data).toMatchObject({provider:"anthropic",model:"claude-sonnet-4-5"});
   run.session.dispose();
  } finally {await rm(root,{recursive:true,force:true});}
 });
