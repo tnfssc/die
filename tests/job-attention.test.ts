@@ -87,3 +87,49 @@ test("TaskManager pending/event contracts are snapshot-based and attention text 
   const text=formatAttentionNotification(Array.from({length:100},()=>sample));
   expect(text.length).toBeLessThanOrEqual(5000);expect(text).toContain("Jobs continue running");expect(text).not.toMatch(/kill(ed)? automatically/i);
 });
+
+
+test("noisy activity is O(events), not O(jobs times events), in scheduler CPU and memory state",async()=>{
+  const clock=new FakeClock(), manager=new TaskManager(()=>{},10);managers.push(manager);
+  const tasks=Array.from({length:60},(_,index)=>manager.spawn(launch("stress "+index)));
+  const scheduler=new JobAttentionScheduler(manager,()=>{},{clock});
+  const before=scheduler.diagnostics(), heapBefore=process.memoryUsage().heapUsed;
+  for(let index=0;index<5_000;index++) await manager.write(tasks[index%tasks.length]!.id,"x");
+  const after=scheduler.diagnostics(), heapGrowth=process.memoryUsage().heapUsed-heapBefore;
+  expect(after.stateVisits).toBe(before.stateVisits);
+  expect(after.timerSchedules).toBe(before.timerSchedules);
+  expect(heapGrowth).toBeLessThan(20*1024*1024);
+  scheduler.dispose();
+});
+
+test("late attachment uses existing activity and watch grace does not fabricate activity",()=>{
+  const clock=new FakeClock(), batches:AttentionNotice[][]=[];
+  const manager=new TaskManager(()=>{},10);managers.push(manager);
+  const task=manager.spawn(launch("late"));clock.nowMs=Date.parse(task.startedAt);clock.advance(4*60_000);
+  const scheduler=new JobAttentionScheduler(manager,items=>batches.push(items),{clock});
+  clock.advance(60_000);expect(batches).toHaveLength(1);
+  scheduler.setWatch(task.id,false);clock.advance(10*60_000);scheduler.setWatch(task.id,true);
+  clock.advance(5*60_000);expect(batches).toHaveLength(2);
+  expect(batches[1]![0]!.quietForMs).toBe(20*60_000);
+  scheduler.dispose();
+});
+
+test("large clock jumps use arithmetic catchup and intervals must be finite",()=>{
+  const clock=new FakeClock(), batches:AttentionNotice[][]=[];
+  const manager=new TaskManager(()=>{},10);managers.push(manager);manager.spawn(launch("jump"));
+  const scheduler=new JobAttentionScheduler(manager,items=>batches.push(items),{clock,quietMs:10,reviewMs:11});
+  clock.advance(10**12);expect(batches).toHaveLength(1);expect(batches[0]![0]!.reasons).toContain("review");
+  scheduler.dispose();
+  expect(()=>new JobAttentionScheduler(manager,()=>{},{clock,quietMs:Infinity})).toThrow("finite");
+});
+
+
+test("raw agent model chunks emit one activity even when reasoning is not retained",async()=>{
+  const manager=new TaskManager(()=>{},10);managers.push(manager);let outputActivities=0;
+  manager.subscribe(event=>{if(event.type==="activity"&&event.source==="output")outputActivities++;});
+  const script='console.log(JSON.stringify({type:"message_update",assistantMessageEvent:{type:"thinking_delta",delta:"secret"}}))';
+  const task=manager.spawn({kind:"agent",agent:{type:"normal",model:"fake",depth:1,sessionFile:"fake.jsonl"},command:process.execPath,args:["-e",script],displayCommand:"agent stream",cwd:process.cwd(),closeStdin:true});
+  const done=await manager.wait(task.id);
+  expect(outputActivities).toBe(1);
+  expect(done.output).not.toContain("secret");
+});

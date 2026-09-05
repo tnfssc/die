@@ -13,7 +13,7 @@ import { clearInstructionContinuity, registerCacheAffineCompaction, scopeInstruc
 import { registerNativeCodexCompaction } from "./native-compaction";
 import { JobAttentionScheduler, formatAttentionNotification, type AttentionNotice, type AttentionOptions } from "./job-attention";
 
-export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string; attention?: AttentionOptions } = {}): void {
+export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string; attention?: AttentionOptions; executablePath?: string } = {}): void {
   const installUI = createCompactUI(pi);
   pi.registerMessageRenderer("task-complete", (message, options, theme) =>
     completionPreview(message.content, options.expanded, theme, options.outputPad));
@@ -45,12 +45,19 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
       .map(item => [item.notice.id, item.notice]));
     const tasks = [...completionMap.values()], notices = [...attentionMap.values()];
     if (!tasks.length && !notices.length) return;
-    const content = [tasks.length ? formatCompletionNotification(tasks) : "", notices.length ? formatAttentionNotification(notices) : ""].filter(Boolean).join("\n\n").slice(0, 5_000);
+    const mixed = tasks.length > 0 && notices.length > 0;
+    const separator = mixed ? 2 : 0;
+    const completionBudget = mixed ? 2_499 : 5_000;
+    const attentionBudget = mixed ? 5_000 - separator - completionBudget : 5_000;
+    const content = [tasks.length ? formatCompletionNotification(tasks, completionBudget) : "",
+      notices.length ? formatAttentionNotification(notices, attentionBudget) : ""].filter(Boolean).join("\n\n");
     pi.sendMessage({
       customType: tasks.length ? "task-complete" : "task-attention", content, display: true,
       details: {
-        tasks: tasks.map(({ output: _output, ...summary }) => summary),
-        attention: notices.map(({ task: _task, ...notice }) => notice),
+        tasks: tasks.slice(0, 50).map(({ output: _output, command, ...summary }) => ({ ...summary, command: command.slice(0, 400) })),
+        attention: notices.slice(0, 50).map(({ task: _task, ...notice }) => notice),
+        omittedTasks: Math.max(0, tasks.length - 50),
+        omittedAttention: Math.max(0, notices.length - 50),
       },
     }, { deliverAs: "steer", triggerTurn: true });
   });
@@ -80,7 +87,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     const tasks = getManager();
     service ??= new JobService(tasks, () => ({ depth: subagentDepth, type: agentType }), updateTaskStatus, options.profilesPath, attention);
     return service.handle(method, params, ctx, signal);
-  });
+  }, options.executablePath);
 
   pi.on("agent_end", async (event, ctx) => {
     // Print/JSON sessions otherwise dispose their runtime immediately when the
@@ -110,10 +117,13 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
         if (onAbort) ctx.signal?.removeEventListener("abort", onAbort);
       }
     }
-    // Attention uses the short shared debounce so a completion racing the
-    // checkpoint becomes one parent wakeup. Completion must flush immediately
-    // because print mode can otherwise exit before delivery.
-    if (!ctx.signal?.aborted && (!running.length || boundary !== "attention")) completions.flush();
+    // Keep the print boundary until the shared batch is actually delivered.
+    // For attention, retain the normal short coalescing window so a completion
+    // racing the checkpoint supersedes stale attention in one parent wakeup.
+    if (!ctx.signal?.aborted) {
+      if (boundary === "attention") await new Promise(resolve => setTimeout(resolve, 100));
+      notificationBatch.flush();
+    }
   });
 
   pi.on("before_agent_start", (event, ctx) => {

@@ -156,8 +156,15 @@ export class TaskManager {
 
     // Intentionally merge stdout and stderr for now. Stream labels and strict
     // cross-stream ordering require a structured output format; add that later.
-    const progress = task.agent ? new AgentProgress(task.agent, value => this.#append(task, value)) : undefined;
-    child.stdout.on("data", (data: Buffer) => progress ? progress.push(data) : this.#append(task, data));
+    const progress = task.agent ? new AgentProgress(task.agent, value => this.#append(task, value, false)) : undefined;
+    child.stdout.on("data", (data: Buffer) => {
+      if (progress) {
+        // Every raw model stream chunk is activity, including token/thinking
+        // events that AgentProgress deliberately does not retain.
+        this.#activity(task, "output");
+        progress.push(data);
+      } else this.#append(task, data);
+    });
     child.stderr.on("data", (data: Buffer) => {
       if (task.agent) {
         task.agent.lastActivityAt = new Date().toISOString();
@@ -371,11 +378,11 @@ export class TaskManager {
     }
   }
 
-  #append(task: ManagedTask, value: Buffer | string): void {
+  #append(task: ManagedTask, value: Buffer | string, activity = true): void {
     task.output.append(value);
     task.baseOffset = task.output.baseOffset;
     task.outputEnd = task.output.endOffset;
-    this.#activity(task, "output");
+    if (activity) this.#activity(task, "output");
   }
 
   #activity(task: ManagedTask, source: "output" | "input"): void {

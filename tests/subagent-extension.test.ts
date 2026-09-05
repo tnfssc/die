@@ -69,3 +69,28 @@ test("root values are part of the agent frame and explicit user prompts retain p
   const custom = await e.fire("before_agent_start", {systemPrompt:"user custom", systemPromptOptions:{customPrompt:"user custom"}}, {});
   expect(custom).toBeUndefined();
 });
+
+
+test("mixed completion and attention reserve bounded evidence for both",async()=>{
+  let now=Date.now(), nextTimer=1;const timers=new Map<number,{at:number;callback:()=>void}>();
+  const clock={now:()=>now,setTimeout:(callback:()=>void,delay:number)=>{const id=nextTimer++;timers.set(id,{at:now+delay,callback});return id;},clearTimeout:(id:unknown)=>timers.delete(id as number)};
+  const advance=(ms:number)=>{now+=ms;for(;;){const due=[...timers].find(([,timer])=>timer.at<=now);if(!due)break;timers.delete(due[0]);due[1].callback();}};
+  const e=load(0,undefined,{attention:{quietMs:15,reviewMs:1000,clock}});let rpc:any;
+  const mock=spyOn(execution,"executeIsolated").mockImplementation(async(_c,_w,_s,_t,options)=>{rpc=options!.jobHandler;return{exitCode:0,stdout:"",stderr:"",stdoutLost:false,stderrLost:false,timedOut:false,cancelled:false,images:[]};});
+  try {
+    await e.tools.get("execute").execute("bind",{code:""},undefined,undefined,{cwd:process.cwd()});mock.mockRestore();
+    const signal=new AbortController().signal;
+    const idle=await rpc("shell",{command:"read value",waitSeconds:0},signal);
+    const finishing=await rpc("shell",{command:"read value; head -c 20000 /dev/zero | tr '\\0' x",waitSeconds:0},signal);
+    const boundary=e.fire("agent_end",{messages:[]},{mode:"print",signal});
+    advance(15);await rpc("jobs.input",{id:finishing.id,data:"go\n",closeInput:true},signal);
+    while((await rpc("jobs.inspect",{id:finishing.id},signal)).status==="running")await Bun.sleep(1);
+    await boundary;
+    expect(e.messages).toHaveLength(1);const message=e.messages[0];
+    expect(message.content.length).toBeLessThanOrEqual(5000);
+    expect(message.content).toContain(finishing.id);expect(message.content).toContain("completed");
+    expect(message.content).toContain(idle.id);expect(message.content).toContain("attention checkpoint");
+    expect(message.details.omittedAttention).toBe(0);
+    await rpc("jobs.stop",{id:idle.id},signal);
+  } finally {mock.mockRestore();await e.fire("session_shutdown",{},{});}
+});
