@@ -3,6 +3,7 @@ export interface LiveDispatchEvidence {
   provider: string;
   model: string;
   api: string;
+  transport: string;
   dispatchedAt: string;
 }
 
@@ -17,7 +18,7 @@ interface StreamRuntime {
  * events, an error here propagates to the agent and cannot be swallowed by an
  * extension runner. Retries are disabled so one admitted stream call can make
  * at most one provider dispatch; all other stream options, including the
- * production transport, pass through unchanged.
+ * explicitly configured transport, pass through unchanged.
  */
 export function installLiveDispatchBudget(
   runtime: StreamRuntime,
@@ -42,6 +43,7 @@ export function installLiveDispatchBudget(
       provider: String(model.provider),
       model: String(model.id),
       api: String(model.api),
+      transport: String(options?.transport),
       dispatchedAt: new Date().toISOString(),
     });
     return original.call(runtime, model, context, { ...options, maxRetries: 0 });
