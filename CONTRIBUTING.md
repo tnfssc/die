@@ -12,7 +12,7 @@ messages are easiest to review.
    cd die
    ```
 
-2. Install [Bun 1.4.1](https://bun.sh/) and restore the exact lockfile:
+2. Install `tmux` (required by real-PTY tests) and [Bun 1.4.1](https://bun.sh/) and restore the exact lockfile:
 
    ```sh
    bun install --frozen-lockfile
@@ -51,8 +51,9 @@ bounded so failures remain readable.
   Edit the Markdown sources rather than generated representations, and preserve
   explicit custom prompts and instruction continuity.
 - `scripts/prepare-assets.ts` copies the Pi runtime assets embedded by the build.
-  Preserve upstream license banners and update `THIRD_PARTY_NOTICES.md` when the
-  packaged asset set or licensing changes.
+  Preserve upstream license banners and update `THIRD_PARTY_NOTICES.md` and the
+  curated inputs under `third_party/` when the packaged asset set or licensing changes.
+  Run `bun run generate:notices` to verify the production attribution bundle.
 
 Background operations are session-owned: avoid changes that accidentally terminate
 jobs when an execute worker exits. Keep history durable, handoffs cooperative, and

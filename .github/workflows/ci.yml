@@ -17,11 +17,17 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.1
+      - name: Install required PTY tooling
+        shell: bash
+        run: sudo apt-get update && sudo apt-get install -y tmux
       - name: Prepare logs
         run: mkdir -p artifacts/ci
       - name: Install locked dependencies
         shell: bash
         run: bun install --frozen-lockfile 2>&1 | tee artifacts/ci/install.log
+      - name: Lint
+        shell: bash
+        run: bun run lint 2>&1 | tee artifacts/ci/lint.log
       - name: Typecheck
         shell: bash
         run: bun run check 2>&1 | tee artifacts/ci/typecheck.log

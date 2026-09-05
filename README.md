@@ -4,7 +4,7 @@
 
 ## Getting started
 
-Released binaries currently support **Linux x64 only**. Download `die-linux-x64` and
+Released binaries currently support **Linux x64 only**. They use Bun's `bun-linux-x64-baseline` target rather than the AVX2-optimized target, so AVX2 is not a release CPU requirement. Download `die-linux-x64` and
 `die-linux-x64.sha256` from a GitHub release, verify it with `sha256sum -c`, make it
 executable, and place it in a directory on your `PATH`. Release source links, the MIT
 license, and third-party notices are published alongside each binary. Other platforms
@@ -182,8 +182,8 @@ Each session gets a continuous ANSI transcript plus initial/final frame captures
 
 Git tags of the form `v<package version>` trigger the release workflow. The workflow
 rejects a tag that does not exactly match `package.json`; it does not rewrite source
-versions. Releases build and smoke-test the current supported `bun-linux-x64` target
-and publish the binary, SHA-256 checksum, license notices, and source revision.
+versions. Releases build and smoke-test the current supported `bun-linux-x64-baseline` target
+and publish the binary, SHA-256 checksum, generated full production-dependency license bundle, summary notices, and source revision.
 
 See [`CONTRIBUTING.md`](./CONTRIBUTING.md) for checkout, deterministic tests, opt-in
 model tests, architecture, and pull-request guidance. Die is distributed under the
