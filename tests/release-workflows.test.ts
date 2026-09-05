@@ -1,12 +1,28 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import { generateThirdPartyNotices } from "../scripts/generate-third-party-notices";
 import { validateReleaseTag } from "../scripts/validate-release-tag";
-import { resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
 const read = (path: string) => Bun.file(resolve(root, path)).text();
+
+type FixturePackage = { manifest: Record<string, unknown>; license?: string };
+
+async function writeNoticeFixture(directory: string, dependencies: string[], packages: Record<string, FixturePackage>): Promise<void> {
+  await mkdir(join(directory, "third_party/pi"), { recursive: true });
+  await mkdir(join(directory, "third_party/bun"), { recursive: true });
+  await Bun.write(join(directory, "package.json"), JSON.stringify({ dependencies: Object.fromEntries(dependencies.map((name) => [name, "1.0.0"])) }));
+  await Bun.write(join(directory, "third_party/pi/LICENSE"), "Pi license\n");
+  await Bun.write(join(directory, "third_party/bun/LICENSE.md"), "Bun license\n");
+  for (const [name, fixture] of Object.entries(packages)) {
+    const packageDirectory = join(directory, "node_modules", name);
+    await mkdir(packageDirectory, { recursive: true });
+    await Bun.write(join(packageDirectory, "package.json"), JSON.stringify({ name, version: "1.0.0", ...fixture.manifest }));
+    if (fixture.license !== undefined) await Bun.write(join(packageDirectory, "LICENSE"), fixture.license);
+  }
+}
 
 describe("release automation", () => {
   test("CI is deterministic, locked, credential-free, and retains failure logs", async () => {
@@ -77,6 +93,42 @@ describe("release automation", () => {
       expect(notices).toContain("BUN RUNTIME UPSTREAM LICENSING");
       expect(notices).toContain("JavaScriptCore");
       expect(notices.length).toBeGreaterThan(100_000);
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("attribution generation fails when a required transitive dependency is missing", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "die-notices-required-"));
+    try {
+      await writeNoticeFixture(directory, ["present"], {
+        present: { manifest: { dependencies: { missing: "1.0.0" } }, license: "MIT\n" },
+      });
+      await expect(generateThirdPartyNotices(directory, join(directory, "notices.txt"))).rejects.toThrow("production dependency missing could not be resolved");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  test("Pi fallback fails closed for unknown packages and unpinned versions", async () => {
+    for (const [name, version] of [["@earendil-works/not-pi", "0.85.0"], ["@earendil-works/pi-ai", "0.85.1"]]) {
+      const directory = await mkdtemp(join(tmpdir(), "die-notices-fallback-"));
+      try {
+        await writeNoticeFixture(directory, [name], { [name]: { manifest: { version } } });
+        await expect(generateThirdPartyNotices(directory, join(directory, "notices.txt"))).rejects.toThrow(`${name}@${version} has no packaged or curated LICENSE`);
+      } finally {
+        await rm(directory, { recursive: true, force: true });
+      }
+    }
+  });
+
+  test("license input budget is checked before an oversized file is read", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "die-notices-budget-"));
+    try {
+      await writeNoticeFixture(directory, ["large-license"], {
+        "large-license": { manifest: {}, license: "x".repeat(512) },
+      });
+      await expect(generateThirdPartyNotices(directory, join(directory, "notices.txt"), 128)).rejects.toThrow(/byte budget before reading .*LICENSE/);
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
