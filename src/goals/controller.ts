@@ -2,55 +2,41 @@ import type { GoalState } from "./types";
 
 export const MAX_NO_PROGRESS_CONTINUATIONS = 3;
 
-function meaningfulState(goal: GoalState): string {
-  return JSON.stringify({
-    id: goal.id,
-    objective: goal.objective,
-    criteria: goal.criteria,
-    constraints: goal.constraints,
-    status: goal.status,
-    progress: goal.progress,
-    evidence: goal.evidence,
-    blocker: goal.blocker,
-    pendingJobIds: goal.pendingJobIds,
-    pauseReason: goal.pauseReason,
-  });
+// Only evidence deliberately recorded through goal.update({ progress }) is a
+// milestone. Lifecycle churn (including waiting job IDs and revisions) is not.
+function milestoneState(goal: GoalState): string {
+  return JSON.stringify({ id: goal.id, progress: goal.progress ?? [] });
 }
 
 export class GoalContinuationController {
   #automatic = false;
-  #startingState?: string;
+  #startingMilestones?: string;
   #noProgress = 0;
 
   markAutomaticStart(goal: GoalState): void {
     this.#automatic = true;
-    this.#startingState = meaningfulState(goal);
+    this.#startingMilestones = milestoneState(goal);
   }
 
   settle(goal: GoalState | undefined): "continue" | "pause" | "none" {
-    if (!goal || goal.status !== "active") {
-      this.reset();
-      return "none";
-    }
+    if (!goal) return "none";
+    if (!this.#automatic) return goal.status === "active" ? "continue" : "none";
 
-    if (!this.#automatic) {
-      this.#noProgress = 0;
-      return "continue";
-    }
-
-    const progressed = meaningfulState(goal) !== this.#startingState;
+    const milestones = milestoneState(goal);
+    const progressed = milestones !== this.#startingMilestones;
     this.#noProgress = progressed ? 0 : this.#noProgress + 1;
-    this.#startingState = meaningfulState(goal);
-    if (this.#noProgress >= MAX_NO_PROGRESS_CONTINUATIONS) {
-      this.reset();
+    this.#startingMilestones = milestones;
+
+    if (this.#noProgress >= MAX_NO_PROGRESS_CONTINUATIONS
+      && (goal.status === "active" || goal.status === "waiting")) {
       return "pause";
     }
-    return "continue";
+    return goal.status === "active" ? "continue" : "none";
   }
 
   reset(): void {
     this.#automatic = false;
-    this.#startingState = undefined;
+    this.#startingMilestones = undefined;
     this.#noProgress = 0;
   }
 }

@@ -190,6 +190,76 @@ test("only active goals continue and waiting interruption pauses", () => {
   });
 });
 
+test("successful execute handoff waits only when owned work is running", () => {
+  const h = harness();
+  h.runtime.handle("goal.set", input);
+  const handoff = {
+    toolName: "execute",
+    isError: false,
+    result: { details: { handoff: "Waiting for owned work" } },
+  };
+  h.handlers.tool_execution_end[0](handoff, h.ctx);
+  expect(h.runtime.get()).toMatchObject({ status: "waiting", pendingJobIds: ["job_1"] });
+
+  h.runtime.handle("goal.update", { status: "paused", reason: "deliberate" });
+  h.handlers.tool_execution_end[0](handoff, h.ctx);
+  expect(h.runtime.get()?.status).toBe("paused");
+
+  const empty = harness();
+  empty.runtime.handle("goal.set", input);
+  empty.statuses.clear();
+  empty.handlers.tool_execution_end[0](handoff, empty.ctx);
+  expect(empty.runtime.get()?.status).toBe("active");
+});
+
+test("failed-job waiting and completion turns retain the no-progress bound", () => {
+  const h = harness();
+  h.runtime.handle("goal.set", input);
+  h.handlers.agent_settled[0]({}, h.ctx);
+  const handoff = {
+    toolName: "execute",
+    isError: false,
+    result: { details: { handoff: "Retrying through owned work" } },
+  };
+
+  for (let turn = 0; turn < MAX_NO_PROGRESS_CONTINUATIONS; turn++) {
+    h.statuses.set("job_1", "running");
+    h.handlers.tool_execution_end[0](handoff, h.ctx);
+    h.handlers.agent_settled[0]({}, h.ctx);
+    if (turn < MAX_NO_PROGRESS_CONTINUATIONS - 1) {
+      h.statuses.set("job_1", "finished");
+      h.runtime.jobsChanged();
+      expect(h.runtime.get()?.status).toBe("active");
+    }
+  }
+  expect(h.runtime.get()).toMatchObject({
+    status: "paused",
+    pauseReason: expect.stringContaining("no meaningful progress"),
+  });
+});
+
+test("distinct explicit milestones sustain repeated waiting completion turns", () => {
+  const h = harness();
+  h.runtime.handle("goal.set", input);
+  h.handlers.agent_settled[0]({}, h.ctx);
+  const handoff = {
+    toolName: "execute",
+    isError: false,
+    result: { details: { handoff: "Continuing owned work" } },
+  };
+
+  for (let turn = 0; turn < MAX_NO_PROGRESS_CONTINUATIONS + 2; turn++) {
+    h.runtime.handle("goal.update", { status: "active", progress: `verified milestone ${turn}` });
+    h.statuses.set("job_1", "running");
+    h.handlers.tool_execution_end[0](handoff, h.ctx);
+    h.handlers.agent_settled[0]({}, h.ctx);
+    expect(h.runtime.get()?.status).toBe("waiting");
+    h.statuses.set("job_1", "finished");
+    h.runtime.jobsChanged();
+  }
+  expect(h.runtime.get()?.status).toBe("active");
+});
+
 test("same-status helper revisions cannot evade the automatic-turn bound", () => {
   const h = harness();
   h.runtime.handle("goal.set", input);
@@ -242,8 +312,8 @@ test("resumed waiting work that is no longer owned pauses visibly", () => {
 
 test("continuation preserves literal replacement syntax", async () => {
   const h = harness();
-  const objective = "Keep " + "$&" + " and " + "$$" + " literal";
-  const criterion = "preserve " + "$'" + " exactly";
+  const objective = "Keep {{criteria}}, " + "$&" + " and " + "$$" + " literal";
+  const criterion = "preserve {{constraints}} and " + "$'" + " exactly";
   await h.commands.goal.handler(
     "set " + objective + " --criteria " + criterion + " --constraints no rewrite",
     h.ctx,

@@ -51,7 +51,7 @@ test("real SDK reconciles helper waiting through task-complete and completes", a
             id: "goal_wait",
             name: "execute",
             arguments: {
-              code: 'const job=await shell("sleep 0.1; echo sdk-job",{waitSeconds:0}); console.log(await goal.update({status:"waiting",pendingJobIds:[job.id]})); await handoff("Waiting for owned SDK job")',
+              code: 'await shell("sleep 0.1; echo sdk-job",{waitSeconds:0}); await handoff("Waiting for owned SDK job")',
             },
           }]
         : calls === 2
@@ -144,7 +144,7 @@ test("real SDK reconciles helper waiting through task-complete and completes", a
     expect(prompts[0]).not.toContain("FILTER_RAW");
     expect(prompts[1]).toContain("sdk-job");
     expect(prompts[1]).toContain("Status: active");
-    expect(prompts[1]).toContain("Owned jobs settled");
+    expect(prompts[1]).not.toContain("Owned jobs settled");
     expect(JSON.parse(prompts[1]!).systemPrompt).toBe(JSON.parse(prompts[0]!).systemPrompt);
 
     const entries = manager.getEntries();

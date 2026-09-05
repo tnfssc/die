@@ -27,12 +27,15 @@ function formatGoal(goal?: GoalState): string {
 }
 
 function continuation(goal: GoalState, generation: number): string {
-  return goalContinuation.trimEnd()
-    .replace("{{objective}}", () => goal.objective)
-    .replace("{{criteria}}", () => goal.criteria.map(item => `- ${item}`).join("\n"))
-    .replace("{{constraints}}", () => goal.constraints.length
+  const placeholders: Record<"objective" | "criteria" | "constraints", string> = {
+    objective: goal.objective,
+    criteria: goal.criteria.map(item => `- ${item}`).join("\n"),
+    constraints: goal.constraints.length
       ? goal.constraints.map(item => `- ${item}`).join("\n")
-      : "- None")
+      : "- None",
+  };
+  return goalContinuation.trimEnd()
+    .replace(/\{\{(objective|criteria|constraints)\}\}/g, (_match, key: keyof typeof placeholders) => placeholders[key])
     + `\n\n<!-- die-goal-generation:${generation} -->`;
 }
 
@@ -132,9 +135,8 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     if (statuses.some(status => status === "unavailable")) {
       pause("Paused because waiting work is unavailable in this process");
     } else if (statuses.some(status => status === "finished")) {
-      const settled = goal.pendingJobIds!.filter((_, index) => statuses[index] === "finished");
-      store!.update({ status: "active", progress: `Owned jobs settled: ${settled.join(", ")}` });
-      invalidate();
+      store!.update({ status: "active" });
+      bumpGeneration();
     }
   };
 
@@ -218,6 +220,19 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     }
   });
 
+  pi.on("tool_execution_end", event => {
+    if (event.toolName !== "execute" || event.isError
+      || typeof event.result?.details?.handoff !== "string") return;
+    const current = store?.get();
+    // An explicit state transition in the handed-off execution wins. Otherwise
+    // suppress reminders only while this process still owns running work.
+    if (current?.status !== "active") return;
+    const pendingJobIds = [...jobs.runningIds()];
+    if (pendingJobIds.length === 0) return;
+    store!.update({ status: "waiting", pendingJobIds }, new Set(pendingJobIds));
+    bumpGeneration();
+  });
+
   pi.on("agent_end", event => {
     const last = [...event.messages].reverse().find(message => message.role === "assistant");
     if (last?.stopReason === "aborted" || last?.stopReason === "error") {
@@ -230,9 +245,8 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     ensureStore(ctx);
     reconcileWaiting();
     const goal = store?.get();
-    if (!goal || goal.status !== "active") {
+    if (!goal) {
       queuedUserInput = false;
-      controller.settle(goal);
       return;
     }
     if (ctx.signal?.aborted) {
