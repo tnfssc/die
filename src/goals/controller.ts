@@ -10,17 +10,33 @@ function milestoneState(goal: GoalState): string {
 
 export class GoalContinuationController {
   #automatic = false;
+  #helperActivated = false;
   #startingMilestones?: string;
   #noProgress = 0;
 
   markAutomaticStart(goal: GoalState): void {
     this.#automatic = true;
+    this.#helperActivated = false;
+    this.#startingMilestones = milestoneState(goal);
+  }
+
+  markHelperStart(goal: GoalState): void {
+    this.#automatic = true;
+    this.#helperActivated = true;
     this.#startingMilestones = milestoneState(goal);
   }
 
   settle(goal: GoalState | undefined): "continue" | "pause" | "none" {
     if (!goal) return "none";
     if (!this.#automatic) return goal.status === "active" ? "continue" : "none";
+
+    // A helper can create a goal during a turn that would have run anyway. Do
+    // not charge that turn when it settles normally, but retain automatic
+    // tracking when its first turn hands off into waiting work.
+    if (this.#helperActivated) {
+      this.#helperActivated = false;
+      if (goal.status !== "waiting") return goal.status === "active" ? "continue" : "none";
+    }
 
     const milestones = milestoneState(goal);
     const progressed = milestones !== this.#startingMilestones;
@@ -36,6 +52,7 @@ export class GoalContinuationController {
 
   reset(): void {
     this.#automatic = false;
+    this.#helperActivated = false;
     this.#startingMilestones = undefined;
     this.#noProgress = 0;
   }

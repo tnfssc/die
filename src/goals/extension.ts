@@ -299,7 +299,11 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
           criteria: input.criteria,
           constraints: input.constraints,
         });
+        // A helper-created goal begins inside an existing turn, so there is no
+        // queued reminder to mark that turn automatic. Track it directly after
+        // resetting any previous goal's continuation history.
         invalidate();
+        controller.markHelperStart(result);
         return result;
       }
       if (method === "goal.update") {

@@ -212,6 +212,36 @@ test("successful execute handoff waits only when owned work is running", () => {
   expect(empty.runtime.get()?.status).toBe("active");
 });
 
+test("helper-created goal bounds repeated direct handoff completion cycles", () => {
+  const h = harness();
+  h.runtime.handle("goal.set", input);
+  const handoff = {
+    toolName: "execute",
+    isError: false,
+    result: { details: { handoff: "Waiting after custom completion" } },
+  };
+
+  // No slash-start or initial reminder occurs before the helper's first
+  // direct handoff. Job completions then trigger custom continuation turns.
+  expect(h.sent).toHaveLength(0);
+  for (let turn = 0; turn < MAX_NO_PROGRESS_CONTINUATIONS; turn++) {
+    h.statuses.set("job_1", "running");
+    h.handlers.tool_execution_end[0](handoff, h.ctx);
+    h.handlers.agent_settled[0]({}, h.ctx);
+    if (turn < MAX_NO_PROGRESS_CONTINUATIONS - 1) {
+      expect(h.runtime.get()?.status).toBe("waiting");
+      h.statuses.set("job_1", "finished");
+      h.runtime.jobsChanged();
+      expect(h.runtime.get()?.status).toBe("active");
+    }
+  }
+  expect(h.sent).toHaveLength(0);
+  expect(h.runtime.get()).toMatchObject({
+    status: "paused",
+    pauseReason: expect.stringContaining("no meaningful progress"),
+  });
+});
+
 test("failed-job waiting and completion turns retain the no-progress bound", () => {
   const h = harness();
   h.runtime.handle("goal.set", input);
