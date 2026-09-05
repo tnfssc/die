@@ -175,15 +175,31 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
       if (boundary === "attention" && tasks) {
         // Give a task already racing the checkpoint one bounded chance to
         // complete; its completion supersedes stale attention for that task.
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        try {
-          await Promise.race([
-            ...running.map(task => tasks.wait(task.id)),
-            new Promise<void>(resolve => { timer = setTimeout(resolve, 200); timer.unref?.(); }),
-          ]);
-        } finally {
-          if (timer) clearTimeout(timer);
-        }
+        // A single disposable listener avoids retaining one wait handler per
+        // running task throughout repeated attention boundaries.
+        const ids = new Set(running.map(task => task.id));
+        await new Promise<void>(resolve => {
+          let settled = false;
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          let unsubscribe = () => {};
+          const finish = () => {
+            if (settled) return;
+            settled = true;
+            unsubscribe();
+            if (timer) clearTimeout(timer);
+            ctx.signal?.removeEventListener("abort", finish);
+            resolve();
+          };
+          unsubscribe = tasks.subscribe(event => {
+            if (event.type === "completed" && ids.has(event.task.id)) finish();
+          });
+          ctx.signal?.addEventListener("abort", finish, { once: true });
+          timer = setTimeout(finish, 200);
+          timer.unref?.();
+          // Close the completion-before-subscription race.
+          const current = new Map(tasks.list().map(task => [task.id, task.status]));
+          if ([...ids].some(id => current.get(id) !== "running") || ctx.signal?.aborted) finish();
+        });
       }
       notificationBatch.flush();
     }
