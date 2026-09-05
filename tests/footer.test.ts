@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionCommandContext, ExtensionContext, ReadonlyFooterDataProvider, Theme } from "@earendil-works/pi-coding-agent";
 import { createCompactUI, footerPath, installCompactFooter, pathWithTasks, renderCompactFooter as renderSingleRowFooter, renderDetailedFooter } from "../src/ui/footer";
+import { CacheCountdown } from "../src/tasks/cache-countdown";
 
 const theme = { fg: (color: string, text: string) => `\x1b[${color === "accent" ? 36 : 90}m${text}\x1b[0m` } as Theme;
 const plain = (lines: string[]) => lines.map((line) => Bun.stripANSI(line));
@@ -187,4 +188,30 @@ test("footer includes failed compaction attempt costs without changing context u
   ctx.sessionManager.getEntries=()=>[...entries,{type:"custom",customType:"die-compaction-attempt",data:{usage:{input:100,output:10,cacheRead:200,cacheWrite:0,cost:{total:0.004}}}}] as ReturnType<ExtensionContext["sessionManager"]["getEntries"]>;
   expect(plain(renderSingleRowFooter(ctx,data,theme,150))[0]).toContain("$0.006");
   expect(plain(renderSingleRowFooter(ctx,data,theme,150))[0]).toContain("ctx 1%");
+});
+
+
+test("cache estimate keeps footer usage layout and uses a bounded disposable minute timer", () => {
+  const {ctx,data}=fixture();
+  let now=1_000_000;
+  const cache=new CacheCountdown(()=>now);
+  cache.record({appendEntry(){}} as unknown as ExtensionAPI,ctx,now);
+  const estimate=cache.estimate(ctx);
+  const compact=plain(renderSingleRowFooter(ctx,data,theme,150,0,estimate))[0]!;
+  expect(compact).toContain("30 tasks · $0.002 · ctx 1% · cache est 60m");
+  expect(plain(renderDetailedFooter(ctx,data,theme,180,0,estimate))[1]).toContain("$0.002 (sub) 1.0%/272k cache est 60m");
+  let factory: Parameters<ExtensionContext["ui"]["setFooter"]>[0];
+  ctx.ui.setFooter=value=>{factory=value;};
+  const oldSet=globalThis.setTimeout, oldClear=globalThis.clearTimeout;
+  let callback: (()=>void)|undefined, delay=0, cleared=0;
+  globalThis.setTimeout=((fn:TimerHandler,ms?:number)=>{callback=fn as ()=>void;delay=ms??0;return 77 as any;}) as typeof setTimeout;
+  globalThis.clearTimeout=((_id:any)=>{cleared++;}) as typeof clearTimeout;
+  try {
+    const stop=installCompactFooter(ctx,()=>false,undefined,cache);
+    let renders=0;
+    const component=factory!({requestRender(){renders++;}} as any,theme,data);
+    expect(delay).toBeGreaterThan(0); expect(delay).toBeLessThanOrEqual(60_000);
+    now+=60_001; callback!(); expect(renders).toBe(1);
+    component.dispose?.(); stop(); expect(cleared).toBeGreaterThan(0);
+  } finally {globalThis.setTimeout=oldSet;globalThis.clearTimeout=oldClear;}
 });

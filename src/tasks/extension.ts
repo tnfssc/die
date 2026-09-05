@@ -11,9 +11,12 @@ import { createCompactUI } from "../ui/footer";
 import { JobService } from "./job-service";
 import { clearInstructionContinuity, registerCacheAffineCompaction, scopeInstructionContinuity } from "./cache-affine-compaction";
 import { registerNativeCodexCompaction } from "./native-compaction";
+import { CacheCountdown, registerCacheCountdown } from "./cache-countdown";
 
-export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string } = {}): void {
-  const installUI = createCompactUI(pi);
+export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string; cacheSettingsPath?: string } = {}): void {
+  const cacheCountdown = new CacheCountdown();
+  registerCacheCountdown(pi, cacheCountdown, options.cacheSettingsPath);
+  const installUI = createCompactUI(pi, cacheCountdown);
   pi.registerMessageRenderer("task-complete", (message, options, theme) =>
     completionPreview(message.content, options.expanded, theme, options.outputPad));
   registerSubagentSettings(pi, options.profilesPath);
