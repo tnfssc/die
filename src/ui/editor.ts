@@ -42,15 +42,18 @@ export class CompactEditor extends CustomEditor {
     // rows, not the last row (which may belong to an autocomplete menu).
     const bottom = lines.indexOf("", 1);
     this.bodyRows = bottom - 1;
-    return lines.filter((_, index) => index !== 0 && index !== bottom).map((line, index) => {
-      let prefix = " ";
-      if (index === 0) {
-        prefix = this.indicator?.renderSpinnerInBorder(1) || this.borderColor(this.above ? (this.below ? "↕" : "↑") : " ");
-      } else if (index === this.bodyRows - 1 && this.below) {
-        prefix = this.borderColor("↓");
-      }
-      return truncateToWidth((this.gutter ? `${prefix} ` : "") + line, width, "");
-    });
+    return lines
+      .filter((_, index) => index !== 0 && index !== bottom)
+      .map((line, index) => {
+        let prefix = " ";
+        if (index === 0) {
+          prefix =
+            this.indicator?.renderSpinnerInBorder(1) || this.borderColor(this.above ? (this.below ? "↕" : "↑") : " ");
+        } else if (index === this.bodyRows - 1 && this.below) {
+          prefix = this.borderColor("↓");
+        }
+        return truncateToWidth((this.gutter ? `${prefix} ` : "") + line, width, "");
+      });
   }
 
   override handleMouse(event: TuiMouseEvent): TuiMouseEventResult | undefined {

@@ -6,14 +6,19 @@ import { updateCurrentInstructionFrame } from "./instruction-continuity";
 export const INSTRUCTION_MODE_ENTRY = "die-instruction-mode";
 
 function parsedMode(value: unknown): MainAgentMode | undefined {
-  return typeof value === "string" && MAIN_AGENT_MODES.includes(value as MainAgentMode) ? value as MainAgentMode : undefined;
+  return typeof value === "string" && MAIN_AGENT_MODES.includes(value as MainAgentMode)
+    ? (value as MainAgentMode)
+    : undefined;
 }
 
 function sessionOwner(sessionId: string | undefined): string {
   // The marker must survive a process restart so an unchanged resumed frame is
   // byte-identical (and therefore cache-affine). The digest keeps session IDs
   // opaque if a prompt is logged or inspected.
-  return createHash("sha256").update("die-main-agent-mode\0").update(sessionId ?? "").digest("hex");
+  return createHash("sha256")
+    .update("die-main-agent-mode\0")
+    .update(sessionId ?? "")
+    .digest("hex");
 }
 
 function activeEntries(ctx: ExtensionContext): any[] {
@@ -52,16 +57,19 @@ export function registerInstructionMode(pi: ExtensionAPI, isRoot: () => boolean)
 
   pi.registerCommand("mode", {
     description: "Show or switch main-agent instruction mode (fast, normal, orchestrator)",
-    getArgumentCompletions: prefix => {
+    getArgumentCompletions: (prefix) => {
       const value = prefix.trim().toLowerCase();
       if (MAIN_AGENT_MODES.includes(value as MainAgentMode)) return null;
-      return MAIN_AGENT_MODES.filter(mode => mode.startsWith(value)).map(mode => ({ value: mode, label: mode }));
+      return MAIN_AGENT_MODES.filter((mode) => mode.startsWith(value)).map((mode) => ({ value: mode, label: mode }));
     },
     handler: async (args, ctx) => {
       ui = ctx.ui;
       resetFrameIdentity(ctx);
       if (!isRoot()) {
-        ctx.ui.notify("/mode is available only to the main agent; this child keeps its fixed role and delegation depth.", "warning");
+        ctx.ui.notify(
+          "/mode is available only to the main agent; this child keeps its fixed role and delegation depth.",
+          "warning",
+        );
         return;
       }
       const requested = args.trim().toLowerCase();
@@ -87,7 +95,9 @@ export function registerInstructionMode(pi: ExtensionAPI, isRoot: () => boolean)
         }
         mode = next;
         if (!explicitCustom) {
-          updateCurrentInstructionFrame(ctx.sessionManager as object, prompt => replaceMainAgentGuidance(prompt, mode, owner));
+          updateCurrentInstructionFrame(ctx.sessionManager as object, (prompt) =>
+            replaceMainAgentGuidance(prompt, mode, owner),
+          );
         }
       }
       status();
@@ -113,6 +123,10 @@ export function registerInstructionMode(pi: ExtensionAPI, isRoot: () => boolean)
       mode = isRoot() ? persistedMode(ctx) : "orchestrator";
       status();
     },
-    shutdown() { ui?.setStatus("die-mode", undefined); ui = undefined; explicitCustom = false; },
+    shutdown() {
+      ui?.setStatus("die-mode", undefined);
+      ui = undefined;
+      explicitCustom = false;
+    },
   };
 }

@@ -12,8 +12,14 @@ export interface AttentionClock {
 }
 const systemClock: AttentionClock = {
   now: Date.now,
-  setTimeout(callback, delayMs) { const timer = setTimeout(callback, delayMs); timer.unref?.(); return timer; },
-  clearTimeout(handle) { clearTimeout(handle as ReturnType<typeof setTimeout>); },
+  setTimeout(callback, delayMs) {
+    const timer = setTimeout(callback, delayMs);
+    timer.unref?.();
+    return timer;
+  },
+  clearTimeout(handle) {
+    clearTimeout(handle as ReturnType<typeof setTimeout>);
+  },
 };
 
 export type AttentionReason = "quiet" | "review";
@@ -78,10 +84,16 @@ export class JobAttentionScheduler {
     this.#clock = options.clock ?? systemClock;
     this.#quietMs = options.quietMs ?? DEFAULT_QUIET_MS;
     this.#reviewMs = options.reviewMs ?? DEFAULT_REVIEW_MS;
-    if (!Number.isFinite(this.#quietMs) || !Number.isFinite(this.#reviewMs) || !(this.#quietMs > 0) || !(this.#reviewMs > 0)) throw new Error("Attention intervals must be finite and positive");
+    if (
+      !Number.isFinite(this.#quietMs) ||
+      !Number.isFinite(this.#reviewMs) ||
+      !(this.#quietMs > 0) ||
+      !(this.#reviewMs > 0)
+    )
+      throw new Error("Attention intervals must be finite and positive");
     const now = this.#now();
     for (const task of manager.pending()) this.#add(task, now);
-    this.#unsubscribe = manager.subscribe(event => this.#event(event));
+    this.#unsubscribe = manager.subscribe((event) => this.#event(event));
     this.#schedule();
   }
 
@@ -117,17 +129,29 @@ export class JobAttentionScheduler {
     return task;
   }
 
-  isWatched(id: string): boolean { return this.#states.get(id)?.watchEnabled ?? false; }
+  isWatched(id: string): boolean {
+    return this.#states.get(id)?.watchEnabled ?? false;
+  }
   diagnostics(): AttentionDiagnostics {
-    return { activeJobs: this.#states.size, timerArmed: this.#timer !== undefined,
-      timerCallbacks: this.#timerCallbacks, timerSchedules: this.#timerSchedules, notices: this.#noticeCount, stateVisits: this.#stateVisits };
+    return {
+      activeJobs: this.#states.size,
+      timerArmed: this.#timer !== undefined,
+      timerCallbacks: this.#timerCallbacks,
+      timerSchedules: this.#timerSchedules,
+      notices: this.#noticeCount,
+      stateVisits: this.#stateVisits,
+    };
   }
 
   /** Resolves on the next attention batch. Used by print/JSON agent_end waits. */
   waitForNotice(signal?: AbortSignal): Promise<void> {
     if (this.#disposed || signal?.aborted) return Promise.resolve();
-    return new Promise(resolve => {
-      const done = () => { this.#waiters.delete(done); signal?.removeEventListener("abort", done); resolve(); };
+    return new Promise((resolve) => {
+      const done = () => {
+        this.#waiters.delete(done);
+        signal?.removeEventListener("abort", done);
+        resolve();
+      };
       this.#waiters.add(done);
       signal?.addEventListener("abort", done, { once: true });
     });
@@ -168,25 +192,38 @@ export class JobAttentionScheduler {
   #add(task: TaskSummary, now: number, liveEvent = false): AttentionState {
     const started = liveEvent ? now : this.#timestamp(task.startedAt, now);
     const activity = liveEvent ? now : this.#timestamp(task.lastActivityAt, started, now);
-    const state = { lastActivityMs: activity, quietEligibleMs: 0, nextReviewMs: started + this.#reviewMs,
-      snoozedUntilMs: 0, quietNotified: false, watchEnabled: true };
+    const state = {
+      lastActivityMs: activity,
+      quietEligibleMs: 0,
+      nextReviewMs: started + this.#reviewMs,
+      snoozedUntilMs: 0,
+      quietNotified: false,
+      watchEnabled: true,
+    };
     this.#states.set(task.id, state);
     return state;
   }
 
   #deadline(state: AttentionState): number {
     if (!state.watchEnabled) return Infinity;
-    const quiet = state.quietNotified ? Infinity : Math.max(state.lastActivityMs + this.#quietMs, state.quietEligibleMs, state.snoozedUntilMs);
+    const quiet = state.quietNotified
+      ? Infinity
+      : Math.max(state.lastActivityMs + this.#quietMs, state.quietEligibleMs, state.snoozedUntilMs);
     return Math.min(quiet, state.nextReviewMs);
   }
 
   #schedule(): void {
     if (this.#disposed) return;
     let next = Infinity;
-    for (const state of this.#states.values()) { this.#stateVisits++; next = Math.min(next, this.#deadline(state)); }
+    for (const state of this.#states.values()) {
+      this.#stateVisits++;
+      next = Math.min(next, this.#deadline(state));
+    }
     if (!Number.isFinite(next)) {
       if (this.#timer !== undefined) this.#clock.clearTimeout(this.#timer);
-      this.#timer = undefined; this.#scheduledAt = Infinity; return;
+      this.#timer = undefined;
+      this.#scheduledAt = Infinity;
+      return;
     }
     // Do not postpone/recreate an existing timer on output. It will recheck the
     // moved deadline once, then arm the next actual deadline.
@@ -198,17 +235,20 @@ export class JobAttentionScheduler {
   }
 
   #fire(): void {
-    this.#timer = undefined; this.#scheduledAt = Infinity; this.#timerCallbacks++;
+    this.#timer = undefined;
+    this.#scheduledAt = Infinity;
+    this.#timerCallbacks++;
     if (this.#disposed) return;
     const now = this.#clock.now();
     const notices: AttentionNotice[] = [];
-    const pending = new Map(this.#manager.pending().map(task => [task.id, task]));
+    const pending = new Map(this.#manager.pending().map((task) => [task.id, task]));
     for (const [id, state] of this.#states) {
       this.#stateVisits++;
       if (!state.watchEnabled || now < state.snoozedUntilMs) continue;
       const reasons: AttentionReason[] = [];
       if (!state.quietNotified && now >= Math.max(state.lastActivityMs + this.#quietMs, state.quietEligibleMs)) {
-        reasons.push("quiet"); state.quietNotified = true;
+        reasons.push("quiet");
+        state.quietNotified = true;
       }
       if (now >= state.nextReviewMs) {
         reasons.push("review");
@@ -217,16 +257,35 @@ export class JobAttentionScheduler {
       }
       if (!reasons.length) continue;
       const summary = pending.get(id);
-      if (!summary) { this.#states.delete(id); continue; }
+      if (!summary) {
+        this.#states.delete(id);
+        continue;
+      }
       let task: TaskInspection;
-      try { task = this.#manager.inspect(id, Math.max(summary.baseOffset, summary.outputEnd - 1000), 1000); }
-      catch { this.#states.delete(id); continue; }
-      notices.push({ id, reasons, observedAt: new Date(now).toISOString(), elapsedMs: Math.max(0, now - Date.parse(task.startedAt)),
-        quietForMs: Math.max(0, now - state.lastActivityMs), outputBytes: task.outputEnd, stdinOpen: task.stdinOpen ?? false, task });
+      try {
+        task = this.#manager.inspect(id, Math.max(summary.baseOffset, summary.outputEnd - 1000), 1000);
+      } catch {
+        this.#states.delete(id);
+        continue;
+      }
+      notices.push({
+        id,
+        reasons,
+        observedAt: new Date(now).toISOString(),
+        elapsedMs: Math.max(0, now - Date.parse(task.startedAt)),
+        quietForMs: Math.max(0, now - state.lastActivityMs),
+        outputBytes: task.outputEnd,
+        stdinOpen: task.stdinOpen ?? false,
+        task,
+      });
     }
     if (notices.length) {
       this.#noticeCount += notices.length;
-      try { this.#onNotice(notices); } catch (error) { console.error("Job attention callback failed:", error); }
+      try {
+        this.#onNotice(notices);
+      } catch (error) {
+        console.error("Job attention callback failed:", error);
+      }
       for (const waiter of [...this.#waiters]) waiter();
     }
     this.#schedule();
@@ -237,7 +296,10 @@ export class JobAttentionScheduler {
     if (this.#timer !== undefined) this.#clock.clearTimeout(this.#timer);
     this.#scheduledAt = deadline;
     this.#timerSchedules++;
-    this.#timer = this.#clock.setTimeout(() => this.#fire(), Math.min(2_147_483_647, Math.max(0, deadline - this.#now())));
+    this.#timer = this.#clock.setTimeout(
+      () => this.#fire(),
+      Math.min(2_147_483_647, Math.max(0, deadline - this.#now())),
+    );
   }
 
   #clearTimer(): void {
@@ -261,7 +323,7 @@ export class JobAttentionScheduler {
   }
 
   #running(id: string): TaskSummary {
-    const task = this.#manager.list().find(item => item.id === id);
+    const task = this.#manager.list().find((item) => item.id === id);
     if (!task) throw new Error(`Unknown task: ${id}`);
     if (task.status !== "running" || !this.#states.has(id)) throw new Error(`Task ${id} is ${task.status}`);
     return task;
@@ -269,28 +331,39 @@ export class JobAttentionScheduler {
 }
 
 function duration(ms: number): string {
-  const minutes = Math.floor(ms / 60_000), seconds = Math.floor((ms % 60_000) / 1000);
+  const minutes = Math.floor(ms / 60_000),
+    seconds = Math.floor((ms % 60_000) / 1000);
   return minutes ? `${minutes}m ${seconds}s` : `${seconds}s`;
 }
 
 /** Bounded evidence-only parent message; it never recommends an automatic kill. */
-export function formatAttentionNotification(notices: AttentionNotice[], limit = MAX_ATTENTION_NOTIFICATION_CHARS): string {
+export function formatAttentionNotification(
+  notices: AttentionNotice[],
+  limit = MAX_ATTENTION_NOTIFICATION_CHARS,
+): string {
   if (!notices.length || limit <= 0) return "";
   let text = `${notices.length} running job${notices.length === 1 ? "" : "s"} reached an attention checkpoint. Jobs continue running.`;
   let included = 0;
   for (const notice of notices) {
     const output = notice.task.output.trim().replaceAll(/\s+/g, " ");
-    const block = `\n\n${notice.id} [${notice.reasons.join("+")}] elapsed=${duration(notice.elapsedMs)} quiet=${duration(notice.quietForMs)} output=${notice.outputBytes}B stdin=${notice.stdinOpen ? "open" : "closed"}` +
-      (output ? `\nRecent output: ${output.length > 500 ? "\u2026" + output.slice(-499) : output}` : "\nNo retained output observed.");
+    const block =
+      `\n\n${notice.id} [${notice.reasons.join("+")}] elapsed=${duration(notice.elapsedMs)} quiet=${duration(notice.quietForMs)} output=${notice.outputBytes}B stdin=${notice.stdinOpen ? "open" : "closed"}` +
+      (output
+        ? `\nRecent output: ${output.length > 500 ? "\u2026" + output.slice(-499) : output}`
+        : "\nNo retained output observed.");
     if (included > 0 && text.length + block.length > limit - 260) break;
     text += block.slice(0, Math.max(0, limit - text.length - 180));
     included++;
   }
   if (included < notices.length) {
-    const omitted = `\n\n${notices.length - included} additional attention checkpoint${notices.length - included === 1 ? "" : "s"} omitted. IDs: ${notices.slice(included, included + 8).map(item => item.id).join(" ")}${notices.length - included > 8 ? ` \u2026 (+${notices.length - included - 8} more)` : ""}`;
+    const omitted = `\n\n${notices.length - included} additional attention checkpoint${notices.length - included === 1 ? "" : "s"} omitted. IDs: ${notices
+      .slice(included, included + 8)
+      .map((item) => item.id)
+      .join(" ")}${notices.length - included > 8 ? ` \u2026 (+${notices.length - included - 8} more)` : ""}`;
     text += omitted.slice(0, Math.max(0, limit - text.length - 150));
   }
-  const instruction = "\n\nInspect before deciding. You may provide/close input, stop obsolete work, leave it running, snooze up to 55 minutes, or disable watching for an expected persistent service.";
+  const instruction =
+    "\n\nInspect before deciding. You may provide/close input, stop obsolete work, leave it running, snooze up to 55 minutes, or disable watching for an expected persistent service.";
   text += instruction.slice(0, Math.max(0, limit - text.length));
   return text.slice(0, limit);
 }

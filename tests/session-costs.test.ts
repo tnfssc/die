@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { SessionCostTracker } from "../src/tasks/session-costs";
 
 const dirs: string[] = [];
-afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))); });
+afterEach(async () => {
+  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+});
 
 const line = (value: unknown) => JSON.stringify(value) + "\n";
 const usage = (total: number) => ({ input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total } });
@@ -21,11 +23,16 @@ async function fixture() {
 }
 
 async function session(path: string, parent: string, entries: unknown[], dieAgent = true) {
-  await writeFile(path, [
-    { type: "session", version: 3, parentSession: parent },
-    ...(dieAgent ? [{ type: "custom", customType: "die-agent", data: { parentSessionFile: parent } }] : []),
-    ...entries,
-  ].map(line).join(""));
+  await writeFile(
+    path,
+    [
+      { type: "session", version: 3, parentSession: parent },
+      ...(dieAgent ? [{ type: "custom", customType: "die-agent", data: { parentSessionFile: parent } }] : []),
+      ...entries,
+    ]
+      .map(line)
+      .join(""),
+  );
 }
 
 describe("SessionCostTracker", () => {
@@ -33,12 +40,18 @@ describe("SessionCostTracker", () => {
     const { dir, root } = await fixture();
     const child = join(dir, "child.jsonl");
     const grandchild = join(dir, "grandchild.jsonl");
-    await session(child, root, [assistant(1), tool(2), { type: "compaction", usage: usage(3) }, { type: "branch_summary", usage: usage(4) }]);
+    await session(child, root, [
+      assistant(1),
+      tool(2),
+      { type: "compaction", usage: usage(3) },
+      { type: "branch_summary", usage: usage(4) },
+    ]);
     await session(grandchild, child, [assistant(5)]);
     await session(join(dir, "unrelated.jsonl"), join(dir, "other-root.jsonl"), [assistant(100)]);
     // Pi branches have parentSession too, but are not spawned die agents.
     await session(join(dir, "ordinary-branch.jsonl"), root, [assistant(100)], false);
-    const cycleA = join(dir, "cycle-a.jsonl"), cycleB = join(dir, "cycle-b.jsonl");
+    const cycleA = join(dir, "cycle-a.jsonl"),
+      cycleB = join(dir, "cycle-b.jsonl");
     await session(cycleA, cycleB, [assistant(100)]);
     await session(cycleB, cycleA, [assistant(100)]);
 
@@ -55,10 +68,16 @@ describe("SessionCostTracker", () => {
     const tracker = new SessionCostTracker(root, dir);
     expect(await tracker.refresh()).toBe(1);
 
-    await appendFile(child, line(tool(2)) + line({ type: "message", message: { role: "user" } }) + "{\"type\":\"compaction\",\"usage\":" );
+    await appendFile(
+      child,
+      line(tool(2)) + line({ type: "message", message: { role: "user" } }) + '{"type":"compaction","usage":',
+    );
     expect(await tracker.refresh()).toBe(3);
     expect(await tracker.refresh()).toBe(3);
-    await appendFile(child, JSON.stringify(usage(4)) + "}\n" + "not json\n" + line({ type: "branch_summary", usage: usage(5) }));
+    await appendFile(
+      child,
+      JSON.stringify(usage(4)) + "}\n" + "not json\n" + line({ type: "branch_summary", usage: usage(5) }),
+    );
     expect(await tracker.refresh()).toBe(12);
   });
 
@@ -69,11 +88,14 @@ describe("SessionCostTracker", () => {
     expect(await tracker.refresh()).toBe(0);
 
     const child = join(dir, "child.jsonl");
-    await writeFile(child, [
-      line({ type: "session", version: 3, parentSession: root }),
-      line({ type: "custom", customType: "die-agent", data: {} }),
-      line(assistant(2)),
-    ].join(""));
+    await writeFile(
+      child,
+      [
+        line({ type: "session", version: 3, parentSession: root }),
+        line({ type: "custom", customType: "die-agent", data: {} }),
+        line(assistant(2)),
+      ].join(""),
+    );
     expect(await tracker.refresh()).toBe(2);
 
     const nestedDir = join(dir, "nested");
@@ -90,12 +112,15 @@ describe("SessionCostTracker", () => {
     // A real fork/clone gets a new session header, but copies the source entries,
     // including its custom die-agent record and usage.
     const fork = join(dir, "fork.jsonl");
-    await writeFile(fork, [
-      line({ type: "session", version: 3, parentSession: child }),
-      line({ type: "custom", customType: "die-agent", data: { parentSessionFile: root } }),
-      line(assistant(2)),
-      line(assistant(100)),
-    ].join(""));
+    await writeFile(
+      fork,
+      [
+        line({ type: "session", version: 3, parentSession: child }),
+        line({ type: "custom", customType: "die-agent", data: { parentSessionFile: root } }),
+        line(assistant(2)),
+        line(assistant(100)),
+      ].join(""),
+    );
 
     const tracker = new SessionCostTracker(root, dir);
     expect(await tracker.refresh()).toBe(2);
@@ -142,14 +167,17 @@ describe("SessionCostTracker", () => {
     expect(await Promise.all([first, second])).toEqual([6, 6]);
     expect(await tracker.refresh()).toBe(6);
   });
-
 });
 
 test("counts failed compaction usage once without treating arbitrary custom entries as costs", async () => {
-  const {dir,root}=await fixture();
-  const failed={id:"attempt",type:"custom",customType:"die-compaction-attempt",data:{usage:usage(2)}};
-  await session(join(dir,"child.jsonl"),root,[failed,failed,{type:"custom",customType:"other",data:{usage:usage(100)}}]);
-  const tracker=new SessionCostTracker(root,dir);
+  const { dir, root } = await fixture();
+  const failed = { id: "attempt", type: "custom", customType: "die-compaction-attempt", data: { usage: usage(2) } };
+  await session(join(dir, "child.jsonl"), root, [
+    failed,
+    failed,
+    { type: "custom", customType: "other", data: { usage: usage(100) } },
+  ]);
+  const tracker = new SessionCostTracker(root, dir);
   expect(await tracker.refresh()).toBe(2);
   expect(await tracker.refresh()).toBe(2);
 });

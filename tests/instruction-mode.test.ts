@@ -8,16 +8,26 @@ import { INSTRUCTION_MODE_ENTRY, registerInstructionMode } from "../src/tasks/in
 
 function fixture(root = true, entries: any[] = [], appendError?: Error) {
   let command: any;
-  const appended: any[] = [], notices: any[] = [], statuses: any[] = [];
+  const appended: any[] = [],
+    notices: any[] = [],
+    statuses: any[] = [];
   const pi = {
-    registerCommand(name: string, value: any) { if (name === "mode") command = value; },
-    appendEntry(type: string, data: unknown) { if (appendError) throw appendError; appended.push({ type, data }); },
+    registerCommand(name: string, value: any) {
+      if (name === "mode") command = value;
+    },
+    appendEntry(type: string, data: unknown) {
+      if (appendError) throw appendError;
+      appended.push({ type, data });
+    },
   } as any;
   const manager = { getEntries: () => entries, getBranch: () => entries, getSessionId: () => "session" };
-  const ctx = { sessionManager: manager, ui: {
-    notify: (message: string, kind: string) => notices.push({ message, kind }),
-    setStatus: (key: string, value: string | undefined) => statuses.push({ key, value }),
-  } } as any;
+  const ctx = {
+    sessionManager: manager,
+    ui: {
+      notify: (message: string, kind: string) => notices.push({ message, kind }),
+      setStatus: (key: string, value: string | undefined) => statuses.push({ key, value }),
+    },
+  } as any;
   const mode = registerInstructionMode(pi, () => root);
   mode.sessionStart(ctx);
   return { mode, command, appended, notices, statuses, ctx };
@@ -64,7 +74,6 @@ test("bounded mode replacement preserves framing before and after it", () => {
   expect(replaceMainAgentGuidance("EXPLICIT CUSTOM", "fast", owner)).toBe("EXPLICIT CUSTOM");
 });
 
-
 test("resume reads only the active branch", () => {
   const abandoned = { type: "custom", customType: "die-instruction-mode", data: { mode: "fast" } };
   const active = { type: "custom", customType: "die-instruction-mode", data: { mode: "normal" } };
@@ -83,7 +92,6 @@ test("failed mode persistence leaves memory, status, and frame unchanged", async
   expect(f.notices.at(-1).message).toContain("disk full");
 });
 
-
 test("a real SessionManager branch ignores mode entries on the abandoned branch", async () => {
   const dir = await mkdtemp(join(tmpdir(), "die-mode-branch-"));
   try {
@@ -93,18 +101,31 @@ test("a real SessionManager branch ignores mode entries on the abandoned branch"
     manager.branch(activeMode);
     manager.appendCustomEntry("active-tip", {});
     let command: any;
-    const pi = { registerCommand(name: string, value: any) { if (name === "mode") command = value; }, appendEntry() {} } as any;
+    const pi = {
+      registerCommand(name: string, value: any) {
+        if (name === "mode") command = value;
+      },
+      appendEntry() {},
+    } as any;
     const state = registerInstructionMode(pi, () => true);
     const ctx = { sessionManager: manager, ui: { setStatus() {}, notify() {} } } as any;
     state.sessionStart(ctx);
     expect(state.get()).toBe("normal");
-    expect(manager.getEntries().some(entry => entry.type === "custom" && entry.customType === INSTRUCTION_MODE_ENTRY && (entry.data as any).mode === "fast")).toBe(true);
+    expect(
+      manager
+        .getEntries()
+        .some(
+          (entry) =>
+            entry.type === "custom" &&
+            entry.customType === INSTRUCTION_MODE_ENTRY &&
+            (entry.data as any).mode === "fast",
+        ),
+    ).toBe(true);
     expect(command).toBeDefined();
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
-
 
 test("a real disk reopen produces a byte-identical mode prompt", async () => {
   const dir = await mkdtemp(join(tmpdir(), "die-mode-reopen-"));

@@ -25,10 +25,43 @@ test("real TUI /mode reports and switches the root instruction mode", async () =
   }
   try {
     const binary = resolve(import.meta.dir, "../dist/die");
-    const launch = ["env", "HOME=" + home, "DIE_SUBAGENT_DEPTH=0", "DIE_CODING_AGENT_DIR=" + join(home, ".die", "agent"),
-      "OPENAI_API_KEY=offline-test-placeholder", binary, "--offline", "--no-session", "--provider", "openai", "--model", "gpt-4o"].map(quote).join(" ");
-    expect((await tmux("-f", resolve(import.meta.dir, "../scripts/tmux.conf"), "new-session", "-d", "-s", "mode", "-x", "120", "-y", "40", "-c", home, launch)).code).toBe(0);
-    await frameContaining("gpt-4o"); await Bun.sleep(1000);
+    const launch = [
+      "env",
+      "HOME=" + home,
+      "DIE_SUBAGENT_DEPTH=0",
+      "DIE_CODING_AGENT_DIR=" + join(home, ".die", "agent"),
+      "OPENAI_API_KEY=offline-test-placeholder",
+      binary,
+      "--offline",
+      "--no-session",
+      "--provider",
+      "openai",
+      "--model",
+      "gpt-4o",
+    ]
+      .map(quote)
+      .join(" ");
+    expect(
+      (
+        await tmux(
+          "-f",
+          resolve(import.meta.dir, "../scripts/tmux.conf"),
+          "new-session",
+          "-d",
+          "-s",
+          "mode",
+          "-x",
+          "120",
+          "-y",
+          "40",
+          "-c",
+          home,
+          launch,
+        )
+      ).code,
+    ).toBe(0);
+    await frameContaining("gpt-4o");
+    await Bun.sleep(1000);
     await command("/mode fast");
     const switched = await frameContaining("Main-agent mode: fast");
     expect(switched).toContain("mode: fast");

@@ -43,7 +43,7 @@ describe("quiet startup", () => {
     await manager.reload();
     expect(manager.getQuietStartup()).toBe(true);
 
-    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({...original, theme:"light"});
+    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({ ...original, theme: "light" });
   });
 
   test("restores the startup getter for callers and tests", async () => {

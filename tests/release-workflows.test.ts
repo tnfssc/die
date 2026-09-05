@@ -10,16 +10,26 @@ const read = (path: string) => Bun.file(resolve(root, path)).text();
 
 type FixturePackage = { manifest: Record<string, unknown>; license?: string };
 
-async function writeNoticeFixture(directory: string, dependencies: string[], packages: Record<string, FixturePackage>): Promise<void> {
+async function writeNoticeFixture(
+  directory: string,
+  dependencies: string[],
+  packages: Record<string, FixturePackage>,
+): Promise<void> {
   await mkdir(join(directory, "third_party/pi"), { recursive: true });
   await mkdir(join(directory, "third_party/bun"), { recursive: true });
-  await Bun.write(join(directory, "package.json"), JSON.stringify({ dependencies: Object.fromEntries(dependencies.map((name) => [name, "1.0.0"])) }));
+  await Bun.write(
+    join(directory, "package.json"),
+    JSON.stringify({ dependencies: Object.fromEntries(dependencies.map((name) => [name, "1.0.0"])) }),
+  );
   await Bun.write(join(directory, "third_party/pi/LICENSE"), "Pi license\n");
   await Bun.write(join(directory, "third_party/bun/LICENSE.md"), "Bun license\n");
   for (const [name, fixture] of Object.entries(packages)) {
     const packageDirectory = join(directory, "node_modules", name);
     await mkdir(packageDirectory, { recursive: true });
-    await Bun.write(join(packageDirectory, "package.json"), JSON.stringify({ name, version: "1.0.0", ...fixture.manifest }));
+    await Bun.write(
+      join(packageDirectory, "package.json"),
+      JSON.stringify({ name, version: "1.0.0", ...fixture.manifest }),
+    );
     if (fixture.license !== undefined) await Bun.write(join(packageDirectory, "LICENSE"), fixture.license);
   }
 }
@@ -34,12 +44,12 @@ describe("release automation", () => {
     expect(workflow).toContain("bun run lint");
     expect(workflow).toContain("bun run check");
     expect(workflow).toContain("bun run build");
-    expect(workflow).toContain("DIE_RUN_LLM_TESTS: \"0\"");
+    expect(workflow).toContain('DIE_RUN_LLM_TESTS: "0"');
     expect(workflow).toContain("bun test ./tests");
     expect(workflow).toContain("bun run smoke");
     expect(workflow).toContain("if: failure()");
     expect(workflow).toContain("actions/upload-artifact@v4");
-    expect(workflow).not.toContain("DIE_RUN_LLM_TESTS: \"1\"");
+    expect(workflow).not.toContain('DIE_RUN_LLM_TESTS: "1"');
     expect(workflow).not.toMatch(/API_KEY|AUTH_TOKEN/);
   });
 
@@ -71,10 +81,14 @@ describe("release automation", () => {
   });
 
   test("CLI release validator derives the expected tag from package.json", async () => {
-    const pkg = await Bun.file(resolve(root, "package.json")).json() as { version: string };
-    const run = (tag: string) => Bun.spawnSync({
-      cmd: [process.execPath, "scripts/validate-release-tag.ts", tag], cwd: root, stdout: "pipe", stderr: "pipe",
-    });
+    const pkg = (await Bun.file(resolve(root, "package.json")).json()) as { version: string };
+    const run = (tag: string) =>
+      Bun.spawnSync({
+        cmd: [process.execPath, "scripts/validate-release-tag.ts", tag],
+        cwd: root,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
     expect(run("v" + pkg.version).exitCode).toBe(0);
     expect(run("v999.0.0").stderr.toString()).toContain("does not match package.json version");
   });
@@ -83,7 +97,12 @@ describe("release automation", () => {
     const directory = await mkdtemp(join(tmpdir(), "die-notices-"));
     const output = join(directory, "THIRD_PARTY_LICENSES.txt");
     try {
-      const result = Bun.spawnSync({ cmd: [process.execPath, "scripts/generate-third-party-notices.ts", output], cwd: root, stdout: "pipe", stderr: "pipe" });
+      const result = Bun.spawnSync({
+        cmd: [process.execPath, "scripts/generate-third-party-notices.ts", output],
+        cwd: root,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
       expect(result.exitCode, result.stderr.toString()).toBe(0);
       const notices = await Bun.file(output).text();
       expect(notices).toContain("@earendil-works/pi-coding-agent@0.85.0");
@@ -104,18 +123,25 @@ describe("release automation", () => {
       await writeNoticeFixture(directory, ["present"], {
         present: { manifest: { dependencies: { missing: "1.0.0" } }, license: "MIT\n" },
       });
-      await expect(generateThirdPartyNotices(directory, join(directory, "notices.txt"))).rejects.toThrow("production dependency missing could not be resolved");
+      await expect(generateThirdPartyNotices(directory, join(directory, "notices.txt"))).rejects.toThrow(
+        "production dependency missing could not be resolved",
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
 
   test("Pi fallback fails closed for unknown packages and unpinned versions", async () => {
-    for (const [name, version] of [["@earendil-works/not-pi", "0.85.0"], ["@earendil-works/pi-ai", "0.85.1"]]) {
+    for (const [name, version] of [
+      ["@earendil-works/not-pi", "0.85.0"],
+      ["@earendil-works/pi-ai", "0.85.1"],
+    ]) {
       const directory = await mkdtemp(join(tmpdir(), "die-notices-fallback-"));
       try {
         await writeNoticeFixture(directory, [name], { [name]: { manifest: { version } } });
-        await expect(generateThirdPartyNotices(directory, join(directory, "notices.txt"))).rejects.toThrow(`${name}@${version} has no packaged or curated LICENSE`);
+        await expect(generateThirdPartyNotices(directory, join(directory, "notices.txt"))).rejects.toThrow(
+          `${name}@${version} has no packaged or curated LICENSE`,
+        );
       } finally {
         await rm(directory, { recursive: true, force: true });
       }
@@ -128,15 +154,21 @@ describe("release automation", () => {
       await writeNoticeFixture(directory, ["large-license"], {
         "large-license": { manifest: {}, license: "x".repeat(512) },
       });
-      await expect(generateThirdPartyNotices(directory, join(directory, "notices.txt"), 128)).rejects.toThrow(/byte budget before reading .*LICENSE/);
+      await expect(generateThirdPartyNotices(directory, join(directory, "notices.txt"), 128)).rejects.toThrow(
+        /byte budget before reading .*LICENSE/,
+      );
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
   });
 
   test("embedded vendor license banners are preserved", async () => {
-    const highlight = await read("node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/vendor/highlight.min.js");
-    const marked = await read("node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/vendor/marked.min.js");
+    const highlight = await read(
+      "node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/vendor/highlight.min.js",
+    );
+    const marked = await read(
+      "node_modules/@earendil-works/pi-coding-agent/dist/core/export-html/vendor/marked.min.js",
+    );
     expect(highlight.slice(0, 250)).toContain("License: BSD-3-Clause");
     expect(marked.slice(0, 300)).toContain("MIT License");
   });

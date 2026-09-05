@@ -8,7 +8,7 @@ const binary = resolve(import.meta.dir, "../dist/die");
 const directories: string[] = [];
 
 afterEach(async () => {
-  await Promise.all(directories.splice(0).map(directory => rm(directory, { recursive: true, force: true })));
+  await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
 test("worker handoff acknowledges before intentionally exiting", async () => {
@@ -61,13 +61,21 @@ test("a rejected handoff reports the handler error and continues no further", as
 });
 
 test("handoff without a bridge retains the unavailable rejection", async () => {
-  const result = await executeIsolated('await handoff("next")', process.cwd(), undefined, 3_000, { executablePath: binary });
+  const result = await executeIsolated('await handoff("next")', process.cwd(), undefined, 3_000, {
+    executablePath: binary,
+  });
   expect(result.exitCode).not.toBe(0);
   expect(result.stderr).toContain("bridge is unavailable");
 });
 
 test("handoff unwinds cleanup but does not swallow cleanup errors", async () => {
-  const result = await executeIsolated('try { await handoff("pending"); } finally { console.log("cleanup"); throw new Error("cleanup failed"); }', process.cwd(), undefined, 3000, {executablePath:binary,jobHandler:async()=>({accepted:true})});
+  const result = await executeIsolated(
+    'try { await handoff("pending"); } finally { console.log("cleanup"); throw new Error("cleanup failed"); }',
+    process.cwd(),
+    undefined,
+    3000,
+    { executablePath: binary, jobHandler: async () => ({ accepted: true }) },
+  );
   expect(result.exitCode).not.toBe(0);
   expect(result.stdout.trim()).toBe("cleanup");
   expect(result.stderr).toContain("cleanup failed");

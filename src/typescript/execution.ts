@@ -62,7 +62,15 @@ export async function executeIsolated(
   } = {},
 ): Promise<ExecutionResult> {
   if (signal?.aborted) {
-    return { stdout: "", stderr: "", stdoutLost: false, stderrLost: false, timedOut: false, cancelled: true, images: [] };
+    return {
+      stdout: "",
+      stderr: "",
+      stdoutLost: false,
+      stderrLost: false,
+      timedOut: false,
+      cancelled: true,
+      images: [],
+    };
   }
   const childEnv: NodeJS.ProcessEnv = { ...process.env, [IMAGE_CHANNEL_ENV]: "1" };
   if (options.jobHandler) childEnv[JOB_BRIDGE_ENV] = "1";
@@ -80,9 +88,8 @@ export async function executeIsolated(
   const imagePipe = child.stdio[3] as Readable | undefined;
   const jobPipe = options.jobHandler ? openParentJobBridge(child) : undefined;
   const executionController = new AbortController();
-  const jobBridge = options.jobHandler && jobPipe
-    ? serveJobBridge(jobPipe, options.jobHandler, executionController.signal)
-    : undefined;
+  const jobBridge =
+    options.jobHandler && jobPipe ? serveJobBridge(jobPipe, options.jobHandler, executionController.signal) : undefined;
   let imageError: string | undefined;
   let timedOut = false;
   let cancelled = false;
@@ -181,17 +188,29 @@ export async function executeIsolated(
 }
 
 export function formatResult(result: ExecutionResult): string {
-  const status = result.cancelled ? "cancelled" : result.timedOut ? "timed out" : result.exitCode === 0 && !result.imageError ? "completed" : "failed";
+  const status = result.cancelled
+    ? "cancelled"
+    : result.timedOut
+      ? "timed out"
+      : result.exitCode === 0 && !result.imageError
+        ? "completed"
+        : "failed";
   const sections = [
     `Execution ${status}${result.exitCode !== undefined ? ` with exit code ${result.exitCode}` : ""}${result.signal ? ` (${result.signal})` : ""}.`,
   ];
-  if (result.stdout) sections.push(`stdout${result.stdoutLost ? " (earlier output discarded)" : ""}:\n${result.stdout}`);
-  if (result.stderr) sections.push(`stderr${result.stderrLost ? " (earlier output discarded)" : ""}:\n${result.stderr}`);
+  if (result.stdout)
+    sections.push(`stdout${result.stdoutLost ? " (earlier output discarded)" : ""}:\n${result.stdout}`);
+  if (result.stderr)
+    sections.push(`stderr${result.stderrLost ? " (earlier output discarded)" : ""}:\n${result.stderr}`);
   if (result.stdoutLost || result.stderrLost) {
-    sections.push("Output truncated to the last 24,000 bytes / 900 lines per stream. Discarded output is not saved; print a smaller selection or use shell() and jobs.inspect() for cursor-based inspection. Targeted inspection preserves evidence without repeating side effects.");
+    sections.push(
+      "Output truncated to the last 24,000 bytes / 900 lines per stream. Discarded output is not saved; print a smaller selection or use shell() and jobs.inspect() for cursor-based inspection. Targeted inspection preserves evidence without repeating side effects.",
+    );
   }
   if (result.imageError) sections.push(`Image output error: ${result.imageError}`);
-  if (result.images.length) sections.push(`Returned ${result.images.length} image${result.images.length === 1 ? "" : "s"}.`);
-  if (!result.stdout && !result.stderr && !result.images.length && !result.imageError) sections.push("No output. Use console.log(...) for text or await emitImage(...) for images.");
+  if (result.images.length)
+    sections.push(`Returned ${result.images.length} image${result.images.length === 1 ? "" : "s"}.`);
+  if (!result.stdout && !result.stderr && !result.images.length && !result.imageError)
+    sections.push("No output. Use console.log(...) for text or await emitImage(...) for images.");
   return sections.join("\n\n");
 }

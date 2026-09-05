@@ -6,7 +6,7 @@ import { run } from "./helpers";
 
 const root = resolve(import.meta.dir, "..");
 const binary = join(root, "dist/die");
-const packageVersion = (await Bun.file(join(root, "package.json")).json() as { version: string }).version;
+const packageVersion = ((await Bun.file(join(root, "package.json")).json()) as { version: string }).version;
 let home: string;
 
 beforeEach(async () => {

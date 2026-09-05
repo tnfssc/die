@@ -6,13 +6,28 @@ import { CompactEditor } from "../src/ui/editor";
 const identity = (text: string) => text;
 const theme: EditorTheme = {
   borderColor: identity,
-  selectList: { selectedPrefix: identity, selectedText: identity, description: identity, scrollInfo: identity, noMatch: identity },
+  selectList: {
+    selectedPrefix: identity,
+    selectedText: identity,
+    description: identity,
+    scrollInfo: identity,
+    noMatch: identity,
+  },
 };
 function editor() {
-  return new CompactEditor({ terminal: { rows: 24 }, requestRender() {} } as unknown as TUI, theme, { matches: (data: string, action: string) => (action === "app.interrupt" && data === "\x1b") || (action === "app.exit" && data === "\x04") } as KeybindingsManager, { paddingX: 0, embedWorkingStatus: true });
+  return new CompactEditor(
+    { terminal: { rows: 24 }, requestRender() {} } as unknown as TUI,
+    theme,
+    {
+      matches: (data: string, action: string) =>
+        (action === "app.interrupt" && data === "\x1b") || (action === "app.exit" && data === "\x04"),
+    } as KeybindingsManager,
+    { paddingX: 0, embedWorkingStatus: true },
+  );
 }
 const text = (lines: string[]) => lines.map((line) => Bun.stripANSI(line).trimEnd());
-const click = (x: number, y: number): TuiMouseEvent => ({ type: "click", button: "left", x, y, width: 40, height: 1 } as TuiMouseEvent);
+const click = (x: number, y: number): TuiMouseEvent =>
+  ({ type: "click", button: "left", x, y, width: 40, height: 1 }) as TuiMouseEvent;
 
 describe("borderless editor", () => {
   test("one idle row, preserves cursor marker, widths and normal input", () => {
@@ -26,7 +41,9 @@ describe("borderless editor", () => {
       for (const line of input.render(width)) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }
     let submitted = "";
-    input.onSubmit = (value) => { submitted = value; };
+    input.onSubmit = (value) => {
+      submitted = value;
+    };
     input.handleInput("\r");
     expect(submitted).toBe("hello");
   });
@@ -45,9 +62,14 @@ describe("borderless editor", () => {
 
   test("native app shortcuts, paste, and history remain functional", () => {
     const input = editor();
-    let escaped = false, exited = false;
-    input.onEscape = () => { escaped = true; };
-    input.onCtrlD = () => { exited = true; };
+    let escaped = false,
+      exited = false;
+    input.onEscape = () => {
+      escaped = true;
+    };
+    input.onCtrlD = () => {
+      exited = true;
+    };
     input.handleInput("\x1b");
     input.handleInput("\x04");
     expect(escaped).toBe(true);
@@ -62,13 +84,17 @@ describe("borderless editor", () => {
 
   test("spinner occupies the prompt gutter without adding rows", () => {
     const input = editor();
-    input.setWorkingStatusIndicator({ renderSpinnerInBorder: () => "*" } as unknown as Parameters<CompactEditor["setWorkingStatusIndicator"]>[0]);
+    input.setWorkingStatusIndicator({ renderSpinnerInBorder: () => "*" } as unknown as Parameters<
+      CompactEditor["setWorkingStatusIndicator"]
+    >[0]);
     expect(text(input.render(80))).toEqual(["*"]);
     input.setWorkingStatusIndicator(undefined);
     expect(text(input.render(80))).toEqual([""]);
     input.setText("draft");
     expect(text(input.render(80))).toEqual(["draft"]);
-    input.setWorkingStatusIndicator({ renderSpinnerInBorder: () => "*" } as unknown as Parameters<CompactEditor["setWorkingStatusIndicator"]>[0]);
+    input.setWorkingStatusIndicator({ renderSpinnerInBorder: () => "*" } as unknown as Parameters<
+      CompactEditor["setWorkingStatusIndicator"]
+    >[0]);
     expect(text(input.render(80))).toEqual(["* draft"]);
     input.setWorkingStatusIndicator(undefined);
     expect(text(input.render(80))).toEqual(["draft"]);
@@ -86,8 +112,18 @@ describe("borderless editor", () => {
   test("autocomplete rows survive, select with keyboard and mouse", async () => {
     const input = editor();
     input.setAutocompleteProvider({
-      getSuggestions: async () => ({ prefix: "/", items: [{ value: "/status", label: "/status", description: "Toggle details" }, { value: "/settings", label: "/settings" }] }),
-      applyCompletion: (_lines, _line, _col, item) => ({ lines: [item.value], cursorLine: 0, cursorCol: item.value.length }),
+      getSuggestions: async () => ({
+        prefix: "/",
+        items: [
+          { value: "/status", label: "/status", description: "Toggle details" },
+          { value: "/settings", label: "/settings" },
+        ],
+      }),
+      applyCompletion: (_lines, _line, _col, item) => ({
+        lines: [item.value],
+        cursorLine: 0,
+        cursorCol: item.value.length,
+      }),
     });
     input.handleInput("/");
     await Bun.sleep(30);

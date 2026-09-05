@@ -32,10 +32,13 @@ export type ClassicSession = {
       images: ImageContent[] | undefined,
       systemPrompt: string,
       options: unknown,
-    ): Promise<{
-      messages?: Array<{ customType: string; content: unknown[]; display?: boolean; details?: unknown }>;
-      systemPrompt?: string;
-    } | undefined>;
+    ): Promise<
+      | {
+          messages?: Array<{ customType: string; content: unknown[]; display?: boolean; details?: unknown }>;
+          systemPrompt?: string;
+        }
+      | undefined
+    >;
   };
   _baseSystemPrompt?: string;
   _baseSystemPromptOptions?: unknown;
@@ -132,10 +135,12 @@ export function installCurrentConversationAdapter(): void {
   const runAgentPrompt = prototype._runAgentPrompt;
   const buildRuntime = prototype._buildRuntime;
   if (typeof runAgentPrompt !== "function" || typeof buildRuntime !== "function") {
-    throw new Error("die instruction continuity is unsupported by this Pi runtime: required private AgentSession._runAgentPrompt/_buildRuntime seams are unavailable");
+    throw new Error(
+      "die instruction continuity is unsupported by this Pi runtime: required private AgentSession._runAgentPrompt/_buildRuntime seams are unavailable",
+    );
   }
   classicAdapterInstalled = true;
-  prototype._runAgentPrompt = async function(this: ClassicSession, messages: unknown) {
+  prototype._runAgentPrompt = async function (this: ClassicSession, messages: unknown) {
     const frame = currentInstructionFrame(this.sessionManager);
     if (frame) {
       // prompt() has already run the entire before_agent_start chain. Capture
@@ -149,7 +154,7 @@ export function installCurrentConversationAdapter(): void {
     }
     return runAgentPrompt.call(this, messages);
   };
-  prototype._buildRuntime = function(this: ClassicSession, options: unknown) {
+  prototype._buildRuntime = function (this: ClassicSession, options: unknown) {
     bindInstructionContinuitySession(this);
     return buildRuntime.call(this, options);
   };

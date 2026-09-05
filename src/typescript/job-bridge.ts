@@ -22,7 +22,7 @@ type AckCapableSignal = AbortSignal & {
 
 /** Return the bridge signal whose lifetime describes response delivery. */
 export function getJobResponseDeliverySignal(signal?: AbortSignal): AbortSignal | undefined {
-  return signal ? (signal as AckCapableSignal)[RESPONSE_DELIVERY_SIGNAL] ?? signal : undefined;
+  return signal ? ((signal as AckCapableSignal)[RESPONSE_DELIVERY_SIGNAL] ?? signal) : undefined;
 }
 
 /** True when a handler signal can acknowledge that its result reached the worker. */
@@ -102,7 +102,8 @@ function message(error: unknown): string {
 }
 
 function combine(options: Options | undefined, required: Options): Options {
-  if (options !== undefined && (!options || typeof options !== "object" || Array.isArray(options))) throw new Error("Job options must be an object");
+  if (options !== undefined && (!options || typeof options !== "object" || Array.isArray(options)))
+    throw new Error("Job options must be an object");
   return { ...(options ?? {}), ...required };
 }
 
@@ -112,7 +113,10 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
   let input = Buffer.alloc(0);
   let closed = !socket;
   let finishing = false;
-  const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; promise: Promise<unknown> }>();
+  const pending = new Map<
+    number,
+    { resolve(value: unknown): void; reject(error: Error): void; promise: Promise<unknown> }
+  >();
   const unavailable = "Job bridge is unavailable for this execute call";
 
   const rejectAll = (reason: string) => {
@@ -160,16 +164,30 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
           return;
         }
         let value: unknown;
-        try { value = JSON.parse(frame.toString("utf8")); }
-        catch { failProtocol("Invalid job bridge response JSON"); return; }
-        if (!value || typeof value !== "object") { failProtocol("Invalid job bridge response envelope"); return; }
+        try {
+          value = JSON.parse(frame.toString("utf8"));
+        } catch {
+          failProtocol("Invalid job bridge response JSON");
+          return;
+        }
+        if (!value || typeof value !== "object") {
+          failProtocol("Invalid job bridge response envelope");
+          return;
+        }
         const response = value as Response;
-        if (!Number.isSafeInteger(response.id) || !("result" in response || typeof response.error === "string") || ("result" in response && "error" in response)) {
+        if (
+          !Number.isSafeInteger(response.id) ||
+          !("result" in response || typeof response.error === "string") ||
+          ("result" in response && "error" in response)
+        ) {
           failProtocol("Invalid job bridge response envelope");
           return;
         }
         const item = pending.get(response.id);
-        if (!item) { failProtocol("Unknown job bridge response id"); return; }
+        if (!item) {
+          failProtocol("Unknown job bridge response id");
+          return;
+        }
         if (typeof response.error === "string") {
           // Error results own no task completion, but acknowledge them to release
           // the server-side request signal consistently.
@@ -187,15 +205,23 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
   }
 
   const request = (method: string, params: unknown): Promise<unknown> => {
-    if (!socket || closed || finishing) return Promise.reject(new Error(socket ? "Job bridge is closing" : unavailable));
+    if (!socket || closed || finishing)
+      return Promise.reject(new Error(socket ? "Job bridge is closing" : unavailable));
     const id = nextId++;
     let line: string;
-    try { line = JSON.stringify({ id, method, params: params ?? null }) + "\n"; }
-    catch (error) { return Promise.reject(new Error(`Could not encode job bridge request: ${message(error)}`)); }
-    if (Buffer.byteLength(line) > MAX_JOB_BRIDGE_FRAME_BYTES) return Promise.reject(new Error("Job bridge request exceeded 1 MB"));
+    try {
+      line = JSON.stringify({ id, method, params: params ?? null }) + "\n";
+    } catch (error) {
+      return Promise.reject(new Error(`Could not encode job bridge request: ${message(error)}`));
+    }
+    if (Buffer.byteLength(line) > MAX_JOB_BRIDGE_FRAME_BYTES)
+      return Promise.reject(new Error("Job bridge request exceeded 1 MB"));
     let resolve!: (value: unknown) => void;
     let reject!: (error: Error) => void;
-    const promise = new Promise<unknown>((res, rej) => { resolve = res; reject = rej; });
+    const promise = new Promise<unknown>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
     pending.set(id, { resolve, reject, promise });
     try {
       socket.write(line, (error?: Error | null) => {
@@ -255,17 +281,37 @@ function ipcStream(endpoint: NodeJS.Process | ChildProcess): Duplex {
   const disconnect = () => {
     endpoint.off("message", onMessage);
     endpoint.off("disconnect", onDisconnect);
-    if (endpoint.connected) { try { endpoint.disconnect?.(); } catch {} }
+    if (endpoint.connected) {
+      try {
+        endpoint.disconnect?.();
+      } catch {}
+    }
   };
   const stream = new Duplex({
     read() {},
     write(chunk, _encoding, callback) {
-      if (!endpoint.connected || !endpoint.send) { callback(new Error("Job bridge disconnected")); return; }
-      try { (endpoint.send as (message: string, callback: (error: Error | null) => void) => boolean).call(endpoint, chunk.toString("utf8"), error => callback(error)); }
-      catch (error) { callback(error as Error); }
+      if (!endpoint.connected || !endpoint.send) {
+        callback(new Error("Job bridge disconnected"));
+        return;
+      }
+      try {
+        (endpoint.send as (message: string, callback: (error: Error | null) => void) => boolean).call(
+          endpoint,
+          chunk.toString("utf8"),
+          (error) => callback(error),
+        );
+      } catch (error) {
+        callback(error as Error);
+      }
     },
-    final(callback) { disconnect(); callback(); },
-    destroy(error, callback) { disconnect(); callback(error); },
+    final(callback) {
+      disconnect();
+      callback();
+    },
+    destroy(error, callback) {
+      disconnect();
+      callback(error);
+    },
   });
   endpoint.on("message", onMessage);
   endpoint.on("disconnect", onDisconnect);
@@ -276,10 +322,16 @@ export function openWorkerJobBridge(): Duplex | undefined {
   if (!process.send) throw new Error("Job IPC channel is unavailable");
   return ipcStream(process);
 }
-export function openParentJobBridge(child: ChildProcess): Duplex { return ipcStream(child); }
+export function openParentJobBridge(child: ChildProcess): Duplex {
+  return ipcStream(child);
+}
 
 /** Serve worker requests over the private IPC channel. */
-export function serveJobBridge(socket: Duplex, handler: JobHandler, executionSignal: AbortSignal): { close(commitAcknowledgements?: boolean): void } {
+export function serveJobBridge(
+  socket: Duplex,
+  handler: JobHandler,
+  executionSignal: AbortSignal,
+): { close(commitAcknowledgements?: boolean): void } {
   let input = Buffer.alloc(0);
   let lastId = 0;
   let closed = false;
@@ -347,8 +399,9 @@ export function serveJobBridge(socket: Duplex, handler: JobHandler, executionSig
       request.reply = "failed";
       request.controller.abort();
     }
-    try { line = JSON.stringify(response) + "\n"; }
-    catch (error) {
+    try {
+      line = JSON.stringify(response) + "\n";
+    } catch (error) {
       fallback = true;
       line = JSON.stringify({ id: response.id, error: `Could not encode job result: ${message(error)}` }) + "\n";
     }
@@ -363,7 +416,7 @@ export function serveJobBridge(socket: Duplex, handler: JobHandler, executionSig
       request.controller.abort();
     } else request.reply = "sent";
     try {
-      socket.write(line, error => {
+      socket.write(line, (error) => {
         if (error) {
           request.controller.abort();
           requests.delete(id);
@@ -386,41 +439,68 @@ export function serveJobBridge(socket: Duplex, handler: JobHandler, executionSig
       }
       const frame = input.subarray(0, newline);
       input = input.subarray(newline + 1);
-      if (frame.length > MAX_JOB_BRIDGE_FRAME_BYTES) { fail("Job bridge request exceeded 1 MB"); return; }
+      if (frame.length > MAX_JOB_BRIDGE_FRAME_BYTES) {
+        fail("Job bridge request exceeded 1 MB");
+        return;
+      }
       let value: unknown;
-      try { value = JSON.parse(frame.toString("utf8")); }
-      catch { fail("Invalid job bridge request JSON"); return; }
-      if (!value || typeof value !== "object") { fail("Invalid job bridge request envelope"); return; }
+      try {
+        value = JSON.parse(frame.toString("utf8"));
+      } catch {
+        fail("Invalid job bridge request JSON");
+        return;
+      }
+      if (!value || typeof value !== "object") {
+        fail("Invalid job bridge request envelope");
+        return;
+      }
       if ("ack" in value) {
         const acknowledgement = value as Acknowledgement;
-        if (!Number.isSafeInteger(acknowledgement.ack)) { fail("Invalid job bridge acknowledgement"); return; }
+        if (!Number.isSafeInteger(acknowledgement.ack)) {
+          fail("Invalid job bridge acknowledgement");
+          return;
+        }
         const request = requests.get(acknowledgement.ack);
         // ACK before a normal reply, replayed ACK, and unknown ACK are protocol
         // failures. abortRequests() also releases every TaskManager listener.
-        if (!request) { fail("Unknown or duplicate job bridge acknowledgement id"); return; }
+        if (!request) {
+          fail("Unknown or duplicate job bridge acknowledgement id");
+          return;
+        }
         if (request.reply === "failed") {
           // The worker received the bounded error fallback. There is no task
           // result to commit, and abort above already released its listeners.
           requests.delete(acknowledgement.ack);
           continue;
         }
-        if (request.reply !== "sent") { fail("Unknown or duplicate job bridge acknowledgement id"); return; }
+        if (request.reply !== "sent") {
+          fail("Unknown or duplicate job bridge acknowledgement id");
+          return;
+        }
         request.reply = "acked";
         continue;
       }
       const request = value as Request;
-      if (!Number.isSafeInteger(request.id) || request.id <= lastId || typeof request.method !== "string" || !("params" in request)) {
-        fail("Invalid job bridge request envelope"); return;
+      if (
+        !Number.isSafeInteger(request.id) ||
+        request.id <= lastId ||
+        typeof request.method !== "string" ||
+        !("params" in request)
+      ) {
+        fail("Invalid job bridge request envelope");
+        return;
       }
       lastId = request.id;
       const requestController = new AbortController();
       Object.defineProperty(requestController.signal, ACK_CAPABLE, { value: true });
       requests.set(request.id, { controller: requestController, reply: "pending" });
       if (controller.signal.aborted) requestController.abort();
-      void Promise.resolve().then(() => handler(request.method, request.params, requestController.signal)).then(
-        result => send(request.id, { id: request.id, result: result === undefined ? null : result }),
-        error => send(request.id, { id: request.id, error: message(error) }, false),
-      );
+      void Promise.resolve()
+        .then(() => handler(request.method, request.params, requestController.signal))
+        .then(
+          (result) => send(request.id, { id: request.id, result: result === undefined ? null : result }),
+          (error) => send(request.id, { id: request.id, error: message(error) }, false),
+        );
     }
   });
   return { close };

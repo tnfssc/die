@@ -31,10 +31,14 @@ describe("task completion batching", () => {
   test("contains batch flush callback failures without retrying", async () => {
     const error = spyOn(console, "error").mockImplementation(() => {});
     let calls = 0;
-    const batcher = new CompletionBatcher<number>(() => {
-      calls++;
-      throw new Error("notification failed");
-    }, 10, 50);
+    const batcher = new CompletionBatcher<number>(
+      () => {
+        calls++;
+        throw new Error("notification failed");
+      },
+      10,
+      50,
+    );
     try {
       batcher.add(1);
       batcher.add(2);
@@ -58,5 +62,4 @@ describe("task completion batching", () => {
     await Bun.sleep(30);
     expect(calls).toBe(0);
   });
-
 });

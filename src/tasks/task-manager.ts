@@ -1,7 +1,11 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { BoundedOutputBuffer } from "./output-buffer";
-import { getJobResponseDeliverySignal, JOB_RESPONSE_ACK_EVENT, supportsJobResponseAcknowledgement } from "../typescript/job-bridge";
+import {
+  getJobResponseDeliverySignal,
+  JOB_RESPONSE_ACK_EVENT,
+  supportsJobResponseAcknowledgement,
+} from "../typescript/job-bridge";
 
 import { AgentProgress, type AgentInfo } from "./agent-progress";
 
@@ -114,7 +118,6 @@ export class TaskManager {
     this.#killGraceMs = killGraceMs;
   }
 
-
   spawn(launch: TaskLaunch): TaskSummary {
     if (this.#shuttingDown) throw new Error("Task manager is shutting down");
     const id = launch.id ?? `task_${randomUUID().slice(0, 8)}`;
@@ -157,7 +160,9 @@ export class TaskManager {
 
     // Intentionally merge stdout and stderr for now. Stream labels and strict
     // cross-stream ordering require a structured output format; add that later.
-    const progress = task.agent ? new AgentProgress(task.agent, value => this.#append(task, value, false)) : undefined;
+    const progress = task.agent
+      ? new AgentProgress(task.agent, (value) => this.#append(task, value, false))
+      : undefined;
     child.stdout.on("data", (data: Buffer) => {
       if (progress) {
         // Every raw model stream chunk is activity, including token/thinking
@@ -228,7 +233,9 @@ export class TaskManager {
   /** Subscribe to event-driven state changes. The returned disposer is idempotent. */
   subscribe(listener: TaskEventListener): () => void {
     this.#listeners.add(listener);
-    return () => { this.#listeners.delete(listener); };
+    return () => {
+      this.#listeners.delete(listener);
+    };
   }
 
   list(): TaskSummary[] {
@@ -265,7 +272,11 @@ export class TaskManager {
   }
 
   /** Hand off notification ownership exactly once when a foreground wait expires. */
-  async foreground(id: string, waitMs: number, signal?: AbortSignal): Promise<TaskInspection & { background: boolean }> {
+  async foreground(
+    id: string,
+    waitMs: number,
+    signal?: AbortSignal,
+  ): Promise<TaskInspection & { background: boolean }> {
     const task = this.#require(id);
     let timer: ReturnType<typeof setTimeout> | undefined;
     let onAbort: (() => void) | undefined;
@@ -273,8 +284,10 @@ export class TaskManager {
       if (waitMs > 0 && !signal?.aborted) {
         await Promise.race([
           this.wait(id),
-          new Promise<void>(resolve => { timer = setTimeout(resolve, waitMs); }),
-          new Promise<void>(resolve => {
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, waitMs);
+          }),
+          new Promise<void>((resolve) => {
             onAbort = resolve;
             signal?.addEventListener("abort", onAbort, { once: true });
             if (signal?.aborted) resolve();
@@ -282,7 +295,7 @@ export class TaskManager {
         ]);
       }
       if (task.status !== "running" && !signal?.aborted) {
-        const result = { ...await this.wait(id), background: false };
+        const result = { ...(await this.wait(id)), background: false };
         // Bridge responses are only owned by the foreground caller once the
         // worker acknowledges receipt. A disconnect before that point returns
         // ownership to session notification delivery.
@@ -293,7 +306,12 @@ export class TaskManager {
             deliverySignal.removeEventListener(JOB_RESPONSE_ACK_EVENT, acknowledged);
             deliverySignal.removeEventListener("abort", disconnected);
           };
-          const acknowledged = () => { if (!settled) { settled = true; cleanup(); } };
+          const acknowledged = () => {
+            if (!settled) {
+              settled = true;
+              cleanup();
+            }
+          };
           const disconnected = () => {
             if (settled) return;
             settled = true;
@@ -327,7 +345,10 @@ export class TaskManager {
     await new Promise<void>((resolve, reject) => {
       stdin.write(input, (error) => (error ? reject(error) : resolve()));
     });
-    if (close && !stdin.destroyed) { stdin.end(); task.stdinOpen = false; }
+    if (close && !stdin.destroyed) {
+      stdin.end();
+      task.stdinOpen = false;
+    }
     this.#activity(task, "input");
     return this.#summary(task);
   }
@@ -367,7 +388,9 @@ export class TaskManager {
     // The session must not dispose its runtime (or exit) before escalation and
     // stream/process cleanup finish. Merely scheduling an unref'ed timer is
     // insufficient in the compiled CLI.
-    this.#shutdown = Promise.all(pending).then(() => { this.#listeners.clear(); });
+    this.#shutdown = Promise.all(pending).then(() => {
+      this.#listeners.clear();
+    });
     return this.#shutdown;
   }
 
@@ -394,7 +417,11 @@ export class TaskManager {
 
   #emit(event: TaskEvent): void {
     for (const listener of this.#listeners) {
-      try { listener(event); } catch (error) { console.error("Task event listener failed:", error); }
+      try {
+        listener(event);
+      } catch (error) {
+        console.error("Task event listener failed:", error);
+      }
     }
   }
 

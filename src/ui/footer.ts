@@ -3,13 +3,21 @@ import { sessionCostRoot } from "../tasks/session-cost-root";
 import { homedir } from "node:os";
 import { basename, isAbsolute, relative, sep } from "node:path";
 import type { Usage } from "@earendil-works/pi-ai";
-import type { ExtensionAPI, ExtensionContext, ReadonlyFooterDataProvider, Theme } from "@earendil-works/pi-coding-agent";
+import type {
+  ExtensionAPI,
+  ExtensionContext,
+  ReadonlyFooterDataProvider,
+  Theme,
+} from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { CompactEditor } from "./editor";
 import type { CacheCountdown, CacheEstimate } from "../tasks/cache-countdown";
 
 function singleLine(text: string): string {
-  return text.replace(/[\r\n\t]/g, " ").replace(/ +/g, " ").trim();
+  return text
+    .replace(/[\r\n\t]/g, " ")
+    .replace(/ +/g, " ")
+    .trim();
 }
 
 function tokens(value: number): string {
@@ -21,7 +29,11 @@ function tokens(value: number): string {
 
 export function footerPath(cwd: string, home = homedir()): string {
   const path = relative(home, cwd);
-  return path === "" ? "~" : path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path) ? `~${sep}${path}` : cwd;
+  return path === ""
+    ? "~"
+    : path !== ".." && !path.startsWith(`..${sep}`) && !isAbsolute(path)
+      ? `~${sep}${path}`
+      : cwd;
 }
 
 /** Keep active work visible even when the path must be shortened. */
@@ -47,7 +59,11 @@ function columns(left: string, right: string, width: number): string {
 }
 
 function footerUsage(ctx: ExtensionContext) {
-  let input = 0, output = 0, read = 0, write = 0, cost = 0;
+  let input = 0,
+    output = 0,
+    read = 0,
+    write = 0,
+    cost = 0;
   let cacheHit: number | undefined;
   // Include pre-compaction usage, nested tool usage, and summaries, like Pi.
   for (const entry of ctx.sessionManager.getEntries()) {
@@ -55,17 +71,19 @@ function footerUsage(ctx: ExtensionContext) {
     if (entry.type === "message" && entry.message.role === "assistant") {
       usage = entry.message.usage;
       const prompt = usage.input + usage.cacheRead + usage.cacheWrite;
-      cacheHit = prompt > 0 ? usage.cacheRead / prompt * 100 : undefined;
+      cacheHit = prompt > 0 ? (usage.cacheRead / prompt) * 100 : undefined;
     } else if (entry.type === "message" && entry.message.role === "toolResult") {
       usage = entry.message.usage;
     } else if (entry.type === "compaction" || entry.type === "branch_summary") {
       usage = entry.usage;
     } else if (entry.type === "custom" && entry.customType === "die-compaction-attempt") {
-      usage = (entry.data as {usage?:Usage})?.usage;
+      usage = (entry.data as { usage?: Usage })?.usage;
     }
     if (usage) {
-      input += usage.input; output += usage.output;
-      read += usage.cacheRead; write += usage.cacheWrite;
+      input += usage.input;
+      output += usage.output;
+      read += usage.cacheRead;
+      write += usage.cacheWrite;
       cost += usage.cost.total;
     }
   }
@@ -74,11 +92,23 @@ function footerUsage(ctx: ExtensionContext) {
 
 function cacheBadge(estimate: CacheEstimate | undefined, theme: Theme): string | undefined {
   if (!estimate) return undefined;
-  const color = estimate.state === "expired" || estimate.state === "urgent" ? "error" : estimate.state === "warning" ? "warning" : "dim";
+  const color =
+    estimate.state === "expired" || estimate.state === "urgent"
+      ? "error"
+      : estimate.state === "warning"
+        ? "warning"
+        : "dim";
   return theme.fg(color, estimate.text);
 }
 
-export function renderDetailedFooter(ctx: ExtensionContext, data: ReadonlyFooterDataProvider, theme: Theme, width: number, descendantCost = 0, cache?: CacheEstimate): string[] {
+export function renderDetailedFooter(
+  ctx: ExtensionContext,
+  data: ReadonlyFooterDataProvider,
+  theme: Theme,
+  width: number,
+  descendantCost = 0,
+  cache?: CacheEstimate,
+): string[] {
   if (width < 1) return [];
   const { input, output, read, write, cost, cacheHit } = footerUsage(ctx);
   let path = footerPath(ctx.sessionManager.getCwd());
@@ -94,13 +124,19 @@ export function renderDetailedFooter(ctx: ExtensionContext, data: ReadonlyFooter
   if ((read || write) && cacheHit !== undefined) stats.push(`CH${cacheHit.toFixed(1)}%`);
   const model = ctx.model;
   const subscription = model && (model.provider === "kimi-coding" || ctx.modelRegistry.isUsingOAuth(model));
-  if (cost || descendantCost || subscription) stats.push(`$${(cost + descendantCost).toFixed(3)}${descendantCost ? " total" : subscription ? " (sub)" : ""}`);
+  if (cost || descendantCost || subscription)
+    stats.push(`$${(cost + descendantCost).toFixed(3)}${descendantCost ? " total" : subscription ? " (sub)" : ""}`);
   const context = ctx.getContextUsage();
   const percent = context?.percent;
   const contextText = `${percent == null ? "?" : `${percent.toFixed(1)}%`}/${tokens(context?.contextWindow ?? model?.contextWindow ?? 0)}`;
   // The extension API exposes context usage, but not auto-compaction settings;
   // omit the native '(auto)' suffix rather than displaying an assumed setting.
-  stats.push(theme.fg(percent != null && percent > 90 ? "error" : percent != null && percent > 70 ? "warning" : "dim", contextText));
+  stats.push(
+    theme.fg(
+      percent != null && percent > 90 ? "error" : percent != null && percent > 70 ? "warning" : "dim",
+      contextText,
+    ),
+  );
   const detailedCache = cacheBadge(cache, theme);
   if (detailedCache) stats.push(detailedCache);
   let modelText = model?.id ?? "no-model";
@@ -120,7 +156,14 @@ export function renderDetailedFooter(ctx: ExtensionContext, data: ReadonlyFooter
   return lines;
 }
 
-export function renderCompactFooter(ctx: ExtensionContext, data: ReadonlyFooterDataProvider, theme: Theme, width: number, descendantCost = 0, cache?: CacheEstimate): string[] {
+export function renderCompactFooter(
+  ctx: ExtensionContext,
+  data: ReadonlyFooterDataProvider,
+  theme: Theme,
+  width: number,
+  descendantCost = 0,
+  cache?: CacheEstimate,
+): string[] {
   if (width < 1) return [];
   const project = singleLine(basename(ctx.sessionManager.getCwd()) || "/");
   const branch = data.getGitBranch();
@@ -133,13 +176,29 @@ export function renderCompactFooter(ctx: ExtensionContext, data: ReadonlyFooterD
   const cost = `$${(footerUsage(ctx).cost + descendantCost).toFixed(3)}`;
   const percent = ctx.getContextUsage()?.percent;
   const percentText = percent == null ? "?" : `${percent.toFixed(1).replace(/\.0$/, "")}%`;
-  const context = (label: string) => theme.fg(percent != null && percent > 90 ? "error" : percent != null && percent > 70 ? "warning" : "dim", label + percentText);
+  const context = (label: string) =>
+    theme.fg(
+      percent != null && percent > 90 ? "error" : percent != null && percent > 70 ? "warning" : "dim",
+      label + percentText,
+    );
   const model = singleLine(ctx.model?.id ?? "no-model");
   const modelWithThinking = model + (ctx.model?.reasoning ? ` · ${ctx.thinkingLevel ?? "off"}` : "");
-  const accent = (text: string) => text ? theme.fg("accent", text) : "";
+  const accent = (text: string) => (text ? theme.fg("accent", text) : "");
   const cacheText = cacheBadge(cache, theme) ?? "";
   const candidates: [string[], string, string][] = [
-    [[branch ? `${project}:${singleLine(branch)}` : project, accent(task), accent(mode), cost, context("ctx "), cacheText, extra], modelWithThinking, " · "],
+    [
+      [
+        branch ? `${project}:${singleLine(branch)}` : project,
+        accent(task),
+        accent(mode),
+        cost,
+        context("ctx "),
+        cacheText,
+        extra,
+      ],
+      modelWithThinking,
+      " · ",
+    ],
     [[project, accent(task), accent(mode), cost, context("ctx "), cacheText, extra], modelWithThinking, " · "],
     [[accent(shortTask), accent(mode), cost, context("C"), cacheText, project, extra], model, " "],
     [[accent(shortTask), accent(mode), cost, context("C"), cacheText, extra], model, " "],
@@ -182,8 +241,9 @@ export function createCompactUI(pi: ExtensionAPI, cache?: CacheCountdown): (ctx:
     if (ctx.mode !== "tui") return;
     // Respect an editor already installed by another extension.
     if (!ctx.ui.getEditorComponent()) {
-      ctx.ui.setEditorComponent((tui, theme, bindings) =>
-        new CompactEditor(tui, theme, bindings, { paddingX: 0, embedWorkingStatus: true }));
+      ctx.ui.setEditorComponent(
+        (tui, theme, bindings) => new CompactEditor(tui, theme, bindings, { paddingX: 0, embedWorkingStatus: true }),
+      );
     }
     install(ctx);
   };
@@ -215,10 +275,17 @@ export function installCompactFooter(
         if (active && tracker.descendantCost !== before) tui.requestRender();
       } catch {
         // A transient filesystem error must not interrupt the terminal.
-      } finally { busy = false; }
+      } finally {
+        busy = false;
+      }
     };
     // Cost is ancillary and disk-backed; a coarse poll avoids requiring a one-second timer.
-    const timer = active && tracker ? setInterval(() => { void refresh(); }, 2_000) : undefined;
+    const timer =
+      active && tracker
+        ? setInterval(() => {
+            void refresh();
+          }, 2_000)
+        : undefined;
     timer?.unref?.();
     void refresh();
     let cacheTimer: ReturnType<typeof setTimeout> | undefined;
@@ -228,20 +295,30 @@ export function installCompactFooter(
       if (!active || !cache) return;
       const estimate = cache.estimate(ctx);
       if (estimate.nextUpdateMs === undefined) return;
-      cacheTimer = setTimeout(() => {
-        if (!active) return;
-        const next = cache.estimate(ctx);
-        if (next.text !== lastCacheText) { lastCacheText = next.text; tui.requestRender(); }
-        scheduleCache();
-      }, Math.min(60_000, Math.max(1, estimate.nextUpdateMs)));
+      cacheTimer = setTimeout(
+        () => {
+          if (!active) return;
+          const next = cache.estimate(ctx);
+          if (next.text !== lastCacheText) {
+            lastCacheText = next.text;
+            tui.requestRender();
+          }
+          scheduleCache();
+        },
+        Math.min(60_000, Math.max(1, estimate.nextUpdateMs)),
+      );
       cacheTimer.unref?.();
     };
-    const unsubscribeCache = cache?.subscribe(() => {
-      if (!active) return;
-      const next = cache.estimate(ctx).text;
-      if (next !== lastCacheText) { lastCacheText = next; tui.requestRender(); }
-      scheduleCache();
-    }) ?? (() => {});
+    const unsubscribeCache =
+      cache?.subscribe(() => {
+        if (!active) return;
+        const next = cache.estimate(ctx).text;
+        if (next !== lastCacheText) {
+          lastCacheText = next;
+          tui.requestRender();
+        }
+        scheduleCache();
+      }) ?? (() => {});
     scheduleCache();
     let disposed = false;
     dispose = () => {
@@ -254,10 +331,23 @@ export function installCompactFooter(
       unsubscribe();
     };
     return {
-      render: (width) => (expanded() ? renderDetailedFooter : renderCompactFooter)(ctx, data, theme, width, tracker?.descendantCost ?? 0, cache?.estimate(ctx)),
-      invalidate() { theme = ctx.ui.theme; },
+      render: (width) =>
+        (expanded() ? renderDetailedFooter : renderCompactFooter)(
+          ctx,
+          data,
+          theme,
+          width,
+          tracker?.descendantCost ?? 0,
+          cache?.estimate(ctx),
+        ),
+      invalidate() {
+        theme = ctx.ui.theme;
+      },
       dispose,
     };
   });
-  return () => { stopped = true; dispose(); };
+  return () => {
+    stopped = true;
+    dispose();
+  };
 }

@@ -10,10 +10,14 @@ const binary = resolve(import.meta.dir, "../dist/die");
 let directory: string;
 const cleanupPids = new Set<number>();
 
-beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), "die-execution-")); });
+beforeEach(async () => {
+  directory = await mkdtemp(join(tmpdir(), "die-execution-"));
+});
 afterEach(async () => {
   for (const pid of cleanupPids) {
-    try { process.kill(pid, "SIGKILL"); } catch {}
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {}
   }
   cleanupPids.clear();
   await rm(directory, { recursive: true, force: true });
@@ -36,7 +40,9 @@ async function stopped(pid: number) {
     process.kill(pid, 0);
     // Orphans can remain zombies until the host's init reaps them.
     return process.platform === "linux" && /\) Z /.test(await readFile(`/proc/${pid}/stat`, "utf8"));
-  } catch { return true; }
+  } catch {
+    return true;
+  }
 }
 
 const hang = 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000); await new Promise(() => {});';
@@ -82,7 +88,9 @@ describe("execute process lifecycle and output", () => {
     const pending = execute(`await Bun.write("ready", "yes"); ${hang}`, controller.signal);
     try {
       await until(() => Bun.file(join(directory, "ready")).exists());
-    } finally { controller.abort(); }
+    } finally {
+      controller.abort();
+    }
     const result = await pending;
     expect(result.cancelled).toBe(true);
     expect(result.timedOut).toBe(false);
@@ -90,8 +98,10 @@ describe("execute process lifecycle and output", () => {
   });
 
   for (const inherited of [true, false]) {
-    test.skipIf(process.platform === "win32")(`cleans surviving descendants with ${inherited ? "inherited" : "closed"} output pipes`, async () => {
-      const result = await execute(`
+    test.skipIf(process.platform === "win32")(
+      `cleans surviving descendants with ${inherited ? "inherited" : "closed"} output pipes`,
+      async () => {
+        const result = await execute(`
         import { spawn } from "node:child_process";
         const child = spawn("/bin/sh", ["-c", "trap '' TERM; echo ready > child-ready; while :; do sleep 1; done"], {
           stdio: ${JSON.stringify(inherited ? ["ignore", "inherit", "inherit"] : "ignore")},
@@ -101,13 +111,14 @@ describe("execute process lifecycle and output", () => {
         console.log(child.pid);
         process.exit(0);
       `);
-      const pid = Number(result.stdout.trim());
-      expect(pid).toBeGreaterThan(0);
-      cleanupPids.add(pid);
-      expect(result.timedOut).toBe(false);
-      expect(result.exitCode).toBe(0);
-      await until(() => stopped(pid));
-    });
+        const pid = Number(result.stdout.trim());
+        expect(pid).toBeGreaterThan(0);
+        cleanupPids.add(pid);
+        expect(result.timedOut).toBe(false);
+        expect(result.exitCode).toBe(0);
+        await until(() => stopped(pid));
+      },
+    );
   }
 
   test("bounds huge Unicode output without splitting a retained character", async () => {
@@ -123,21 +134,32 @@ describe("execute process lifecycle and output", () => {
   });
 
   test("keeps decoded binary output within the response byte budget", async () => {
-    const result = await execute('process.stdout.write(Buffer.alloc(24_000, 255)); process.stderr.write(Buffer.alloc(24_000, 255));');
+    const result = await execute(
+      "process.stdout.write(Buffer.alloc(24_000, 255)); process.stderr.write(Buffer.alloc(24_000, 255));",
+    );
     expect(Buffer.byteLength(formatResult(result))).toBeLessThan(50_000);
     expect(result.stdoutLost).toBe(true);
     expect(result.stderrLost).toBe(true);
   });
 
-  test.skipIf(process.platform === "win32")("does not report a cancellation handler's zero exit as success", async () => {
-    const result = await execute('process.on("SIGTERM", () => process.exit(0)); setInterval(() => {}, 1000); await new Promise(() => {});', undefined, 600);
-    expect(result.exitCode).toBe(0);
-    expect(result.timedOut).toBe(true);
-    expect(formatResult(result)).toContain("Execution timed out");
-  });
+  test.skipIf(process.platform === "win32")(
+    "does not report a cancellation handler's zero exit as success",
+    async () => {
+      const result = await execute(
+        'process.on("SIGTERM", () => process.exit(0)); setInterval(() => {}, 1000); await new Promise(() => {});',
+        undefined,
+        600,
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.timedOut).toBe(true);
+      expect(formatResult(result)).toContain("Execution timed out");
+    },
+  );
 
   test("bounds many short lines and preserves the final output", async () => {
-    const result = await execute('console.log("a\\n".repeat(10_000) + "OUT-END"); console.error("b\\n".repeat(10_000) + "ERR-END");');
+    const result = await execute(
+      'console.log("a\\n".repeat(10_000) + "OUT-END"); console.error("b\\n".repeat(10_000) + "ERR-END");',
+    );
     expect(result.stdoutLost).toBe(true);
     expect(result.stderrLost).toBe(true);
     expect(result.stdout).toEndWith("OUT-END\n");
@@ -149,12 +171,20 @@ describe("execute process lifecycle and output", () => {
     let tool!: ToolDefinition;
     let shutdown!: () => Promise<void>;
     registerExecuteTool({
-      registerTool(value: ToolDefinition) { tool = value; },
-      on(_event: string, handler: () => Promise<void>) { shutdown = handler; },
+      registerTool(value: ToolDefinition) {
+        tool = value;
+      },
+      on(_event: string, handler: () => Promise<void>) {
+        shutdown = handler;
+      },
     } as unknown as ExtensionAPI);
     const ctx = { cwd: directory } as ExtensionContext;
-    await expect(tool.execute("cancel", { code: "console.log(1)" }, AbortSignal.abort(), undefined, ctx)).rejects.toThrow("Execution cancelled");
+    await expect(
+      tool.execute("cancel", { code: "console.log(1)" }, AbortSignal.abort(), undefined, ctx),
+    ).rejects.toThrow("Execution cancelled");
     await shutdown();
-    await expect(tool.execute("shutdown", { code: "console.log(1)" }, undefined, undefined, ctx)).rejects.toThrow("Execution cancelled");
+    await expect(tool.execute("shutdown", { code: "console.log(1)" }, undefined, undefined, ctx)).rejects.toThrow(
+      "Execution cancelled",
+    );
   });
 });

@@ -32,22 +32,26 @@ test("Codex serializes the complete system prompt as instructions without a netw
   let networkCalls = 0;
 
   const events = [];
-  for await (const event of stream(model!, {
-    systemPrompt,
-    messages: [{ role: "user", content: "Serialize this request, but do not send it.", timestamp: 0 }],
-  }, {
-    apiKey: dummyCodexJwt(),
-    transport: "sse",
-    fetch: (async () => {
-      networkCalls++;
-      throw new Error("network must not be used");
-    }) as unknown as typeof fetch,
-    onPayload(payload) {
-      const body = payload as { instructions?: unknown; tool_choice?: unknown };
-      captured = { instructions: body.instructions, tool_choice: body.tool_choice };
-      throw new Error(sentinel);
+  for await (const event of stream(
+    model!,
+    {
+      systemPrompt,
+      messages: [{ role: "user", content: "Serialize this request, but do not send it.", timestamp: 0 }],
     },
-  })) {
+    {
+      apiKey: dummyCodexJwt(),
+      transport: "sse",
+      fetch: (async () => {
+        networkCalls++;
+        throw new Error("network must not be used");
+      }) as unknown as typeof fetch,
+      onPayload(payload) {
+        const body = payload as { instructions?: unknown; tool_choice?: unknown };
+        captured = { instructions: body.instructions, tool_choice: body.tool_choice };
+        throw new Error(sentinel);
+      },
+    },
+  )) {
     events.push(event);
   }
 

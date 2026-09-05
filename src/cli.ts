@@ -21,7 +21,7 @@ if (cliArgs[0] === INTERNAL_TYPESCRIPT_RUNNER_ARG) {
     await runTypeScriptFromStdin();
     process.exit(0);
   } catch (error) {
-    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
     console.error(message.replaceAll(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g, "<execute-module>"));
     process.exit(1);
   }
@@ -114,9 +114,13 @@ function filterHelp(text: string): string {
       continue;
     }
     if (line.includes(" update [source|self|pi]")) continue;
-    if (["--no-tools", "--no-builtin-tools", "--tools,", "--exclude-tools"].some((option) => line.includes(option))) continue;
+    if (["--no-tools", "--no-builtin-tools", "--tools,", "--exclude-tools"].some((option) => line.includes(option)))
+      continue;
     if (line.trim() === "Applies to built-in, extension, and custom tools") continue;
-    if (line.trim() === "# Read-only mode (no file modifications possible)" || line.trim() === "# Disable one tool while keeping the rest available") {
+    if (
+      line.trim() === "# Read-only mode (no file modifications possible)" ||
+      line.trim() === "# Disable one tool while keeping the rest available"
+    ) {
       skipNextExample = true;
       continue;
     }
@@ -130,7 +134,8 @@ const optionArgs = optionBoundary === -1 ? cliArgs : cliArgs.slice(0, optionBoun
 const topLevelHelp = optionArgs.includes("--help") || optionArgs.includes("-h");
 const originalLog = console.log;
 if (topLevelHelp) {
-  console.log = (...values: unknown[]) => originalLog(...values.map((value) => (typeof value === "string" ? filterHelp(value) : value)));
+  console.log = (...values: unknown[]) =>
+    originalLog(...values.map((value) => (typeof value === "string" ? filterHelp(value) : value)));
 }
 try {
   await main(cliArgs, {
