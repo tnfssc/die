@@ -481,3 +481,18 @@ Final integrated gate passed: **247 tests, 13 opt-in skips, zero failures, 1,377
 ## Repository publication (2026-09-05)
 
 User authorized committing and publishing the accumulated implementation, tests, prompts and product documentation to `git@github.com:tnfssc/die.git`. Publish the existing `develop` branch without rewriting history. Generated binaries, dependencies, local runtime/session data and ignored test artifacts remain excluded; their validation results and paths are documented above. Goal mode, attention checkpoints and the footer cache countdown remain planned, not implemented. Publication does not authorize a local installation.
+
+## Delegated feature rollout (2026-09-05)
+
+User authorized implementation of all five planned features, `/resume` styling/safeguards, GitHub CI and tag-triggered releases, contributor documentation and an MIT license. User additionally requested codebase-structure review and appropriate lint/format tooling. Root acts as orchestrator/reviewer, delegates implementation in isolated worktrees, integrates verified changes and pushes incremental milestones to `develop`. No local installation or release tag creation is authorized by this work.
+
+- [ ] Job attention scheduling and agent wakeups (`feature/job-attention`).
+- [ ] Configurable per-agent cache countdown (`feature/cache-countdown`).
+- [ ] `/ps` monitor and deliberate child-session `/resume` selection (`feature/task-monitor`).
+- [ ] Durable opt-in goal mode and safe continuation (`feature/goal-mode`).
+- [ ] Main-agent instruction modes (`feature/main-agent-modes`).
+- [ ] CI, tag-release workflow, contributor README and MIT license (`feature/project-release`).
+- [ ] Independent structural review, scoped cleanup and lint/format gates.
+- [ ] Cross-feature lifecycle tests, resource/stress tests, real-terminal/model validation and final remote publication.
+
+Integration decisions: main-agent modes change behavioral instructions only, preserving existing root delegation permissions and model/thinking selection. Initial release binaries target the supported Linux x64 baseline; other platforms are not claimed without corresponding validation. Shared attention/goal completion boundaries require explicit review for duplicate wakeups, user interruption and waiting-state behavior. Formatter changes should be isolated after feature integration rather than obscure parallel semantic diffs. All feature workers use separate build outputs and treat shared development dependencies as read-only.
