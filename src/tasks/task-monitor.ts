@@ -13,7 +13,7 @@ export function registerTaskMonitor(pi:ExtensionAPI,getManager:()=>TaskManager):
       }
       await ctx.ui.custom<void>((tui,theme,keybindings,done)=>{
         let panel:TaskMonitorPanel;
-        panel=new TaskMonitorPanel(getManager(),theme,keybindings,()=>done(),()=>tui.requestRender());
+        panel=new TaskMonitorPanel(getManager(),theme,keybindings,()=>done(),()=>tui.requestRender(),()=>tui.terminal.rows);
         return panel;
       });
     },

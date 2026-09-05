@@ -5,7 +5,7 @@ import {TaskMonitorPanel} from "../src/ui/task-monitor";
 import {registerTaskMonitor} from "../src/tasks/task-monitor";
 const theme={fg:(_c:string,t:string)=>t,bold:(t:string)=>t};
 const shell=process.platform==="win32"?(process.env.ComSpec??"cmd.exe"):"/bin/sh";
-function launch(manager:TaskManager,script:string){return manager.spawn({kind:"command",command:shell,args:process.platform==="win32"?["/c",script]:["-c",script],displayCommand:script,cwd:process.cwd(),notifyOnComplete:false});}
+function launch(manager:TaskManager,script:string,displayCommand=script){return manager.spawn({kind:"command",command:shell,args:process.platform==="win32"?["/c",script]:["-c",script],displayCommand,cwd:process.cwd(),notifyOnComplete:false});}
 
 test("monitor selects, shows bounded live output, confirms stop, and cleans resources",async()=>{
   const manager=new TaskManager(()=>{},25);let renders=0,done=false;
@@ -40,4 +40,41 @@ test("/ps uses the supplied shared registry and refuses non-TUI",async()=>{
  registerTaskMonitor({registerCommand:(name:string,d:any)=>{expect(name).toBe("ps");handler=d.handler;}} as any,()=>manager);
  await handler("",{mode:"print",ui:{notify:(...x:any[])=>notes.push(x)}});expect(notes[0][0]).toContain("interactive");
  await manager.shutdown();
+});
+
+
+test("confirmation freezes identity and selection survives asynchronous updates",async()=>{
+ const manager=new TaskManager(()=>{},20);
+ const a=launch(manager,"sleep .05"),b=launch(manager,"sleep 10");
+ const panel=new TaskMonitorPanel(manager,theme as any,getKeybindings(),()=>{},()=>{},()=>20);
+ try{
+  panel.handleInput("s");expect(panel.render(80).join("\n")).toContain("Stop "+a.id);
+  await manager.wait(a.id);panel.handleInput("y");
+  expect(manager.list().find(task=>task.id===b.id)?.status).toBe("running");
+  panel.handleInput("\x1b[B"); // the sole remaining row stays selected by ID
+  const c=launch(manager,"sleep 10");await Bun.sleep(10);
+  const frame=panel.render(80).join("\n");
+  expect(frame).toContain("› "+b.id);expect(frame).toContain(c.id);
+ }finally{panel.dispose();await manager.shutdown();}
+});
+
+test("render is height bounded, keeps selection visible, and strips terminal controls",async()=>{
+ const manager=new TaskManager(()=>{},20);const tasks=[];
+ for(let i=0;i<20;i++)tasks.push(launch(manager,"sleep 10",i===19?"bad\ncmd\x1b]52;c;owned\x07\x9b31m":"job-"+i));
+ const panel=new TaskMonitorPanel(manager,theme as any,getKeybindings(),()=>{},()=>{},()=>14);
+ try{
+  for(let i=0;i<19;i++)panel.handleInput("\x1b[B");
+  const lines=panel.render(50),frame=lines.join("\n");
+  expect(lines.length).toBeLessThanOrEqual(14);expect(frame).toContain(tasks[19]!.id);
+  expect(frame).not.toContain("\x1b]52");expect(frame).not.toContain("\x9b31");
+  expect(frame).not.toContain("owned"); // OSC payload is removed, not rendered
+ }finally{panel.dispose();await manager.shutdown();}
+});
+
+test("subscribe supplies events while zero-argument listeners remain compatible",async()=>{
+ const manager=new TaskManager(()=>{},20),types:string[]=[];let legacy=0;
+ const off=manager.subscribe(event=>types.push(event.type+":"+event.task.id));
+ const offLegacy=manager.subscribe(()=>legacy++);const task=launch(manager,"printf event");await manager.wait(task.id);
+ expect(types.some(value=>value==="spawn:"+task.id)).toBe(true);expect(types.some(value=>value==="output:"+task.id)).toBe(true);expect(types.some(value=>value==="status:"+task.id)).toBe(true);expect(legacy).toBeGreaterThan(0);
+ off();offLegacy();await manager.shutdown();
 });
