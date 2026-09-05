@@ -11,6 +11,8 @@ import { createCompactUI } from "../ui/footer";
 import { JobService } from "./job-service";
 import { clearInstructionContinuity, registerCacheAffineCompaction, scopeInstructionContinuity } from "./cache-affine-compaction";
 import { registerNativeCodexCompaction } from "./native-compaction";
+import { registerTaskMonitor } from "./task-monitor";
+import { registerResumeSafeguards } from "./resume-safeguards";
 
 export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { profilesPath?: string } = {}): void {
   const installUI = createCompactUI(pi);
@@ -49,6 +51,9 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     manager ??= new TaskManager((task) => completions.add(task));
     return manager;
   };
+
+  registerTaskMonitor(pi, getManager);
+  registerResumeSafeguards(pi);
 
   let service: JobService | undefined;
   registerExecuteTool(pi, (ctx, method, params, signal) => {

@@ -95,10 +95,17 @@ export class TaskManager {
   readonly #killGraceMs: number;
   #shuttingDown = false;
   #shutdown?: Promise<void>;
+  readonly #listeners = new Set<() => void>();
 
   constructor(onComplete: (task: TaskInspection) => void, killGraceMs = DEFAULT_KILL_GRACE_MS) {
     this.#onComplete = onComplete;
     this.#killGraceMs = killGraceMs;
+  }
+
+  /** Observe registry/output changes without taking ownership of completion delivery. */
+  subscribe(listener: () => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
   }
 
   spawn(launch: TaskLaunch): TaskSummary {
@@ -136,6 +143,7 @@ export class TaskManager {
       resolveCompletion,
     };
     this.#tasks.set(id, task);
+    this.#changed();
     if (launch.closeStdin) child.stdin.end();
 
     // Intentionally merge stdout and stderr for now. Stream labels and strict
@@ -166,6 +174,7 @@ export class TaskManager {
       task.signal = signal ?? undefined;
       task.completedAt = new Date().toISOString();
       task.status = task.killRequested ? "killed" : code === 0 && !progress?.failed ? "completed" : "failed";
+      this.#changed();
       if (task.agent) task.agent.phase = task.status;
       const inspection = this.inspect(id, Math.max(task.baseOffset, task.outputEnd - MAX_INSPECT_BYTES));
       // Notifications carry the answer, while inspect retains the activity log.
@@ -304,6 +313,7 @@ export class TaskManager {
     const task = this.#require(id);
     if (task.status !== "running" || task.killRequested) return this.#summary(task);
     task.killRequested = true;
+    this.#changed();
     this.#signal(task, "SIGTERM");
     task.killTimer = setTimeout(() => {
       if (task.status === "running") this.#signal(task, "SIGKILL");
@@ -342,6 +352,13 @@ export class TaskManager {
     task.output.append(value);
     task.baseOffset = task.output.baseOffset;
     task.outputEnd = task.output.endOffset;
+    this.#changed();
+  }
+
+  #changed(): void {
+    for (const listener of this.#listeners) {
+      try { listener(); } catch { /* A monitor must never affect task ownership. */ }
+    }
   }
 
   #signal(task: ManagedTask, signal: NodeJS.Signals): void {
