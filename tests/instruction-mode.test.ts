@@ -104,3 +104,28 @@ test("a real SessionManager branch ignores mode entries on the abandoned branch"
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test("a real disk reopen produces a byte-identical mode prompt", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-mode-reopen-"));
+  try {
+    const created = SessionManager.create(dir, dir);
+    await Bun.write(created.getSessionFile()!, JSON.stringify(created.getHeader()) + "\n");
+    const file = created.getSessionFile()!;
+    const writable = SessionManager.open(file);
+    writable.appendCustomEntry(INSTRUCTION_MODE_ENTRY, { mode: "normal" });
+    const render = (manager: SessionManager) => {
+      const pi = { registerCommand() {} } as any;
+      const state = registerInstructionMode(pi, () => true);
+      const ctx = { sessionManager: manager, ui: { setStatus() {}, notify() {} } } as any;
+      state.sessionStart(ctx);
+      return "base\n\n" + state.guidance(ctx, false);
+    };
+    const beforeRestart = render(SessionManager.open(file));
+    const afterRestart = render(SessionManager.open(file));
+    expect(afterRestart).toBe(beforeRestart);
+    expect(afterRestart).toContain("main agent in normal instruction mode");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

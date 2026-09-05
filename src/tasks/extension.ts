@@ -21,7 +21,10 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
   // Environment identity is the floor for genuinely spawned child processes.
   // A root process may switch among root and child sessions in the same closure.
   const environmentDepth = Math.max(0, Number.parseInt(process.env.DIE_SUBAGENT_DEPTH ?? "0", 10) || 0);
-  const environmentType = process.env.DIE_SUBAGENT_TYPE;
+  const rawEnvironmentType = process.env.DIE_SUBAGENT_TYPE;
+  const environmentType = SUBAGENT_TYPES.includes(rawEnvironmentType as typeof SUBAGENT_TYPES[number])
+    ? rawEnvironmentType
+    : undefined;
   let subagentDepth = environmentDepth;
   let agentType = environmentType;
   let canSpawnSubagent = canDelegate(subagentDepth, agentType);
@@ -34,7 +37,11 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI, options: { 
     const validChild = data && SUBAGENT_TYPES.includes(data.type as typeof SUBAGENT_TYPES[number])
       && Number.isInteger(data.depth) && data.depth! >= 1;
     if (validChild && data.depth! >= environmentDepth) {
-      agentType = data.type;
+      // A spawned process may resume/fork deeper metadata, but its actual role
+      // is a capability cap: session metadata cannot turn a leaf into an
+      // orchestrator (or change an orchestrator into a different role). Root
+      // processes intentionally remain free to traverse session identities.
+      agentType = environmentDepth > 0 && environmentType ? environmentType : data.type;
       subagentDepth = data.depth!;
     } else {
       // No active-branch child metadata means root in a root process. Do not

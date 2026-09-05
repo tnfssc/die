@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { MAIN_AGENT_MODES, mainAgentGuidance, replaceMainAgentGuidance, type MainAgentMode } from "../prompts";
 import { updateCurrentInstructionFrame } from "./cache-affine-compaction";
@@ -7,6 +7,13 @@ export const INSTRUCTION_MODE_ENTRY = "die-instruction-mode";
 
 function parsedMode(value: unknown): MainAgentMode | undefined {
   return typeof value === "string" && MAIN_AGENT_MODES.includes(value as MainAgentMode) ? value as MainAgentMode : undefined;
+}
+
+function sessionOwner(sessionId: string | undefined): string {
+  // The marker must survive a process restart so an unchanged resumed frame is
+  // byte-identical (and therefore cache-affine). The digest keeps session IDs
+  // opaque if a prompt is logged or inspected.
+  return createHash("sha256").update("die-main-agent-mode\0").update(sessionId ?? "").digest("hex");
 }
 
 function activeEntries(ctx: ExtensionContext): any[] {
@@ -29,7 +36,7 @@ function persistedMode(ctx: ExtensionContext): MainAgentMode {
 export function registerInstructionMode(pi: ExtensionAPI, isRoot: () => boolean) {
   let mode: MainAgentMode = "orchestrator";
   let ui: ExtensionContext["ui"] | undefined;
-  let owner = randomUUID();
+  let owner = sessionOwner(undefined);
   let sessionId: string | undefined;
   let explicitCustom = false;
   const status = () => ui?.setStatus("die-mode", isRoot() ? "mode: " + mode : undefined);
@@ -38,7 +45,7 @@ export function registerInstructionMode(pi: ExtensionAPI, isRoot: () => boolean)
     const nextId = ctx.sessionManager?.getSessionId?.();
     if (nextId !== sessionId) {
       sessionId = nextId;
-      owner = randomUUID();
+      owner = sessionOwner(nextId);
       explicitCustom = false;
     }
   };

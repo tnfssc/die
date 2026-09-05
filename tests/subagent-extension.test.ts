@@ -71,3 +71,22 @@ test("spawned child environment remains the identity floor before metadata is at
   expect(framed.systemPrompt).not.toContain("main agent in");
   await e.fire("session_shutdown", {}, ctx);
 });
+
+
+test("spawned environment roles cannot be changed by resumed metadata", async () => {
+  const cases = [
+    { environment: "normal", metadata: "orchestrator", delegation: "Delegation is disabled" },
+    { environment: "orchestrator", metadata: "normal", delegation: "Fast/normal workers are available" },
+  ] as const;
+  for (const item of cases) {
+    const e = load(1, item.environment);
+    const entries = [{ type: "custom", customType: "die-agent", data: { type: item.metadata, depth: 1 } }];
+    const ctx = { sessionManager: { getEntries: () => entries, getBranch: () => entries, getSessionId: () => "role-cap-" + item.environment } };
+    await e.fire("session_start", {}, ctx);
+    const framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, ctx);
+    expect(framed.systemPrompt).toContain("You are a " + item.environment + " sub-agent");
+    expect(framed.systemPrompt).not.toContain("You are a " + item.metadata + " sub-agent");
+    expect(framed.systemPrompt).toContain(item.delegation);
+    await e.fire("session_shutdown", {}, ctx);
+  }
+});
