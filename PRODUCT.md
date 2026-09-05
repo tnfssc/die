@@ -123,4 +123,4 @@
 
 ## Current phase
 
-Phase 1 and Phase 2 are established. Phase 3 implementation is now in progress.
+Phases 1, 2, and 3 are established for the current Linux/Bun baseline as of 2026-09-05. Phase 3 includes the isolated `execute` tool, module-loading and output hardening, pending-task continuation, and awaited process-group shutdown. See [`docs/phase3-baseline.md`](./docs/phase3-baseline.md) for validation evidence and remaining limitations. Cross-platform release work and the explicitly deferred items above remain deferred.

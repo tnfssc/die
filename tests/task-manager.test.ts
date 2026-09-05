@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { TaskManager, type TaskInspection } from "../src/tasks/task-manager";
 
 const managers: TaskManager[] = [];
 
-afterEach(() => {
-  for (const manager of managers.splice(0)) manager.shutdown();
+afterEach(async () => {
+  await Promise.all(managers.splice(0).map((manager) => manager.shutdown()));
 });
 
 function commandLaunch(command: string) {
@@ -145,6 +149,65 @@ describe("asynchronous task manager", () => {
     const finished = await completion;
     expect(finished.status).toBe("killed");
     expect(finished.signal).toBe("SIGTERM");
+  });
+
+  test("shutdown can be awaited before the host exits and is idempotent", async () => {
+    const source = `
+      import { TaskManager } from ${JSON.stringify(fileURLToPath(new URL("../src/tasks/task-manager.ts", import.meta.url)))};
+      const manager = new TaskManager(() => { throw new Error("Unexpected shutdown notification"); }, 50);
+      const task = manager.spawn({
+        kind: "command", command: process.execPath,
+        args: ["-e", 'process.on("SIGTERM", () => {}); console.log("ready"); setInterval(() => {}, 1000);'],
+        displayCommand: "stubborn child", cwd: process.cwd(),
+      });
+      console.log(task.pid);
+      while (!manager.inspect(task.id).output.includes("ready")) await Bun.sleep(10);
+      const shutdown = manager.shutdown();
+      if (shutdown !== manager.shutdown()) throw new Error("Shutdown must be idempotent");
+      await shutdown;
+      console.log(manager.inspect(task.id).status);
+      process.exit(0);
+    `;
+    const host = Bun.spawn([process.execPath, "-e", source], { stdout: "pipe", stderr: "pipe" });
+    const [stdout, stderr, code] = await Promise.all([new Response(host.stdout).text(), new Response(host.stderr).text(), host.exited]);
+    const pid = Number(stdout.split("\n")[0]);
+    try {
+      expect(code).toBe(0);
+      expect(stderr).toBe("");
+      expect(stdout).toContain("killed");
+      expect(() => process.kill(pid, 0)).toThrow();
+    } finally {
+      if (pid > 0) { try { process.kill(-pid, "SIGKILL"); } catch {} }
+      host.kill();
+    }
+  });
+
+  test.skipIf(process.platform !== "linux")("shutdown kills descendants after the shell exits and output pipes close", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "die-shutdown-"));
+    const ready = join(directory, "child.pid");
+    const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
+    const childCode = `const fs = require("node:fs"); process.on("SIGTERM", () => {}); fs.closeSync(1); fs.closeSync(2); fs.writeFileSync(${JSON.stringify(ready)}, String(process.pid)); setInterval(() => {}, 1000);`;
+    const manager = new TaskManager(() => {});
+    managers.push(manager);
+    const task = manager.spawn({ ...commandLaunch(`${quote(process.execPath)} -e ${quote(childCode)} & wait`), closeStdin: true });
+    let childPid = 0;
+    try {
+      const deadline = Date.now() + 2_000;
+      while (!(await Bun.file(ready).exists()) && Date.now() < deadline) await Bun.sleep(10);
+      childPid = Number(await readFile(ready, "utf8"));
+      await manager.shutdown();
+      let alive = true;
+      for (let attempt = 0; attempt < 100 && alive; attempt++) {
+        try { alive = !/\) Z /.test(await readFile(`/proc/${childPid}/stat`, "utf8")); }
+        catch { alive = false; }
+        if (alive) await Bun.sleep(10);
+      }
+      expect(alive).toBe(false);
+    } finally {
+      if (task.pid) { try { process.kill(-task.pid, "SIGKILL"); } catch {} }
+      await manager.shutdown();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   test("shutdown escalates when a process ignores SIGTERM", async () => {

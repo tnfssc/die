@@ -13,6 +13,7 @@ const DEFAULT_LIST_COUNT = 50;
 const MAX_LIST_COUNT = 100;
 const MAX_LIST_COMMAND_CHARS = 72;
 const MAX_SUBAGENT_DEPTH = 2;
+const PENDING_WORK_GUIDANCE = "If no useful independent work remains, acknowledge pending work once and end your turn without more tool calls. Ending the turn does not cancel background work; automatic completion will resume you. Do not claim dependent results yet.";
 
 const TaskParameters = Type.Object({
   action: TaskAction,
@@ -88,13 +89,15 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
     name: "task",
     label: "Task",
     description:
-      "Manage asynchronous tasks. Spawn returns immediately. Provide command for one command task or commands for multiple separate concurrent command tasks in one call. Sub-agents are spawned with the subagent tool and then managed here by ID. Use list or inspect while tasks run, input to write stdin, and kill to stop one. Completions are delivered automatically and burst completions are batched. List results are paginated with cursor/count. Inspection output is capped at 50,000 bytes per call and can be continued with the returned offset.",
+      "Manage asynchronous tasks. Every call requires action: spawn, list, inspect, input, or kill. To start a command, pass {action: 'spawn', command: '...'}; command alone is invalid. Spawn returns immediately. Provide command for one command task or commands for multiple separate concurrent command tasks in one call. Sub-agents are spawned with the subagent tool and then managed here by ID. Use list to discover task IDs, inspect for output needed for a decision, input to write stdin, and kill to stop one; do not list or inspect merely to wait. Completions are delivered automatically and burst completions are batched. List results are paginated with cursor/count. Inspection output is capped at 50,000 bytes per call and can be continued with the returned offset.",
     promptSnippet: "Spawn, inspect, interact with, and stop asynchronous commands or sub-agents",
     promptGuidelines: [
+      "Every task call requires action. Start a command with {action: 'spawn', command: '...'}; use {action: 'spawn', commands: ['...', '...']} for a batch.",
       "Use task instead of bash for command execution.",
       "Use task spawn with commands when starting multiple independent commands; each array entry becomes a separately managed concurrent task.",
       "After spawning with task, continue other useful work; task completion is reported automatically.",
-      "If an answer depends on unfinished background work, do not invent placeholders or present a final answer before its completion notification. A brief acknowledgement that work is still running is acceptable.",
+      `After task spawn: ${PENDING_WORK_GUIDANCE}`,
+      "Never use execute to print waiting messages, perform no-op work, sleep, or otherwise keep a turn alive while task or subagent work is pending.",
       "Do not use task list or inspect merely to check whether a task completed, and never spawn sleep or wait commands solely to wait for another task.",
       "Use task inspect only when incremental output is needed for an interactive decision, and task input for interactive standard input.",
     ],
@@ -126,8 +129,8 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
             content: [{
               type: "text",
               text: spawned.length === 1
-                ? `Spawned ${spawned[0].id} (${spawned[0].kind}) pid=${spawned[0].pid ?? "unknown"}. Completion will be reported automatically.`
-                : `Spawned ${spawned.length} concurrent tasks:\n${spawned.map((task) => `${task.id}\tpid=${task.pid ?? "unknown"}`).join("\n")}\nCompletions will be reported automatically.`,
+                ? `Spawned ${spawned[0].id} (${spawned[0].kind}) pid=${spawned[0].pid ?? "unknown"}. Completion will be reported automatically. ${PENDING_WORK_GUIDANCE}`
+                : `Spawned ${spawned.length} concurrent tasks:\n${spawned.map((task) => `${task.id}\tpid=${task.pid ?? "unknown"}`).join("\n")}\nCompletions will be reported automatically. ${PENDING_WORK_GUIDANCE}`,
             }],
             details: { tasks: spawned },
           };
@@ -186,7 +189,7 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
       ? [
           "Use subagent for independent research, review, planning, or implementation that benefits from an isolated context.",
           "After subagent returns task IDs, continue useful parent-agent work; do not poll because completion is reported automatically.",
-          "Do not invent placeholder findings or present a final answer that depends on a sub-agent before its completion notification. A brief acknowledgement that delegated work is still running is acceptable.",
+          `After subagent returns task IDs: ${PENDING_WORK_GUIDANCE}`,
           "Manage a spawned sub-agent with task inspect or task kill using its task ID.",
         ]
       : [
@@ -245,22 +248,49 @@ export default function asynchronousTasksExtension(pi: ExtensionAPI): void {
         content: [{
           type: "text",
           text: spawned.length === 1
-            ? `Spawned sub-agent ${spawned[0].id} pid=${spawned[0].pid ?? "unknown"}. Completion will be reported automatically.`
-            : `Spawned ${spawned.length} concurrent sub-agents:\n${spawned.map((task) => `${task.id}\tpid=${task.pid ?? "unknown"}`).join("\n")}\nCompletions will be reported automatically.`,
+            ? `Spawned sub-agent ${spawned[0].id} pid=${spawned[0].pid ?? "unknown"}. Completion will be reported automatically. ${PENDING_WORK_GUIDANCE}`
+            : `Spawned ${spawned.length} concurrent sub-agents:\n${spawned.map((task) => `${task.id}\tpid=${task.pid ?? "unknown"}`).join("\n")}\nCompletions will be reported automatically. ${PENDING_WORK_GUIDANCE}`,
         }],
         details: { tasks: spawned },
       };
     },
   });
 
+  pi.on("agent_end", async (event, ctx) => {
+    // Print/JSON sessions otherwise dispose their runtime immediately when the
+    // model yields. Hold only that idle boundary (never spawn or the TUI loop)
+    // until one result is ready, then queue it for Pi's post-run continuation.
+    if (ctx.mode !== "print" && ctx.mode !== "json") return;
+    const lastAssistant = [...event.messages].reverse().find((message) => message.role === "assistant");
+    if (ctx.signal?.aborted || lastAssistant?.stopReason === "aborted" || lastAssistant?.stopReason === "error") return;
+    const tasks = manager;
+    const running = tasks?.list().filter((task) => task.status === "running") ?? [];
+    if (tasks && running.length > 0) {
+      let onAbort: (() => void) | undefined;
+      try {
+        await Promise.race([
+          ...running.map((task) => tasks.wait(task.id)),
+          new Promise<void>((resolve) => {
+            onAbort = resolve;
+            ctx.signal?.addEventListener("abort", onAbort, { once: true });
+            if (ctx.signal?.aborted) resolve();
+          }),
+        ]);
+      } finally {
+        if (onAbort) ctx.signal?.removeEventListener("abort", onAbort);
+      }
+    }
+    if (!ctx.signal?.aborted) completions.flush();
+  });
+
   pi.on("session_start", () => {
     pi.setActiveTools(["execute", "task", ...(canSpawnSubagent ? ["subagent"] : [])]);
   });
 
-  pi.on("session_shutdown", () => {
+  pi.on("session_shutdown", async () => {
     taskUi?.setStatus("die-tasks", undefined);
     completions.dispose();
-    manager?.shutdown();
+    await manager?.shutdown();
     manager = undefined;
   });
 }

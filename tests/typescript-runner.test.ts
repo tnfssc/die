@@ -95,6 +95,85 @@ describe("isolated TypeScript runner", () => {
     expect(result.stderr).toBe("");
   });
 
+  test("resolves computed and nested dynamic imports without eagerly loading missing modules", async () => {
+    await Bun.write(join(directory, "local.ts"), 'export const value = 42; export const next = "./local.ts";');
+    const result = await runTypeScript(`
+      const name = "local";
+      const module = await import(\`./\${name}.ts\`);
+      console.log(module.value, (await import((await import("./local.ts")).next)).value);
+      try { await import("./missing.ts"); } catch { console.log("caught"); }
+      try { await import("missing-package"); } catch { console.log("caught-package"); }
+      if (Date.now() < 0) await import("another-missing-package");
+    `);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("42 42\ncaught\ncaught-package");
+  });
+
+  test("respects package export conditions, patterns, and private subpaths", async () => {
+    const pkg = join(directory, "node_modules", "fixture");
+    await mkdir(pkg, { recursive: true });
+    await Bun.write(join(pkg, "package.json"), JSON.stringify({
+      name: "fixture", type: "module",
+      exports: {
+        ".": { import: "./esm.js", require: "./cjs.cjs" },
+        "./priority": { default: "./esm.js", import: "./wrong.js" },
+        "./features/*": "./features/*.js",
+        "./private.js": null,
+      },
+    }));
+    await Bun.write(join(pkg, "esm.js"), 'export const value = "esm";');
+    await Bun.write(join(pkg, "cjs.cjs"), 'module.exports = { value: "cjs" };');
+    await Bun.write(join(pkg, "wrong.js"), 'export const value = "wrong";');
+    await Bun.write(join(pkg, "features/a.js"), 'export { value } from "../esm.js";');
+    await Bun.write(join(pkg, "private.js"), 'export const secret = true;');
+    const result = await runTypeScript(`
+      import { value } from "fixture";
+      import { value as priority } from "fixture/priority";
+      import { value as feature } from "fixture/features/a";
+      const name = "fixture";
+      console.log(value, require(name).value, (await import(name)).value, priority, feature);
+      for (const name of ["fixture/private.js", "fixture/wrong.js"]) {
+        try { await import(name); console.log("LEAK"); } catch { console.log("blocked"); }
+        try { require(name); console.log("LEAK"); } catch { console.log("blocked"); }
+      }
+    `);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("esm cjs esm esm esm\nblocked\nblocked\nblocked\nblocked");
+  });
+
+  test("preserves require evaluation errors without retrying another package entry", async () => {
+    const pkg = join(directory, "node_modules", "broken");
+    await mkdir(pkg, { recursive: true });
+    await Bun.write(join(pkg, "package.json"), JSON.stringify({ name: "broken", exports: { require: "./bad.cjs", import: "./good.js" } }));
+    await Bun.write(join(pkg, "bad.cjs"), 'throw new Error("original-failure");');
+    await Bun.write(join(pkg, "good.js"), 'export const value = "incorrect-fallback";');
+    const result = await runTypeScript('try { require("broken"); } catch (error) { console.log(error.message); }');
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("original-failure");
+  });
+
+  test("loads local dependency graphs and built-ins through each import style", async () => {
+    await Bun.write(join(directory, "node_modules/dependency/package.json"), JSON.stringify({ name: "dependency", main: "index.js", type: "module" }));
+    await Bun.write(join(directory, "node_modules/dependency/index.js"), 'export const value = 42;');
+    await Bun.write(join(directory, "nested/entry.ts"), 'import { value } from "dependency"; export { value };');
+    await Bun.write(join(directory, "data.json"), '{"ok":true}');
+    const result = await runTypeScript(`
+      import { value } from "./nested/entry.ts";
+      import { basename } from "path";
+      const builtin = "fs";
+      const file = "./data.json";
+      console.log(value, basename("/a/b"), typeof (await import(builtin)).readFile, typeof require(builtin).readFile);
+      console.log((await import(file, { with: { type: "json" } })).default.ok);
+    `);
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("42 b function function\ntrue");
+  });
+
+  test("reports syntax errors and explicit early exits", async () => {
+    expect((await runTypeScript("const = ;")).code).toBe(1);
+    expect((await runTypeScript("process.exit(7)")).code).toBe(7);
+  });
+
   test("sanitizes in-memory module URLs in failures", async () => {
     const result = await runTypeScript("throw new Error('runner-failed')");
 

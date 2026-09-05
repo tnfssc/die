@@ -1,6 +1,6 @@
 # die
 
-`die` is a Bun-compiled coding agent built on [Pi](https://pi.dev). It packages Pi as a standalone executable, provides asynchronous tasks and sub-agents, and replaces Pi's general-purpose file/shell tools with one code execution tool. See [`PRODUCT.md`](./PRODUCT.md).
+`die` is a Bun-compiled coding agent built on [Pi](https://pi.dev). It packages Pi as a standalone executable, provides asynchronous tasks and sub-agents, and replaces Pi's general-purpose file/shell tools with one code execution tool. See [`PRODUCT.md`](./PRODUCT.md) and the validated [`0.1.0` baseline](./docs/phase3-baseline.md).
 
 ## Prerequisites
 
@@ -39,7 +39,7 @@ bun run smoke         # Standalone shell smoke test
 bun run test:llm      # Authenticated GPT-5.6 Luna test (incurs an LLM request)
 ```
 
-The automated suite verifies the compiled executable in an isolated home directory and uses a private tmux socket for TUI tests. LLM tests always use `openai-codex/gpt-5.6-luna` and are opt-in so ordinary local checks remain deterministic.
+The automated suite verifies the compiled executable in an isolated home directory and uses a private tmux socket for TUI tests. LLM tests always use `openai-codex/gpt-5.6-luna` and are opt-in so ordinary local checks remain deterministic. They include event-level verification of recovery from an `execute` error. See [`docs/phase3-validation.md`](./docs/phase3-validation.md) for the authenticated and real-TUI validation results and remaining UX findings.
 
 ## Asynchronous tasks
 
@@ -59,11 +59,17 @@ The model receives `task` for asynchronous commands and `subagent` for asynchron
 - Terminate tasks
 - Continue other work until an automatic completion message arrives
 
-The TUI footer shows a persistent count while background tasks are running, and task listings include elapsed time. Sub-agents currently expose their final output rather than streaming intermediate reasoning, so inspection can show `0/0` while a sub-agent is still working. Tasks are currently scoped to one session and are terminated when that session shuts down. Because the tool model is fixed, Pi's generic `--no-tools`, `--no-builtin-tools`, `--tools`, and `--exclude-tools` options are not exposed or accepted by `die`.
+The TUI footer shows a persistent count while background tasks are running, and task listings include elapsed time. Sub-agents currently expose their final output rather than streaming intermediate reasoning, so inspection can show `0/0` while a sub-agent is still working. When no independent work remains, the agent can acknowledge pending work and end its turn; completion automatically resumes it without polling or no-op tool calls. Print/JSON mode waits at that idle boundary for pending-task completion rather than exiting early; cancel the run or set a task timeout for work that may not finish. Tasks are currently scoped to one session and are terminated when that session shuts down. Shutdown waits for process cleanup, escalating to SIGKILL after a five-second grace period when necessary. Because the tool model is fixed, Pi's generic `--no-tools`, `--no-builtin-tools`, `--tools`, and `--exclude-tools` options are not exposed or accepted by `die`.
 
 ## Code execution
 
 The model-facing `execute` tool replaces `read`, `edit`, `write`, `bash`, and `powershell`. It transpiles submitted TypeScript in memory using `Bun.Transpiler`, then executes it as a module in an isolated child process in the current working directory. It supports top-level await, static imports and exports, dynamic imports, CommonJS `require`, local modules, Bun APIs, Node built-ins, installed packages, and subprocesses. Results are returned through stdout and stderr; no temporary source file is created.
+
+`execute` retains the last 24,000 bytes or 900 lines of each output stream, with explicit truncation notices and UTF-8-safe boundaries. Discarded output is not saved. Print a smaller selection or use `task` for cursor-based output inspection; do not rerun side-effecting code just to recover output.
+
+Cancellation, timeouts, and nonzero exits are reported as tool errors. Session shutdown cancels active executions. On Unix, subprocesses remaining in the execution's process group are killed when its leader exits; use `task` for work that must continue in the background. This is process isolation, not a security sandbox; deliberately detached processes can escape group cleanup. Windows currently terminates only the direct child.
+
+Dynamic imports support computed specifiers and resolve when called, so missing-module errors can be caught in submitted code. Installed package entry points respect import/require conditions, condition order, wildcard exports, and private subpaths.
 
 The root agent and first-level sub-agents receive `execute`, `task`, and `subagent`. Root delegation returns immediately. A first-level agent's nested delegation waits for level two inside the tool call so the first-level print-mode process cannot exit early. Second-level sub-agents receive `execute` and `task` and cannot delegate further.
 

@@ -87,6 +87,7 @@ export class TaskManager {
   readonly #onComplete: (task: TaskInspection) => void;
   readonly #killGraceMs: number;
   #shuttingDown = false;
+  #shutdown?: Promise<void>;
 
   constructor(onComplete: (task: TaskInspection) => void, killGraceMs = DEFAULT_KILL_GRACE_MS) {
     this.#onComplete = onComplete;
@@ -133,9 +134,17 @@ export class TaskManager {
     child.stdout.on("data", (data: Buffer) => this.#append(task, data));
     child.stderr.on("data", (data: Buffer) => this.#append(task, data));
     child.on("error", (error) => this.#append(task, `\n[spawn error] ${error.message}\n`));
+    child.on("exit", () => {
+      // A shell can exit on SIGTERM while descendants ignore it, even after
+      // closing their output pipes. Do not let close cancel escalation and
+      // strand the remaining process-group members.
+      if (task.killRequested) this.#signal(task, "SIGKILL");
+    });
     child.on("close", (code, signal) => {
       if (task.timeout) clearTimeout(task.timeout);
       if (task.killTimer) clearTimeout(task.killTimer);
+      task.timeout = undefined;
+      task.killTimer = undefined;
       task.exitCode = code ?? undefined;
       task.signal = signal ?? undefined;
       task.completedAt = new Date().toISOString();
@@ -206,7 +215,7 @@ export class TaskManager {
 
   kill(id: string): TaskSummary {
     const task = this.#require(id);
-    if (task.status !== "running") return this.#summary(task);
+    if (task.status !== "running" || task.killRequested) return this.#summary(task);
     task.killRequested = true;
     this.#signal(task, "SIGTERM");
     task.killTimer = setTimeout(() => {
@@ -216,12 +225,22 @@ export class TaskManager {
     return this.#summary(task);
   }
 
-  shutdown(): void {
+  shutdown(): Promise<void> {
+    if (this.#shutdown) return this.#shutdown;
     this.#shuttingDown = true;
+    const pending: Promise<TaskInspection>[] = [];
     for (const task of this.#tasks.values()) {
       if (task.timeout) clearTimeout(task.timeout);
-      if (task.status === "running") this.kill(task.id);
+      if (task.status === "running") {
+        pending.push(this.wait(task.id));
+        this.kill(task.id);
+      }
     }
+    // The session must not dispose its runtime (or exit) before escalation and
+    // stream/process cleanup finish. Merely scheduling an unref'ed timer is
+    // insufficient in the compiled CLI.
+    this.#shutdown = Promise.all(pending).then(() => {});
+    return this.#shutdown;
   }
 
   #append(task: ManagedTask, value: Buffer | string): void {

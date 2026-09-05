@@ -60,6 +60,47 @@ test.skipIf(!enabled)(
 );
 
 test.skipIf(!enabled)(
+  "GPT-5.6 Luna recovers from an execute tool error",
+  async () => {
+    const expected = "execute-recovery-ok";
+    const result = await run([
+      binary,
+      "--provider", "openai-codex",
+      "--model", "gpt-5.6-luna",
+      "--thinking", "minimal",
+      "--no-session",
+      "--mode", "json",
+      "-p",
+      `Use execute to throw new Error("execute-recovery-probe"). After receiving that error, use a separate execute call to print "${expected}". Do not use other tools. Finally reply exactly ${expected}.`,
+    ]);
+
+    expect(result.code).toBe(0);
+    const events = result.stdout.trim().split("\n").map((line) => JSON.parse(line)) as Array<{
+      type: string;
+      toolName?: string;
+      isError?: boolean;
+      result?: { content: Array<{ type: string; text?: string }> };
+      message?: { role: string; content: Array<{ type: string; text?: string }> };
+    }>;
+    const executions = events.filter((event) => event.type === "tool_execution_end");
+    const failure = executions.findIndex((event) => event.toolName === "execute" && event.isError === true);
+    expect(failure).toBeGreaterThanOrEqual(0);
+    const errorText = executions[failure].result?.content.map((part) => part.text ?? "").join("") ?? "";
+    expect(errorText).toContain("execute-recovery-probe");
+    expect(errorText).toContain("<execute-module>");
+    expect(errorText).not.toContain("data:text/javascript;base64");
+    expect(executions.slice(failure + 1).some((event) =>
+      event.toolName === "execute" && event.isError === false &&
+      event.result?.content.some((part) => part.text?.includes(expected)),
+    )).toBe(true);
+    expect(executions.every((event) => event.toolName === "execute")).toBe(true);
+    const final = events.filter((event) => event.type === "message_end" && event.message?.role === "assistant").at(-1);
+    expect(final?.message?.content.filter((part) => part.type === "text").map((part) => part.text).join("").trim()).toBe(expected);
+  },
+  180_000,
+);
+
+test.skipIf(!enabled)(
   "GPT-5.6 Luna receives automatic asynchronous task completion",
   async () => {
     const expected = "async-task-automation-passed";
@@ -78,6 +119,37 @@ test.skipIf(!enabled)(
 
     expect(result.code).toBe(0);
     expect(result.stdout.trim()).toBe(expected);
+  },
+  180_000,
+);
+
+test.skipIf(!enabled)(
+  "GPT-5.6 Luna yields without no-op tools while a command is pending",
+  async () => {
+    const expected = "pending-task-yield-ok";
+    const result = await run([
+      binary, "--provider", "openai-codex", "--model", "gpt-5.6-luna",
+      "--thinking", "minimal", "--no-session", "--mode", "json", "-p",
+      `Use task to run this command: sleep 4; printf '${expected}'. There is no other work to do. After the automatic completion notification arrives, reply exactly ${expected}.`,
+    ]);
+    expect(result.code).toBe(0);
+    const events = result.stdout.trim().split("\n").map((line) => JSON.parse(line)) as Array<{
+      type: string;
+      toolName?: string;
+      args?: { action?: string; command?: string };
+      message?: { role: string; customType?: string; content: string | Array<{ type: string; text?: string }> };
+    }>;
+    const calls = events.filter((event) => event.type === "tool_execution_start");
+    expect(calls).toHaveLength(1);
+    expect(calls[0].toolName).toBe("task");
+    expect(calls[0].args?.action).toBe("spawn");
+    expect(calls[0].args?.command).toContain(expected);
+    const completion = events.findIndex((event) => event.type === "message_end" && event.message?.customType === "task-complete");
+    expect(completion).toBeGreaterThanOrEqual(0);
+    const final = events.map((event, index) => event.type === "message_end" && event.message?.role === "assistant" ? index : -1).filter((index) => index >= 0).at(-1) ?? -1;
+    expect(final).toBeGreaterThan(completion);
+    const content = events[final].message?.content;
+    expect(Array.isArray(content) ? content.filter((part) => part.type === "text").map((part) => part.text).join("").trim() : content).toBe(expected);
   },
   180_000,
 );

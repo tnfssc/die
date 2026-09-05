@@ -16,6 +16,7 @@ function loadExtension(depth?: string) {
   const handlers = new Map<string, (...args: any[]) => any>();
   let active = ["read", "write", "edit", "bash", "task", "subagent"];
   const statuses = new Map<string, string | undefined>();
+  const notifications: any[] = [];
   const ui = {
     setStatus(key: string, value: string | undefined) {
       statuses.set(key, value);
@@ -34,11 +35,11 @@ function loadExtension(depth?: string) {
     setActiveTools(next: string[]) {
       active = next;
     },
-    sendMessage() {},
+    sendMessage(message: any) { notifications.push(message); },
   };
   asynchronousTasksExtension(pi as any);
   handlers.get("session_start")?.({}, {});
-  return { tools, handlers, ui, statuses, active: () => active };
+  return { tools, handlers, ui, statuses, notifications, active: () => active };
 }
 
 describe("sub-agent recursion guard", () => {
@@ -46,6 +47,63 @@ describe("sub-agent recursion guard", () => {
     const extension = loadExtension();
     expect(extension.active().sort()).toEqual(["execute", "subagent", "task"]);
     for (const replaced of ["read", "edit", "write", "bash"]) expect(extension.active()).not.toContain(replaced);
+  });
+
+  test("guidance explains required actions and yielding instead of no-op waiting", () => {
+    const { tools } = loadExtension();
+    const task = tools.get("task");
+    expect(task.description).toContain("Every call requires action");
+    expect(task.parameters.required).toContain("action");
+    expect(task.promptGuidelines.join("\n")).toContain("end your turn without more tool calls");
+    expect(tools.get("subagent").promptGuidelines.join("\n")).toContain("Ending the turn does not cancel background work");
+    expect(tools.get("execute").promptGuidelines.join("\n")).toContain("Do not use execute for no-op calls");
+  });
+
+  test("spawn results remind the agent it can yield while work runs", async () => {
+    const extension = loadExtension();
+    try {
+      for (const params of [{ action: "spawn", command: "printf one" }, { action: "spawn", commands: ["printf two", "printf three"] }]) {
+        const result = await extension.tools.get("task").execute("spawn", params, undefined, undefined, { cwd: process.cwd() });
+        expect(result.content[0].text).toContain("end your turn without more tool calls");
+        expect(result.content[0].text).toContain("automatic completion will resume you");
+      }
+    } finally {
+      extension.handlers.get("session_shutdown")?.({}, {});
+    }
+  });
+
+  for (const mode of ["print", "json"]) {
+    test(`${mode} idle boundary waits for one task and flushes its completion`, async () => {
+      const extension = loadExtension();
+      const task = extension.tools.get("task");
+      try {
+        const spawned = await task.execute("spawn", { action: "spawn", commands: ["read value; printf first", "sleep 30"] }, undefined, undefined, { cwd: process.cwd() });
+        let ended = false;
+        const boundary = extension.handlers.get("agent_end")!({ messages: [] }, { mode }).then(() => { ended = true; });
+        await Bun.sleep(20);
+        expect(ended).toBe(false);
+        await task.execute("input", { action: "input", id: spawned.details.tasks[0].id, data: "go\n", closeInput: true }, undefined, undefined, {});
+        await boundary;
+        expect(extension.notifications).toHaveLength(1);
+        expect(extension.notifications[0].content).toContain("first");
+        const listing = await task.execute("list", { action: "list" }, undefined, undefined, {});
+        expect(listing.details.tasks[1].status).toBe("running");
+      } finally { extension.handlers.get("session_shutdown")?.({}, {}); }
+    });
+  }
+
+  test("idle waiting leaves the TUI responsive and honors cancellation", async () => {
+    const extension = loadExtension();
+    try {
+      await extension.tools.get("task").execute("spawn", { action: "spawn", command: "sleep 30" }, undefined, undefined, { cwd: process.cwd() });
+      await extension.handlers.get("agent_end")!({ messages: [] }, { mode: "tui" });
+      const controller = new AbortController();
+      const boundary = extension.handlers.get("agent_end")!({ messages: [] }, { mode: "json", signal: controller.signal });
+      controller.abort();
+      await boundary;
+      expect(extension.notifications).toHaveLength(0);
+      await extension.handlers.get("agent_end")!({ messages: [{ role: "assistant", stopReason: "error" }] }, { mode: "print" });
+    } finally { extension.handlers.get("session_shutdown")?.({}, {}); }
   });
 
   test("first-level sub-agents can delegate one more level", () => {

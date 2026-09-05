@@ -33,7 +33,7 @@ export class BoundedOutputBuffer {
   }
 
   append(value: Buffer | string): void {
-    let chunk = Buffer.from(value);
+    const chunk = typeof value === "string" ? Buffer.from(value) : value;
     if (chunk.length === 0) return;
 
     this.#endOffset += chunk.length;
@@ -48,7 +48,7 @@ export class BoundedOutputBuffer {
       return;
     }
 
-    this.#chunks.push(chunk);
+    this.#chunks.push(typeof value === "string" ? chunk : Buffer.from(chunk));
     this.#retainedBytes += chunk.length;
     this.#trim();
 
