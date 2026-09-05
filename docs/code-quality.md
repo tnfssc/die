@@ -11,13 +11,14 @@ Biome `2.5.12` is exact-pinned for deterministic formatting and linting. TypeScr
 
 Biome follows `.gitignore` and explicitly excludes dependency, generated, runtime, distribution, harness, and artifact directories. Markdown is excluded from formatting so prompt text and project documentation are never rewritten by the formatter. Test-only overrides suppress rules that are noisy for typed mocks and fixture code (explicit `any`, non-null assertions, banned placeholder types, and template-string preference); correctness checks such as unused imports and variables remain enabled.
 
-## Initial baseline
+## Resolved formatting baseline
 
-No existing source was rewritten in the tooling commit. At this baseline:
+The repository formatting baseline is now applied: `bun run format` checked 116 supported files and mechanically rewrote 102 files. `bun run format:check` succeeds with no formatting drift, and both CI and release workflows enforce that gate before linting.
 
-- `bun run lint` succeeds with 70 warnings and 60 informational diagnostics. The main source debt is template-string preference, non-null assertions, explicit `any`, and three implicitly typed declarations; test correctness findings remain visible.
-- `bun run format:check` intentionally fails with 74 formatting diagnostics across the pre-existing source and tests. Apply these only in the planned formatter-only commit after parallel feature branches merge.
+At this baseline:
+
+- `bun run lint` succeeds with the recommended rules enabled, reporting 132 warnings and 101 informational diagnostics. These diagnostics remain visible; rules are not suppressed to manufacture a clean result.
+- `bun run format:check` succeeds after checking 116 files.
 - `bun run check` succeeds with TypeScript 7.0.2. Biome also parses the Bun import-attribute forms (`with { type: "file" }` and `with { type: "text" }`) and the `*.md` ambient module declaration.
-- `bun install --frozen-lockfile` succeeds with the updated lockfile.
 
-CI should install with `bun install --frozen-lockfile` and run `bun run lint`, `bun run format:check`, and `bun run check` as separate steps. Enable the format gate after the formatter-only baseline commit lands.
+CI installs with `bun install --frozen-lockfile` and runs `bun run format:check`, `bun run lint`, and `bun run check` as separate steps. The release workflow applies the same quality gates.
