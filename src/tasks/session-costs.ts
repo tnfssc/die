@@ -41,13 +41,15 @@ function usageCost(entry: any): number {
 
 async function mapLimited<T>(values: T[], limit: number, fn: (value: T) => Promise<void>): Promise<void> {
   let next = 0;
-  await Promise.all(Array.from({ length: Math.min(limit, values.length) }, async () => {
-    for (;;) {
-      const index = next++;
-      if (index >= values.length) return;
-      await fn(values[index]);
-    }
-  }));
+  await Promise.all(
+    Array.from({ length: Math.min(limit, values.length) }, async () => {
+      for (;;) {
+        const index = next++;
+        if (index >= values.length) return;
+        await fn(values[index]);
+      }
+    }),
+  );
 }
 
 async function jsonlFiles(directory: string): Promise<string[]> {
@@ -107,8 +109,12 @@ export class SessionCostTracker {
     const refresh = this.doRefresh();
     this.refreshing = refresh;
     void refresh.then(
-      () => { if (this.refreshing === refresh) this.refreshing = undefined; },
-      () => { if (this.refreshing === refresh) this.refreshing = undefined; },
+      () => {
+        if (this.refreshing === refresh) this.refreshing = undefined;
+      },
+      () => {
+        if (this.refreshing === refresh) this.refreshing = undefined;
+      },
     );
     return refresh;
   }

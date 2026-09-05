@@ -15,8 +15,7 @@ test("quiet startup hides Pi promotion and skill inventory without disabling ski
   );
   const tmux = (...args: string[]) => run(["tmux", "-L", socket, ...args]);
   const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
-  const capture = (history = false) =>
-    tmux("capture-pane", "-p", "-t", session, ...(history ? ["-S", "-"] : []));
+  const capture = (history = false) => tmux("capture-pane", "-p", "-t", session, ...(history ? ["-S", "-"] : []));
 
   async function frameContaining(text: string, history = false): Promise<string> {
     let frame = "";
@@ -63,9 +62,7 @@ test("quiet startup hides Pi promotion and skill inventory without disabling ski
       .map(quote)
       .join(" ");
 
-    expect(
-      (await tmux("new-session", "-d", "-s", session, "-x", "120", "-y", "40", "-c", home, launch)).code,
-    ).toBe(0);
+    expect((await tmux("new-session", "-d", "-s", session, "-x", "120", "-y", "40", "-c", home, launch)).code).toBe(0);
 
     startupFrame = await frameContaining("description is required", true);
     expect(startupFrame).toContain("[Skill conflicts]");

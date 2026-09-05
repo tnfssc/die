@@ -173,14 +173,19 @@ describe("asynchronous task manager", () => {
 
   test("completion and wait preserve the final output with the smaller page cap", async () => {
     const { manager, completion } = managerWithCompletion();
-    const task = manager.spawn({kind: "command", command: process.execPath,
+    const task = manager.spawn({
+      kind: "command",
+      command: process.execPath,
       args: ["-e", "process.stdout.write('a'.repeat(20000) + 'FINAL')"],
-      displayCommand: "large result", cwd: process.cwd()});
+      displayCommand: "large result",
+      cwd: process.cwd(),
+    });
     const finished = await completion;
     expect(Buffer.byteLength(finished.output)).toBe(5_000);
     expect(finished.output).toEndWith("FINAL");
     expect((await manager.wait(task.id)).output).toBe(finished.output);
-    let output = "", offset = 0;
+    let output = "",
+      offset = 0;
     for (;;) {
       const page = manager.inspect(task.id, offset);
       expect(Buffer.byteLength(page.output)).toBeLessThanOrEqual(5_000);
@@ -240,7 +245,11 @@ describe("asynchronous task manager", () => {
       process.exit(0);
     `;
     const host = Bun.spawn([process.execPath, "-e", source], { stdout: "pipe", stderr: "pipe" });
-    const [stdout, stderr, code] = await Promise.all([new Response(host.stdout).text(), new Response(host.stderr).text(), host.exited]);
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(host.stdout).text(),
+      new Response(host.stderr).text(),
+      host.exited,
+    ]);
     const pid = Number(stdout.split("\n")[0]);
     try {
       expect(code).toBe(0);
@@ -248,38 +257,55 @@ describe("asynchronous task manager", () => {
       expect(stdout).toContain("killed");
       expect(() => process.kill(pid, 0)).toThrow();
     } finally {
-      if (pid > 0) { try { process.kill(-pid, "SIGKILL"); } catch {} }
+      if (pid > 0) {
+        try {
+          process.kill(-pid, "SIGKILL");
+        } catch {}
+      }
       host.kill();
     }
   });
 
-  test.skipIf(process.platform !== "linux")("shutdown kills descendants after the shell exits and output pipes close", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "die-shutdown-"));
-    const ready = join(directory, "child.pid");
-    const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
-    const childCode = `const fs = require("node:fs"); process.on("SIGTERM", () => {}); fs.closeSync(1); fs.closeSync(2); fs.writeFileSync(${JSON.stringify(ready)}, String(process.pid)); setInterval(() => {}, 1000);`;
-    const manager = new TaskManager(() => {});
-    managers.push(manager);
-    const task = manager.spawn({ ...commandLaunch(`${quote(process.execPath)} -e ${quote(childCode)} & wait`), closeStdin: true });
-    let childPid = 0;
-    try {
-      const deadline = Date.now() + 2_000;
-      while (!(await Bun.file(ready).exists()) && Date.now() < deadline) await Bun.sleep(10);
-      childPid = Number(await readFile(ready, "utf8"));
-      await manager.shutdown();
-      let alive = true;
-      for (let attempt = 0; attempt < 100 && alive; attempt++) {
-        try { alive = !/\) Z /.test(await readFile(`/proc/${childPid}/stat`, "utf8")); }
-        catch { alive = false; }
-        if (alive) await Bun.sleep(10);
+  test.skipIf(process.platform !== "linux")(
+    "shutdown kills descendants after the shell exits and output pipes close",
+    async () => {
+      const directory = await mkdtemp(join(tmpdir(), "die-shutdown-"));
+      const ready = join(directory, "child.pid");
+      const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
+      const childCode = `const fs = require("node:fs"); process.on("SIGTERM", () => {}); fs.closeSync(1); fs.closeSync(2); fs.writeFileSync(${JSON.stringify(ready)}, String(process.pid)); setInterval(() => {}, 1000);`;
+      const manager = new TaskManager(() => {});
+      managers.push(manager);
+      const task = manager.spawn({
+        ...commandLaunch(`${quote(process.execPath)} -e ${quote(childCode)} & wait`),
+        closeStdin: true,
+      });
+      let childPid = 0;
+      try {
+        const deadline = Date.now() + 2_000;
+        while (!(await Bun.file(ready).exists()) && Date.now() < deadline) await Bun.sleep(10);
+        childPid = Number(await readFile(ready, "utf8"));
+        await manager.shutdown();
+        let alive = true;
+        for (let attempt = 0; attempt < 100 && alive; attempt++) {
+          try {
+            alive = !/\) Z /.test(await readFile(`/proc/${childPid}/stat`, "utf8"));
+          } catch {
+            alive = false;
+          }
+          if (alive) await Bun.sleep(10);
+        }
+        expect(alive).toBe(false);
+      } finally {
+        if (task.pid) {
+          try {
+            process.kill(-task.pid, "SIGKILL");
+          } catch {}
+        }
+        await manager.shutdown();
+        await rm(directory, { recursive: true, force: true });
       }
-      expect(alive).toBe(false);
-    } finally {
-      if (task.pid) { try { process.kill(-task.pid, "SIGKILL"); } catch {} }
-      await manager.shutdown();
-      await rm(directory, { recursive: true, force: true });
-    }
-  });
+    },
+  );
 
   test("shutdown escalates when a process ignores SIGTERM", async () => {
     const manager = new TaskManager(() => {}, 25);
@@ -309,44 +335,63 @@ test("live agent inspection survives kill and success delivers only the final an
     emit({type:"tool_execution_end",toolName:"execute",result:{content:[{type:"text",text:"evidence"}]}});
     emit({type:"message_end",message:{role:"assistant",stopReason:"stop",content:[{type:"text",text:"final answer"}]}});
     emit({type:"agent_end"});`;
-  const launch = {kind:"agent" as const, command:process.execPath,args:["-e",code],displayCommand:"test agent",cwd:process.cwd(),
-    agent:{type:"normal",model:"p/model",depth:1,sessionFile:"/test.jsonl"}};
-  const task=manager.spawn(launch);
-  const deadline=Date.now()+2000;
-  while (!manager.inspect(task.id).agent?.currentTool && Date.now()<deadline) await Bun.sleep(10);
-  const live=manager.inspect(task.id);
+  const launch = {
+    kind: "agent" as const,
+    command: process.execPath,
+    args: ["-e", code],
+    displayCommand: "test agent",
+    cwd: process.cwd(),
+    agent: { type: "normal", model: "p/model", depth: 1, sessionFile: "/test.jsonl" },
+  };
+  const task = manager.spawn(launch);
+  const deadline = Date.now() + 2000;
+  while (!manager.inspect(task.id).agent?.currentTool && Date.now() < deadline) await Bun.sleep(10);
+  const live = manager.inspect(task.id);
   expect(live.status).toBe("running");
   expect(live.agent?.currentTool).toBe("execute");
   expect(live.output).toContain("inspect source");
-  await manager.write(task.id,"",true);
-  const done=await completion;
+  await manager.write(task.id, "", true);
+  const done = await completion;
   expect(done.output).toBe("final answer");
   expect((await manager.wait(task.id)).output).toBe("final answer");
   expect(manager.inspect(task.id).output).toContain("evidence");
-  const stuck=manager.spawn(launch);
-  const until=Date.now()+2000;
-  while (!manager.inspect(stuck.id).agent?.currentTool && Date.now()<until) await Bun.sleep(10);
+  const stuck = manager.spawn(launch);
+  const until = Date.now() + 2000;
+  while (!manager.inspect(stuck.id).agent?.currentTool && Date.now() < until) await Bun.sleep(10);
   manager.kill(stuck.id);
   await manager.wait(stuck.id);
   expect(manager.inspect(stuck.id).status).toBe("killed");
   expect(manager.inspect(stuck.id).output).toContain("Tool started");
 });
 test("JSON-mode model errors count as failure even when the child exits zero", async () => {
-  const {manager,completion}=managerWithCompletion();
-  manager.spawn({kind:"agent",command:process.execPath,args:["-e",'console.log(JSON.stringify({type:"message_end",message:{role:"assistant",stopReason:"error",errorMessage:"provider unavailable"}}))'],
-    displayCommand:"failed model",cwd:process.cwd(),agent:{type:"normal",model:"p/m",depth:1,sessionFile:"/test.jsonl"}});
-  const result=await completion;
+  const { manager, completion } = managerWithCompletion();
+  manager.spawn({
+    kind: "agent",
+    command: process.execPath,
+    args: [
+      "-e",
+      'console.log(JSON.stringify({type:"message_end",message:{role:"assistant",stopReason:"error",errorMessage:"provider unavailable"}}))',
+    ],
+    displayCommand: "failed model",
+    cwd: process.cwd(),
+    agent: { type: "normal", model: "p/m", depth: 1, sessionFile: "/test.jsonl" },
+  });
+  const result = await completion;
   expect(result.exitCode).toBe(0);
   expect(result.status).toBe("failed");
   expect(result.agent?.lastError).toBe("provider unavailable");
 });
 
-test("foreground/background completion races deliver each result exactly once",async()=>{
-  const notifications:TaskInspection[]=[];const manager=new TaskManager(t=>notifications.push(t));managers.push(manager);
-  const jobs=Array.from({length:30},()=>manager.spawn({...commandLaunch("printf done"),notifyOnComplete:false}));
-  const results=await Promise.all(jobs.map((job,i)=>manager.foreground(job.id,i%2 ? 1000 : 0)));
-  await Promise.all(jobs.map(job=>manager.wait(job.id)));
-  const inline=results.filter(result=>!result.background);
-  expect(inline.length+notifications.length).toBe(30);
-  expect(new Set([...inline,...notifications].map(job=>job.id)).size).toBe(30);
+test("foreground/background completion races deliver each result exactly once", async () => {
+  const notifications: TaskInspection[] = [];
+  const manager = new TaskManager((t) => notifications.push(t));
+  managers.push(manager);
+  const jobs = Array.from({ length: 30 }, () =>
+    manager.spawn({ ...commandLaunch("printf done"), notifyOnComplete: false }),
+  );
+  const results = await Promise.all(jobs.map((job, i) => manager.foreground(job.id, i % 2 ? 1000 : 0)));
+  await Promise.all(jobs.map((job) => manager.wait(job.id)));
+  const inline = results.filter((result) => !result.background);
+  expect(inline.length + notifications.length).toBe(30);
+  expect(new Set([...inline, ...notifications].map((job) => job.id)).size).toBe(30);
 });

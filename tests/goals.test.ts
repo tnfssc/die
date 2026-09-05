@@ -3,15 +3,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import {
-  GOAL_ENTRY_TYPE,
-  GoalStore,
-  latestGoal,
-} from "../src/goals/store";
-import {
-  GoalContinuationController,
-  MAX_NO_PROGRESS_CONTINUATIONS,
-} from "../src/goals/controller";
+import { GOAL_ENTRY_TYPE, GoalStore, latestGoal } from "../src/goals/store";
+import { GoalContinuationController, MAX_NO_PROGRESS_CONTINUATIONS } from "../src/goals/controller";
 import { registerGoalMode } from "../src/goals/extension";
 
 const input = {
@@ -41,14 +34,12 @@ describe("goal durable state", () => {
     expect(new GoalStore(() => {}, entries).get()).toEqual(done);
     store.clear();
     expect(latestGoal(entries)).toBeUndefined();
-    expect(entries.every(entry => entry.customType === GOAL_ENTRY_TYPE)).toBe(true);
+    expect(entries.every((entry) => entry.customType === GOAL_ENTRY_TYPE)).toBe(true);
   });
 
   test("fails closed on corrupt, future, and obsolete updates", () => {
     const entries: any[] = [];
-    const store = new GoalStore(
-      (customType, data) => entries.push({ type: "custom", customType, data }),
-    );
+    const store = new GoalStore((customType, data) => entries.push({ type: "custom", customType, data }));
     const active = store.set(input);
 
     entries.push({
@@ -82,14 +73,11 @@ describe("goal durable state", () => {
   test("waiting accepts only currently owned running jobs", () => {
     const store = new GoalStore(() => {});
     store.set(input);
-    expect(() => store.update(
-      { status: "waiting", pendingJobIds: ["foreign"] },
-      new Set(["mine"]),
-    )).toThrow("owned");
-    expect(store.update(
-      { status: "waiting", pendingJobIds: ["mine"] },
-      new Set(["mine"]),
-    )).toMatchObject({ status: "waiting", pendingJobIds: ["mine"] });
+    expect(() => store.update({ status: "waiting", pendingJobIds: ["foreign"] }, new Set(["mine"]))).toThrow("owned");
+    expect(store.update({ status: "waiting", pendingJobIds: ["mine"] }, new Set(["mine"]))).toMatchObject({
+      status: "waiting",
+      pendingJobIds: ["mine"],
+    });
   });
 });
 
@@ -136,9 +124,7 @@ function harness(entries: any[] = []) {
   const sent: string[] = [];
   const notices: any[] = [];
   const appended: any[] = [];
-  const statuses = new Map<string, "running" | "finished" | "unavailable">([
-    ["job_1", "running"],
-  ]);
+  const statuses = new Map<string, "running" | "finished" | "unavailable">([["job_1", "running"]]);
   const pi: any = {
     on(name: string, handler: Function) {
       (handlers[name] ??= []).push(handler);
@@ -154,15 +140,15 @@ function harness(entries: any[] = []) {
     },
   };
   const runtime = registerGoalMode(pi, {
-    runningIds: () => new Set([...statuses]
-      .filter(([, status]) => status === "running")
-      .map(([id]) => id)),
-    status: id => statuses.get(id) ?? "unavailable",
+    runningIds: () => new Set([...statuses].filter(([, status]) => status === "running").map(([id]) => id)),
+    status: (id) => statuses.get(id) ?? "unavailable",
   });
   const ctx: any = {
     sessionManager: {
       getBranch: () => entries,
-      getEntries: () => { throw new Error("must restore only the active branch"); },
+      getEntries: () => {
+        throw new Error("must restore only the active branch");
+      },
     },
     ui: { notify: (...args: any[]) => notices.push(args) },
     hasPendingMessages: () => false,
@@ -350,10 +336,7 @@ test("continuation preserves literal replacement syntax", async () => {
   const h = harness();
   const objective = "Keep {{criteria}}, " + "$&" + " and " + "$$" + " literal";
   const criterion = "preserve {{constraints}} and " + "$'" + " exactly";
-  await h.commands.goal.handler(
-    "set " + objective + " --criteria " + criterion + " --constraints no rewrite",
-    h.ctx,
-  );
+  await h.commands.goal.handler("set " + objective + " --criteria " + criterion + " --constraints no rewrite", h.ctx);
   expect(h.sent.at(-1)).toContain(objective);
   expect(h.sent.at(-1)).toContain(criterion);
 });
@@ -361,10 +344,7 @@ test("continuation preserves literal replacement syntax", async () => {
 test("slash command initializes before session_start and invalidates reminders", async () => {
   const h = harness();
   h.handlers.session_start.length = 0;
-  await h.commands.goal.handler(
-    "set Build it --criteria one; two --constraints stay offline",
-    h.ctx,
-  );
+  await h.commands.goal.handler("set Build it --criteria one; two --constraints stay offline", h.ctx);
   expect(h.runtime.get()).toMatchObject({
     objective: "Build it",
     criteria: ["one", "two"],
@@ -389,7 +369,11 @@ test("runtime refreshes goal state after same-manager branch navigation", () => 
     on: (name: string, handler: Function) => (handlers[name] ??= []).push(handler),
     registerCommand() {},
     sendUserMessage() {},
-    appendEntry(customType: string, data: any) { branches[leaf]!.push({ type: "custom", customType, data }); leaf += ".next"; branches[leaf] = [...branches[leaf.split(".next")[0]!]!]; },
+    appendEntry(customType: string, data: any) {
+      branches[leaf]!.push({ type: "custom", customType, data });
+      leaf += ".next";
+      branches[leaf] = [...branches[leaf.split(".next")[0]!]!];
+    },
   };
   const runtime = registerGoalMode(pi, { runningIds: () => new Set(), status: () => "unavailable" });
   const ctx: any = { sessionManager: manager, ui: { notify() {} } };
@@ -408,10 +392,7 @@ test("goal history is durable JSONL and branch scoped", async () => {
     await writeFile(initialFile, JSON.stringify(manager.getHeader()) + "\n", { flag: "wx" });
     manager = SessionManager.open(initialFile);
     manager.appendMessage({ role: "user", content: "start", timestamp: 1 });
-    const store = new GoalStore(
-      (type, data) => manager.appendCustomEntry(type, data),
-      manager.getBranch(),
-    );
+    const store = new GoalStore((type, data) => manager.appendCustomEntry(type, data), manager.getBranch());
     store.set(input);
     const activeLeaf = manager.getLeafId()!;
     store.clear();
@@ -422,10 +403,15 @@ test("goal history is durable JSONL and branch scoped", async () => {
     expect(latestGoal(manager.getEntries())).toBeUndefined();
 
     const file = manager.getSessionFile()!;
-    expect((await Bun.file(file).text()).trim().split("\n").every(line => {
-      JSON.parse(line);
-      return true;
-    })).toBe(true);
+    expect(
+      (await Bun.file(file).text())
+        .trim()
+        .split("\n")
+        .every((line) => {
+          JSON.parse(line);
+          return true;
+        }),
+    ).toBe(true);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

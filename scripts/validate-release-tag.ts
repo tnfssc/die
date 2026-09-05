@@ -3,7 +3,8 @@ export function validateReleaseTag(tag: string, version: unknown): string | unde
     return "package.json contains an unsupported version";
   }
   const expected = "v" + version;
-  if (tag !== expected) return "release tag " + JSON.stringify(tag) + " does not match package.json version; expected " + expected;
+  if (tag !== expected)
+    return "release tag " + JSON.stringify(tag) + " does not match package.json version; expected " + expected;
 }
 
 if (import.meta.main) {

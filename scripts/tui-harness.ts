@@ -153,7 +153,9 @@ switch (command) {
   }
 
   case "list":
-    process.stdout.write(await tmux(["list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_created_string}"], true));
+    process.stdout.write(
+      await tmux(["list-sessions", "-F", "#{session_name}\t#{session_windows}\t#{session_created_string}"], true),
+    );
     break;
 
   case "stop": {

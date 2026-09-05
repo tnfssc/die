@@ -3,7 +3,14 @@ import prefixScopeTemplate from "../prompts/compaction-prefix-scope.md" with { t
 import wholeScopeTemplate from "../prompts/compaction-whole-scope.md" with { type: "text" };
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, Message, Model, Tool } from "@earendil-works/pi-ai";
-import { buildSessionContext, convertToLlm, estimateTokens, type ExtensionAPI, type ExtensionContext, type SessionBeforeCompactEvent } from "@earendil-works/pi-coding-agent";
+import {
+  buildSessionContext,
+  convertToLlm,
+  estimateTokens,
+  type ExtensionAPI,
+  type ExtensionContext,
+  type SessionBeforeCompactEvent,
+} from "@earendil-works/pi-coding-agent";
 import promptTemplate from "../prompts/compaction.md" with { type: "text" };
 
 import jobsTemplate from "../prompts/compaction-jobs.md" with { type: "text" };
@@ -20,7 +27,7 @@ type Snapshot = {
   thinkingLevel: ExtensionContext["thinkingLevel"];
   sessionId: string;
   providerPayload?: unknown;
-  headers?: Record<string,string | null>;
+  headers?: Record<string, string | null>;
 };
 
 type PreparedConversation = {
@@ -29,7 +36,11 @@ type PreparedConversation = {
   systemPrompt: string;
   tools: Tool[];
   thinkingBudget?: number;
-  complete: (request: CacheAffineRequest, maxTokens: number, onPayload: (payload: unknown) => unknown) => Promise<AssistantMessage>;
+  complete: (
+    request: CacheAffineRequest,
+    maxTokens: number,
+    onPayload: (payload: unknown) => unknown,
+  ) => Promise<AssistantMessage>;
 };
 
 import {
@@ -47,7 +58,11 @@ export {
   updateCurrentInstructionFrame,
 } from "./instruction-continuity";
 
-async function prepareCurrentConversation(event: SessionBeforeCompactEvent, ctx: ExtensionContext, snapshot?: Snapshot): Promise<PreparedConversation | undefined> {
+async function prepareCurrentConversation(
+  event: SessionBeforeCompactEvent,
+  ctx: ExtensionContext,
+  snapshot?: Snapshot,
+): Promise<PreparedConversation | undefined> {
   const session = getInstructionContinuitySession(ctx.sessionManager as object);
   const agent = session?.agent;
   if (!agent || !ctx.model) return undefined;
@@ -56,10 +71,17 @@ async function prepareCurrentConversation(event: SessionBeforeCompactEvent, ctx:
   // provider request and preserves the checkpoint's exact branch.
   const branchMessages = buildSessionContext(event.branchEntries).messages;
   const raw = structuredClone(branchMessages);
-  const lastUser = [...raw].reverse().find(message => message.role === "user");
-  const prompt = !lastUser ? "" : typeof lastUser.content === "string" ? lastUser.content
-    : lastUser.content.filter(part => part.type === "text").map(part => part.text).join("\n");
-  const images = lastUser && Array.isArray(lastUser.content) ? lastUser.content.filter(part => part.type === "image") : [];
+  const lastUser = [...raw].reverse().find((message) => message.role === "user");
+  const prompt = !lastUser
+    ? ""
+    : typeof lastUser.content === "string"
+      ? lastUser.content
+      : lastUser.content
+          .filter((part) => part.type === "text")
+          .map((part) => part.text)
+          .join("\n");
+  const images =
+    lastUser && Array.isArray(lastUser.content) ? lastUser.content.filter((part) => part.type === "image") : [];
   // An ordinary request has already run before_agent_start and snapshot records
   // that effective frame. Re-emitting it here can repeat arbitrary extension
   // side effects. Fresh/resumed sessions have no framed snapshot and must run it.
@@ -67,23 +89,37 @@ async function prepareCurrentConversation(event: SessionBeforeCompactEvent, ctx:
   const baseSystemPrompt = session?._baseSystemPrompt ?? ctx.getSystemPrompt();
   if (!hasEffectiveFrame && typeof session?._extensionRunner?.emitBeforeAgentStart !== "function") return undefined;
   const start = !hasEffectiveFrame
-    ? await session!._extensionRunner!.emitBeforeAgentStart(prompt, images.length ? images : undefined, baseSystemPrompt, session!._baseSystemPromptOptions)
+    ? await session!._extensionRunner!.emitBeforeAgentStart(
+        prompt,
+        images.length ? images : undefined,
+        baseSystemPrompt,
+        session!._baseSystemPromptOptions,
+      )
     : undefined;
   // Match AgentSession's framing order exactly, including an explicitly empty
   // prompt returned by a framing hook. Save fresh-compaction framing so the next
   // custom turn and all of its tool continuations reuse it.
-  const effectiveSystemPrompt = hasEffectiveFrame ? snapshot!.systemPrompt! : start?.systemPrompt ?? baseSystemPrompt;
+  const effectiveSystemPrompt = hasEffectiveFrame ? snapshot!.systemPrompt! : (start?.systemPrompt ?? baseSystemPrompt);
   agent.state.systemPrompt = effectiveSystemPrompt;
   setCurrentInstructionFrame(ctx.sessionManager as object, effectiveSystemPrompt);
   for (const message of start?.messages ?? []) {
-    raw.push({ role: "custom", customType: message.customType, content: message.content ?? [], display: message.display ?? false, details: message.details, timestamp: Date.now() } as AgentMessage);
+    raw.push({
+      role: "custom",
+      customType: message.customType,
+      content: message.content ?? [],
+      display: message.display ?? false,
+      details: message.details,
+      timestamp: Date.now(),
+    } as AgentMessage);
   }
-  const transformed = agent.transformContext
-    ? await agent.transformContext(raw, event.signal)
-    : raw;
+  const transformed = agent.transformContext ? await agent.transformContext(raw, event.signal) : raw;
   if (event.signal.aborted) return undefined;
   const messages = await agent.convertToLlm(transformed);
-  const tools = agent.state.tools.map(tool => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
+  const tools = agent.state.tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    parameters: tool.parameters,
+  }));
   return {
     messages,
     rawMessages: convertToLlm(branchMessages),
@@ -91,31 +127,46 @@ async function prepareCurrentConversation(event: SessionBeforeCompactEvent, ctx:
     tools,
     thinkingBudget: anthropicThinkingBudget(ctx.model, ctx.thinkingLevel, agent.thinkingBudgets),
     complete: async (request, maxTokens, onPayload) => {
-      const stream = await agent.streamFunction(ctx.model!, {
-        systemPrompt: request.systemPrompt,
-        messages: request.messages,
-        tools: request.tools,
-      }, {
-        reasoning: ctx.thinkingLevel === "off" ? undefined : ctx.thinkingLevel,
-        sessionId: ctx.sessionManager.getSessionId(),
-        signal: event.signal,
-        transport: agent.transport,
-        thinkingBudgets: agent.thinkingBudgets,
-        maxRetryDelayMs: agent.maxRetryDelayMs,
-        maxTokens,
-        onPayload: async (payload: unknown, model: Model<any>) => {
-          const normallyTransformed = (agent.onPayload ? await agent.onPayload(payload, model) : undefined) ?? payload;
-          return onPayload(normallyTransformed);
+      const stream = await agent.streamFunction(
+        ctx.model!,
+        {
+          systemPrompt: request.systemPrompt,
+          messages: request.messages,
+          tools: request.tools,
         },
-        onResponse: agent.onResponse,
-      });
+        {
+          reasoning: ctx.thinkingLevel === "off" ? undefined : ctx.thinkingLevel,
+          sessionId: ctx.sessionManager.getSessionId(),
+          signal: event.signal,
+          transport: agent.transport,
+          thinkingBudgets: agent.thinkingBudgets,
+          maxRetryDelayMs: agent.maxRetryDelayMs,
+          maxTokens,
+          onPayload: async (payload: unknown, model: Model<any>) => {
+            const normallyTransformed =
+              (agent.onPayload ? await agent.onPayload(payload, model) : undefined) ?? payload;
+            return onPayload(normallyTransformed);
+          },
+          onResponse: agent.onResponse,
+        },
+      );
       return stream.result();
     },
   };
 }
 
-function anthropicThinkingBudget(model: Model<any>, level: ExtensionContext["thinkingLevel"], custom?: { minimal?: number; low?: number; medium?: number; high?: number }): number {
-  if (model.api !== "anthropic-messages" || !level || level === "off" || (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking === true) return 0;
+function anthropicThinkingBudget(
+  model: Model<any>,
+  level: ExtensionContext["thinkingLevel"],
+  custom?: { minimal?: number; low?: number; medium?: number; high?: number },
+): number {
+  if (
+    model.api !== "anthropic-messages" ||
+    !level ||
+    level === "off" ||
+    (model as Model<"anthropic-messages">).compat?.forceAdaptiveThinking === true
+  )
+    return 0;
   return adjustMaxTokensForThinking(undefined, model.maxTokens, level, custom).thinkingBudget;
 }
 
@@ -130,19 +181,26 @@ export type CacheAffineRequest = {
   summaryScope: "prefix" | "whole-current-conversation";
 };
 
-const textOf = (response: AssistantMessage): string => response.content
-  .filter((part): part is { type: "text"; text: string } => part.type === "text")
-  .map(part => part.text).join("\n").trim();
+const textOf = (response: AssistantMessage): string =>
+  response.content
+    .filter((part): part is { type: "text"; text: string } => part.type === "text")
+    .map((part) => part.text)
+    .join("\n")
+    .trim();
 
 function sameIdentity(snapshot: Snapshot, event: SessionBeforeCompactEvent, ctx: ExtensionContext): boolean {
-  return snapshot.sessionId === ctx.sessionManager.getSessionId()
-    && snapshot.model.provider === ctx.model?.provider && snapshot.model.id === ctx.model?.id
-    && snapshot.thinkingLevel === ctx.thinkingLevel && !event.signal.aborted;
+  return (
+    snapshot.sessionId === ctx.sessionManager.getSessionId() &&
+    snapshot.model.provider === ctx.model?.provider &&
+    snapshot.model.id === ctx.model?.id &&
+    snapshot.thinkingLevel === ctx.thinkingLevel &&
+    !event.signal.aborted
+  );
 }
 
 function activeTools(pi: ExtensionAPI): Tool[] {
-  const definitions = new Map(pi.getAllTools().map(tool => [tool.name, tool]));
-  return pi.getActiveTools().flatMap(name => {
+  const definitions = new Map(pi.getAllTools().map((tool) => [tool.name, tool]));
+  return pi.getActiveTools().flatMap((name) => {
     const tool = definitions.get(name);
     return tool ? [{ name: tool.name, description: tool.description, parameters: tool.parameters }] : [];
   });
@@ -150,11 +208,17 @@ function activeTools(pi: ExtensionAPI): Tool[] {
 
 type RequestBuildResult = { request: CacheAffineRequest } | { reason: string };
 
-export function mapPreparedSummaryBoundary(history: Message[], currentRaw: Message[], discardedNativeCount: number): Pick<CacheAffineRequest, "summaryEnd" | "tailStart" | "summaryScope"> {
+export function mapPreparedSummaryBoundary(
+  history: Message[],
+  currentRaw: Message[],
+  discardedNativeCount: number,
+): Pick<CacheAffineRequest, "summaryEnd" | "tailStart" | "summaryScope"> {
   const retainedCount = currentRaw.length - discardedNativeCount;
   const retainedRaw = retainedCount >= 0 ? currentRaw.slice(discardedNativeCount) : [];
-  const suffixMapsExactly = retainedCount >= 0 && retainedCount <= history.length
-    && jsonEqual(retainedRaw, history.slice(history.length - retainedCount));
+  const suffixMapsExactly =
+    retainedCount >= 0 &&
+    retainedCount <= history.length &&
+    jsonEqual(retainedRaw, history.slice(history.length - retainedCount));
   const summaryScope = suffixMapsExactly ? "prefix" : "whole-current-conversation";
   const summaryEnd = suffixMapsExactly ? history.length - retainedCount : history.length;
   return { summaryEnd, tailStart: summaryEnd + 1, summaryScope };
@@ -164,14 +228,18 @@ export function mapPreparedSummaryBoundary(history: Message[], currentRaw: Messa
  * conversion used by an ordinary assistant request. The retained-tail boundary
  * remains Pi's durable checkpoint boundary; it is intentionally independent of
  * the previously captured request. */
-function prepareCacheAffineRequest(snapshot: Snapshot, event: SessionBeforeCompactEvent, current: PreparedConversation, customInstructions = event.customInstructions): RequestBuildResult {
+function prepareCacheAffineRequest(
+  snapshot: Snapshot,
+  event: SessionBeforeCompactEvent,
+  current: PreparedConversation,
+  customInstructions = event.customInstructions,
+): RequestBuildResult {
   const { preparation } = event;
   const history = current.messages;
   const currentRaw = convertToLlm(buildSessionContext(event.branchEntries).messages);
-  const discardedNativeCount = convertToLlm([
-    ...preparation.messagesToSummarize,
-    ...preparation.turnPrefixMessages,
-  ]).length + (preparation.previousSummary ? 1 : 0);
+  const discardedNativeCount =
+    convertToLlm([...preparation.messagesToSummarize, ...preparation.turnPrefixMessages]).length +
+    (preparation.previousSummary ? 1 : 0);
   // Message counts alone carry no provenance through arbitrary context hooks.
   // A prefix boundary is defensible only when the complete retained raw suffix
   // is still the exact prepared suffix. Otherwise summarize all model-facing
@@ -181,11 +249,18 @@ function prepareCacheAffineRequest(snapshot: Snapshot, event: SessionBeforeCompa
   const custom = customInstructions?.trim()
     ? "Additional user focus (without changing the durable checkpoint boundary): " + customInstructions.trim()
     : "No additional focus was requested.";
-  const scopeFields: Record<string,string> = {summaryEnd:String(summaryEnd),tailStart:String(tailStart),messageCount:String(history.length)};
-  const scope = (summaryScope === "prefix" ? prefixScopeTemplate : wholeScopeTemplate).trimEnd()
-    .replace(/\{\{(summaryEnd|tailStart|messageCount)\}\}/g, (_match,key:string)=>scopeFields[key]!);
-  const fields: Record<string,string> = {scope, customInstructions:custom};
-  const prompt = promptTemplate.trimEnd().replace(/\{\{(scope|customInstructions)\}\}/g, (_match,key:string) => fields[key]!);
+  const scopeFields: Record<string, string> = {
+    summaryEnd: String(summaryEnd),
+    tailStart: String(tailStart),
+    messageCount: String(history.length),
+  };
+  const scope = (summaryScope === "prefix" ? prefixScopeTemplate : wholeScopeTemplate)
+    .trimEnd()
+    .replace(/\{\{(summaryEnd|tailStart|messageCount)\}\}/g, (_match, key: string) => scopeFields[key]!);
+  const fields: Record<string, string> = { scope, customInstructions: custom };
+  const prompt = promptTemplate
+    .trimEnd()
+    .replace(/\{\{(scope|customInstructions)\}\}/g, (_match, key: string) => fields[key]!);
 
   const suffixTokens = Math.ceil(prompt.length / 4) + 32;
   const transformedTokens = history.reduce((total, message) => total + estimateTokens(message as AgentMessage), 0);
@@ -193,43 +268,76 @@ function prepareCacheAffineRequest(snapshot: Snapshot, event: SessionBeforeCompa
   const transformedGrowth = Math.max(0, transformedTokens - (rawTokens ?? preparation.tokensBefore));
   const reserve = preparation.settings.reserveTokens;
   const frameTokens = Math.ceil((current.systemPrompt.length + JSON.stringify(current.tools).length) / 4) + 128;
-  const estimatedInputTokens = Math.max(preparation.tokensBefore + transformedGrowth, transformedTokens + frameTokens) + suffixTokens;
-  const outputTokens = Math.min(snapshot.model.maxTokens, Math.floor(reserve * 0.8), reserve - suffixTokens - 256, snapshot.model.contextWindow - estimatedInputTokens - 256);
+  const estimatedInputTokens =
+    Math.max(preparation.tokensBefore + transformedGrowth, transformedTokens + frameTokens) + suffixTokens;
+  const outputTokens = Math.min(
+    snapshot.model.maxTokens,
+    Math.floor(reserve * 0.8),
+    reserve - suffixTokens - 256,
+    snapshot.model.contextWindow - estimatedInputTokens - 256,
+  );
   if (outputTokens < 1024) return { reason: "the configured reserve leaves too little summary output space" };
   if (estimatedInputTokens + outputTokens > snapshot.model.contextWindow) {
     return { reason: "the transformed cache-affine request would exceed the model context window" };
   }
 
-  return { request: {
-    systemPrompt: current.systemPrompt,
-    messages: [...history, { role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
-    tools: current.tools,
-    summaryEnd, tailStart, outputTokens, estimatedInputTokens, summaryScope,
-  } };
+  return {
+    request: {
+      systemPrompt: current.systemPrompt,
+      messages: [...history, { role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
+      tools: current.tools,
+      summaryEnd,
+      tailStart,
+      outputTokens,
+      estimatedInputTokens,
+      summaryScope,
+    },
+  };
 }
 
-export function buildCacheAffineRequest(snapshot: Snapshot, event: SessionBeforeCompactEvent, customInstructions = event.customInstructions): CacheAffineRequest | undefined {
+export function buildCacheAffineRequest(
+  snapshot: Snapshot,
+  event: SessionBeforeCompactEvent,
+  customInstructions = event.customInstructions,
+): CacheAffineRequest | undefined {
   // Compatibility helper for deterministic request-shape tests. Production does
   // not use this captured context; it calls prepareCurrentConversation above.
-  if (!snapshot.messages || snapshot.leafId === null || !event.branchEntries.some(entry => entry.id === snapshot.leafId)) return undefined;
+  if (
+    !snapshot.messages ||
+    snapshot.leafId === null ||
+    !event.branchEntries.some((entry) => entry.id === snapshot.leafId)
+  )
+    return undefined;
   const currentRaw = convertToLlm(buildSessionContext(event.branchEntries).messages);
   const priorRaw = convertToLlm(buildSessionContext(event.branchEntries, snapshot.leafId).messages);
   const transformed = convertToLlm(snapshot.messages);
-  if (priorRaw.length > currentRaw.length || !jsonEqual(priorRaw, currentRaw.slice(0, priorRaw.length))) return undefined;
+  if (priorRaw.length > currentRaw.length || !jsonEqual(priorRaw, currentRaw.slice(0, priorRaw.length)))
+    return undefined;
   if (transformed.length !== priorRaw.length) return undefined;
   const rawSuffix = currentRaw.slice(priorRaw.length);
   if (rawSuffix.length) {
-    const safe = rawSuffix.every(message => message.role === "assistant" && message.content.every(part => part.type === "text" || part.type === "thinking"));
+    const safe = rawSuffix.every(
+      (message) =>
+        message.role === "assistant" &&
+        message.content.every((part) => part.type === "text" || part.type === "thinking"),
+    );
     if (!safe || !jsonEqual(transformed, priorRaw)) return undefined;
   }
   const history = [...transformed, ...rawSuffix];
-  const result = prepareCacheAffineRequest(snapshot, event, {
-    messages: history,
-    rawMessages: currentRaw,
-    systemPrompt: snapshot.systemPrompt ?? "",
-    tools: snapshot.tools ?? [],
-    complete: async () => { throw new Error("not available in request-only helper"); },
-  }, customInstructions);
+  const result = prepareCacheAffineRequest(
+    snapshot,
+    event,
+    {
+      messages: history,
+      rawMessages: currentRaw,
+      systemPrompt: snapshot.systemPrompt ?? "",
+      tools: snapshot.tools ?? [],
+      complete: async () => {
+        throw new Error("not available in request-only helper");
+      },
+    },
+    customInstructions,
+  );
   return "request" in result ? result.request : undefined;
 }
 
@@ -276,8 +384,8 @@ export function isCacheAffineProviderPayload(previous: unknown, candidate: unkno
   if (!jsonEqual(oldNormalized.sequence, newNormalized.sequence.slice(0, oldSequence.length))) return false;
 
   // No marker may be invented, removed, or have its retention policy changed.
-  const oldPolicies = oldNormalized.markers.map(marker => marker.value);
-  const newPolicies = newNormalized.markers.map(marker => marker.value);
+  const oldPolicies = oldNormalized.markers.map((marker) => marker.value);
+  const newPolicies = newNormalized.markers.map((marker) => marker.value);
   if (!jsonEqual(oldPolicies, newPolicies)) return false;
   for (let index = 0; index < oldNormalized.markers.length; index++) {
     const oldMarker = oldNormalized.markers[index]!;
@@ -297,48 +405,78 @@ export function isCacheAffineProviderPayload(previous: unknown, candidate: unkno
 }
 
 export function isUsableSummaryResponse(response: AssistantMessage): boolean {
-  if (response.stopReason === "error" || response.stopReason === "aborted" || response.stopReason === "length") return false;
-  if (response.content.some(part => part.type === "toolCall")) return false;
+  if (response.stopReason === "error" || response.stopReason === "aborted" || response.stopReason === "length")
+    return false;
+  if (response.content.some((part) => part.type === "toolCall")) return false;
   return textOf(response).length > 0;
 }
 
-export function registerCacheAffineCompaction(pi: ExtensionAPI, pendingJobs: () => readonly {id:string;kind:string;status:string}[] = () => [], options: { skipCodexNative?: boolean } = {}): void {
+export function registerCacheAffineCompaction(
+  pi: ExtensionAPI,
+  pendingJobs: () => readonly { id: string; kind: string; status: string }[] = () => [],
+  options: { skipCodexNative?: boolean } = {},
+): void {
   installCurrentConversationAdapter();
   let snapshot: Snapshot | undefined;
   // die's inline extension is loaded after discovered/CLI extensions, so this
   // sees the final chained context and current per-turn system prompt.
   pi.on("context", (event, ctx) => {
     if (!ctx.model) return;
-    const same = snapshot?.sessionId === ctx.sessionManager.getSessionId()
-      && snapshot.model.provider === ctx.model.provider && snapshot.model.id === ctx.model.id
-      && snapshot.thinkingLevel === ctx.thinkingLevel;
+    const same =
+      snapshot?.sessionId === ctx.sessionManager.getSessionId() &&
+      snapshot.model.provider === ctx.model.provider &&
+      snapshot.model.id === ctx.model.id &&
+      snapshot.thinkingLevel === ctx.thinkingLevel;
     snapshot = {
-      messages: structuredClone(event.messages), systemPrompt: ctx.getSystemPrompt(), tools: activeTools(pi),
-      leafId: ctx.sessionManager.getLeafId(), model: ctx.model,
-      thinkingLevel: ctx.thinkingLevel, sessionId: ctx.sessionManager.getSessionId(),
+      messages: structuredClone(event.messages),
+      systemPrompt: ctx.getSystemPrompt(),
+      tools: activeTools(pi),
+      leafId: ctx.sessionManager.getLeafId(),
+      model: ctx.model,
+      thinkingLevel: ctx.thinkingLevel,
+      sessionId: ctx.sessionManager.getSessionId(),
       ...(same ? { providerPayload: snapshot!.providerPayload, headers: snapshot!.headers } : {}),
     };
   });
   // This hook runs last as part of die's inline extension and therefore records
   // the actual provider payload after earlier payload rewrites.
-  pi.on("before_provider_headers", event => {
-    if (snapshot) snapshot.headers = {...event.headers};
+  pi.on("before_provider_headers", (event) => {
+    if (snapshot) snapshot.headers = { ...event.headers };
   });
-  pi.on("before_provider_request", event => {
+  pi.on("before_provider_request", (event) => {
     if (snapshot) snapshot.providerPayload = structuredClone(event.payload);
   });
-  pi.on("session_start", () => { snapshot = undefined; });
-  pi.on("model_select", () => { snapshot = undefined; });
-  pi.on("thinking_level_select", () => { snapshot = undefined; });
+  pi.on("session_start", () => {
+    snapshot = undefined;
+  });
+  pi.on("model_select", () => {
+    snapshot = undefined;
+  });
+  pi.on("thinking_level_select", () => {
+    snapshot = undefined;
+  });
 
   pi.on("session_before_compact", async (event, ctx) => {
     // Codex uses the Phase 2 opaque native path. If it is unavailable, leaving
     // this hook empty selects Pi's visibly distinct standard plaintext fallback.
     if (options.skipCodexNative && ctx.model?.api === "openai-codex-responses") return;
-    const captured: Snapshot | undefined = snapshot && sameIdentity(snapshot, event, ctx) ? snapshot : ctx.model ? { leafId: ctx.sessionManager.getLeafId(), model: ctx.model, thinkingLevel: ctx.thinkingLevel, sessionId: ctx.sessionManager.getSessionId() } : undefined;
+    const captured: Snapshot | undefined =
+      snapshot && sameIdentity(snapshot, event, ctx)
+        ? snapshot
+        : ctx.model
+          ? {
+              leafId: ctx.sessionManager.getLeafId(),
+              model: ctx.model,
+              thinkingLevel: ctx.thinkingLevel,
+              sessionId: ctx.sessionManager.getSessionId(),
+            }
+          : undefined;
     if (event.signal.aborted) return { cancel: true };
     if (!captured || !sameIdentity(captured, event, ctx)) {
-      ctx.ui?.notify?.("Cache-affine compaction unavailable: model, thinking, or session identity changed. Compaction cancelled; conversation preserved.", "warning");
+      ctx.ui?.notify?.(
+        "Cache-affine compaction unavailable: model, thinking, or session identity changed. Compaction cancelled; conversation preserved.",
+        "warning",
+      );
       return { cancel: true };
     }
     let current: PreparedConversation | undefined;
@@ -346,26 +484,41 @@ export function registerCacheAffineCompaction(pi: ExtensionAPI, pendingJobs: () 
       current = await prepareCurrentConversation(event, ctx, captured);
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      ctx.ui?.notify?.(`Cache-affine compaction unavailable: current context preparation failed: ${reason}. Compaction cancelled; conversation preserved.`, "warning");
+      ctx.ui?.notify?.(
+        `Cache-affine compaction unavailable: current context preparation failed: ${reason}. Compaction cancelled; conversation preserved.`,
+        "warning",
+      );
       return { cancel: true };
     }
     if (!current) {
       const reason = "this Pi runtime has no current-context preparation seam";
-      ctx.ui?.notify?.(`Cache-affine compaction unavailable: ${reason}. Compaction cancelled; conversation preserved.`, "warning");
+      ctx.ui?.notify?.(
+        `Cache-affine compaction unavailable: ${reason}. Compaction cancelled; conversation preserved.`,
+        "warning",
+      );
       return { cancel: true };
     }
     const prepared = prepareCacheAffineRequest(captured, event, current);
     if (!("request" in prepared)) {
-      ctx.ui?.notify?.(`Cache-affine compaction unavailable: ${prepared.reason}. Compaction cancelled; conversation preserved.`, "warning");
+      ctx.ui?.notify?.(
+        `Cache-affine compaction unavailable: ${prepared.reason}. Compaction cancelled; conversation preserved.`,
+        "warning",
+      );
       return { cancel: true };
     }
     const request = prepared.request;
     // Anthropic simple options add the ordinary reasoning budget to maxTokens.
     // Derive it from the current runtime (including fresh requests), then also
     // validate the final post-hook wire ceiling below.
-    const answerTokens = Math.min(request.outputTokens, captured.model.contextWindow - request.estimatedInputTokens - (current.thinkingBudget ?? 0) - 256);
+    const answerTokens = Math.min(
+      request.outputTokens,
+      captured.model.contextWindow - request.estimatedInputTokens - (current.thinkingBudget ?? 0) - 256,
+    );
     if (answerTokens < 1024) {
-      ctx.ui?.notify?.("Cache-affine compaction unavailable: insufficient space for unchanged thinking and summary output. Compaction cancelled; conversation preserved.", "warning");
+      ctx.ui?.notify?.(
+        "Cache-affine compaction unavailable: insufficient space for unchanged thinking and summary output. Compaction cancelled; conversation preserved.",
+        "warning",
+      );
       return { cancel: true };
     }
     let responseUsageRecorded = false;
@@ -373,7 +526,11 @@ export function registerCacheAffineCompaction(pi: ExtensionAPI, pendingJobs: () 
     const recordFailedUsage = () => {
       if (!responseUsageRecorded && paidResponse && paidResponse.usage.totalTokens > 0) {
         responseUsageRecorded = true;
-        pi.appendEntry?.("die-compaction-attempt", {strategy:"cache-affine-plaintext", stopReason:paidResponse.stopReason, usage:paidResponse.usage});
+        pi.appendEntry?.("die-compaction-attempt", {
+          strategy: "cache-affine-plaintext",
+          stopReason: paidResponse.stopReason,
+          usage: paidResponse.usage,
+        });
       }
     };
     let payloadAccepted = false;
@@ -385,11 +542,16 @@ export function registerCacheAffineCompaction(pi: ExtensionAPI, pendingJobs: () 
         // prepare the current conversation. When available, compare it here.
         // Old capture affinity is diagnostic only. Current system, tools,
         // context transforms, and redactions are allowed to differ legitimately.
-        priorPayloadAffine = captured.providerPayload === undefined ? undefined
-          : isCacheAffineProviderPayload(captured.providerPayload, payload);
-        const wire = payload && typeof payload === "object" ? payload as Record<string, unknown> : undefined;
+        priorPayloadAffine =
+          captured.providerPayload === undefined
+            ? undefined
+            : isCacheAffineProviderPayload(captured.providerPayload, payload);
+        const wire = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
         const wireCeiling = Number(wire?.max_tokens ?? wire?.max_output_tokens ?? wire?.max_completion_tokens);
-        if (Number.isFinite(wireCeiling) && request.estimatedInputTokens + wireCeiling + 256 > captured.model.contextWindow) {
+        if (
+          Number.isFinite(wireCeiling) &&
+          request.estimatedInputTokens + wireCeiling + 256 > captured.model.contextWindow
+        ) {
           prefixRejection = "final provider output and thinking ceiling exceeds the model context window";
           throw new Error(prefixRejection);
         }
@@ -397,43 +559,70 @@ export function registerCacheAffineCompaction(pi: ExtensionAPI, pendingJobs: () 
         return payload;
       });
       paidResponse = response;
-      if (event.signal.aborted) { recordFailedUsage(); return { cancel: true }; }
+      if (event.signal.aborted) {
+        recordFailedUsage();
+        return { cancel: true };
+      }
       if (!payloadAccepted && prefixRejection) {
-        ctx.ui?.notify?.(`Cache-affine compaction rejected before inference: ${prefixRejection}. Compaction cancelled; conversation preserved.`, "warning");
+        ctx.ui?.notify?.(
+          `Cache-affine compaction rejected before inference: ${prefixRejection}. Compaction cancelled; conversation preserved.`,
+          "warning",
+        );
         return { cancel: true };
       }
       if (!isUsableSummaryResponse(response)) {
         recordFailedUsage();
         // A response may already be billable. Cancelling is safer than silently
         // launching Pi's fallback summarizer and losing this usage checkpoint.
-        ctx.ui?.notify?.(`Cache-affine summary was unusable (stop reason: ${response.stopReason}); compaction was cancelled to avoid duplicate inference.`, "error");
+        ctx.ui?.notify?.(
+          `Cache-affine summary was unusable (stop reason: ${response.stopReason}); compaction was cancelled to avoid duplicate inference.`,
+          "error",
+        );
         return { cancel: true };
       }
       const jobs = pendingJobs();
-      const runtimeState = jobs.length ? "\n\n" + jobsTemplate.trimEnd().replace("{{jobs}}", () => jobs.map(job => `- ${job.id}: ${job.kind}, ${job.status}`).join("\n")) : "";
+      const runtimeState = jobs.length
+        ? "\n\n" +
+          jobsTemplate
+            .trimEnd()
+            .replace("{{jobs}}", () => jobs.map((job) => `- ${job.id}: ${job.kind}, ${job.status}`).join("\n"))
+        : "";
       const modified = new Set([...event.preparation.fileOps.written, ...event.preparation.fileOps.edited]);
-      return { compaction: {
-        summary: textOf(response) + runtimeState, firstKeptEntryId: event.preparation.firstKeptEntryId,
-        tokensBefore: event.preparation.tokensBefore, usage: response.usage,
-        details: {
-          strategy: "cache-affine-plaintext", version: CACHE_AFFINE_COMPACTION_VERSION,
-          summaryEnd: request.summaryEnd, tailStart: request.tailStart, summaryScope: request.summaryScope,
-          ...(priorPayloadAffine === undefined ? {} : { priorPayloadAffine }),
-          readFiles: [...event.preparation.fileOps.read].filter(path => !modified.has(path)).sort(),
-          modifiedFiles: [...modified].sort(),
+      return {
+        compaction: {
+          summary: textOf(response) + runtimeState,
+          firstKeptEntryId: event.preparation.firstKeptEntryId,
+          tokensBefore: event.preparation.tokensBefore,
+          usage: response.usage,
+          details: {
+            strategy: "cache-affine-plaintext",
+            version: CACHE_AFFINE_COMPACTION_VERSION,
+            summaryEnd: request.summaryEnd,
+            tailStart: request.tailStart,
+            summaryScope: request.summaryScope,
+            ...(priorPayloadAffine === undefined ? {} : { priorPayloadAffine }),
+            readFiles: [...event.preparation.fileOps.read].filter((path) => !modified.has(path)).sort(),
+            modifiedFiles: [...modified].sort(),
+          },
         },
-      } };
+      };
     } catch (error) {
       recordFailedUsage();
       if (event.signal.aborted) return { cancel: true };
       const reason = error instanceof Error ? error.message : String(error);
       if (!payloadAccepted) {
-        ctx.ui?.notify?.(`Cache-affine compaction rejected before inference: ${reason}. Compaction cancelled; conversation preserved.`, "warning");
+        ctx.ui?.notify?.(
+          `Cache-affine compaction rejected before inference: ${reason}. Compaction cancelled; conversation preserved.`,
+          "warning",
+        );
         return { cancel: true };
       }
       // Once a payload was accepted, the provider may have billed the request.
       // Do not silently start a second summarization with no usage checkpoint.
-      ctx.ui?.notify?.(`Cache-affine compaction failed after inference began: ${reason}. Compaction was cancelled to avoid duplicate inference.`, "error");
+      ctx.ui?.notify?.(
+        `Cache-affine compaction failed after inference began: ${reason}. Compaction was cancelled to avoid duplicate inference.`,
+        "error",
+      );
       return { cancel: true };
     }
   });

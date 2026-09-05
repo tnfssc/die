@@ -18,25 +18,30 @@ function formatGoal(goal?: GoalState): string {
     `Status: ${goal.status}`,
     `Criteria: ${goal.criteria.join("; ")}`,
     `Constraints: ${goal.constraints.join("; ") || "none"}`,
-    goal.progress?.length && `Progress:\n${goal.progress.map(item => `- ${item}`).join("\n")}`,
+    goal.progress?.length && `Progress:\n${goal.progress.map((item) => `- ${item}`).join("\n")}`,
     goal.evidence && `Evidence: ${goal.evidence}`,
     goal.blocker && `Blocker: ${goal.blocker}`,
     goal.pendingJobIds?.length && `Waiting on: ${goal.pendingJobIds.join(", ")}`,
     goal.pauseReason && `Reason: ${goal.pauseReason}`,
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function continuation(goal: GoalState, generation: number): string {
   const placeholders: Record<"objective" | "criteria" | "constraints", string> = {
     objective: goal.objective,
-    criteria: goal.criteria.map(item => `- ${item}`).join("\n"),
-    constraints: goal.constraints.length
-      ? goal.constraints.map(item => `- ${item}`).join("\n")
-      : "- None",
+    criteria: goal.criteria.map((item) => `- ${item}`).join("\n"),
+    constraints: goal.constraints.length ? goal.constraints.map((item) => `- ${item}`).join("\n") : "- None",
   };
-  return goalContinuation.trimEnd()
-    .replace(/\{\{(objective|criteria|constraints)\}\}/g, (_match, key: keyof typeof placeholders) => placeholders[key])
-    + `\n\n<!-- die-goal-generation:${generation} -->`;
+  return (
+    goalContinuation
+      .trimEnd()
+      .replace(
+        /\{\{(objective|criteria|constraints)\}\}/g,
+        (_match, key: keyof typeof placeholders) => placeholders[key],
+      ) + `\n\n<!-- die-goal-generation:${generation} -->`
+  );
 }
 
 function parseSet(args: string): { objective: string; criteria: string[]; constraints: string[] } {
@@ -45,7 +50,11 @@ function parseSet(args: string): { objective: string; criteria: string[]; constr
   if (criteriaAt <= 0 || constraintsAt <= criteriaAt) {
     throw new Error("Usage: /goal set <objective> --criteria <criterion[;...]> --constraints <constraint[;...]>");
   }
-  const split = (value: string) => value.split(";").map(item => item.trim()).filter(Boolean);
+  const split = (value: string) =>
+    value
+      .split(";")
+      .map((item) => item.trim())
+      .filter(Boolean);
   return {
     objective: args.slice(0, criteriaAt).trim(),
     criteria: split(args.slice(criteriaAt + 12, constraintsAt)),
@@ -72,16 +81,13 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     const manager = ctx.sessionManager as object | undefined;
     const leaf = leafOf(ctx);
     if (!store || loadedManager !== manager || (leaf !== undefined && leaf !== loadedLeaf)) {
-      const entries = ctx.sessionManager?.getBranch?.()
-        ?? ctx.sessionManager?.getEntries()
-        ?? [];
+      const entries = ctx.sessionManager?.getBranch?.() ?? ctx.sessionManager?.getEntries() ?? [];
       const candidate = new GoalStore((type, data) => {
         pi.appendEntry(type, data);
         loadedLeaf = leafOf(ctx);
       }, entries);
-      const branchChanged = !store
-        || loadedManager !== manager
-        || JSON.stringify(candidate.get()) !== JSON.stringify(store.get());
+      const branchChanged =
+        !store || loadedManager !== manager || JSON.stringify(candidate.get()) !== JSON.stringify(store.get());
       loadedManager = manager;
       loadedLeaf = leaf;
       // Ordinary messages also advance the leaf. Preserve controller state when
@@ -122,8 +128,8 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     const id = String(++reminderSequence);
     if (queuedReminderIds.size >= 16) queuedReminderIds.delete(queuedReminderIds.values().next().value!);
     queuedReminderIds.add(id);
-    const message = continuation(goal, generation)
-      + `\n\n<!-- die-goal-reminder:${reminderEpoch}:${generation}:${id} -->`;
+    const message =
+      continuation(goal, generation) + `\n\n<!-- die-goal-reminder:${reminderEpoch}:${generation}:${id} -->`;
     controller.markAutomaticStart(goal);
     pi.sendUserMessage(message, { deliverAs: "followUp" });
   };
@@ -131,10 +137,10 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     const goal = store?.get();
     if (!goal || goal.status !== "waiting" || !jobsDirty) return;
     jobsDirty = false;
-    const statuses = goal.pendingJobIds!.map(id => jobs.status(id));
-    if (statuses.some(status => status === "unavailable")) {
+    const statuses = goal.pendingJobIds!.map((id) => jobs.status(id));
+    if (statuses.some((status) => status === "unavailable")) {
       pause("Paused because waiting work is unavailable in this process");
-    } else if (statuses.some(status => status === "finished")) {
+    } else if (statuses.some((status) => status === "finished")) {
       store!.update({ status: "active" });
       bumpGeneration();
     }
@@ -191,13 +197,16 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     const goal = store?.get();
     if (!goal) return;
     return {
-      messages: [...event.messages, {
-        role: "custom" as const,
-        customType: "die-goal-state",
-        content: `Persistent goal state (authoritative):\n${formatGoal(goal)}`,
-        display: false,
-        timestamp: Date.now(),
-      }],
+      messages: [
+        ...event.messages,
+        {
+          role: "custom" as const,
+          customType: "die-goal-state",
+          content: `Persistent goal state (authoritative):\n${formatGoal(goal)}`,
+          display: false,
+          timestamp: Date.now(),
+        },
+      ],
     };
   });
 
@@ -207,9 +216,8 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     if (event.source === "extension") {
       const match = /<!-- die-goal-reminder:([^:>]+):(\d+):(\d+) -->/.exec(event.text);
       if (match) {
-        const accepted = match[1] === reminderEpoch
-          && Number(match[2]) === generation
-          && queuedReminderIds.delete(match[3]!);
+        const accepted =
+          match[1] === reminderEpoch && Number(match[2]) === generation && queuedReminderIds.delete(match[3]!);
         if (!accepted) return { action: "handled" as const };
       }
       return;
@@ -220,9 +228,8 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     }
   });
 
-  pi.on("tool_execution_end", event => {
-    if (event.toolName !== "execute" || event.isError
-      || typeof event.result?.details?.handoff !== "string") return;
+  pi.on("tool_execution_end", (event) => {
+    if (event.toolName !== "execute" || event.isError || typeof event.result?.details?.handoff !== "string") return;
     const current = store?.get();
     // An explicit state transition in the handed-off execution wins. Otherwise
     // suppress reminders only while this process still owns running work.
@@ -234,7 +241,7 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
   });
 
   pi.on("agent_end", (event, ctx) => {
-    const last = [...event.messages].reverse().find(message => message.role === "assistant");
+    const last = [...event.messages].reverse().find((message) => message.role === "assistant");
     if (ctx.signal?.aborted || last?.stopReason === "aborted" || last?.stopReason === "error") {
       pause("Paused after interrupted agent turn");
       return;
@@ -286,7 +293,7 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
   });
 
   return {
-    get: () => context ? ensureStore(context).get() : store?.get(),
+    get: () => (context ? ensureStore(context).get() : store?.get()),
     jobsChanged() {
       jobsDirty = true;
       reconcileWaiting();

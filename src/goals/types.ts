@@ -1,10 +1,4 @@
-export const GOAL_STATUSES = [
-  "active",
-  "waiting",
-  "blocked",
-  "completed",
-  "paused",
-] as const;
+export const GOAL_STATUSES = ["active", "waiting", "blocked", "completed", "paused"] as const;
 
 export type GoalStatus = (typeof GOAL_STATUSES)[number];
 

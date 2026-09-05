@@ -19,12 +19,24 @@ test("real footer includes nested costs, updates while idle, and restores on res
     }
     throw new Error("Missing " + text + " in frame:\n" + frame);
   }
-  const append = (session: SessionManager, cost: number) => session.appendMessage({
-    role: "assistant", content: [{ type: "text", text: "Cost fixture" }],
-    api: "openai-completions", provider: "openai", model: "gpt-4o", stopReason: "stop", timestamp: Date.now(),
-    usage: { input: 10, output: 20, cacheRead: 0, cacheWrite: 0, totalTokens: 30,
-      cost: { input: cost, output: 0, cacheRead: 0, cacheWrite: 0, total: cost } },
-  });
+  const append = (session: SessionManager, cost: number) =>
+    session.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "Cost fixture" }],
+      api: "openai-completions",
+      provider: "openai",
+      model: "gpt-4o",
+      stopReason: "stop",
+      timestamp: Date.now(),
+      usage: {
+        input: 10,
+        output: 20,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 30,
+        cost: { input: cost, output: 0, cacheRead: 0, cacheWrite: 0, total: cost },
+      },
+    });
   try {
     const root = SessionManager.create(home, join(home, "sessions"));
     append(root, 0.125);
@@ -36,9 +48,22 @@ test("real footer includes nested costs, updates while idle, and restores on res
     append(worker, 0.5);
     const unrelated = SessionManager.create(home, join(home, "sessions"));
     append(unrelated, 9);
-    const launch = ["env", "HOME=" + home, "DIE_CODING_AGENT_DIR=" + join(home, ".die", "agent"),
-      "OPENAI_API_KEY=offline-test-placeholder", resolve(import.meta.dir, "../dist/die"), "--offline",
-      "--session", root.getSessionFile()!, "--provider", "openai", "--model", "gpt-4o"].map(quote).join(" ");
+    const launch = [
+      "env",
+      "HOME=" + home,
+      "DIE_CODING_AGENT_DIR=" + join(home, ".die", "agent"),
+      "OPENAI_API_KEY=offline-test-placeholder",
+      resolve(import.meta.dir, "../dist/die"),
+      "--offline",
+      "--session",
+      root.getSessionFile()!,
+      "--provider",
+      "openai",
+      "--model",
+      "gpt-4o",
+    ]
+      .map(quote)
+      .join(" ");
     const start = () => tmux("new-session", "-d", "-s", "cost", "-x", "120", "-y", "30", "-c", home, launch);
     expect((await start()).code).toBe(0);
     await frameContaining("$0.875");
@@ -51,5 +76,8 @@ test("real footer includes nested costs, updates while idle, and restores on res
     await tmux("kill-session", "-t", "cost");
     expect((await start()).code).toBe(0);
     await frameContaining("$1.000");
-  } finally { await tmux("kill-server"); await rm(home, { recursive: true, force: true }); }
+  } finally {
+    await tmux("kill-server");
+    await rm(home, { recursive: true, force: true });
+  }
 }, 20000);

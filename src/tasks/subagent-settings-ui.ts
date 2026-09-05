@@ -13,9 +13,19 @@ export function registerSubagentSettings(pi: ExtensionAPI, path = profilesPath()
       }
       try {
         const profiles = await loadProfiles(path);
-        const result = await ctx.ui.custom<Profiles | undefined>((tui, theme, keys, done) =>
-          new SubagentSettingsPanel(profiles, ctx.modelRegistry.getAvailable(), theme, keys, done,
-            () => tui.requestRender(), ctx.model ? ctx.model.provider + "/" + ctx.model.id : undefined, ctx.thinkingLevel));
+        const result = await ctx.ui.custom<Profiles | undefined>(
+          (tui, theme, keys, done) =>
+            new SubagentSettingsPanel(
+              profiles,
+              ctx.modelRegistry.getAvailable(),
+              theme,
+              keys,
+              done,
+              () => tui.requestRender(),
+              ctx.model ? ctx.model.provider + "/" + ctx.model.id : undefined,
+              ctx.thinkingLevel,
+            ),
+        );
         if (!result) return;
         await saveProfiles(result, path);
         ctx.ui.notify("Saved " + path + ". Applies to future sub-agents.", "info");

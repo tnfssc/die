@@ -1,10 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  GOAL_STATUSES,
-  type GoalEntry,
-  type GoalState,
-  type GoalStatus,
-} from "./types";
+import { GOAL_STATUSES, type GoalEntry, type GoalState, type GoalStatus } from "./types";
 
 export const GOAL_ENTRY_TYPE = "die-goal";
 const MAX_FIELD = 4_000;
@@ -22,12 +17,12 @@ function text(value: unknown, name: string): string {
 }
 
 function strings(value: unknown, name: string, required = false): string[] {
-  if (!Array.isArray(value) || value.some(item => typeof item !== "string" || !item.trim())) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim())) {
     throw new Error(`${name} must be an array of nonempty strings`);
   }
   if (required && value.length === 0) throw new Error(`${name} is required`);
   if (value.length > MAX_ITEMS) throw new Error(`${name} has too many items`);
-  return value.map(item => text(item, name));
+  return value.map((item) => text(item, name));
 }
 
 function optionalText(value: unknown, name: string): string | undefined {
@@ -35,7 +30,16 @@ function optionalText(value: unknown, name: string): string | undefined {
 }
 
 function aggregateText(goal: GoalState): number {
-  return [goal.objective, ...goal.criteria, ...goal.constraints, ...(goal.progress ?? []), ...(goal.pendingJobIds ?? []), goal.evidence, goal.blocker, goal.pauseReason]
+  return [
+    goal.objective,
+    ...goal.criteria,
+    ...goal.constraints,
+    ...(goal.progress ?? []),
+    ...(goal.pendingJobIds ?? []),
+    goal.evidence,
+    goal.blocker,
+    goal.pauseReason,
+  ]
     .filter((item): item is string => typeof item === "string")
     .reduce((total, item) => total + item.length, 0);
 }
@@ -185,7 +189,7 @@ export class GoalStore {
     if (status === "blocked") goal.blocker = text(input.blocker, "blocker explanation");
     if (status === "waiting") {
       goal.pendingJobIds = strings(input.pendingJobIds, "pendingJobIds", true);
-      const unknown = goal.pendingJobIds.filter(id => !runningJobs.has(id));
+      const unknown = goal.pendingJobIds.filter((id) => !runningJobs.has(id));
       if (unknown.length > 0) {
         throw new Error(`Waiting requires running jobs owned by this agent: ${unknown.join(", ")}`);
       }

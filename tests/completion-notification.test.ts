@@ -1,8 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  formatCompletionNotification,
-  MAX_COMPLETION_NOTIFICATION_CHARS,
-} from "../src/tasks/completion-notification";
+import { formatCompletionNotification, MAX_COMPLETION_NOTIFICATION_CHARS } from "../src/tasks/completion-notification";
 import type { TaskInspection } from "../src/tasks/task-manager";
 
 function completedTask(index: number, output = `output-${index}`): TaskInspection {
@@ -64,7 +61,9 @@ describe("completion notifications", () => {
 
 test("failed agent progress is not labeled as a successful final answer", () => {
   const task = completedTask(1, "Still waiting for workers");
-  task.kind = "agent"; task.status = "killed"; task.timedOut = true;
+  task.kind = "agent";
+  task.status = "killed";
+  task.timedOut = true;
   task.agent = { type: "orchestrator", depth: 1, model: "provider/model", sessionFile: "/tmp/session.jsonl" };
   const text = formatCompletionNotification([task]);
   expect(text).toContain("Diagnostic preview (last progress, not a final answer)");

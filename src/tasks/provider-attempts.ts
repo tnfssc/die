@@ -15,7 +15,7 @@ const listeners = new WeakMap<object, Set<ProviderAttemptListener>>();
 /** Subscribe to attempts owned by one in-memory session manager. */
 export function subscribeProviderAttempts(owner: object, listener: ProviderAttemptListener): () => void {
   let set = listeners.get(owner);
-  if (!set) listeners.set(owner, set = new Set());
+  if (!set) listeners.set(owner, (set = new Set()));
   set.add(listener);
   return () => {
     set!.delete(listener);
@@ -25,12 +25,21 @@ export function subscribeProviderAttempts(owner: object, listener: ProviderAttem
 
 /** Report an already-observed attempt. Synchronous so model identity cannot
  * drift across an await or model switch. */
-export function reportProviderAttempt(owner: object, model: Pick<Model<any>, "provider" | "id">, observedAt: ProviderAttemptEvent["observedAt"], timestamp = Date.now()): void {
+export function reportProviderAttempt(
+  owner: object,
+  model: Pick<Model<any>, "provider" | "id">,
+  observedAt: ProviderAttemptEvent["observedAt"],
+  timestamp = Date.now(),
+): void {
   const event = { model, observedAt, timestamp };
   // Telemetry is optional: a broken persistence/UI observer must never abort the
   // provider request (including native fetch dispatch). Notify each observer in
   // isolation so one failure cannot starve the others.
   for (const listener of listeners.get(owner) ?? []) {
-    try { listener(event); } catch { /* non-fatal observer */ }
+    try {
+      listener(event);
+    } catch {
+      /* non-fatal observer */
+    }
   }
 }

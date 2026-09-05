@@ -12,21 +12,29 @@ export type ImageInput = string | Uint8Array | ArrayBuffer | Blob;
 
 export function imageMimeType(bytes: Uint8Array): string {
   const b = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (b.length >= 33 && b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) && b.toString("ascii", 12, 16) === "IHDR") return "image/png";
+  if (
+    b.length >= 33 &&
+    b.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) &&
+    b.toString("ascii", 12, 16) === "IHDR"
+  )
+    return "image/png";
   if (b.length >= 4 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return "image/jpeg";
   if (b.length >= 13 && ["GIF87a", "GIF89a"].includes(b.toString("ascii", 0, 6))) return "image/gif";
-  if (b.length >= 20 && b.toString("ascii", 0, 4) === "RIFF" && b.toString("ascii", 8, 12) === "WEBP") return "image/webp";
+  if (b.length >= 20 && b.toString("ascii", 0, 4) === "RIFF" && b.toString("ascii", 8, 12) === "WEBP")
+    return "image/webp";
   throw new Error("emitImage supports PNG, JPEG, GIF, and WebP bytes; unsupported or missing image header");
 }
 
 function checkSize(size: number): void {
-  if (size > MAX_IMAGE_BYTES) throw new Error(`emitImage image exceeds ${MAX_IMAGE_BYTES} bytes; resize or compress it first`);
+  if (size > MAX_IMAGE_BYTES)
+    throw new Error(`emitImage image exceeds ${MAX_IMAGE_BYTES} bytes; resize or compress it first`);
   if (size === 0) throw new Error("emitImage cannot return an empty image");
 }
 
 async function imageBytes(input: ImageInput): Promise<Buffer> {
   if (typeof input === "string" || input instanceof Blob) {
-    if (typeof input === "string" && !(await Bun.file(input).exists())) throw new Error(`Image file not found: ${input}`);
+    if (typeof input === "string" && !(await Bun.file(input).exists()))
+      throw new Error(`Image file not found: ${input}`);
     const blob = typeof input === "string" ? Bun.file(input) : input;
     checkSize(blob.size);
     // Bound reads even if a file grows after its size was checked.
@@ -54,14 +62,15 @@ export function createImageEmitter(channelEnabled: boolean) {
         if (count >= MAX_IMAGES) throw new Error(`emitImage allows at most ${MAX_IMAGES} images per execution`);
         const bytes = await imageBytes(input);
         const mimeType = imageMimeType(bytes);
-        if (total + bytes.length > MAX_TOTAL_IMAGE_BYTES) throw new Error(`emitImage total exceeds ${MAX_TOTAL_IMAGE_BYTES} bytes`);
+        if (total + bytes.length > MAX_TOTAL_IMAGE_BYTES)
+          throw new Error(`emitImage total exceeds ${MAX_TOTAL_IMAGE_BYTES} bytes`);
         stream ??= createWriteStream("", { fd: 3, autoClose: false });
         // The write callback reports pipe errors; don't also emit an unhandled
         // error event if the parent has cancelled the execution.
         if (stream.listenerCount("error") === 0) stream.on("error", () => {});
         const record: ImageContent = { type: "image", mimeType, data: bytes.toString("base64") };
         await new Promise<void>((resolve, reject) => {
-          stream!.write(`${JSON.stringify(record)}\n`, (error) => error ? reject(error) : resolve());
+          stream!.write(`${JSON.stringify(record)}\n`, (error) => (error ? reject(error) : resolve()));
         });
         count++;
         total += bytes.length;
@@ -87,15 +96,21 @@ export function decodeImageChannel(buffer: Buffer): ImageContent[] {
   let total = 0;
   return records.map((record) => {
     let value: Partial<ImageContent> | null;
-    try { value = JSON.parse(record); }
-    catch { throw new Error("Invalid JSON in image output record"); }
-    if (!value || value.type !== "image" || typeof value.data !== "string" || typeof value.mimeType !== "string") throw new Error("Invalid image output record");
+    try {
+      value = JSON.parse(record);
+    } catch {
+      throw new Error("Invalid JSON in image output record");
+    }
+    if (!value || value.type !== "image" || typeof value.data !== "string" || typeof value.mimeType !== "string")
+      throw new Error("Invalid image output record");
     // Validate canonical base64; Buffer.from alone silently accepts bad input.
-    if (value.data.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4) throw new Error("Image output exceeds the per-image byte limit");
+    if (value.data.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4)
+      throw new Error("Image output exceeds the per-image byte limit");
     if (/[^A-Za-z0-9+/=]/.test(value.data)) throw new Error("Invalid image base64");
     const bytes = Buffer.from(value.data, "base64");
     checkSize(bytes.length);
-    if (bytes.toString("base64") !== value.data || imageMimeType(bytes) !== value.mimeType) throw new Error("Image output MIME type or encoding mismatch");
+    if (bytes.toString("base64") !== value.data || imageMimeType(bytes) !== value.mimeType)
+      throw new Error("Image output MIME type or encoding mismatch");
     total += bytes.length;
     if (total > MAX_TOTAL_IMAGE_BYTES) throw new Error("Image output exceeded its total byte limit");
     return { type: "image", mimeType: value.mimeType, data: value.data };

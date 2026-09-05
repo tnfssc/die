@@ -33,10 +33,10 @@ function resolveInstalledPackage(specifier: string, cwd: string, requireMode = f
       const exported = hasExports
         ? resolveExports(manifest, exportKey, { require: requireMode, conditions: ["bun"] })?.[0]
         : undefined;
-      if (hasExports && !exported) throw resolutionError(`Package path ${specifier} is not exported`, "ERR_PACKAGE_PATH_NOT_EXPORTED");
-      const target = exported
-        ?? (subpath || (requireMode ? manifest.main : manifest.module ?? manifest.main))
-        ?? "index.js";
+      if (hasExports && !exported)
+        throw resolutionError(`Package path ${specifier} is not exported`, "ERR_PACKAGE_PATH_NOT_EXPORTED");
+      const target =
+        exported ?? (subpath || (requireMode ? manifest.main : (manifest.module ?? manifest.main))) ?? "index.js";
       const resolved = resolve(packageDirectory, target);
       if (existsSync(resolved)) return realpathSync.native(resolved);
       for (const suffix of hasExports ? [] : [".ts", ".tsx", ".mjs", ".js", ".cjs", "/index.js"]) {
@@ -58,7 +58,8 @@ function resolvePackageImport(specifier: string, cwd: string, requireMode = fals
     if (existsSync(manifestPath)) {
       const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
       const target = resolveImports(manifest, specifier, { require: requireMode, conditions: ["bun"] })?.[0];
-      if (!target) throw resolutionError(`Package import ${specifier} is not defined`, "ERR_PACKAGE_IMPORT_NOT_DEFINED");
+      if (!target)
+        throw resolutionError(`Package import ${specifier} is not defined`, "ERR_PACKAGE_IMPORT_NOT_DEFINED");
       if (target.startsWith("./")) {
         const path = resolve(directory, target);
         return existsSync(path) ? realpathSync.native(path) : path;
@@ -94,18 +95,23 @@ function rewriteImports(javascript: string, entryFilename: string): string {
     if (imported.d >= 0) {
       // A data URL has no filesystem-relative base. Keep every dynamic import
       // lazy and resolve it only when execution reaches the expression.
-      replacements.push({ start: imported.ss, end: imported.ss + 6, value: `globalThis.__dieExecuteImportFrom.bind(null, ${JSON.stringify(dirname(entryFilename))})` });
+      replacements.push({
+        start: imported.ss,
+        end: imported.ss + 6,
+        value: `globalThis.__dieExecuteImportFrom.bind(null, ${JSON.stringify(dirname(entryFilename))})`,
+      });
       continue;
     }
     if (imported.d === -2 || !imported.n) continue;
     const specifier = imported.n;
     if (isBuiltin(specifier) || specifier === "bun" || specifier.includes(":")) continue;
     const from = dirname(entryFilename);
-    const resolved = specifier.startsWith(".") || specifier.startsWith("/")
-      ? resolve(from, specifier)
-      : specifier.startsWith("#")
-        ? resolvePackageImport(specifier, from)
-        : resolveInstalledPackage(specifier, from);
+    const resolved =
+      specifier.startsWith(".") || specifier.startsWith("/")
+        ? resolve(from, specifier)
+        : specifier.startsWith("#")
+          ? resolvePackageImport(specifier, from)
+          : resolveInstalledPackage(specifier, from);
     replacements.push({ start: imported.s, end: imported.e, value: pathToFileURL(resolved).href });
   }
   let output = javascript;
@@ -145,7 +151,13 @@ export async function runTypeScriptFromStdin(): Promise<void> {
   const createBoundRequire = (filename: string): NodeJS.Require => {
     const nativeRequire = createRequire(filename);
     const resolveRequire = (specifier: string, options?: { paths?: string[] }) => {
-      if (isBuiltin(specifier) || specifier === "bun" || specifier.startsWith(".") || specifier.startsWith("/") || specifier.includes(":")) {
+      if (
+        isBuiltin(specifier) ||
+        specifier === "bun" ||
+        specifier.startsWith(".") ||
+        specifier.startsWith("/") ||
+        specifier.includes(":")
+      ) {
         return nativeRequire.resolve(specifier, options);
       }
       return resolveRequirePackage(specifier, dirname(filename), options?.paths);
@@ -168,11 +180,25 @@ export async function runTypeScriptFromStdin(): Promise<void> {
   // Bun's compiled CommonJS loader can omit filesystem packages from its
   // internal resolution table. Intercept resolution only; loading, wrappers,
   // cycles, module.exports, and the cache remain entirely native.
-  const moduleInternals = Module as unknown as { _resolveFilename: (request: string, parent?: NodeModule, isMain?: boolean, options?: unknown) => string };
+  const moduleInternals = Module as unknown as {
+    _resolveFilename: (request: string, parent?: NodeModule, isMain?: boolean, options?: unknown) => string;
+  };
   const nativeResolveFilename = moduleInternals._resolveFilename;
-  moduleInternals._resolveFilename = function(this: unknown, request: string, parent?: NodeModule, isMain = false, options?: unknown) {
+  moduleInternals._resolveFilename = function (
+    this: unknown,
+    request: string,
+    parent?: NodeModule,
+    isMain = false,
+    options?: unknown,
+  ) {
     let resolved: string;
-    if (isBuiltin(request) || request === "bun" || request.startsWith(".") || request.startsWith("/") || request.includes(":")) {
+    if (
+      isBuiltin(request) ||
+      request === "bun" ||
+      request.startsWith(".") ||
+      request.startsWith("/") ||
+      request.includes(":")
+    ) {
       resolved = nativeResolveFilename.call(this, request, parent, isMain, options);
     } else {
       const from = parent?.filename ? dirname(parent.filename) : cwd;
@@ -198,11 +224,12 @@ export async function runTypeScriptFromStdin(): Promise<void> {
         return import(specifier, options);
       }
       if (isBuiltin(specifier) || specifier === "bun" || specifier.includes(":")) return import(specifier, options);
-      const resolved = specifier.startsWith(".") || specifier.startsWith("/")
-        ? resolve(from, specifier)
-        : specifier.startsWith("#")
-          ? resolvePackageImport(specifier, from)
-          : resolveInstalledPackage(specifier, from);
+      const resolved =
+        specifier.startsWith(".") || specifier.startsWith("/")
+          ? resolve(from, specifier)
+          : specifier.startsWith("#")
+            ? resolvePackageImport(specifier, from)
+            : resolveInstalledPackage(specifier, from);
       if (isEsmJavaScript(resolved)) registerEsmGraph(resolved);
       return import(pathToFileURL(resolved).href, options);
     },
@@ -269,9 +296,10 @@ export async function runTypeScriptFromStdin(): Promise<void> {
     const extension = extname(filename);
     // es-module-lexer accepts JavaScript, not TypeScript. Erase types first so
     // type-only imports (including missing ones) never enter the runtime graph.
-    const moduleJavascript = extension === ".ts" || extension === ".tsx"
-      ? new Bun.Transpiler({ loader: extension === ".tsx" ? "tsx" : "ts", target: "bun" }).transformSync(contents)
-      : contents;
+    const moduleJavascript =
+      extension === ".ts" || extension === ".tsx"
+        ? new Bun.Transpiler({ loader: extension === ".tsx" ? "tsx" : "ts", target: "bun" }).transformSync(contents)
+        : contents;
     const [imports] = parseModules(moduleJavascript);
     for (const imported of imports) {
       if (imported.d !== -1 || !imported.n) continue;

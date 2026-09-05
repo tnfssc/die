@@ -83,12 +83,15 @@ describe("isolated TypeScript runner", () => {
 
   test("resolves installed packages for static and lazy imports", async () => {
     const projectRoot = resolve(import.meta.dir, "..");
-    const result = await runTypeScript(`
+    const result = await runTypeScript(
+      `
       import { object } from "zod/mini";
       const lazy = await import("zod/mini");
       const required = require("zod/mini");
       console.log(typeof object, typeof lazy.string, typeof required.number);
-    `, projectRoot);
+    `,
+      projectRoot,
+    );
 
     expect(result.code).toBe(0);
     expect(result.stdout.trim()).toBe("function function function");
@@ -99,11 +102,23 @@ describe("isolated TypeScript runner", () => {
     const modules = join(directory, "node_modules");
     await mkdir(join(modules, "parent", "lib"), { recursive: true });
     await mkdir(join(modules, "leaf"), { recursive: true });
-    await Bun.write(join(modules, "leaf", "package.json"), JSON.stringify({ name: "leaf", type: "module", exports: "./index.js" }));
-    await Bun.write(join(modules, "leaf", "index.js"), `globalThis.__leafLoads = (globalThis.__leafLoads ?? 0) + 1; export const loads = globalThis.__leafLoads;`);
-    await Bun.write(join(modules, "parent", "package.json"), JSON.stringify({ name: "parent", type: "module", exports: "./index.js" }));
+    await Bun.write(
+      join(modules, "leaf", "package.json"),
+      JSON.stringify({ name: "leaf", type: "module", exports: "./index.js" }),
+    );
+    await Bun.write(
+      join(modules, "leaf", "index.js"),
+      `globalThis.__leafLoads = (globalThis.__leafLoads ?? 0) + 1; export const loads = globalThis.__leafLoads;`,
+    );
+    await Bun.write(
+      join(modules, "parent", "package.json"),
+      JSON.stringify({ name: "parent", type: "module", exports: "./index.js" }),
+    );
     await Bun.write(join(modules, "parent", "lib", "local.js"), 'import { loads } from "leaf"; export { loads };');
-    await Bun.write(join(modules, "parent", "index.js"), 'export { loads } from "./lib/local.js"; export const lazyLoads = import("leaf").then((module) => module.loads);');
+    await Bun.write(
+      join(modules, "parent", "index.js"),
+      'export { loads } from "./lib/local.js"; export const lazyLoads = import("leaf").then((module) => module.loads);',
+    );
 
     const result = await runTypeScript(`
       import { loads, lazyLoads } from "parent";
@@ -118,10 +133,13 @@ describe("isolated TypeScript runner", () => {
 
   test("loads a representative installed package with transitive dependencies", async () => {
     const projectRoot = resolve(import.meta.dir, "..");
-    const result = await runTypeScript(`
+    const result = await runTypeScript(
+      `
       import { SessionManager } from "@earendil-works/pi-coding-agent";
       console.log(typeof SessionManager);
-    `, projectRoot);
+    `,
+      projectRoot,
+    );
 
     expect(result.code).toBe(0);
     expect(result.stdout.trim()).toBe("function");
@@ -145,20 +163,24 @@ describe("isolated TypeScript runner", () => {
   test("respects package export conditions, patterns, and private subpaths", async () => {
     const pkg = join(directory, "node_modules", "fixture");
     await mkdir(pkg, { recursive: true });
-    await Bun.write(join(pkg, "package.json"), JSON.stringify({
-      name: "fixture", type: "module",
-      exports: {
-        ".": { import: "./esm.js", require: "./cjs.cjs" },
-        "./priority": { default: "./esm.js", import: "./wrong.js" },
-        "./features/*": "./features/*.js",
-        "./private.js": null,
-      },
-    }));
+    await Bun.write(
+      join(pkg, "package.json"),
+      JSON.stringify({
+        name: "fixture",
+        type: "module",
+        exports: {
+          ".": { import: "./esm.js", require: "./cjs.cjs" },
+          "./priority": { default: "./esm.js", import: "./wrong.js" },
+          "./features/*": "./features/*.js",
+          "./private.js": null,
+        },
+      }),
+    );
     await Bun.write(join(pkg, "esm.js"), 'export const value = "esm";');
     await Bun.write(join(pkg, "cjs.cjs"), 'module.exports = { value: "cjs" };');
     await Bun.write(join(pkg, "wrong.js"), 'export const value = "wrong";');
     await Bun.write(join(pkg, "features/a.js"), 'export { value } from "../esm.js";');
-    await Bun.write(join(pkg, "private.js"), 'export const secret = true;');
+    await Bun.write(join(pkg, "private.js"), "export const secret = true;");
     const result = await runTypeScript(`
       import { value } from "fixture";
       import { value as priority } from "fixture/priority";
@@ -180,17 +202,25 @@ describe("isolated TypeScript runner", () => {
     const dependency = join(modules, "cjs-dependency");
     await mkdir(parent, { recursive: true });
     await mkdir(dependency, { recursive: true });
-    await Bun.write(join(dependency, "package.json"), JSON.stringify({
-      name: "cjs-dependency",
-      exports: { import: "./wrong.js", require: "./index.cjs" },
-    }));
+    await Bun.write(
+      join(dependency, "package.json"),
+      JSON.stringify({
+        name: "cjs-dependency",
+        exports: { import: "./wrong.js", require: "./index.cjs" },
+      }),
+    );
     await Bun.write(join(dependency, "index.cjs"), 'module.exports = { condition: "require" };');
     await Bun.write(join(dependency, "wrong.js"), 'export const condition = "import";');
     await Bun.write(join(parent, "package.json"), JSON.stringify({ name: "cjs-parent", main: "index.cjs" }));
-    await Bun.write(join(parent, "shared.cjs"), 'globalThis.__sharedLoads = (globalThis.__sharedLoads ?? 0) + 1; module.exports = { loads: globalThis.__sharedLoads };');
+    await Bun.write(
+      join(parent, "shared.cjs"),
+      "globalThis.__sharedLoads = (globalThis.__sharedLoads ?? 0) + 1; module.exports = { loads: globalThis.__sharedLoads };",
+    );
     await Bun.write(join(parent, "a.cjs"), 'exports.name = "a"; exports.fromB = require("./b.cjs").sawA;');
     await Bun.write(join(parent, "b.cjs"), 'exports.sawA = require("./a.cjs").name;');
-    await Bun.write(join(parent, "index.cjs"), `
+    await Bun.write(
+      join(parent, "index.cjs"),
+      `
       const dependencyName = "cjs-" + "dependency";
       const shared = require("./shared.cjs");
       const sharedAgain = require("./shared.cjs");
@@ -204,7 +234,8 @@ describe("isolated TypeScript runner", () => {
         cached: require.cache[require.resolve("./shared.cjs")].exports === shared,
         builtin: typeof require("node:fs").readFile,
       };
-    `);
+    `,
+    );
 
     const result = await runTypeScript(`
       const first = require("cjs-parent");
@@ -220,7 +251,10 @@ describe("isolated TypeScript runner", () => {
   test("preserves require evaluation errors without retrying another package entry", async () => {
     const pkg = join(directory, "node_modules", "broken");
     await mkdir(pkg, { recursive: true });
-    await Bun.write(join(pkg, "package.json"), JSON.stringify({ name: "broken", exports: { require: "./bad.cjs", import: "./good.js" } }));
+    await Bun.write(
+      join(pkg, "package.json"),
+      JSON.stringify({ name: "broken", exports: { require: "./bad.cjs", import: "./good.js" } }),
+    );
     await Bun.write(join(pkg, "bad.cjs"), 'throw new Error("original-failure");');
     await Bun.write(join(pkg, "good.js"), 'export const value = "incorrect-fallback";');
     const result = await runTypeScript('try { require("broken"); } catch (error) { console.log(error.message); }');
@@ -229,8 +263,11 @@ describe("isolated TypeScript runner", () => {
   });
 
   test("loads local dependency graphs and built-ins through each import style", async () => {
-    await Bun.write(join(directory, "node_modules/dependency/package.json"), JSON.stringify({ name: "dependency", main: "index.js", type: "module" }));
-    await Bun.write(join(directory, "node_modules/dependency/index.js"), 'export const value = 42;');
+    await Bun.write(
+      join(directory, "node_modules/dependency/package.json"),
+      JSON.stringify({ name: "dependency", main: "index.js", type: "module" }),
+    );
+    await Bun.write(join(directory, "node_modules/dependency/index.js"), "export const value = 42;");
     await Bun.write(join(directory, "nested/entry.ts"), 'import { value } from "dependency"; export { value };');
     await Bun.write(join(directory, "data.json"), '{"ok":true}');
     const result = await runTypeScript(`
@@ -248,16 +285,22 @@ describe("isolated TypeScript runner", () => {
   test("preserves dependency URLs, relative assets, runtime imports, and lazy failures", async () => {
     const pkg = join(directory, "node_modules/runtime-fixture");
     await mkdir(pkg, { recursive: true });
-    await Bun.write(join(pkg, "package.json"), JSON.stringify({ name: "runtime-fixture", type: "module", exports: "./index.js" }));
+    await Bun.write(
+      join(pkg, "package.json"),
+      JSON.stringify({ name: "runtime-fixture", type: "module", exports: "./index.js" }),
+    );
     await Bun.write(join(pkg, "asset.txt"), "asset-ok");
-    await Bun.write(join(pkg, "child.js"), 'export const value = 42;');
-    await Bun.write(join(pkg, "index.js"), `
+    await Bun.write(join(pkg, "child.js"), "export const value = 42;");
+    await Bun.write(
+      join(pkg, "index.js"),
+      `
       import { readFile } from "node:fs/promises";
       export const url = import.meta.url;
       export const asset = await readFile(new URL("./asset.txt", import.meta.url), "utf8");
       export const load = (name) => import("./" + name + ".js");
       export const never = () => import("missing-dependency-from-fixture");
-    `);
+    `,
+    );
     const result = await runTypeScript(`
       import * as fixture from "runtime-fixture";
       console.log(fixture.url, fixture.asset, (await fixture.load("child")).value);
@@ -269,13 +312,19 @@ describe("isolated TypeScript runner", () => {
   });
 
   test("supports package imports and caches failed module evaluation", async () => {
-    await Bun.write(join(directory, "package.json"), JSON.stringify({
-      type: "module",
-      imports: { "#value": { bun: "./value.js", default: "./wrong.js" } },
-    }));
+    await Bun.write(
+      join(directory, "package.json"),
+      JSON.stringify({
+        type: "module",
+        imports: { "#value": { bun: "./value.js", default: "./wrong.js" } },
+      }),
+    );
     await Bun.write(join(directory, "value.js"), 'export const value = "alias-ok";');
     await Bun.write(join(directory, "wrong.js"), 'export const value = "wrong";');
-    await Bun.write(join(directory, "fails.js"), 'globalThis.__failLoads = (globalThis.__failLoads ?? 0) + 1; throw new Error("boom");');
+    await Bun.write(
+      join(directory, "fails.js"),
+      'globalThis.__failLoads = (globalThis.__failLoads ?? 0) + 1; throw new Error("boom");',
+    );
     const result = await runTypeScript(`
       import { value } from "#value";
       for (let index = 0; index < 2; index++) try { await import("./fails.js"); } catch {}
@@ -288,63 +337,121 @@ describe("isolated TypeScript runner", () => {
   test("transpiles external TypeScript before lexing type-only imports", async () => {
     const pkg = join(directory, "node_modules/typed-fixture");
     await mkdir(pkg, { recursive: true });
-    await Bun.write(join(pkg, "package.json"), JSON.stringify({ name: "typed-fixture", type: "module", exports: "./index.ts" }));
+    await Bun.write(
+      join(pkg, "package.json"),
+      JSON.stringify({ name: "typed-fixture", type: "module", exports: "./index.ts" }),
+    );
     await Bun.write(join(pkg, "types.ts"), "export interface Present { value: number }");
     await Bun.write(join(pkg, "runtime.ts"), "export const runtime: number = 42;");
-    await Bun.write(join(pkg, "index.ts"), 'import type { Present } from "./types.ts"; import type { Gone } from "missing-type-package"; import { runtime } from "./runtime.ts"; const value: Present = { value: runtime }; export default value.value;');
+    await Bun.write(
+      join(pkg, "index.ts"),
+      'import type { Present } from "./types.ts"; import type { Gone } from "missing-type-package"; import { runtime } from "./runtime.ts"; const value: Present = { value: runtime }; export default value.value;',
+    );
     const result = await runTypeScript('import value from "typed-fixture"; console.log(value);');
-    expect(result.code).toBe(0); expect(result.stdout.trim()).toBe("42"); expect(result.stderr).toBe("");
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("42");
+    expect(result.stderr).toBe("");
   });
 
   test("uses canonical onLoad paths for symlinked pnpm-style graphs", async () => {
     const store = join(directory, "node_modules/.pnpm");
     const parent = join(store, "parent@1/node_modules/parent");
     const leaf = join(store, "leaf@1/node_modules/leaf");
-    await mkdir(parent, { recursive: true }); await mkdir(leaf, { recursive: true });
-    await Bun.write(join(parent, "package.json"), JSON.stringify({ name: "parent", type: "module", exports: "./index.js" }));
+    await mkdir(parent, { recursive: true });
+    await mkdir(leaf, { recursive: true });
+    await Bun.write(
+      join(parent, "package.json"),
+      JSON.stringify({ name: "parent", type: "module", exports: "./index.js" }),
+    );
     await Bun.write(join(parent, "index.js"), 'import { value } from "leaf"; export { value };');
-    await Bun.write(join(leaf, "package.json"), JSON.stringify({ name: "leaf", type: "module", exports: "./index.js" }));
+    await Bun.write(
+      join(leaf, "package.json"),
+      JSON.stringify({ name: "leaf", type: "module", exports: "./index.js" }),
+    );
     await Bun.write(join(leaf, "index.js"), 'export const value = "pnpm-ok";');
     await symlink(parent, join(directory, "node_modules/parent"), "dir");
     await symlink(leaf, join(store, "parent@1/node_modules/leaf"), "dir");
     const result = await runTypeScript('import { value } from "parent"; console.log(value);');
-    expect(result.code).toBe(0); expect(result.stdout.trim()).toBe("pnpm-ok"); expect(result.stderr).toBe("");
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("pnpm-ok");
+    expect(result.stderr).toBe("");
   });
 
   test("registers ESM graphs reached by native and root CommonJS require", async () => {
     const modules = join(directory, "node_modules");
-    for (const name of ["cjs-requirer", "esm-target", "esm-root", "esm-leaf"]) await mkdir(join(modules, name), { recursive: true });
-    await Bun.write(join(modules, "esm-leaf/package.json"), JSON.stringify({ name: "esm-leaf", type: "module", exports: "./index.js" }));
-    await Bun.write(join(modules, "esm-leaf/index.js"), 'export const value = 21;');
+    for (const name of ["cjs-requirer", "esm-target", "esm-root", "esm-leaf"])
+      await mkdir(join(modules, name), { recursive: true });
+    await Bun.write(
+      join(modules, "esm-leaf/package.json"),
+      JSON.stringify({ name: "esm-leaf", type: "module", exports: "./index.js" }),
+    );
+    await Bun.write(join(modules, "esm-leaf/index.js"), "export const value = 21;");
     for (const name of ["esm-target", "esm-root"]) {
-      await Bun.write(join(modules, name, "package.json"), JSON.stringify({ name, type: "module", exports: "./index.js" }));
-      await Bun.write(join(modules, name, "index.js"), 'import { value } from "esm-leaf"; export const answer = value * 2;');
+      await Bun.write(
+        join(modules, name, "package.json"),
+        JSON.stringify({ name, type: "module", exports: "./index.js" }),
+      );
+      await Bun.write(
+        join(modules, name, "index.js"),
+        'import { value } from "esm-leaf"; export const answer = value * 2;',
+      );
     }
-    await Bun.write(join(modules, "cjs-requirer/package.json"), JSON.stringify({ name: "cjs-requirer", main: "./index.cjs" }));
+    await Bun.write(
+      join(modules, "cjs-requirer/package.json"),
+      JSON.stringify({ name: "cjs-requirer", main: "./index.cjs" }),
+    );
     await Bun.write(join(modules, "cjs-requirer/index.cjs"), 'module.exports = require("esm-target");');
     const result = await runTypeScript('console.log(require("cjs-requirer").answer, require("esm-root").answer);');
-    expect(result.code).toBe(0); expect(result.stdout.trim()).toBe("42 42"); expect(result.stderr).toBe("");
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("42 42");
+    expect(result.stderr).toBe("");
   });
 
   test("resolves computed dynamic imports from native CommonJS", async () => {
     const modules = join(directory, "node_modules");
-    for (const name of ["cjs-dynamic", "dynamic-target", "dynamic-leaf"]) await mkdir(join(modules, name), { recursive: true });
-    await Bun.write(join(modules, "cjs-dynamic/package.json"), JSON.stringify({ name: "cjs-dynamic", main: "./index.cjs" }));
-    await Bun.write(join(modules, "cjs-dynamic/index.cjs"), 'module.exports = (name) => import(name);');
-    await Bun.write(join(modules, "dynamic-target/package.json"), JSON.stringify({ name: "dynamic-target", type: "module", exports: "./index.js" }));
-    await Bun.write(join(modules, "dynamic-target/index.js"), 'import { value } from "dynamic-leaf"; export { value };');
-    await Bun.write(join(modules, "dynamic-leaf/package.json"), JSON.stringify({ name: "dynamic-leaf", type: "module", exports: "./index.js" }));
+    for (const name of ["cjs-dynamic", "dynamic-target", "dynamic-leaf"])
+      await mkdir(join(modules, name), { recursive: true });
+    await Bun.write(
+      join(modules, "cjs-dynamic/package.json"),
+      JSON.stringify({ name: "cjs-dynamic", main: "./index.cjs" }),
+    );
+    await Bun.write(join(modules, "cjs-dynamic/index.cjs"), "module.exports = (name) => import(name);");
+    await Bun.write(
+      join(modules, "dynamic-target/package.json"),
+      JSON.stringify({ name: "dynamic-target", type: "module", exports: "./index.js" }),
+    );
+    await Bun.write(
+      join(modules, "dynamic-target/index.js"),
+      'import { value } from "dynamic-leaf"; export { value };',
+    );
+    await Bun.write(
+      join(modules, "dynamic-leaf/package.json"),
+      JSON.stringify({ name: "dynamic-leaf", type: "module", exports: "./index.js" }),
+    );
     await Bun.write(join(modules, "dynamic-leaf/index.js"), 'export const value = "dynamic-ok";');
-    const result = await runTypeScript('const load = require("cjs-dynamic"); console.log((await load("dynamic-target")).value);');
-    expect(result.code).toBe(0); expect(result.stdout.trim()).toBe("dynamic-ok"); expect(result.stderr).toBe("");
+    const result = await runTypeScript(
+      'const load = require("cjs-dynamic"); console.log((await load("dynamic-target")).value);',
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("dynamic-ok");
+    expect(result.stderr).toBe("");
   });
 
   test("honors every require.resolve options.paths entry", async () => {
-    const second = join(directory, "second"); const pkg = join(second, "node_modules/path-target");
+    const second = join(directory, "second");
+    const pkg = join(second, "node_modules/path-target");
     await mkdir(pkg, { recursive: true });
-    await Bun.write(join(pkg, "package.json"), JSON.stringify({ name: "path-target", main: "index.cjs" })); await Bun.write(join(pkg, "index.cjs"), "module.exports = true;");
-    const result = await runTypeScript('console.log(require.resolve("path-target", { paths: ["' + join(directory, "first") + '", "' + second + '"] }).endsWith("path-target/index.cjs"));');
-    expect(result.code).toBe(0); expect(result.stdout.trim()).toBe("true");
+    await Bun.write(join(pkg, "package.json"), JSON.stringify({ name: "path-target", main: "index.cjs" }));
+    await Bun.write(join(pkg, "index.cjs"), "module.exports = true;");
+    const result = await runTypeScript(
+      'console.log(require.resolve("path-target", { paths: ["' +
+        join(directory, "first") +
+        '", "' +
+        second +
+        '"] }).endsWith("path-target/index.cjs"));',
+    );
+    expect(result.code).toBe(0);
+    expect(result.stdout.trim()).toBe("true");
   });
 
   test("reports syntax errors and explicit early exits", async () => {

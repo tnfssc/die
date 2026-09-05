@@ -12,8 +12,12 @@ const png = makePng();
 const encoded = png.toString("base64");
 const bytesCode = `Buffer.from(${JSON.stringify(encoded)}, "base64")`;
 
-beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), "die-images-")); });
-afterEach(async () => { await rm(directory, { recursive: true, force: true }); });
+beforeEach(async () => {
+  directory = await mkdtemp(join(tmpdir(), "die-images-"));
+});
+afterEach(async () => {
+  await rm(directory, { recursive: true, force: true });
+});
 function execute(code: string, timeoutMs = 3_000) {
   return executeIsolated(code, directory, undefined, timeoutMs, { executablePath: binary, killGraceMs: 100 });
 }
@@ -24,7 +28,9 @@ function record(data = encoded, mimeType = "image/png") {
 describe("execute image output", () => {
   test("returns a local image without treating logs as image records or writing temporary files", async () => {
     await Bun.write(join(directory, "picture.not-png-extension"), png);
-    const result = await execute(`console.log('ordinary output'); console.error('diagnostic'); await emitImage('picture.not-png-extension');`);
+    const result = await execute(
+      `console.log('ordinary output'); console.error('diagnostic'); await emitImage('picture.not-png-extension');`,
+    );
     expect(result.exitCode).toBe(0);
     expect(result.imageError).toBeUndefined();
     expect(result.images).toEqual([{ type: "image", data: encoded, mimeType: "image/png" }]);
@@ -38,7 +44,11 @@ describe("execute image output", () => {
   });
 
   test("supports sliced bytes, ArrayBuffer, Blob, and Bun.file with ordered concurrent emissions", async () => {
-    const variants = [[0, 255, 0], [0, 0, 255], [255, 255, 0]].map((rgb) => makePng(2, 2, () => rgb));
+    const variants = [
+      [0, 255, 0],
+      [0, 0, 255],
+      [255, 255, 0],
+    ].map((rgb) => makePng(2, 2, () => rgb));
     await Bun.write(join(directory, "image.png"), variants[2]);
     const result = await execute(`
       const bytes = ${bytesCode};
@@ -51,7 +61,10 @@ describe("execute image output", () => {
       ]);
     `);
     expect(result.exitCode).toBe(0);
-    expect(result.images.map((image) => image.data)).toEqual([encoded, ...variants.map((image) => image.toString("base64"))]);
+    expect(result.images.map((image) => image.data)).toEqual([
+      encoded,
+      ...variants.map((image) => image.toString("base64")),
+    ]);
     expect(result.imageError).toBeUndefined();
   });
 
@@ -99,7 +112,10 @@ describe("execute image output", () => {
     const failed = await execute(`await emitImage(${bytesCode}); throw new Error('after-image');`);
     expect(failed.exitCode).toBe(1);
     expect(failed.images).toEqual([]);
-    const timed = await execute(`await emitImage(${bytesCode}); setInterval(() => {}, 1000); await new Promise(() => {});`, 500);
+    const timed = await execute(
+      `await emitImage(${bytesCode}); setInterval(() => {}, 1000); await new Promise(() => {});`,
+      500,
+    );
     expect(timed.timedOut).toBe(true);
     expect(timed.images).toEqual([]);
   });
@@ -120,28 +136,30 @@ describe("execute image output", () => {
   });
 
   test("does not use a private descriptor when invoked outside execute", async () => {
-    const child = Bun.spawn([binary, '--die-internal-execute'], {
+    const child = Bun.spawn([binary, "--die-internal-execute"], {
       cwd: directory,
       env: { ...process.env, DIE_EXECUTE_IMAGE_CHANNEL: undefined },
-      stdin: 'pipe', stdout: 'pipe', stderr: 'pipe',
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
     });
     child.stdin.write(`await emitImage(${bytesCode});`);
     child.stdin.end();
     const [code, stderr] = await Promise.all([child.exited, new Response(child.stderr).text()]);
     expect(code).toBe(1);
-    expect(stderr).toContain('available only through the execute tool');
+    expect(stderr).toContain("available only through the execute tool");
   });
 
   test("validates format headers and untrusted frame metadata", () => {
     expect(imageMimeType(png)).toBe("image/png");
-    expect(imageMimeType(Buffer.from('ffd8ffe00010', 'hex'))).toBe("image/jpeg");
-    expect(imageMimeType(Buffer.from('GIF89a' + '\0'.repeat(7)))).toBe("image/gif");
-    expect(imageMimeType(Buffer.from('RIFF' + '\0'.repeat(4) + 'WEBPVP8 ' + '\0'.repeat(4)))).toBe("image/webp");
-    expect(() => imageMimeType(Buffer.from('not an image'))).toThrow();
-    expect(() => decodeImageChannel(record(encoded, 'image/jpeg'))).toThrow("mismatch");
-    expect(() => decodeImageChannel(record('%%%'))).toThrow("base64");
-    expect(() => decodeImageChannel(Buffer.from('null\n'))).toThrow("Invalid");
-    expect(() => decodeImageChannel(Buffer.from('{bad json}\n'))).toThrow("Invalid JSON");
+    expect(imageMimeType(Buffer.from("ffd8ffe00010", "hex"))).toBe("image/jpeg");
+    expect(imageMimeType(Buffer.from("GIF89a" + "\0".repeat(7)))).toBe("image/gif");
+    expect(imageMimeType(Buffer.from("RIFF" + "\0".repeat(4) + "WEBPVP8 " + "\0".repeat(4)))).toBe("image/webp");
+    expect(() => imageMimeType(Buffer.from("not an image"))).toThrow();
+    expect(() => decodeImageChannel(record(encoded, "image/jpeg"))).toThrow("mismatch");
+    expect(() => decodeImageChannel(record("%%%"))).toThrow("base64");
+    expect(() => decodeImageChannel(Buffer.from("null\n"))).toThrow("Invalid");
+    expect(() => decodeImageChannel(Buffer.from("{bad json}\n"))).toThrow("Invalid JSON");
     expect(() => decodeImageChannel(Buffer.concat(Array(5).fill(record())))).toThrow("4 images");
   });
 });

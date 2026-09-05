@@ -5,7 +5,11 @@ import * as z from "zod/mini";
  * each execute handler instead of pretending JSON Schema carries static types.
  */
 export function toolParameters(schema: z.ZodMiniType) {
-  const { $schema: _dialect, "~standard": _standard, ...parameters } = z.toJSONSchema(schema, {
+  const {
+    $schema: _dialect,
+    "~standard": _standard,
+    ...parameters
+  } = z.toJSONSchema(schema, {
     target: "draft-7",
     io: "input",
   });

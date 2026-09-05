@@ -47,7 +47,10 @@ function formatLargeBatch(tasks: TaskInspection[], maxChars: number): string {
   return content.slice(0, maxChars);
 }
 
-export function formatCompletionNotification(tasks: TaskInspection[], maxChars = MAX_COMPLETION_NOTIFICATION_CHARS): string {
+export function formatCompletionNotification(
+  tasks: TaskInspection[],
+  maxChars = MAX_COMPLETION_NOTIFICATION_CHARS,
+): string {
   if (tasks.length > LARGE_BATCH_THRESHOLD) return formatLargeBatch(tasks, maxChars);
   let content = `${tasks.length} asynchronous task${tasks.length === 1 ? "" : "s"} completed.`;
 
@@ -61,14 +64,14 @@ export function formatCompletionNotification(tasks: TaskInspection[], maxChars =
       task.signal ? `Signal: ${task.signal}` : undefined,
       task.timedOut ? "Timed out: yes" : undefined,
       task.agent ? `Session: ${boundedMiddlePreview(task.agent.sessionFile, 400)}` : undefined,
-      output ? `${task.agent && task.status !== "completed" ? "Diagnostic preview (last progress, not a final answer)" : "Final output preview"}:\n${tail(output, MAX_OUTPUT_PREVIEW_CHARS)}` : "No output.",
+      output
+        ? `${task.agent && task.status !== "completed" ? "Diagnostic preview (last progress, not a final answer)" : "Final output preview"}:\n${tail(output, MAX_OUTPUT_PREVIEW_CHARS)}`
+        : "No output.",
     ]
       .filter(Boolean)
       .join("\n");
     const part = `\n\n${block}`;
-    const futureOmitted = index < tasks.length - 1
-      ? `\n\n${formatOmitted(tasks.slice(index + 1), maxChars)}`
-      : "";
+    const futureOmitted = index < tasks.length - 1 ? `\n\n${formatOmitted(tasks.slice(index + 1), maxChars)}` : "";
 
     if (content.length + part.length + futureOmitted.length > maxChars) {
       const available = maxChars - content.length - 2;
