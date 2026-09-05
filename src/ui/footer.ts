@@ -183,7 +183,7 @@ export function createCompactUI(pi: ExtensionAPI, cache?: CacheCountdown): (ctx:
       ctx.ui.setEditorComponent((tui, theme, bindings) =>
         new CompactEditor(tui, theme, bindings, { paddingX: 0, embedWorkingStatus: true }));
     }
-    installCompactFooter(ctx, () => expanded, undefined, cache);
+    install(ctx);
   };
 }
 
@@ -215,7 +215,8 @@ export function installCompactFooter(
         // A transient filesystem error must not interrupt the terminal.
       } finally { busy = false; }
     };
-    const timer = active && tracker ? setInterval(() => { void refresh(); }, 1000) : undefined;
+    // Cost is ancillary and disk-backed; a coarse poll avoids requiring a one-second timer.
+    const timer = active && tracker ? setInterval(() => { void refresh(); }, 2_000) : undefined;
     timer?.unref?.();
     void refresh();
     let cacheTimer: ReturnType<typeof setTimeout> | undefined;

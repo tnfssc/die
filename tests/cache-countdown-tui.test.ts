@@ -16,6 +16,6 @@ test("real PTY shows unknown estimate and /cache-ttl persists a validated value"
   expect(await waitFor("cache est ?")).toContain("· cache est ?");
   await tmux("send-keys","-t",session,"-l","/cache-ttl 30m");await tmux("send-keys","-t",session,"Enter");
   expect(await waitFor("Cache TTL estimate set to 30m")).toContain("does not guarantee provider cache retention or hits");
-  expect(JSON.parse(await readFile(join(home,".die","settings.json"),"utf8"))).toEqual({cacheTtlMs:1_800_000});
+  expect(JSON.parse(await readFile(join(home,".die","cache-settings.json"),"utf8"))).toEqual({cacheTtlMs:1_800_000});
  } finally {await tmux("kill-server").catch(()=>({code:1,stdout:"",stderr:""}));await rm(home,{recursive:true,force:true});}
 },15_000);

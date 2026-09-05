@@ -35,6 +35,17 @@ describe("native Codex request",()=>{
    try{parseNativeCodexEvents([{type:"response.failed",response:{status:"failed",output:[item],usage:{input_tokens:4,output_tokens:1,total_tokens:5}}}],model);throw new Error("expected failure");}
    catch(error:any){expect(error.usage).toMatchObject({input:4,output:1,totalTokens:5});}
  });
+ test("observes exact native dispatch, including fetch failure but not pre-dispatch abort",async()=>{
+   const seen:Model<any>[]=[];
+   await expect(requestNativeCodexCompaction({model,payload,headers:{Authorization:"Bearer hidden","chatgpt-account-id":"acct"},onDispatch:m=>seen.push(m),fetch:(async()=>{throw new Error("offline");}) as any})).rejects.toThrow("offline");
+   expect(seen).toEqual([model]);
+   const controller=new AbortController();controller.abort(new Error("early"));
+   await expect(requestNativeCodexCompaction({model,payload,headers:{Authorization:"Bearer hidden","chatgpt-account-id":"acct"},signal:controller.signal,onDispatch:m=>seen.push(m),fetch:(async()=>{throw new Error("must not fetch");}) as any})).rejects.toThrow("early");
+   expect(seen).toHaveLength(1);
+   const cyclic:any={role:"user"};cyclic.self=cyclic;
+   await expect(requestNativeCodexCompaction({model,payload:{...payload,input:[cyclic]},headers:{Authorization:"Bearer hidden","chatgpt-account-id":"acct"},onDispatch:m=>seen.push(m),fetch:(async()=>{throw new Error("must not fetch");}) as any})).rejects.toThrow();
+   expect(seen).toHaveLength(1);
+ });
  test("performs one cancellable request and never changes normal request fields",async()=>{let seen:any;const item={type:"compaction" as const,id:"cmp_9",encrypted_content:"cipher"};
    const fetch=async(url:any,init:any)=>{seen={url,init};return new Response('data: '+JSON.stringify({type:"response.completed",response:{status:"completed",output:[item],usage:{input_tokens:4,output_tokens:1,total_tokens:5}}})+'\n\n',{status:200});};
    const out=await requestNativeCodexCompaction({model,payload,headers:{Authorization:"Bearer hidden","chatgpt-account-id":"acct","x-route":"kept"},fetch:fetch as unknown as typeof globalThis.fetch});

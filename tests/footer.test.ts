@@ -195,11 +195,14 @@ test("cache estimate keeps footer usage layout and uses a bounded disposable min
   const {ctx,data}=fixture();
   let now=1_000_000;
   const cache=new CacheCountdown(()=>now);
-  cache.record({appendEntry(){}} as unknown as ExtensionAPI,ctx,now);
+  cache.record({appendEntry(){}} as unknown as ExtensionAPI,ctx.model!,now);
   const estimate=cache.estimate(ctx);
   const compact=plain(renderSingleRowFooter(ctx,data,theme,150,0,estimate))[0]!;
   expect(compact).toContain("30 tasks · $0.002 · ctx 1% · cache est 60m");
   expect(plain(renderDetailedFooter(ctx,data,theme,180,0,estimate))[1]).toContain("$0.002 (sub) 1.0%/272k cache est 60m");
+  const colored={fg:(color:string,text:string)=>`\x1b[${color==="warning"?33:color==="error"?31:90}m${text}\x1b[0m`} as Theme;
+  expect(renderSingleRowFooter(ctx,data,colored,150,0,{state:"warning",text:"cache est 15m"})[0]).toContain("\x1b[33mcache est 15m");
+  expect(renderSingleRowFooter(ctx,data,colored,150,0,{state:"urgent",text:"cache est 5m"})[0]).toContain("\x1b[31mcache est 5m");
   let factory: Parameters<ExtensionContext["ui"]["setFooter"]>[0];
   ctx.ui.setFooter=value=>{factory=value;};
   const oldSet=globalThis.setTimeout, oldClear=globalThis.clearTimeout;
@@ -214,4 +217,27 @@ test("cache estimate keeps footer usage layout and uses a bounded disposable min
     now+=60_001; callback!(); expect(renders).toBe(1);
     component.dispose?.(); stop(); expect(cleared).toBeGreaterThan(0);
   } finally {globalThis.setTimeout=oldSet;globalThis.clearTimeout=oldClear;}
+});
+
+
+test("compact UI owns initial footer disposal across switches and shutdown",async()=>{
+  const {ctx,data}=fixture();
+  let command:any,shutdown!:()=>void;
+  const pi={on:(name:string,fn:()=>void)=>{if(name==="session_shutdown")shutdown=fn;},registerCommand:(_name:string,value:any)=>{command=value;}} as unknown as ExtensionAPI;
+  const install=createCompactUI(pi);
+  const factories:Array<Parameters<ExtensionContext["ui"]["setFooter"]>[0]>=[];
+  ctx.ui.setFooter=value=>{factories.push(value);};ctx.ui.getEditorComponent=()=>({} as any);
+  let active=0,disposed=0;
+  data.onBranchChange=()=>{active++;return()=>{active--;disposed++;};};
+  install(ctx);
+  factories.at(-1)!({requestRender(){}} as any,theme,data);
+  expect(active).toBe(1);
+  await command.handler("",ctx);
+  expect(active).toBe(0);expect(disposed).toBe(1);
+  factories.at(-1)!({requestRender(){}} as any,theme,data);
+  await command.handler("",ctx);
+  expect(active).toBe(0);expect(disposed).toBe(2);
+  factories.at(-1)!({requestRender(){}} as any,theme,data);
+  shutdown();
+  expect(active).toBe(0);expect(disposed).toBe(3);
 });

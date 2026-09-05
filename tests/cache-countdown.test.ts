@@ -1,9 +1,10 @@
 import {describe,expect,test} from "bun:test";
-import {mkdtemp,readFile,rm} from "node:fs/promises";
+import {mkdtemp,readFile,rm,writeFile} from "node:fs/promises";
 import {join} from "node:path";
 import {tmpdir} from "node:os";
 import type {ExtensionAPI,ExtensionContext} from "@earendil-works/pi-coding-agent";
 import {CACHE_CALL_ENTRY,CacheCountdown,DEFAULT_CACHE_TTL_MS,loadCacheSettings,parseCacheSettings,parseCacheTtl,registerCacheCountdown} from "../src/tasks/cache-countdown";
+import {reportProviderAttempt} from "../src/tasks/provider-attempts";
 
 function context(provider="openai",id="alpha",entries:any[]=[]){return {model:{provider,id},sessionManager:{getEntries:()=>entries},ui:{notify(){}}} as unknown as ExtensionContext;}
 
@@ -13,7 +14,7 @@ describe("cache countdown",()=>{
   const a=new CacheCountdown(()=>now), b=new CacheCountdown(()=>now);
   const ctx=context();
   expect(a.estimate(ctx)).toEqual({state:"unknown",text:"cache est ?"});
-  a.record({appendEntry(){}} as unknown as ExtensionAPI,ctx);
+  a.record({appendEntry(){}} as unknown as ExtensionAPI,ctx.model!);
   expect(a.estimate(ctx)).toMatchObject({state:"active",text:"cache est 60m"});
   now+=45*60_000;
   expect(a.estimate(ctx)).toMatchObject({state:"warning",text:"cache est 15m"});
@@ -29,7 +30,7 @@ describe("cache countdown",()=>{
   const entries=[{type:"custom",customType:CACHE_CALL_ENTRY,data:{timestamp:1000,provider:"p",model:"m"}}];
   parent.restore(context("p","m",entries));
   const child=new CacheCountdown(()=>9000);
-  child.record({appendEntry(){}} as unknown as ExtensionAPI,context("p","m"),8000);
+  child.record({appendEntry(){}} as unknown as ExtensionAPI,context("p","m").model!,8000);
   expect(parent.estimate(context("p","m"),9000).text).toBe("cache est 60m");
   expect(child.estimate(context("p","m"),9000).text).toBe("cache est 60m");
   expect(parent.estimate(context("p","other"),9000).state).toBe("unknown");
@@ -40,22 +41,48 @@ describe("cache countdown",()=>{
   for(const bad of ["", "zero", "0m", "8d", "1.001m"]) expect(()=>parseCacheTtl(bad)).toThrow();
   expect(()=>parseCacheSettings({cacheTtlMs:60000,extra:true})).toThrow("unknown setting");
  });
- test("public command persists and provider-request seam records each attempt",async()=>{
-  const dir=await mkdtemp(join(tmpdir(),"die-cache-")); const path=join(dir,"settings.json");
+ test("public command persists separately and records observed attempts",async()=>{
+  const dir=await mkdtemp(join(tmpdir(),"die-cache-")); const path=join(dir,"cache-settings.json"), userPath=join(dir,"settings.json");
   try {
+   await writeFile(userPath,JSON.stringify({theme:"custom",unrelated:{keep:true}}));
    const handlers=new Map<string,Function>(); let command:any, note="", kind="", appended:any[]=[];
    const pi={on:(name:string,fn:Function)=>handlers.set(name,fn),registerCommand:(name:string,value:any)=>{expect(name).toBe("cache-ttl");command=value;},appendEntry:(type:string,data:any)=>appended.push({type,data})} as unknown as ExtensionAPI;
    const cache=new CacheCountdown(()=>123456);
    registerCacheCountdown(pi,cache,path);
    const ctx=context(); (ctx.ui as any).notify=(message:string,k:string)=>{note=message;kind=k;};
    await handlers.get("session_start")!({},ctx);
-   await handlers.get("before_provider_headers")!({},ctx);
-   await handlers.get("before_provider_headers")!({},ctx); // retry/error attempt
+   reportProviderAttempt(ctx.sessionManager as object,{provider:"openai",id:"alpha"},"response",123456);
+   reportProviderAttempt(ctx.sessionManager as object,{provider:"openai",id:"alpha"},"response",123457); // response-backed retry
    expect(appended).toHaveLength(2); expect(appended[0].type).toBe(CACHE_CALL_ENTRY);
    await command.handler("90m",ctx); expect(kind).toBe("info"); expect(note).toContain("does not guarantee");
    expect((await loadCacheSettings(path)).ttlMs).toBe(5_400_000);
    await command.handler("nonsense",ctx); expect(kind).toBe("error");
    expect(JSON.parse(await readFile(path,"utf8"))).toEqual({cacheTtlMs:5_400_000});
+   expect(JSON.parse(await readFile(userPath,"utf8"))).toEqual({theme:"custom",unrelated:{keep:true}});
+  } finally {await rm(dir,{recursive:true,force:true});}
+ });
+ test("response observations use event identity and count retries, never the later selected model",async()=>{
+  const handlers=new Map<string,Function>(),appended:any[]=[];
+  const pi={on:(name:string,fn:Function)=>handlers.set(name,fn),registerCommand(){},appendEntry:(type:string,data:any)=>appended.push({type,data})} as unknown as ExtensionAPI;
+  registerCacheCountdown(pi,new CacheCountdown(),join(tmpdir(),"missing-cache-settings-"+Date.now()));
+  const ctx=context("p","prepared");await handlers.get("session_start")!({},ctx);
+  handlers.get("before_provider_request")!({payload:{}},ctx);
+  (ctx as any).model={provider:"p",id:"selected-later"};
+  handlers.get("after_provider_response")!({status:429,headers:{},model:{provider:"p",id:"actual"}},ctx);
+  handlers.get("after_provider_response")!({status:200,headers:{},model:{provider:"p",id:"actual"}},ctx);
+  expect(appended.map(entry=>entry.data.model)).toEqual(["actual","actual"]);
+ });
+ test("warns about corrupt cache settings without changing them",async()=>{
+  const dir=await mkdtemp(join(tmpdir(),"die-cache-corrupt-"));const path=join(dir,"cache-settings.json");
+  try {
+   const corrupt="{ definitely not json";await writeFile(path,corrupt);
+   const handlers=new Map<string,Function>();let warning="",kind="";
+   const pi={on:(name:string,fn:Function)=>handlers.set(name,fn),registerCommand(){},appendEntry(){}} as unknown as ExtensionAPI;
+   registerCacheCountdown(pi,new CacheCountdown(),path);
+   const ctx=context();(ctx.ui as any).notify=(message:string,k:string)=>{warning=message;kind=k;};
+   await handlers.get("session_start")!({},ctx);
+   expect(kind).toBe("warning");expect(warning).toContain("left unchanged");
+   expect(await readFile(path,"utf8")).toBe(corrupt);
   } finally {await rm(dir,{recursive:true,force:true});}
  });
 });

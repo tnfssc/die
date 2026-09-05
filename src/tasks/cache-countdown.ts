@@ -2,7 +2,9 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { subscribeProviderAttempts } from "./provider-attempts";
 
 export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
 export const CACHE_CALL_ENTRY = "die-cache-call";
@@ -13,7 +15,7 @@ export interface CacheSettings { ttlMs: number }
 export interface CacheCall { timestamp: number; provider: string; model: string }
 export interface CacheEstimate { state: "unknown" | "active" | "warning" | "urgent" | "expired"; text: string; nextUpdateMs?: number }
 
-export function cacheSettingsPath(): string { return join(homedir(), ".die", "settings.json"); }
+export function cacheSettingsPath(): string { return join(homedir(), ".die", "cache-settings.json"); }
 export function parseCacheSettings(value: unknown): CacheSettings {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("settings must be an object");
   const keys = Object.keys(value);
@@ -84,8 +86,7 @@ export class CacheCountdown {
     }
     this.changed();
   }
-  record(pi:ExtensionAPI,ctx:ExtensionContext,timestamp=this.now()) {
-    const model=ctx.model;
+  record(pi:ExtensionAPI,model:Pick<Model<any>, "provider" | "id"> | undefined,timestamp=this.now()) {
     if (!model) return;
     const call={timestamp,provider:model.provider,model:model.id};
     this.calls.set(call.provider+"/"+call.model,timestamp);
@@ -107,13 +108,32 @@ export class CacheCountdown {
 }
 
 export function registerCacheCountdown(pi:ExtensionAPI, countdown:CacheCountdown, path=cacheSettingsPath()):void {
-  const ready=loadCacheSettings(path).then(settings=>countdown.setTtl(settings.ttlMs)).catch(()=>{});
-  pi.on("session_start",(_event,ctx)=>countdown.restore(ctx));
+  let loadError: Error | undefined;
+  const ready=loadCacheSettings(path).then(settings=>countdown.setTtl(settings.ttlMs)).catch(error=>{
+    loadError=error instanceof Error ? error : new Error(String(error));
+  });
+  let unsubscribe=()=>{};
+  let preparedModel: Pick<Model<any>, "provider" | "id"> | undefined;
+  pi.on("session_start",async(_event,ctx)=>{
+    unsubscribe();
+    countdown.restore(ctx);
+    preparedModel=undefined;
+    if (ctx.sessionManager && typeof ctx.sessionManager === "object") unsubscribe=subscribeProviderAttempts(ctx.sessionManager,event=>countdown.record(pi,event.model,event.timestamp));
+    await ready;
+    if (loadError) ctx.ui?.notify?.(loadError.message+". The file was left unchanged; using the default cache estimate.","warning");
+  });
+  pi.on("session_shutdown",()=>{unsubscribe();unsubscribe=()=>{};preparedModel=undefined;});
+  // Pi 0.85 response events do not carry model identity. Capture it synchronously
+  // at payload preparation, then prefer event.model when runtimes expose it.
+  pi.on("before_provider_request",(_event,ctx)=>{
+    const model=ctx.model;
+    preparedModel=model ? {provider:model.provider,id:model.id} : undefined;
+  });
+  pi.on("after_provider_response",(event)=>{
+    const actual=(event as typeof event & {model?:Pick<Model<any>, "provider" | "id">}).model;
+    countdown.record(pi,actual??preparedModel);
+  });
   pi.on("model_select",()=>countdown.modelChanged());
-  // This is the closest public seam to an actual request: headers have been
-  // assembled immediately before HTTP dispatch. Every retry and compaction
-  // request therefore records its own attempt, including attempts that error.
-  pi.on("before_provider_headers",async(_event,ctx)=>{ await ready; countdown.record(pi,ctx); });
   pi.registerCommand("cache-ttl",{
     description:"Show or set the informational provider-cache TTL estimate",
     handler:async(args,ctx)=>{
@@ -124,6 +144,7 @@ export function registerCacheCountdown(pi:ExtensionAPI, countdown:CacheCountdown
         const ttlMs=parseCacheTtl(value);
         await saveCacheSettings({ttlMs},path);
         countdown.setTtl(ttlMs);
+        loadError=undefined;
         ctx.ui.notify("Cache TTL estimate set to "+formatCacheTtl(ttlMs)+". This does not guarantee provider cache retention or hits.","info");
       } catch(error) { ctx.ui.notify("Invalid cache TTL: "+(error instanceof Error?error.message:String(error)),"error"); }
     },
