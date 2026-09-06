@@ -60,6 +60,7 @@ extensions, prompt templates, and skills. Die's user-facing additions are:
 | --- | --- |
 | `/goal` | Show goal status, or `set`, `pause`, `resume`, and `clear` an opt-in durable goal. See [Goal mode](./docs/goals.md). |
 | `/mode` | Show or select `fast`, `normal`, or `orchestrator` instructions for the main agent. This changes instructions only—not the model or thinking level. |
+| `/fast` | Show or explicitly set provider-native premium fast mode for the current session/model. Enabling requires cost acknowledgement; see [native fast mode](docs/native-fast-mode.md). |
 | `/ps` | Open the interactive monitor for running jobs owned by this session; inspect bounded recent output or explicitly stop a selected job. TUI only. |
 | `/subagents` | Configure model and thinking inheritance for fast, normal, and orchestrator sub-agents. |
 | `/cache-ttl [duration]` | Show or set the local cache-expiry estimate (for example, `30m`, `1h`, or `1d`). It is informational, not a provider cache guarantee. |

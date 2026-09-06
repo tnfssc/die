@@ -23,6 +23,7 @@ import {
   type AttentionOptions,
 } from "./job-attention";
 import { registerGoalMode, type GoalRuntime } from "../goals/extension";
+import { registerNativeFastMode } from "./native-fast-mode";
 
 export function completionDiagnosticDetails(tasks: TaskInspection[], notices: AttentionNotice[]) {
   const taskStatusCounts = { completed: 0, failed: 0, killed: 0, running: 0, unknown: 0 };
@@ -60,6 +61,9 @@ export default function asynchronousTasksExtension(
     executablePath?: string;
   } = {},
 ): void {
+  // Must precede all payload capture/observation hooks so snapshots contain the
+  // exact tier that the provider transport will serialize.
+  registerNativeFastMode(pi);
   const cacheCountdown = new CacheCountdown();
   registerCacheCountdown(pi, cacheCountdown, options.cacheSettingsPath);
   const installUI = createCompactUI(pi, cacheCountdown);

@@ -8,6 +8,10 @@ test("only execute is registered with a provider-friendly schema", () => {
   extension({
     registerTool: (t: any) => tools.push(t),
     registerCommand() {},
+    registerFlag() {},
+    getFlag() {
+      return false;
+    },
     registerMessageRenderer() {},
     on() {},
   } as any);

@@ -1,6 +1,7 @@
 import { adjustMaxTokensForThinking } from "@earendil-works/pi-ai/api/simple-options";
 import prefixScopeTemplate from "../prompts/compaction-prefix-scope.md" with { type: "text" };
 import wholeScopeTemplate from "../prompts/compaction-whole-scope.md" with { type: "text" };
+import { withStandardProviderTier } from "./native-fast-mode";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, Message, Model, Tool } from "@earendil-works/pi-ai";
 import {
@@ -537,27 +538,29 @@ export function registerCacheAffineCompaction(
     let prefixRejection: string | undefined;
     let priorPayloadAffine: boolean | undefined;
     try {
-      const response = await current.complete(request, answerTokens, (payload: unknown) => {
-        // A prior wire request is evidence for prefix reuse, not permission to
-        // prepare the current conversation. When available, compare it here.
-        // Old capture affinity is diagnostic only. Current system, tools,
-        // context transforms, and redactions are allowed to differ legitimately.
-        priorPayloadAffine =
-          captured.providerPayload === undefined
-            ? undefined
-            : isCacheAffineProviderPayload(captured.providerPayload, payload);
-        const wire = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
-        const wireCeiling = Number(wire?.max_tokens ?? wire?.max_output_tokens ?? wire?.max_completion_tokens);
-        if (
-          Number.isFinite(wireCeiling) &&
-          request.estimatedInputTokens + wireCeiling + 256 > captured.model.contextWindow
-        ) {
-          prefixRejection = "final provider output and thinking ceiling exceeds the model context window";
-          throw new Error(prefixRejection);
-        }
-        payloadAccepted = true;
-        return payload;
-      });
+      const response = await withStandardProviderTier(ctx.sessionManager as object, () =>
+        current.complete(request, answerTokens, (payload: unknown) => {
+          // A prior wire request is evidence for prefix reuse, not permission to
+          // prepare the current conversation. When available, compare it here.
+          // Old capture affinity is diagnostic only. Current system, tools,
+          // context transforms, and redactions are allowed to differ legitimately.
+          priorPayloadAffine =
+            captured.providerPayload === undefined
+              ? undefined
+              : isCacheAffineProviderPayload(captured.providerPayload, payload);
+          const wire = payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
+          const wireCeiling = Number(wire?.max_tokens ?? wire?.max_output_tokens ?? wire?.max_completion_tokens);
+          if (
+            Number.isFinite(wireCeiling) &&
+            request.estimatedInputTokens + wireCeiling + 256 > captured.model.contextWindow
+          ) {
+            prefixRejection = "final provider output and thinking ceiling exceeds the model context window";
+            throw new Error(prefixRejection);
+          }
+          payloadAccepted = true;
+          return payload;
+        }),
+      );
       paidResponse = response;
       if (event.signal.aborted) {
         recordFailedUsage();

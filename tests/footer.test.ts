@@ -90,6 +90,13 @@ describe("compact extension footer", () => {
     statuses.set("die-mode", "mode: fast");
     expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("mode: fast");
     expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).not.toContain("+1 status");
+    statuses.set("die-native-fast", " fast requested (tier/cost estimate unavailable)");
+    const fastFooter = plain(renderSingleRowFooter(ctx, data, theme, 120))[0]!;
+    expect(fastFooter).toContain(" fast requested (tier/cost estimate unavailable)");
+    expect(fastFooter).toContain("$?");
+    expect(fastFooter).not.toContain("$0.002");
+    expect(plain(renderDetailedFooter(ctx, data, theme, 150))[1]).toContain("$? (fast billing)");
+    expect(fastFooter).not.toContain("+1 status");
     statuses.set("review", "review in progress");
     expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("+1 status");
     for (const width of [1, 4, 10, 20, 40, 44, 80, 120]) {
@@ -98,9 +105,23 @@ describe("compact extension footer", () => {
       expect(visibleWidth(rendered[0]!)).toBeLessThanOrEqual(width);
     }
     const narrow = plain(renderSingleRowFooter(ctx, data, theme, 44))[0]!;
-    for (const value of ["30t", "$0.002", "C1%", "gpt-5.6-luna"]) expect(narrow).toContain(value);
+    for (const value of ["30t", "$?", "C1%", "gpt-5.6-luna"]) expect(narrow).toContain(value);
     statuses.delete("die-tasks");
     expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).not.toContain("tasks");
+  });
+
+  test("keeps historical fast-session dollar cost unavailable after explicit off", () => {
+    const { ctx, data, statuses } = fixture();
+    const entries = ctx.sessionManager.getEntries();
+    ctx.sessionManager.getEntries = () =>
+      [
+        ...entries,
+        { type: "custom", customType: "die-native-fast-mode", data: { enabled: true } },
+        { type: "custom", customType: "die-native-fast-mode", data: { enabled: false } },
+      ] as ReturnType<ExtensionContext["sessionManager"]["getEntries"]>;
+    statuses.set("die-native-fast", " fast off");
+    expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("$?");
+    expect(plain(renderDetailedFooter(ctx, data, theme, 150))[1]).toContain("$? (fast billing)");
   });
 
   test("puts task count beside the directory without losing usage or model information", () => {

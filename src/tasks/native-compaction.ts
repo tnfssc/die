@@ -76,7 +76,13 @@ export function buildNativeCodexRequest(payload: unknown): Record<string, unknow
   if (!isRecord(payload) || !Array.isArray(payload.input) || typeof payload.model !== "string") return;
   if (payload.input.some((item) => isRecord(item) && item.type === "compaction_trigger")) return;
   if (payload.stream !== true || payload.store !== false) return;
-  return structuredClone({ ...payload, input: [...payload.input, { type: "compaction_trigger" }] });
+  // Compaction is deliberately standard-priced even when the captured ordinary
+  // request was authorized for fast mode. Avoid hidden premium inference.
+  return structuredClone({
+    ...payload,
+    service_tier: "default",
+    input: [...payload.input, { type: "compaction_trigger" }],
+  });
 }
 export function resolveCodexResponsesUrl(baseUrl: string | undefined): string {
   const normalized = (baseUrl?.trim() || "https://chatgpt.com/backend-api").replace(/\/+$/, "");

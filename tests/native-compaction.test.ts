@@ -39,10 +39,11 @@ const payload = {
 };
 
 describe("native Codex request", () => {
-  test("appends the documented trigger without changing provider identity", () => {
+  test("appends the documented trigger at explicitly standard tier without changing provider identity", () => {
     const request = buildNativeCodexRequest(payload)!;
     expect(request.input).toEqual([...payload.input, { type: "compaction_trigger" }]);
-    expect({ ...request, input: payload.input }).toEqual(payload);
+    expect(request.service_tier).toBe("default");
+    expect({ ...request, input: payload.input, service_tier: undefined }).toEqual({ ...payload, service_tier: undefined });
     expect(payload.input).toHaveLength(1);
   });
   test("rejects unsupported and already compacted payloads", () => {
