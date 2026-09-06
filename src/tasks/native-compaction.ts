@@ -491,8 +491,9 @@ function persistBillableUsage(pi: ExtensionAPI, error: unknown): void {
 export function registerNativeCodexCompaction(
   pi: ExtensionAPI,
   pendingJobs: () => readonly { id: string; kind: string; status: string }[] = () => [],
-): void {
+): { invalidateCapture(): void; hasFreshCapture(): boolean } {
   let captured: CapturedRequest | undefined;
+  let captureInvalidated = false;
   let blockOrdinaryRequest: string | undefined;
   pi.on("context", (event, ctx) => {
     const entries = nativeEntriesInContext(ctx);
@@ -514,7 +515,8 @@ export function registerNativeCodexCompaction(
       return { messages: event.messages };
     }
     blockOrdinaryRequest = undefined;
-    if (ctx.model?.api === "openai-codex-responses")
+    if (ctx.model?.api === "openai-codex-responses") {
+      captureInvalidated = false;
       captured = {
         sessionId: ctx.sessionManager.getSessionId(),
         leafId: ctx.sessionManager.getLeafId(),
@@ -522,6 +524,7 @@ export function registerNativeCodexCompaction(
         thinkingLevel: ctx.thinkingLevel ?? null,
         messages: structuredClone(event.messages),
       };
+    }
     return { messages: adaptNativeCompactionMessages(event.messages, ctx) };
   });
   pi.on("before_provider_headers", (event) => {
@@ -542,13 +545,16 @@ export function registerNativeCodexCompaction(
   });
   pi.on("session_start", () => {
     captured = undefined;
+    captureInvalidated = false;
     blockOrdinaryRequest = undefined;
   });
   pi.on("model_select", () => {
     captured = undefined;
+    captureInvalidated = false;
   });
   pi.on("thinking_level_select", () => {
     captured = undefined;
+    captureInvalidated = false;
   });
   pi.on("session_before_tree", (event, ctx) => {
     if (
@@ -674,4 +680,18 @@ export function registerNativeCodexCompaction(
       return { cancel: true };
     }
   });
+  return {
+    invalidateCapture() {
+      captured = undefined;
+      captureInvalidated = true;
+    },
+    hasFreshCapture() {
+      return (
+        !captureInvalidated &&
+        captured?.payload !== undefined &&
+        captured.headers !== undefined &&
+        buildNativeCodexRequest(captured.payload) !== undefined
+      );
+    },
+  };
 }

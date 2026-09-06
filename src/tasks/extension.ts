@@ -24,6 +24,7 @@ import {
 } from "./job-attention";
 import { registerGoalMode, type GoalRuntime } from "../goals/extension";
 import { registerNativeFastMode } from "./native-fast-mode";
+import { registerManualShake } from "./manual-shake";
 
 export function completionDiagnosticDetails(tasks: TaskInspection[], notices: AttentionNotice[]) {
   const taskStatusCounts = { completed: 0, failed: 0, killed: 0, running: 0, unknown: 0 };
@@ -112,7 +113,9 @@ export default function asynchronousTasksExtension(
   };
   let manager: TaskManager | undefined;
   let attention: JobAttentionScheduler | undefined;
-  registerNativeCodexCompaction(
+  let invalidateShakeSnapshots = () => {};
+  registerManualShake(pi, () => invalidateShakeSnapshots());
+  const nativeCompaction = registerNativeCodexCompaction(
     pi,
     () =>
       manager
@@ -120,6 +123,10 @@ export default function asynchronousTasksExtension(
         .filter((task) => task.status === "running")
         .map(({ id, kind, status }) => ({ id, kind, status })) ?? [],
   );
+  invalidateShakeSnapshots = () => {
+    nativeCompaction.invalidateCapture();
+    cacheCountdown.invalidate();
+  };
   registerCacheAffineCompaction(
     pi,
     () =>
@@ -127,7 +134,7 @@ export default function asynchronousTasksExtension(
         ?.list()
         .filter((task) => task.status === "running")
         .map(({ id, kind, status }) => ({ id, kind, status })) ?? [],
-    { skipCodexNative: true },
+    { skipCodexNative: () => nativeCompaction.hasFreshCapture() },
   );
   let taskUi: ExtensionContext["ui"] | undefined;
   const updateTaskStatus = () => {

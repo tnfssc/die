@@ -305,7 +305,7 @@ describe("fail-closed checkpoint lifecycle", () => {
   function harness(manager: any, currentModel: any) {
     const handlers = new Map<string, Function>();
     const entries: any[] = [];
-    registerNativeCodexCompaction({
+    const capture = registerNativeCodexCompaction({
       on: (name: string, fn: Function) => handlers.set(name, fn),
       appendEntry: (type: string, data: any) => entries.push({ type, data }),
     } as any);
@@ -320,6 +320,7 @@ describe("fail-closed checkpoint lifecycle", () => {
     };
     return {
       handlers,
+      capture,
       ctx,
       entries,
       notifications,
@@ -343,6 +344,18 @@ describe("fail-closed checkpoint lifecycle", () => {
     manager.appendCompaction(NATIVE_CODEX_SUMMARY, first, 10, details, true);
     return manager;
   }
+  test("explicit invalidation prevents a pre-shake native snapshot from being reused", () => {
+    const manager = SessionManager.inMemory();
+    manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });
+    const h = harness(manager, model);
+    h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+    expect(h.capture.hasFreshCapture()).toBe(false);
+    h.handlers.get("before_provider_headers")!({ headers: { Authorization: "Bearer x" } }, h.ctx);
+    h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+    expect(h.capture.hasFreshCapture()).toBe(true);
+    h.capture.invalidateCapture();
+    expect(h.capture.hasFreshCapture()).toBe(false);
+  });
   test("aborts a switched-model request before a provider payload can proceed", () => {
     const h = harness(checkpointManager(), { ...model, provider: "foreign", api: "openai-responses" });
     const messages = buildSessionContext(h.ctx.sessionManager.getEntries()).messages;

@@ -415,7 +415,7 @@ export function isUsableSummaryResponse(response: AssistantMessage): boolean {
 export function registerCacheAffineCompaction(
   pi: ExtensionAPI,
   pendingJobs: () => readonly { id: string; kind: string; status: string }[] = () => [],
-  options: { skipCodexNative?: boolean } = {},
+  options: { skipCodexNative?: boolean | (() => boolean) } = {},
 ): void {
   installCurrentConversationAdapter();
   let snapshot: Snapshot | undefined;
@@ -460,7 +460,9 @@ export function registerCacheAffineCompaction(
   pi.on("session_before_compact", async (event, ctx) => {
     // Codex uses the Phase 2 opaque native path. If it is unavailable, leaving
     // this hook empty selects Pi's visibly distinct standard plaintext fallback.
-    if (options.skipCodexNative && ctx.model?.api === "openai-codex-responses") return;
+    const skipCodexNative =
+      typeof options.skipCodexNative === "function" ? options.skipCodexNative() : options.skipCodexNative;
+    if (skipCodexNative && ctx.model?.api === "openai-codex-responses") return;
     const captured: Snapshot | undefined =
       snapshot && sameIdentity(snapshot, event, ctx)
         ? snapshot

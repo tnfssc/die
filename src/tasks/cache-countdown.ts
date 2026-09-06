@@ -128,17 +128,28 @@ export class CacheCountdown {
   modelChanged() {
     this.changed();
   }
+  invalidate() {
+    this.calls.clear();
+    this.changed();
+  }
   restore(ctx: ExtensionContext) {
     this.calls.clear();
     if (!ctx.sessionManager?.getEntries) {
       this.changed();
       return;
     }
-    for (const entry of ctx.sessionManager.getEntries())
-      if (entry.type === "custom" && entry.customType === CACHE_CALL_ENTRY && validCall(entry.data)) {
+    const manager = ctx.sessionManager as typeof ctx.sessionManager & {
+      getBranch?: () => ReturnType<typeof ctx.sessionManager.getEntries>;
+    };
+    for (const entry of manager.getBranch?.() ?? manager.getEntries()) {
+      // A shake changes the serialized prompt prefix. Do not display a TTL for
+      // the pre-shake request after resume; later observed calls repopulate it.
+      if (entry.type === "custom" && entry.customType === "die-manual-shake") this.calls.clear();
+      else if (entry.type === "custom" && entry.customType === CACHE_CALL_ENTRY && validCall(entry.data)) {
         const key = entry.data.provider + "/" + entry.data.model;
         this.calls.set(key, Math.max(this.calls.get(key) ?? 0, entry.data.timestamp));
       }
+    }
     this.changed();
   }
   record(pi: ExtensionAPI, model: Pick<Model<any>, "provider" | "id"> | undefined, timestamp = this.now()) {

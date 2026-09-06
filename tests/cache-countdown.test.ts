@@ -52,6 +52,24 @@ describe("cache countdown", () => {
     expect(child.estimate(context("p", "m"), 9000).text).toBe("cache est 60m");
     expect(parent.estimate(context("p", "other"), 9000).state).toBe("unknown");
   });
+  test("a branch-local shake invalidates only earlier cache observations", () => {
+    const countdown = new CacheCountdown(() => 3000);
+    countdown.restore(
+      context("p", "m", [
+        { type: "custom", customType: CACHE_CALL_ENTRY, data: { timestamp: 1000, provider: "p", model: "m" } },
+        { type: "custom", customType: "die-manual-shake", data: {} },
+      ]),
+    );
+    expect(countdown.estimate(context("p", "m"), 3000).state).toBe("unknown");
+    countdown.restore(
+      context("p", "m", [
+        { type: "custom", customType: "die-manual-shake", data: {} },
+        { type: "custom", customType: CACHE_CALL_ENTRY, data: { timestamp: 2000, provider: "p", model: "m" } },
+      ]),
+    );
+    expect(countdown.estimate(context("p", "m"), 3000).state).toBe("active");
+  });
+
   test("validates durations and strict persisted settings", () => {
     expect(parseCacheTtl("30m")).toBe(1_800_000);
     expect(parseCacheTtl("1h")).toBe(DEFAULT_CACHE_TTL_MS);
