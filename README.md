@@ -238,7 +238,7 @@ Session names begin with `[orchestrator agent]` or `[subagent · fast/normal]` f
 
 Use `execute` with `jobs.inspect(id)` on unexpectedly slow agents to see the last observed event, current tool, quiet duration, recent output/errors, and the full session path. The activity log remains available after failure or cancellation for the rest of the parent session. Full completed messages/tool history remain on disk after that. Successful completion notifications return the answer rather than the event stream, with a session link for further inspection.
 
-Progress keeps the last 1 MB per job; inspections return at most 5 KB of log output. Individual JSON events exceeding 1 MB are skipped with a diagnostic notice; the session file is the durable source. Progress is observational—not a heartbeat, CPU profile, or guaranteed indication of provider/network liveness. Session files and tool previews can contain sensitive workspace data; they receive the same care as normal agent history. `/ps` provides the interactive running-job monitor described above.
+Progress keeps the last 1 MB per job; inspections return at most 5 KB of log output. Individual JSON events exceeding 1 MB are skipped with a diagnostic notice; the session file is the durable source. Progress is observational—not a heartbeat, CPU profile, or guaranteed indication of provider/network liveness. Session files and tool previews can contain sensitive workspace data; they receive the same care as normal agent history. `/ps` provides the interactive running-job monitor described above; see [`docs/task-monitor.md`](docs/task-monitor.md) for controls, bounds, and ownership limits.
 
 ### Compact tool and completion views
 
