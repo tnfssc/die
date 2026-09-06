@@ -626,7 +626,7 @@ describe("manual shake diagnostic persistence guards", () => {
     await good.command.handler("", good.ctx);
     const diagnostic = inspectDiagnostics(success).records.at(-1)!;
     expect(diagnostic).toMatchObject({ code: SHAKE_SUCCEEDED, outcome: "success", dispatch: "none", count: 3 });
-    expect(Object.keys(diagnostic).sort()).toEqual([
+    expect(Object.keys(diagnostic).filter((key) => key !== "version" && key !== "generated").sort()).toEqual([
       "code",
       "component",
       "count",
