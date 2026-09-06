@@ -76,7 +76,7 @@ test("foreground work returns inline; background work survives execute and accep
     await manager.shutdown();
   }
 });
-test("canceling execute transfers notification ownership without killing its job", async () => {
+test("canceling execute after a delayed job spawn transfers notification ownership without killing its job", async () => {
   const notifications: any[] = [];
   const manager = new TaskManager((t) => notifications.push(t));
   const service = new JobService(
@@ -84,26 +84,44 @@ test("canceling execute transfers notification ownership without killing its job
     () => ({ depth: 0 }),
     () => {},
   );
+  const controller = new AbortController();
+  let unsubscribe = () => {};
+  const spawned = new Promise<string>((resolve) => {
+    unsubscribe = manager.subscribe((event) => {
+      if (event.type !== "spawned") return;
+      resolve(event.task.id);
+      controller.abort();
+    });
+  });
   try {
-    const result = await executeIsolated(
+    const execution = executeIsolated(
       'await shell("read value; printf survived", {waitSeconds:60})',
       process.cwd(),
-      undefined,
-      200,
-      { executablePath: binary, jobHandler: (m, p, s) => service.handle(m, p, { cwd: process.cwd() } as any, s) },
+      controller.signal,
+      3000,
+      {
+        executablePath: binary,
+        jobHandler: async (method, params, signal) => {
+          // Reproduce startup slower than the former 200 ms execute timeout.
+          await Bun.sleep(300);
+          return service.handle(method, params, { cwd: process.cwd() } as any, signal);
+        },
+      },
     );
-    expect(result.timedOut).toBe(true);
-    const task = manager.list()[0]!;
-    expect(task.status).toBe("running");
-    await manager.write(task.id, "go\n", true);
-    await manager.wait(task.id);
+    const taskId = await spawned;
+    const result = await execution;
+    expect(result.cancelled).toBe(true);
+    expect(result.timedOut).toBe(false);
+    expect(manager.inspect(taskId).status).toBe("running");
+    await manager.write(taskId, "go\n", true);
+    await manager.wait(taskId);
     expect(notifications).toHaveLength(1);
     expect(notifications[0].output).toBe("survived");
   } finally {
+    unsubscribe();
     await manager.shutdown();
   }
 });
-
 test("bridge budgets reject oversized messages without corrupting subsequent calls", async () => {
   const result = await executeIsolated(
     'try { await shell("x".repeat(1100000)); } catch(e) { console.log("request bounded"); } try { await shell("huge-result"); } catch(e) { console.log("response bounded"); } console.log(await jobs.list());',
