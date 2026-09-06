@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import noticeTemplate from "../prompts/native-compaction.md" with { type: "text" };
 import jobsTemplate from "../prompts/compaction-jobs.md" with { type: "text" };
 import { reportProviderAttempt } from "./provider-attempts";
+import { recordDiagnostic } from "../diagnostics.js";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { calculateCost, type Model, type Usage } from "@earendil-works/pi-ai";
 import type {
@@ -130,6 +131,13 @@ export class NativeCodexResponseError extends Error {
     this.name = "NativeCodexResponseError";
   }
 }
+class NativeCodexHttpError extends Error {
+  constructor(readonly status: number) {
+    super("Codex native compaction HTTP request was rejected");
+    this.name = "NativeCodexHttpError";
+  }
+}
+
 /** Parse protocol shape only; provider payloads and hidden reasoning never enter errors. */
 export function parseNativeCodexEvents(events: readonly unknown[], model: Model<any>): NativeResponse {
   const doneItems: CodexCompactionItem[] = [];
@@ -373,6 +381,7 @@ export async function requestNativeCodexCompaction(args: {
   auth?: { apiKey?: string; headers?: Record<string, string | null> };
   signal?: AbortSignal;
   sessionId?: string;
+  operationId?: ReturnType<typeof crypto.randomUUID>;
   fetch?: typeof globalThis.fetch;
   onDispatch?: (model: Model<any>) => void;
 }): Promise<NativeResponse> {
@@ -381,18 +390,23 @@ export async function requestNativeCodexCompaction(args: {
   if (!body) throw new Error("Codex native compaction request is not compatible with the captured payload");
   const headers = buildCodexCompactionHeaders(args.headers, args.model, args.auth);
   const cacheKey = args.sessionId ?? (typeof body.prompt_cache_key === "string" ? body.prompt_cache_key : undefined);
-  if (cacheKey) {
-    headers.set("session-id", cacheKey);
-    headers.set("x-client-request-id", cacheKey);
-  }
+  if (cacheKey) headers.set("session-id", cacheKey);
+  headers.set("x-client-request-id", args.operationId ?? crypto.randomUUID());
   const url = resolveCodexResponsesUrl(args.model.baseUrl);
   const init: RequestInit = { method: "POST", headers, body: JSON.stringify(body), signal: args.signal };
   args.signal?.throwIfAborted();
+  // A synchronous fetch throw is not evidence that a request left the process.
+  let pending: Promise<Response>;
+  try {
+    pending = (args.fetch ?? globalThis.fetch)(url, init);
+  } catch (error) {
+    throw error;
+  }
   args.onDispatch?.(args.model);
-  const response = await (args.fetch ?? globalThis.fetch)(url, init);
+  const response = await pending;
   if (!response.ok) {
     await response.body?.cancel().catch(() => {});
-    throw new Error("Codex native compaction HTTP " + response.status);
+    throw new NativeCodexHttpError(response.status);
   }
   return consumeNativeCodexEvents(response, args.model, args.signal);
 }
@@ -479,15 +493,71 @@ export function adaptNativeCompactionMessages(messages: AgentMessage[], ctx: Ext
       : nativeAssistant(message, d);
   });
 }
-function persistBillableUsage(pi: ExtensionAPI, error: unknown): void {
-  if (error instanceof NativeCodexResponseError && error.usage)
+type NativeFallbackCode =
+  | "capture_missing"
+  | "state_invalid"
+  | "identity_stale"
+  | "payload_missing"
+  | "headers_missing"
+  | "payload_incompatible"
+  | "coverage_incomplete";
+
+function nativeFallbackCode(
+  request: CapturedRequest | undefined,
+  invalidated: boolean,
+  event: SessionBeforeCompactEvent,
+  ctx: ExtensionContext,
+): NativeFallbackCode | undefined {
+  if (invalidated) return "state_invalid";
+  if (!request) return "capture_missing";
+  if (!sameIdentity(request, event, ctx)) return "identity_stale";
+  if (request.payload === undefined) return "payload_missing";
+  if (request.headers === undefined) return "headers_missing";
+  if (!buildNativeCodexRequest(request.payload)) return "payload_incompatible";
+  if (!coversDiscardedMessages(request, event)) return "coverage_incomplete";
+}
+
+function requiredDiagnostic(ctx: ExtensionContext, diagnostic: Parameters<typeof recordDiagnostic>[1]): boolean {
+  try {
+    recordDiagnostic(ctx.sessionManager, diagnostic);
+    return true;
+  } catch {
+    ctx.ui?.notify?.("Compaction diagnostic checkpoint could not be written; compaction cancelled.", "error");
+    return false;
+  }
+}
+
+function persistBillableUsage(
+  pi: ExtensionAPI,
+  ctx: ExtensionContext,
+  usage: Usage | undefined,
+  status: "failed" | "cancelled",
+  operationId: ReturnType<typeof crypto.randomUUID>,
+): boolean {
+  if (!usage) return true;
+  try {
     pi.appendEntry(NATIVE_CODEX_USAGE_ENTRY, {
       strategy: "codex-native",
-      status: "failed",
-      usage: error.usage,
+      status,
+      usage,
       timestamp: Date.now(),
     });
+    return true;
+  } catch {
+    try {
+      recordDiagnostic(ctx.sessionManager, {
+        component: "observer",
+        code: "state_write_failed",
+        outcome: "failed",
+        operationId,
+        dispatch: "response",
+      });
+    } catch {}
+    ctx.ui?.notify?.("Compaction usage checkpoint could not be written; compaction cancelled.", "error");
+    return false;
+  }
 }
+
 export function registerNativeCodexCompaction(
   pi: ExtensionAPI,
   pendingJobs: () => readonly { id: string; kind: string; status: string }[] = () => [],
@@ -503,6 +573,14 @@ export function registerNativeCodexCompaction(
       (d) => ctx.model?.api !== d.api || ctx.model.provider !== d.provider || ctx.model.id !== d.model,
     );
     if (invalid || incompatible) {
+      recordDiagnostic(ctx.sessionManager, {
+        component: "compaction",
+        code: invalid ? "state_invalid" : "identity_stale",
+        outcome: "blocked",
+        operationId: crypto.randomUUID(),
+        dispatch: "none",
+        cancellation: "safety",
+      });
       blockOrdinaryRequest = invalid
         ? "Unsupported or damaged opaque Codex checkpoint. Use a compatible die version or branch before the checkpoint."
         : "This session contains an opaque Codex checkpoint that cannot be sent to the selected provider/model. Switch back to " +
@@ -536,6 +614,14 @@ export function registerNativeCodexCompaction(
       payload = event.payload;
     const input = isRecord(payload) && Array.isArray(payload.input) ? payload.input : [];
     if (native.length && native.some((d) => !input.some((item: unknown) => isDeepStrictEqual(item, d.item)))) {
+      recordDiagnostic(ctx.sessionManager, {
+        component: "compaction",
+        code: "opaque_checkpoint",
+        outcome: "blocked",
+        operationId: crypto.randomUUID(),
+        dispatch: "none",
+        cancellation: "safety",
+      });
       const message = "Native Codex checkpoint was lost during provider serialization; request cancelled.";
       ctx.ui?.notify?.(message, "error");
       ctx.abort();
@@ -564,6 +650,14 @@ export function registerNativeCodexCompaction(
           (e) => e.type === "compaction" && isRecord(e.details) && e.details.strategy === "codex-native",
         ))
     ) {
+      recordDiagnostic(ctx.sessionManager, {
+        component: "compaction",
+        code: "opaque_checkpoint",
+        outcome: "blocked",
+        operationId: crypto.randomUUID(),
+        dispatch: "none",
+        cancellation: "safety",
+      });
       ctx.ui?.notify?.(
         "Branch summaries cannot yet carry opaque Codex state. Navigate without a summary or branch before the checkpoint.",
         "error",
@@ -572,9 +666,18 @@ export function registerNativeCodexCompaction(
     }
   });
   pi.on("session_before_compact", async (event, ctx) => {
+    const operationId = crypto.randomUUID();
     const existing = nativeEntriesInContext(ctx);
     if (ctx.model?.api !== "openai-codex-responses") {
       if (existing.length) {
+        requiredDiagnostic(ctx, {
+          component: "compaction",
+          code: "opaque_checkpoint",
+          outcome: "blocked",
+          operationId,
+          dispatch: "none",
+          cancellation: "safety",
+        });
         ctx.ui?.notify?.("Compaction cancelled: switch back to the checkpoint's original Codex model first.", "error");
         return { cancel: true };
       }
@@ -583,67 +686,141 @@ export function registerNativeCodexCompaction(
     const request = captured;
     if (event.customInstructions?.trim()) {
       if (existing.length) {
+        requiredDiagnostic(ctx, {
+          component: "compaction",
+          code: "custom_instructions",
+          outcome: "blocked",
+          operationId,
+          dispatch: "none",
+          cancellation: "safety",
+        });
         ctx.ui?.notify?.(
           "Custom compaction cannot safely rewrite an opaque Codex checkpoint; compaction cancelled.",
           "error",
         );
         return { cancel: true };
       }
+      if (
+        !requiredDiagnostic(ctx, {
+          component: "compaction",
+          code: "custom_instructions",
+          outcome: "fallback",
+          operationId,
+          dispatch: "none",
+        })
+      )
+        return { cancel: true };
+      captured = undefined;
       ctx.ui?.notify?.(
-        "Codex native compaction does not support custom instructions; using plaintext compaction.",
+        "Codex native compaction does not support custom instructions; trying cache-affine plaintext compaction.",
         "warning",
       );
       return;
     }
-    if (
-      !request ||
-      !sameIdentity(request, event, ctx) ||
-      !request.payload ||
-      !request.headers ||
-      !buildNativeCodexRequest(request.payload) ||
-      !coversDiscardedMessages(request, event)
-    ) {
+    const fallbackCode = nativeFallbackCode(request, captureInvalidated, event, ctx);
+    if (fallbackCode) {
+      const outcome = existing.length ? "blocked" : "fallback";
+      if (
+        !requiredDiagnostic(ctx, {
+          component: "compaction",
+          code: fallbackCode,
+          outcome,
+          operationId,
+          dispatch: "none",
+          ...(existing.length ? { cancellation: "safety" as const } : {}),
+        })
+      )
+        return { cancel: true };
       if (existing.length) {
         ctx.ui?.notify?.(
-          "No captured request covers every message that would be discarded; opaque checkpoint preserved and compaction cancelled.",
+          "No safe native request covers every message that would be discarded; opaque checkpoint preserved and compaction cancelled.",
           "error",
         );
         return { cancel: true };
       }
+      captured = undefined;
+      const descriptions: Record<NativeFallbackCode, string> = {
+        capture_missing: "no provider request has been captured",
+        state_invalid: "the captured provider request was invalidated",
+        identity_stale: "the captured session, branch, model, or thinking identity is stale",
+        payload_missing: "the captured provider payload is missing",
+        headers_missing: "the captured provider headers are missing",
+        payload_incompatible: "the captured provider payload is incompatible",
+        coverage_incomplete: "the captured request does not cover every discarded message",
+      };
       ctx.ui?.notify?.(
-        "Codex native compaction unavailable for this captured request; using plaintext compaction.",
+        "Codex native compaction unavailable: " +
+          descriptions[fallbackCode] +
+          "; trying cache-affine plaintext compaction.",
         "warning",
       );
       return;
     }
+
+    const readyRequest = request as CapturedRequest & { payload: unknown; headers: Record<string, string | null> };
+    let dispatch: "none" | "initiated" | "response" | "unknown" = "none";
     try {
-      const resolved = await ctx.modelRegistry.getApiKeyAndHeaders(request.model);
-      if (!resolved.ok) throw new Error(resolved.error);
-      for (const [key, value] of Object.entries(request.headers)) {
+      const resolved = await ctx.modelRegistry.getApiKeyAndHeaders(readyRequest.model);
+      if (!resolved.ok) {
+        requiredDiagnostic(ctx, {
+          component: "provider",
+          code: "provider_failed",
+          outcome: "failed",
+          operationId,
+          dispatch: "none",
+        });
+        ctx.ui?.notify?.(
+          "Codex native compaction credentials are unavailable. Compaction cancelled; no plaintext request was sent.",
+          "error",
+        );
+        return { cancel: true };
+      }
+      for (const [key, value] of Object.entries(readyRequest.headers)) {
         if (
           ["x-api-key", "api-key"].includes(key.toLowerCase()) &&
           !Object.entries(resolved.headers ?? {}).some(
             ([name, current]) => name.toLowerCase() === key.toLowerCase() && current === value,
           )
-        )
-          throw new Error("Dynamic credential headers require a fresh normal request");
+        ) {
+          requiredDiagnostic(ctx, {
+            component: "provider",
+            code: "identity_stale",
+            outcome: "blocked",
+            operationId,
+            dispatch: "none",
+            cancellation: "safety",
+          });
+          ctx.ui?.notify?.(
+            "Codex native compaction credentials changed. Compaction cancelled; no plaintext request was sent.",
+            "error",
+          );
+          return { cancel: true };
+        }
       }
-      const resolvedModel = { ...request.model, baseUrl: resolved.baseUrl ?? request.model.baseUrl };
+      const resolvedModel = { ...readyRequest.model, baseUrl: resolved.baseUrl ?? readyRequest.model.baseUrl };
       const native = await requestNativeCodexCompaction({
         model: resolvedModel,
-        payload: request.payload,
-        headers: request.headers,
+        payload: readyRequest.payload,
+        headers: readyRequest.headers,
         auth: { apiKey: resolved.apiKey, headers: resolved.headers },
-        sessionId: request.sessionId,
+        sessionId: readyRequest.sessionId,
+        operationId,
         signal: event.signal,
-        onDispatch: (model) => reportProviderAttempt(ctx.sessionManager as object, model, "dispatch"),
+        onDispatch: (model) => {
+          dispatch = "initiated";
+          reportProviderAttempt(ctx.sessionManager as object, model, "dispatch", Date.now(), operationId);
+        },
       });
+      dispatch = "response";
       if (event.signal.aborted) {
-        pi.appendEntry(NATIVE_CODEX_USAGE_ENTRY, {
-          strategy: "codex-native",
-          status: "cancelled",
-          usage: native.usage,
-          timestamp: Date.now(),
+        persistBillableUsage(pi, ctx, native.usage, "cancelled", operationId);
+        requiredDiagnostic(ctx, {
+          component: "compaction",
+          code: "caller_aborted",
+          outcome: "cancelled",
+          operationId,
+          dispatch: "response",
+          cancellation: "caller",
         });
         return { cancel: true };
       }
@@ -657,9 +834,9 @@ export function registerNativeCodexCompaction(
         strategy: "codex-native",
         version: 1,
         api: "openai-codex-responses",
-        provider: request.model.provider,
-        model: request.model.id,
-        thinkingLevel: request.thinkingLevel,
+        provider: readyRequest.model.provider,
+        model: readyRequest.model.id,
+        thinkingLevel: readyRequest.thinkingLevel,
         runtimeState,
         readFiles: [...event.preparation.fileOps.read],
         modifiedFiles: [...new Set([...event.preparation.fileOps.written, ...event.preparation.fileOps.edited])],
@@ -674,9 +851,35 @@ export function registerNativeCodexCompaction(
       };
       return { compaction: result };
     } catch (error) {
-      persistBillableUsage(pi, error);
-      const message = error instanceof Error ? error.message : "Codex native compaction failed";
-      ctx.ui?.notify?.(message + ". Compaction cancelled; no plaintext request was sent.", "error");
+      const usage = error instanceof NativeCodexResponseError ? error.usage : undefined;
+      const callerCancelled = event.signal.aborted;
+      const providerCancelled = error instanceof NativeCodexResponseError && error.message.includes("was cancelled");
+      const cancelled = callerCancelled || providerCancelled;
+      persistBillableUsage(pi, ctx, usage, cancelled ? "cancelled" : "failed", operationId);
+      requiredDiagnostic(ctx, {
+        component: "provider",
+        code: callerCancelled
+          ? "caller_aborted"
+          : providerCancelled
+            ? "provider_cancelled"
+            : error instanceof NativeCodexHttpError
+              ? "http_rejected"
+              : error instanceof NativeCodexResponseError
+                ? "response_invalid"
+                : "transport_error",
+        outcome: cancelled ? "cancelled" : "failed",
+        operationId,
+        dispatch: error instanceof NativeCodexHttpError ? "response" : dispatch,
+        ...(error instanceof NativeCodexHttpError ? { httpStatus: error.status } : {}),
+        ...(callerCancelled ? { cancellation: "caller" as const } : {}),
+        ...(providerCancelled ? { cancellation: "provider" as const } : {}),
+      });
+      ctx.ui?.notify?.(
+        cancelled
+          ? "Codex native compaction was cancelled; no plaintext request was sent."
+          : "Codex native compaction failed. Compaction cancelled; no plaintext request was sent.",
+        "error",
+      );
       return { cancel: true };
     }
   });

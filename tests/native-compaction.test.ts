@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { inspectDiagnostics } from "../src/diagnostics";
 import type { Model } from "@earendil-works/pi-ai";
 import { convertResponsesMessages } from "@earendil-works/pi-ai/api/openai-responses-shared";
 import { SessionManager, buildSessionContext } from "@earendil-works/pi-coding-agent";
@@ -210,6 +211,18 @@ describe("native Codex request", () => {
       }),
     ).rejects.toThrow("early");
     expect(seen).toHaveLength(1);
+    await expect(
+      requestNativeCodexCompaction({
+        model,
+        payload,
+        headers: { Authorization: "Bearer hidden", "chatgpt-account-id": "acct" },
+        onDispatch: (m) => seen.push(m),
+        fetch: (() => {
+          throw new Error("synchronous failure");
+        }) as any,
+      }),
+    ).rejects.toThrow("synchronous failure");
+    expect(seen).toHaveLength(1);
     const cyclic: any = { role: "user" };
     cyclic.self = cyclic;
     await expect(
@@ -257,6 +270,10 @@ describe("native Codex request", () => {
     expect(seen.init.headers.get("x-route")).toBe("kept");
     expect(seen.init.headers.get("chatgpt-account-id")).toBe("acct");
     expect(seen.init.headers.get("session-id")).toBe("session-key");
+    expect(seen.init.headers.get("x-client-request-id")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(seen.init.headers.get("x-client-request-id")).not.toBe("session-key");
     expect(seen.init.headers.get("accept")).toBe("text/event-stream");
   });
 });
@@ -302,12 +319,12 @@ describe("opaque checkpoint adapter", () => {
 });
 
 describe("fail-closed checkpoint lifecycle", () => {
-  function harness(manager: any, currentModel: any) {
+  function harness(manager: any, currentModel: any, append?: (type: string, data: any) => void) {
     const handlers = new Map<string, Function>();
     const entries: any[] = [];
     const capture = registerNativeCodexCompaction({
       on: (name: string, fn: Function) => handlers.set(name, fn),
-      appendEntry: (type: string, data: any) => entries.push({ type, data }),
+      appendEntry: append ?? ((type: string, data: any) => entries.push({ type, data })),
     } as any);
     let aborted = 0;
     const notifications: string[] = [];
@@ -356,6 +373,98 @@ describe("fail-closed checkpoint lifecycle", () => {
     h.capture.invalidateCapture();
     expect(h.capture.hasFreshCapture()).toBe(false);
   });
+  test("records individual native fallback reasons and releases the cache-affine hook", async () => {
+    const run = async (
+      setup: (h: ReturnType<typeof harness>, manager: ReturnType<typeof SessionManager.inMemory>) => void,
+      mutateEvent: (value: any) => any = (value) => value,
+    ) => {
+      const manager = SessionManager.inMemory();
+      manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });
+      const h = harness(manager, model);
+      setup(h, manager);
+      const branch = manager.getBranch();
+      const value: any = {
+        type: "session_before_compact",
+        branchEntries: branch,
+        reason: "manual",
+        willRetry: false,
+        signal: new AbortController().signal,
+        preparation: {
+          firstKeptEntryId: branch[0].id,
+          messagesToSummarize: [],
+          turnPrefixMessages: [],
+          isSplitTurn: false,
+          tokensBefore: 10,
+          fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+          settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+        },
+      };
+      expect(await h.handlers.get("session_before_compact")!(mutateEvent(value), h.ctx)).toBeUndefined();
+      expect(h.capture.hasFreshCapture()).toBe(false);
+      return { h, code: inspectDiagnostics(manager).records.at(-1)?.code };
+    };
+    expect((await run(() => {})).code).toBe("capture_missing");
+    expect(
+      (
+        await run((h, manager) => {
+          h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+          h.capture.invalidateCapture();
+        })
+      ).code,
+    ).toBe("state_invalid");
+    expect(
+      (
+        await run((h, manager) => {
+          h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+          h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+          h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+          h.ctx.thinkingLevel = "high";
+        })
+      ).code,
+    ).toBe("identity_stale");
+    expect(
+      (
+        await run((h, manager) => {
+          h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+        })
+      ).code,
+    ).toBe("payload_missing");
+    expect(
+      (
+        await run((h, manager) => {
+          h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+          h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+        })
+      ).code,
+    ).toBe("headers_missing");
+    expect(
+      (
+        await run((h, manager) => {
+          h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+          h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+          h.handlers.get("before_provider_request")!({ payload: {} }, h.ctx);
+        })
+      ).code,
+    ).toBe("payload_incompatible");
+    expect(
+      (
+        await run(
+          (h, manager) => {
+            h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+            h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+            h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+          },
+          (value) => ({
+            ...value,
+            preparation: {
+              ...value.preparation,
+              messagesToSummarize: [{ role: "user", content: [{ type: "text", text: "not captured" }], timestamp: 1 }],
+            },
+          }),
+        )
+      ).code,
+    ).toBe("coverage_incomplete");
+  });
   test("aborts a switched-model request before a provider payload can proceed", () => {
     const h = harness(checkpointManager(), { ...model, provider: "foreign", api: "openai-responses" });
     const messages = buildSessionContext(h.ctx.sessionManager.getEntries()).messages;
@@ -388,6 +497,63 @@ describe("fail-closed checkpoint lifecycle", () => {
       cancel: true,
     });
     expect(await h.handlers.get("session_before_compact")!(base, h.ctx)).toEqual({ cancel: true });
+  });
+  test("usage append failure cannot replace a billable provider failure or permit fallback", async () => {
+    const manager = SessionManager.inMemory();
+    manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });
+    let appends = 0;
+    const h = harness(manager, model, () => {
+      appends++;
+      throw new Error("private append failure");
+    });
+    h.ctx.modelRegistry.getApiKeyAndHeaders = async () => ({
+      ok: true,
+      headers: { Authorization: "Bearer hidden", "chatgpt-account-id": "acct" },
+    });
+    h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+    h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+    h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+    const branch = manager.getBranch();
+    const oldFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        "data: " +
+          JSON.stringify({
+            type: "response.failed",
+            response: {
+              status: "failed",
+              output: [],
+              usage: { input_tokens: 4, output_tokens: 1, total_tokens: 5 },
+            },
+          }) +
+          "\n\n",
+        { status: 200 },
+      )) as any;
+    try {
+      const result = await h.handlers.get("session_before_compact")!(
+        {
+          type: "session_before_compact",
+          branchEntries: branch,
+          signal: new AbortController().signal,
+          preparation: {
+            firstKeptEntryId: branch[0].id,
+            messagesToSummarize: [],
+            turnPrefixMessages: [],
+            tokensBefore: 10,
+            fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+            settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+          },
+        },
+        h.ctx,
+      );
+      expect(result).toEqual({ cancel: true });
+      expect(appends).toBe(1);
+      expect(h.notifications.some((message) => message.includes("usage checkpoint could not be written"))).toBe(true);
+      expect(JSON.stringify(h.notifications)).not.toContain("private append failure");
+      expect(inspectDiagnostics(manager).records.map((record) => record.code)).toContain("state_write_failed");
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
   });
   test("constructs provider-equivalent OAuth and cache headers", () => {
     const claim = Buffer.from(
