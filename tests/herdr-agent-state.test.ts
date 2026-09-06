@@ -14,6 +14,7 @@ const savedEnv = {
   HERDR_SOCKET_PATH: process.env.HERDR_SOCKET_PATH,
   HERDR_PANE_ID: process.env.HERDR_PANE_ID,
   DIE_SUBAGENT_DEPTH: process.env.DIE_SUBAGENT_DEPTH,
+  DIE_SUBAGENT_TYPE: process.env.DIE_SUBAGENT_TYPE,
 };
 
 function restoreEnv(): void {
@@ -56,9 +57,12 @@ function harness(options: { ui?: boolean; idle?: boolean; path?: string; id?: st
     },
   } as unknown as ExtensionContext;
   const fire = (name: string, event: Record<string, unknown> = {}) => {
-    for (const handler of handlers.get(name) ?? []) handler(event, ctx);
+    return [...(handlers.get(name) ?? [])].map((handler) => handler(event, ctx));
   };
-  return { pi, ctx, fire, events, handlers, busHandlers };
+  const fireAsync = async (name: string, event: Record<string, unknown> = {}) => {
+    await Promise.all(fire(name, event));
+  };
+  return { pi, ctx, fire, fireAsync, events, handlers, busHandlers };
 }
 
 async function socketRecorder() {
@@ -102,6 +106,7 @@ function enable(path: string, depth = "0"): void {
   process.env.HERDR_SOCKET_PATH = path;
   process.env.HERDR_PANE_ID = "w-test:p-root";
   process.env.DIE_SUBAGENT_DEPTH = depth;
+  delete process.env.DIE_SUBAGENT_TYPE;
 }
 
 describe("built-in Herdr agent state", () => {
@@ -241,5 +246,131 @@ describe("built-in Herdr agent state", () => {
     expect(() => throwing.fire("session_start", { reason: "startup" })).not.toThrow();
     throwing.fire("session_shutdown", { reason: "quit" });
     await Bun.sleep(20);
+  });
+
+  test("stalled sends preserve wire sequence order and the final working state", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "die-herdr-order-"));
+    const path = join(dir, "herdr.sock");
+    const requests: WireRequest[] = [];
+    let stallFirst = true;
+    const server = net.createServer((socket) => {
+      let input = "";
+      socket.on("data", (chunk) => {
+        input += chunk.toString();
+        const newline = input.indexOf("\n");
+        if (newline < 0) return;
+        requests.push(JSON.parse(input.slice(0, newline)) as WireRequest);
+        if (stallFirst) stallFirst = false;
+        else socket.end('{"ok":true}\n');
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(path, resolve));
+    try {
+      enable(path);
+      const h = harness({ id: "ordered", idle: true });
+      registerHerdrAgentState(h.pi);
+      h.fire("session_start", { reason: "startup" });
+      await waitFor(() => requests.length === 1);
+      h.fire("agent_start");
+      h.fire("agent_start");
+      h.fire("agent_start");
+      await waitFor(() => requests.some((request) => request.params.state === "working"), 2500);
+      await waitFor(
+        () => requests.filter((request) => request.method === "pane.report_agent_session").length >= 2,
+        2500,
+      );
+      const seq = requests.map((request) => request.params.seq as number);
+      expect(seq.every((value, index) => index === 0 || value > seq[index - 1]!)).toBe(true);
+      expect(requests.some((request) => request.params.state === "idle")).toBe(false);
+      expect(requests.filter((request) => request.params.state === "working")).toHaveLength(1);
+      await h.fireAsync("session_shutdown", { reason: "reload" });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("quit is awaited and a concurrent replacement cancels release retries", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "die-herdr-replace-"));
+    const path = join(dir, "herdr.sock");
+    const requests: WireRequest[] = [];
+    const server = net.createServer((socket) => {
+      let input = "";
+      socket.on("data", (chunk) => {
+        input += chunk.toString();
+        const newline = input.indexOf("\n");
+        if (newline < 0) return;
+        const request = JSON.parse(input.slice(0, newline)) as WireRequest;
+        requests.push(request);
+        if (request.method !== "pane.release_agent") socket.end('{"ok":true}\n');
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(path, resolve));
+    try {
+      enable(path);
+      const oldRuntime = harness({ id: "old-concurrent" });
+      registerHerdrAgentState(oldRuntime.pi);
+      oldRuntime.fire("session_start", { reason: "startup" });
+      await waitFor(() => requests.length >= 2);
+      let quitFinished = false;
+      const quitting = oldRuntime.fireAsync("session_shutdown", { reason: "quit" }).then(() => {
+        quitFinished = true;
+      });
+      await waitFor(() => requests.some((request) => request.method === "pane.release_agent"));
+      expect(quitFinished).toBe(false);
+
+      const replacement = harness({ id: "new-concurrent" });
+      registerHerdrAgentState(replacement.pi);
+      replacement.fire("session_start", { reason: "resume" });
+      await quitting;
+      await waitFor(() => requests.some((request) => request.params.agent_session_id === "new-concurrent"));
+      const firstNew = requests.findIndex((request) => request.params.agent_session_id === "new-concurrent");
+      expect(requests.slice(firstNew).some((request) => request.method === "pane.release_agent")).toBe(false);
+      await replacement.fireAsync("session_shutdown", { reason: "reload" });
+    } finally {
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("non-quit restart reattaches one blocked listener and bounds outbound metadata", async () => {
+    const recorder = await socketRecorder();
+    try {
+      enable(recorder.path);
+      process.env.HERDR_PANE_ID = "p".repeat(800);
+      const h = harness({ id: "i".repeat(800) });
+      registerHerdrAgentState(h.pi);
+      h.fire("session_start", { reason: "startup" });
+      await waitFor(() => recorder.requests.length >= 2);
+      await h.fireAsync("session_shutdown", { reason: "resume" });
+      expect(h.busHandlers.get("herdr:blocked")?.size ?? 0).toBe(0);
+      h.fire("session_start", { reason: "resume" });
+      expect(h.busHandlers.get("herdr:blocked")?.size ?? 0).toBe(1);
+      h.events.emit("herdr:blocked", { active: true, label: "x".repeat(2000) + "\u0000tail" });
+      await waitFor(() => recorder.requests.some((request) => request.params.state === "blocked"));
+      const blocked = [...recorder.requests].reverse().find((request) => request.params.state === "blocked");
+      if (!blocked) throw new Error("missing blocked report");
+      expect((blocked.params.pane_id as string).length).toBe(512);
+      expect((blocked.params.agent_session_id as string).length).toBe(512);
+      expect((blocked.params.message as string).length).toBe(512);
+      h.fire("session_start", { reason: "reload" });
+      expect(h.busHandlers.get("herdr:blocked")?.size ?? 0).toBe(1);
+      await h.fireAsync("session_shutdown", { reason: "reload" });
+    } finally {
+      await recorder.close();
+    }
+  });
+
+  test("malformed depth and spawned role fail closed", () => {
+    enable("/tmp/unused-herdr.sock", "garbage");
+    const malformed = harness();
+    registerHerdrAgentState(malformed.pi);
+    expect(malformed.handlers.size).toBe(0);
+
+    enable("/tmp/unused-herdr.sock", "0");
+    process.env.DIE_SUBAGENT_TYPE = "normal";
+    const spawned = harness();
+    registerHerdrAgentState(spawned.pi);
+    expect(spawned.handlers.size).toBe(0);
   });
 });
