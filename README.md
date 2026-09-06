@@ -308,3 +308,7 @@ Native Codex checkpoints currently require their original provider/model;
 switching is blocked rather than silently losing context. Codex's existing
 preflight fallback rules are unchanged. Cache reuse is not a guarantee of lower
 cost. See [compaction implementation and evidence](docs/compaction-research.md).
+
+## Project-local memory extension
+
+An opt-in [project-memory registration module](docs/project-memory.md) supports filesystem topic notes and explicitly requested managed consolidation. It is not wired into the default extension; automatic turn/shutdown consolidation is not enabled.
