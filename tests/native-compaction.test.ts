@@ -43,7 +43,10 @@ describe("native Codex request", () => {
     const request = buildNativeCodexRequest(payload)!;
     expect(request.input).toEqual([...payload.input, { type: "compaction_trigger" }]);
     expect(request.service_tier).toBe("default");
-    expect({ ...request, input: payload.input, service_tier: undefined }).toEqual({ ...payload, service_tier: undefined });
+    expect({ ...request, input: payload.input, service_tier: undefined }).toEqual({
+      ...payload,
+      service_tier: undefined,
+    });
     expect(payload.input).toHaveLength(1);
   });
   test("rejects unsupported and already compacted payloads", () => {
