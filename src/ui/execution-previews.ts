@@ -12,13 +12,15 @@ function plain(text: string): string {
   return stripTerminalSequences(text)
     .replace(/\r\n?/g, "\n")
     .replace(/\t/g, "  ")
-    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, "");
+    .replace(/\p{Cc}/gu, (character) => (character === "\n" ? "\n" : ""));
+}
+function oneLine(text: string): string {
+  return plain(text).replace(/\s+/g, " ").trim();
 }
 function expandHint(): string {
   const keys = getKeybindings().getKeys("app.tools.expand");
   return keys.length ? keys.join("/") + " to expand" : "expand for more";
 }
-/** Fold by rendered rows, so one long JSON line cannot flood a narrow terminal. */
 export function foldedRows(text: string, width: number, head: number, tail: number, expanded: boolean): string[] {
   if (width < 1 || !text) return [];
   const rows = wrapTextWithAnsi(plain(text), width);
@@ -33,64 +35,132 @@ export function foldedRows(text: string, width: number, head: number, tail: numb
 function component(render: (width: number) => string[]): Component {
   return { render, invalidate() {} };
 }
-export function executeInputPreview(code: unknown, expanded: boolean, theme: Theme): Component {
-  const source = typeof code === "string" ? code : "";
-  return component((width) =>
-    width < 1
-      ? []
-      : [
-          truncateToWidth(theme.fg("toolTitle", "Execute · TypeScript"), width),
-          ...foldedRows(source, width, 3, 0, expanded).map((line) => theme.fg("muted", line)),
-        ],
-  );
+
+export interface ExecutePreviewState {
+  resultVisible?: boolean;
 }
+function commandSummary(code: unknown): string {
+  return typeof code === "string" ? oneLine(code) : "";
+}
+
+export function executeInputPreview(
+  code: unknown,
+  expanded: boolean,
+  theme: Theme,
+  state?: ExecutePreviewState,
+  executionStarted = true,
+): Component {
+  const source = typeof code === "string" ? code : "";
+  return component((width) => {
+    // Pi vertically composes call and result slots. Suppress the call slot once
+    // the result renderer runs, leaving one settled physical row.
+    if (state?.resultVisible || width < 1) return [];
+    if (expanded)
+      return [
+        truncateToWidth(theme.fg("toolTitle", "Execute · TypeScript"), width),
+        ...foldedRows(source, width, 0, 0, true).map((line) => theme.fg("muted", line)),
+      ];
+    const summary = commandSummary(source);
+    const status = executionStarted ? "running" : "preparing";
+    const line =
+      theme.fg("warning", "…") +
+      theme.fg("toolTitle", " Execute " + status) +
+      (summary ? theme.fg("muted", " · " + summary) : "");
+    return [truncateToWidth(line, width)];
+  });
+}
+
 type TextResult = { content: Array<{ type: string; text?: string }>; details?: unknown };
-export function executeOutputPreview(result: TextResult, expanded: boolean, isError: boolean, theme: Theme): Component {
+type ExecuteDetails = {
+  exitCode?: number;
+  signal?: string;
+  timedOut?: boolean;
+  cancelled?: boolean;
+  imageError?: string;
+  stdout?: unknown;
+  stderr?: unknown;
+  stdoutLost?: boolean;
+  stderrLost?: boolean;
+  images?: unknown[];
+  handoff?: string;
+  backgroundJobs?: string[];
+};
+function statusSummary(
+  full: string,
+  details: ExecuteDetails | undefined,
+  isError: boolean,
+): { icon: string; color: "success" | "error"; text: string } {
+  const first = oneLine(full.split("\n")[0] ?? "");
+  if (details?.handoff) return { icon: "✓", color: "success", text: "Execution handed off" };
+  if (isError || details?.imageError || details?.timedOut || details?.cancelled)
+    return { icon: "✗", color: "error", text: first || "Execution failed" };
+  if (details?.exitCode !== undefined) {
+    const ok = details.exitCode === 0;
+    return {
+      icon: ok ? "✓" : "✗",
+      color: ok ? "success" : "error",
+      text: "Execution " + (ok ? "completed" : "failed") + " · exit " + details.exitCode,
+    };
+  }
+  return { icon: "✓", color: "success", text: first || "Execution completed" };
+}
+
+export function executeOutputPreview(
+  result: TextResult,
+  expanded: boolean,
+  isError: boolean,
+  theme: Theme,
+  code?: unknown,
+  state?: ExecutePreviewState,
+): Component {
+  if (state) state.resultVisible = true;
   const full = result.content
     .filter((part) => part.type === "text")
     .map((part) => part.text ?? "")
     .join("\n");
-  const details = result.details as
-    | {
-        stdout?: unknown;
-        stderr?: unknown;
-        stdoutLost?: boolean;
-        stderrLost?: boolean;
-        images?: unknown[];
-        handoff?: string;
-      }
-    | undefined;
-  const status = plain(full.split("\n")[0] || (isError ? "Execution failed" : "Execution result"));
-  let output = full.includes("\n") ? full.slice(full.indexOf("\n") + 1).trim() : "";
-  if (details && (typeof details.stdout === "string" || typeof details.stderr === "string")) {
-    output = [
-      typeof details.stdout === "string" && details.stdout ? "stdout:\n" + details.stdout : "",
-      typeof details.stderr === "string" && details.stderr ? "stderr:\n" + details.stderr : "",
-    ]
-      .filter(Boolean)
-      .join("\n")
-      .trimEnd();
-  }
-  if (details?.handoff) output = details.handoff + (output ? "\n" + output : "");
+  const details = result.details as ExecuteDetails | undefined;
+  const status = statusSummary(full, details, isError);
+  const source = typeof code === "string" ? code : "";
   return component((width) => {
     if (width < 1) return [];
-    if (expanded) return foldedRows(full, width, 0, 0, true);
-    return [
-      truncateToWidth(theme.fg(isError ? "error" : "dim", status), width),
-      ...(details?.stdoutLost || details?.stderrLost
-        ? [truncateToWidth(theme.fg("warning", "… earlier output discarded by execute"), width)]
-        : []),
-      ...foldedRows(output, width, details?.handoff ? 2 : 0, details?.handoff ? 3 : 5, false),
-      ...(details?.images?.length ? [truncateToWidth("Images: " + details.images.length, width)] : []),
-    ];
+    if (expanded) {
+      const lines = [
+        theme.fg("toolTitle", "Execute · TypeScript"),
+        ...foldedRows(source, width, 0, 0, true).map((line) => theme.fg("muted", line)),
+        "",
+        ...foldedRows(full, width, 0, 0, true),
+      ];
+      if (details?.stdoutLost || details?.stderrLost)
+        lines.push(theme.fg("warning", "… earlier output discarded by execute"));
+      return lines.map((line) => truncateToWidth(line, width));
+    }
+    const imageCount = details?.images?.length ?? result.content.filter((part) => part.type === "image").length;
+    const suffix = [commandSummary(code), imageCount ? imageCount + " image" + (imageCount === 1 ? "" : "s") : ""]
+      .filter(Boolean)
+      .join(" — ");
+    const line =
+      theme.fg(status.color, status.icon) +
+      theme.fg("toolTitle", " " + status.text) +
+      (suffix ? theme.fg("muted", " · " + suffix) : "");
+    return [truncateToWidth(line, width)];
   });
+}
+
+interface CompletionDetails {
+  tasks?: Array<{ id?: string; status?: string; exitCode?: number; signal?: string; timedOut?: boolean }>;
+  attention?: Array<{ id?: string }>;
+  omittedTasks?: number;
+  omittedAttention?: number;
 }
 export function completionPreview(
   content: string | Array<{ type: string; text?: string }>,
   expanded: boolean,
   theme: Theme,
   padding = 0,
+  kind: "task-complete" | "task-attention" = "task-complete",
+  rawDetails?: unknown,
 ): Component {
+  const details = rawDetails as CompletionDetails | undefined;
   const text =
     typeof content === "string"
       ? content
@@ -100,9 +170,44 @@ export function completionPreview(
           .join("\n");
   const box = new Box(padding, 0);
   box.addChild(
-    component((width) =>
-      foldedRows(text, width, 3, 3, expanded).map((line, index) => (index === 0 ? theme.fg("accent", line) : line)),
-    ),
+    component((width) => {
+      if (expanded)
+        return foldedRows(text, width, 0, 0, true).map((line, index) =>
+          index === 0 ? theme.fg(kind === "task-attention" ? "warning" : "accent", line) : line,
+        );
+      if (width < 1) return [];
+      const tasks = details?.tasks ?? [];
+      const failed = tasks.filter((task) => task.status && task.status !== "completed");
+      const attention = (details?.attention?.length ?? 0) + (details?.omittedAttention ?? 0);
+      const first = oneLine(text.split("\n")[0] ?? "");
+      let label: string;
+      let color: "success" | "error" | "warning";
+      if (kind === "task-attention") {
+        label = "⚠ Task attention · " + (first || "running task needs attention");
+        color = "warning";
+      } else if (failed.length) {
+        label = "✗ Task completion · " + first;
+        color = "error";
+      } else {
+        label = "✓ Task complete · " + first;
+        color = "success";
+      }
+      if (tasks.length) {
+        const statuses = tasks
+          .slice(0, 3)
+          .map((task) =>
+            [task.id, task.status, task.exitCode !== undefined ? "exit " + task.exitCode : task.signal]
+              .filter(Boolean)
+              .join(" "),
+          )
+          .join(", ");
+        if (statuses) label += " · " + statuses;
+        const omitted = (details?.omittedTasks ?? 0) + Math.max(0, tasks.length - 3);
+        if (omitted) label += " (+" + omitted + " more)";
+      }
+      if (attention && kind === "task-complete") label += " · ⚠ " + attention + " need attention";
+      return [truncateToWidth(theme.fg(color, label), width)];
+    }),
   );
   return box;
 }

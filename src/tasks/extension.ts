@@ -37,10 +37,10 @@ export default function asynchronousTasksExtension(
   registerCacheCountdown(pi, cacheCountdown, options.cacheSettingsPath);
   const installUI = createCompactUI(pi, cacheCountdown);
   pi.registerMessageRenderer("task-complete", (message, options, theme) =>
-    completionPreview(message.content, options.expanded, theme, options.outputPad),
+    completionPreview(message.content, options.expanded, theme, options.outputPad, "task-complete", message.details),
   );
   pi.registerMessageRenderer("task-attention", (message, options, theme) =>
-    completionPreview(message.content, options.expanded, theme, options.outputPad),
+    completionPreview(message.content, options.expanded, theme, options.outputPad, "task-attention", message.details),
   );
   registerSubagentSettings(pi, options.profilesPath);
   // Environment identity is the floor for genuinely spawned child processes.
