@@ -1,3 +1,4 @@
+import { dlopen, FFIType } from "bun:ffi";
 import {
   closeSync,
   constants,
@@ -6,26 +7,27 @@ import {
   ftruncateSync,
   openSync,
   readSync,
-  renameSync,
   statSync,
-  unlinkSync,
   writeSync,
 } from "node:fs";
-import { randomUUID } from "node:crypto";
 
 /** Separate protected ownership index; never includes commands, prompts or output.
  * The newest complete records are retained within 2 MiB. The file name is derived
  * once from the owning session, not from whichever session is active later.
  */
 export const TASK_LIFECYCLE_MAX_BYTES = 2 * 1024 * 1024;
-const LOCK_STALE_MS = 5 * 60_000;
 
-export type TaskLifecycleFailure = "contention" | "write";
+const LOCK_EX = 2;
+const LOCK_NB = 4;
+const LOCK_UN = 8;
+type Flock = (fd: number, operation: number) => number;
+
+export type TaskLifecycleFailure = "contention" | "locking" | "write";
 export interface TaskLifecycleRecorderOptions {
   /** Test seam for proving that short positional writes are completed. */
   write?: typeof writeSync;
-  lockStaleMs?: number;
-  now?: () => number;
+  /** Test seam for a missing or failing advisory-lock implementation. */
+  flock?: Flock;
 }
 
 export function taskLifecycleFile(sessionFile: string): string {
@@ -33,6 +35,35 @@ export function taskLifecycleFile(sessionFile: string): string {
 }
 
 class LockContentionError extends Error {}
+class LockUnavailableError extends Error {}
+
+// Keep the dlopen handle alive for the process lifetime. Bun's FFI is bundled in
+// compiled executables, so this needs no helper executable or package. We only
+// claim support where Linux's flock(2) ABI and constants are known here. Other
+// platforms fail closed: lifecycle diagnostics are dropped and reported rather
+// than being written without inter-process exclusion.
+let libc: unknown;
+let systemFlock: Flock | undefined;
+let flockResolved = false;
+function resolveFlock(): Flock {
+  if (flockResolved) {
+    if (!systemFlock) throw new LockUnavailableError("Advisory locking is unavailable");
+    return systemFlock;
+  }
+  flockResolved = true;
+  if (process.platform !== "linux" || process.arch !== "x64")
+    throw new LockUnavailableError("Advisory locking is unsupported on this platform");
+  try {
+    const library = dlopen("libc.so.6", {
+      flock: { args: [FFIType.i32, FFIType.i32], returns: FFIType.i32 },
+    });
+    libc = library;
+    systemFlock = library.symbols.flock;
+    return systemFlock;
+  } catch {
+    throw new LockUnavailableError("Advisory locking is unavailable");
+  }
+}
 
 function writeAll(write: typeof writeSync, fd: number, data: Buffer, position: number): void {
   let offset = 0;
@@ -54,131 +85,18 @@ function readAtMost(fd: number, length: number, position: number): Buffer {
   return data.subarray(0, offset);
 }
 
-function readLock(path: string): { token: string; pid: number; created: number } | undefined {
-  let fd: number | undefined;
-  try {
-    fd = openSync(path, constants.O_RDONLY | constants.O_NOFOLLOW);
-    const stat = fstatSync(fd);
-    if (!stat.isFile() || stat.nlink !== 1 || stat.size > 512) return;
-    const value = JSON.parse(readAtMost(fd, stat.size, 0).toString("utf8"));
-    if (
-      !value ||
-      typeof value.token !== "string" ||
-      value.token.length > 100 ||
-      !Number.isSafeInteger(value.pid) ||
-      value.pid <= 0 ||
-      !Number.isFinite(value.created)
-    )
-      return;
-    return value;
-  } catch {
-    return;
-  } finally {
-    if (fd !== undefined)
-      try {
-        closeSync(fd);
-      } catch {}
-  }
-}
-
-function processAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return (error as NodeJS.ErrnoException).code !== "ESRCH";
-  }
-}
-
-function acquireLock(
-  path: string,
-  write: typeof writeSync,
-  now: number,
-  staleMs: number,
-): { fd: number; token: string } {
-  const token = randomUUID();
-  const create = () => {
-    const fd = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
-    try {
-      writeAll(write, fd, Buffer.from(JSON.stringify({ token, pid: process.pid, created: now })), 0);
-      fsyncSync(fd);
-      return { fd, token };
-    } catch (error) {
-      try {
-        closeSync(fd);
-      } catch {}
-      try {
-        unlinkSync(path);
-      } catch {}
-      throw error;
-    }
-  };
-
-  try {
-    return create();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-  }
-
-  const owner = readLock(path);
-  // A newly-created, not-yet-populated lock is treated as live. Malformed locks
-  // become reclaimable by age through their mtime, so a crash cannot disable
-  // the index forever without racing a creator's short initialization window.
-  let stale = owner ? now - owner.created > staleMs || !processAlive(owner.pid) : false;
-  if (!owner) {
-    try {
-      stale = now - statSync(path, { bigint: false }).mtimeMs > staleMs;
-    } catch {
-      // A disappearing lock permits one immediate create attempt below.
-      stale = true;
-    }
-  }
-  if (!stale) throw new LockContentionError("Lifecycle index is busy");
-
-  const quarantine = path + ".stale-" + token;
-  try {
-    renameSync(path, quarantine);
-  } catch {
-    throw new LockContentionError("Lifecycle index is busy");
-  }
-  try {
-    return create();
-  } catch {
-    throw new LockContentionError("Lifecycle index is busy");
-  } finally {
-    try {
-      unlinkSync(quarantine);
-    } catch {}
-  }
-}
-
-function releaseLock(path: string, lock: { fd: number; token: string }): void {
-  try {
-    closeSync(lock.fd);
-  } catch {}
-  // Do not unlink a replacement lock if this owner was reclaimed after an
-  // unexpectedly long filesystem stall.
-  if (readLock(path)?.token !== lock.token) return;
-  try {
-    unlinkSync(path);
-  } catch {}
-}
-
 export function createTaskLifecycleRecorder(
   sessionFile: string | undefined,
   onFailure: (failure?: TaskLifecycleFailure) => void = () => {},
   options: TaskLifecycleRecorderOptions = {},
 ): (record: object) => void {
   const path = sessionFile ? taskLifecycleFile(sessionFile) : undefined;
-  const lockPath = path ? path + ".lock" : undefined;
   const write = options.write ?? writeSync;
-  const now = options.now ?? Date.now;
-  const staleMs = Math.max(1_000, options.lockStaleMs ?? LOCK_STALE_MS);
   const reported = new Set<TaskLifecycleFailure>();
   const report = (failure: TaskLifecycleFailure) => {
-    // Every dropped contention is inspectable; persistent I/O failures remain
-    // coalesced so diagnostics cannot flood the owning session.
-    if (failure === "write" && reported.has(failure)) return;
+    // Every dropped contention is inspectable; persistent backend/I/O failures
+    // remain coalesced so diagnostics cannot flood the owning session.
+    if (failure !== "contention" && reported.has(failure)) return;
     reported.add(failure);
     try {
       onFailure(failure);
@@ -188,19 +106,39 @@ export function createTaskLifecycleRecorder(
   };
 
   return (record) => {
-    if (!path || !lockPath) return;
+    if (!path) return;
     let fd: number | undefined;
-    let lock: { fd: number; token: string } | undefined;
+    let lock: Flock | undefined;
+    let locked = false;
     try {
-      // The caller supplies the closed, metadata-only lifecycle record.
+      // Resolve before O_CREAT: an unsupported runtime must not leave even an
+      // empty index suggesting that lifecycle records were safely persisted.
+      lock = options.flock ?? resolveFlock();
       const line = Buffer.from(JSON.stringify(record) + "\n");
       if (line.length > 16_384) throw new Error("Lifecycle record exceeds bound");
-      // One nonblocking attempt serializes append and rotation across processes.
-      // Contention is observable and nonfatal; callers never spin or wait.
-      lock = acquireLock(lockPath, write, now(), staleMs);
       fd = openSync(path, constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW, 0o600);
+
+      // The advisory lock is attached to the index's open file description.
+      // No pathname ownership or stale-age decision is involved; the kernel
+      // releases it on close and after SIGKILL/process death.
+      let lockResult: number;
+      try {
+        lockResult = lock(fd, LOCK_EX | LOCK_NB);
+      } catch {
+        throw new LockUnavailableError("Advisory locking failed");
+      }
+      if (lockResult !== 0) throw new LockContentionError("Lifecycle index is busy");
+      locked = true;
+
       const stat = fstatSync(fd);
-      if (!stat.isFile() || stat.nlink !== 1 || (stat.mode & 0o077) !== 0)
+      const current = statSync(path);
+      if (
+        !stat.isFile() ||
+        stat.nlink !== 1 ||
+        stat.dev !== current.dev ||
+        stat.ino !== current.ino ||
+        (stat.mode & 0o077) !== 0
+      )
         throw new Error("Unprotected lifecycle index");
       let offset = stat.size;
       if (offset + line.length > TASK_LIFECYCLE_MAX_BYTES) {
@@ -215,13 +153,23 @@ export function createTaskLifecycleRecorder(
       writeAll(write, fd, line, offset);
       fsyncSync(fd);
     } catch (error) {
-      report(error instanceof LockContentionError ? "contention" : "write");
+      report(
+        error instanceof LockContentionError
+          ? "contention"
+          : error instanceof LockUnavailableError
+            ? "locking"
+            : "write",
+      );
     } finally {
-      if (fd !== undefined)
+      if (fd !== undefined) {
+        if (locked && lock)
+          try {
+            lock(fd, LOCK_UN);
+          } catch {}
         try {
           closeSync(fd);
         } catch {}
-      if (lock) releaseLock(lockPath, lock);
+      }
     }
   };
 }
