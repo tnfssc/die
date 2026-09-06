@@ -101,7 +101,7 @@ function load(depth = 0, type?: string, options: any = {}) {
     options,
   );
   const fire = async (event: string, ...args: any[]) => {
-    let result;
+    let result: any;
     for (const h of handlers.get(event) ?? []) result = await h(...args);
     return result;
   };
@@ -426,6 +426,34 @@ test("unreadable child metadata fails closed", async () => {
   const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
   expect(result.systemPrompt).toContain("Delegation is disabled");
   expect(result.systemPrompt).not.toContain("main agent in");
+});
+
+test("malformed trailing branch entry fails closed instead of retaining root privileges", async () => {
+  const e = load();
+  const entries: any[] = [{ type: "custom", customType: "die-agent", data: { type: "orchestrator", depth: 1 } }];
+  const ctx = contextFixture({ entries });
+  await e.fire("session_start", {}, ctx);
+  entries.push(null);
+  const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
+  expect(result.systemPrompt).toContain("You are a normal sub-agent");
+  expect(result.systemPrompt).toContain("Delegation is disabled");
+  await e.fire("session_shutdown", {}, ctx);
+});
+
+test("throwing identity data getter fails closed", async () => {
+  const marker = { type: "custom", customType: "die-agent" } as Record<string, unknown>;
+  Object.defineProperty(marker, "data", {
+    get: () => {
+      throw new Error("hostile");
+    },
+  });
+  const e = load();
+  const ctx = contextFixture({ entries: [marker] });
+  await e.fire("session_start", {}, ctx);
+  const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
+  expect(result.systemPrompt).toContain("You are a normal sub-agent");
+  expect(result.systemPrompt).toContain("Delegation is disabled");
+  await e.fire("session_shutdown", {}, ctx);
 });
 
 test("shutdown persists every shell ownership cause without duplicating inspect content", async () => {
