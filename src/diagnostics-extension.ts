@@ -64,7 +64,7 @@ export function registerOperationDiagnostics(pi: ExtensionAPI): void {
         if (owner !== capturedOwner || activeSessionId !== capturedSessionId) return;
         if (sessionId(capturedOwner) !== capturedSessionId) return;
         const restoreLeaf = leafRestorer(capturedOwner as SessionLike);
-        if (!restoreLeaf) return;
+        if (!restoreLeaf) throw new Error("Diagnostic persistence requires a restorable session leaf");
         try {
           pi.appendEntry(type, data);
         } finally {

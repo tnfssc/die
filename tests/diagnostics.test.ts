@@ -239,7 +239,7 @@ test("extension refuses persistence when the active leaf cannot be restored", ()
   handlers.session_start({}, { sessionManager: manager });
   recordDiagnostic(manager, valid);
   expect(appends).toBe(0);
-  expect(inspectDiagnostics(manager)).toMatchObject({ writeFailures: 0, accepted: 1 });
+  expect(inspectDiagnostics(manager)).toMatchObject({ writeFailures: 1, dropped: 1, accepted: 1 });
 });
 
 test("actual SDK keeps the runtime leaf stable and reopened diagnostics context-transparent", async () => {
