@@ -1,4 +1,4 @@
-import { ModelRuntime, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { lazyStream, type Model } from "@earendil-works/pi-ai";
 
@@ -162,40 +162,80 @@ type RequestAuthorization = {
   sessionId: string;
   provider: string;
   model: string;
-  tier: "default" | "fast" | "priority";
   oauth: boolean;
+  tier?: "default" | "fast" | "priority";
   blocked?: string;
 };
 type FastController = {
   context?: ExtensionContext;
   capture(model: Model<any>, sessionId: unknown): RequestAuthorization | undefined;
 };
+type RuntimeSeam = {
+  streamSimple: (model: Model<any>, context: unknown, options?: Record<string, any>) => unknown;
+  prepareRequest: (model: Model<any>, options?: Record<string, any>) => Promise<any>;
+  isUsingOAuth: (provider: string) => boolean;
+};
+type RuntimePatch = {
+  original: RuntimeSeam["streamSimple"];
+  wrapper: RuntimeSeam["streamSimple"];
+  controllers: Set<FastController>;
+  ownDescriptor?: PropertyDescriptor;
+};
 
-const runtimeControllers = new WeakMap<object, FastController>();
-const PATCHED_RUNTIME = Symbol.for("die.native-fast.runtime-patched");
+const runtimePatches = new WeakMap<object, RuntimePatch>();
+const COMPATIBILITY_ERROR =
+  "Native fast mode is unavailable: pinned Pi 0.85 ModelRuntime compatibility seam is missing.";
 
-/** Pi's extension emitter intentionally catches hook failures. Install a narrow
- * compatibility wrapper around ModelRuntime's final onPayload callback so a
- * rejected authorization cannot reach provider fetch even when a hook throws or
- * a subsequently loaded extension replaces the payload/tier. */
-function installConcreteRequestGuard(): void {
-  const prototype = ModelRuntime.prototype as any;
-  if (prototype[PATCHED_RUNTIME]) return;
-  const original = prototype.streamSimple;
-  Object.defineProperty(prototype, PATCHED_RUNTIME, { value: true });
-  prototype.streamSimple = function (model: Model<any>, context: unknown, options?: Record<string, any>) {
-    const controller = runtimeControllers.get(this);
-    const authorization = controller?.capture(model, options?.sessionId);
-    if (!authorization) return original.call(this, model, context, options);
+/** Pi's extension emitter intentionally catches hook failures. Patch only the
+ * concrete runtime instance owned by this extension context, and restore it
+ * when its last controller detaches. The pinned Pi 0.85 seam is prepareRequest
+ * followed by provider.streamSimple with the final onPayload pipeline. */
+function attachConcreteRequestGuard(runtime: unknown, controller: FastController): string | undefined {
+  if (!record(runtime)) return COMPATIBILITY_ERROR;
+  const seam = runtime as unknown as RuntimeSeam;
+  if (
+    typeof seam.streamSimple !== "function" ||
+    typeof seam.prepareRequest !== "function" ||
+    typeof seam.isUsingOAuth !== "function"
+  )
+    return COMPATIBILITY_ERROR;
+  const existing = runtimePatches.get(runtime);
+  if (existing) {
+    if (seam.streamSimple !== existing.wrapper) return COMPATIBILITY_ERROR;
+    existing.controllers.add(controller);
+    return;
+  }
+  const original = seam.streamSimple;
+  const patch: RuntimePatch = {
+    original,
+    wrapper: original,
+    controllers: new Set([controller]),
+    ownDescriptor: Object.getOwnPropertyDescriptor(runtime, "streamSimple"),
+  };
+  const wrapper: RuntimeSeam["streamSimple"] = function (this: RuntimeSeam, model, context, options) {
+    const authorizations = [...patch.controllers]
+      .map((candidate) => candidate.capture(model, options?.sessionId))
+      .filter((value): value is RequestAuthorization => value !== undefined);
+    if (authorizations.length === 0) return original.call(this, model, context, options);
+    const authorization = authorizations[0];
+    if (authorizations.length !== 1)
+      return lazyStream(model, async () => {
+        throw new Error("Native fast mode found ambiguous request authorization before dispatch.");
+      });
     const priorPayload = options?.onPayload;
     const guardedOptions = {
       ...options,
-      // Supplying the typed option also lets Pi account for priority responses;
-      // the payload guard below remains authoritative for the new API fast alias.
-      serviceTier: authorization.tier,
+      ...(authorization.tier === undefined ? {} : { serviceTier: authorization.tier }),
       onPayload: async (payload: unknown, payloadModel: Model<any>) => {
-        const finalPayload = priorPayload ? await priorPayload(payload, payloadModel) : payload;
         if (authorization.blocked) throw new Error(authorization.blocked);
+        if (authorization.tier === undefined)
+          throw new Error("Native fast mode authorization did not select a provider tier.");
+        if (!record(payload))
+          throw new Error("Native fast mode rejected a non-object provider payload before dispatch.");
+        // Snapshot injection happens before the complete extension hook pipeline.
+        // No hook can cause us to re-read mutable session/model state.
+        payload.service_tier = authorization.tier;
+        const finalPayload = priorPayload ? await priorPayload(payload, payloadModel) : payload;
         if (!record(finalPayload))
           throw new Error("Native fast mode rejected a non-object provider payload before dispatch.");
         if (finalPayload.model !== authorization.model)
@@ -205,19 +245,20 @@ function installConcreteRequestGuard(): void {
         return finalPayload;
       },
     };
-    // Reproduce ModelRuntime's three-line lazy dispatch only for a scoped fast
-    // setting, exposing the already-supported private preparation seam so the
-    // actual provider, endpoint, and resolved auth snapshot are checked before
-    // provider.streamSimple can be invoked.
     return lazyStream(model, async () => {
       const prepared = await this.prepareRequest(model, guardedOptions);
       if (
+        !prepared ||
+        typeof prepared.provider?.streamSimple !== "function" ||
         prepared.provider.id !== authorization.provider ||
-        prepared.model.provider !== authorization.provider ||
-        prepared.model.id !== authorization.model ||
+        prepared.model?.provider !== authorization.provider ||
+        prepared.model?.id !== authorization.model ||
         this.isUsingOAuth(authorization.provider) !== authorization.oauth
       )
         throw new Error("Native fast mode request identity or authentication changed before provider dispatch.");
+      if (authorization.blocked) throw new Error(authorization.blocked);
+      if (authorization.tier === undefined)
+        throw new Error("Native fast mode authorization did not select a provider tier.");
       if (authorization.tier !== "default") {
         const actualSupport = nativeFastSupport(prepared.model);
         if (!actualSupport.supported || actualSupport.tier !== authorization.tier)
@@ -226,8 +267,34 @@ function installConcreteRequestGuard(): void {
       return prepared.provider.streamSimple(prepared.model, context, prepared.options);
     });
   };
+  patch.wrapper = wrapper;
+  try {
+    seam.streamSimple = wrapper;
+  } catch {
+    if (patch.ownDescriptor) Object.defineProperty(runtime, "streamSimple", patch.ownDescriptor);
+    else delete (runtime as { streamSimple?: unknown }).streamSimple;
+    return COMPATIBILITY_ERROR;
+  }
+  if (seam.streamSimple !== wrapper) {
+    if (patch.ownDescriptor) Object.defineProperty(runtime, "streamSimple", patch.ownDescriptor);
+    else delete (runtime as { streamSimple?: unknown }).streamSimple;
+    return COMPATIBILITY_ERROR;
+  }
+  runtimePatches.set(runtime, patch);
 }
-installConcreteRequestGuard();
+
+function detachConcreteRequestGuard(runtime: object, controller: FastController): void {
+  const patch = runtimePatches.get(runtime);
+  if (!patch) return;
+  patch.controllers.delete(controller);
+  if (patch.controllers.size > 0) return;
+  const seam = runtime as unknown as RuntimeSeam;
+  if (seam.streamSimple === patch.wrapper) {
+    if (patch.ownDescriptor) Object.defineProperty(runtime, "streamSimple", patch.ownDescriptor);
+    else delete (runtime as { streamSimple?: unknown }).streamSimple;
+  }
+  runtimePatches.delete(runtime);
+}
 
 export function registerNativeFastMode(pi: ExtensionAPI) {
   let ui: ExtensionContext["ui"] | undefined;
@@ -235,7 +302,8 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
   const controller: FastController = {
     capture(model, requestedSessionId) {
       const ctx = controller.context;
-      if (!ctx || typeof requestedSessionId !== "string") return;
+      if (!ctx || typeof requestedSessionId !== "string" || requestedSessionId !== ctx.sessionManager.getSessionId())
+        return;
       if (standardTierScope.getStore() && officialSurface(model)) {
         return {
           sessionId: requestedSessionId,
@@ -252,7 +320,6 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
           sessionId: requestedSessionId,
           provider: model.provider,
           model: model.id,
-          tier: "default",
           oauth: ctx.modelRegistry.isUsingOAuth(model),
           blocked: "Native fast mode rejected a malformed or unsupported authorization record before dispatch.",
         };
@@ -283,19 +350,19 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
         sessionId: requestedSessionId,
         provider: model.provider,
         model: model.id,
-        tier: support.supported ? support.tier : "default",
+        ...(blocked ? {} : { tier: support.supported ? support.tier : undefined }),
         oauth: ctx.modelRegistry.isUsingOAuth(model),
         ...(blocked ? { blocked } : {}),
       };
     },
   };
   let boundRuntime: object | undefined;
-  const bindContext = (ctx: ExtensionContext) => {
+  const bindContext = (ctx: ExtensionContext): string | undefined => {
     controller.context = ctx;
     const runtime = (ctx.modelRegistry as unknown as { runtime?: object }).runtime;
-    if (boundRuntime && boundRuntime !== runtime) runtimeControllers.delete(boundRuntime);
+    if (boundRuntime && boundRuntime !== runtime) detachConcreteRequestGuard(boundRuntime, controller);
     boundRuntime = runtime;
-    if (runtime) runtimeControllers.set(runtime, controller);
+    return attachConcreteRequestGuard(runtime, controller);
   };
   pi.registerFlag("accept-cost", {
     type: "boolean",
@@ -319,7 +386,7 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
       return ["on", "off", "status"].filter((item) => item.startsWith(value)).map((value) => ({ value, label: value }));
     },
     handler: async (args, ctx) => {
-      bindContext(ctx);
+      const compatibilityError = bindContext(ctx);
       const action = args.trim().toLowerCase() || "status";
       if (action === "status") {
         const active = currentSetting(ctx);
@@ -358,6 +425,10 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
       }
       if (action === "on" && !support.supported) {
         ctx.ui.notify(support.reason, "error");
+        return;
+      }
+      if (action === "on" && compatibilityError) {
+        ctx.ui.notify(compatibilityError, "error");
         return;
       }
       if (action === "on") {
@@ -433,46 +504,11 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
     },
   });
 
-  // This hook requests the tier for direct provider users. ModelRuntime's final
-  // payload wrapper independently validates it after every extension hook; this
-  // hook never relies on a swallowed exception for safety.
-  pi.on("before_provider_request", (event, ctx) => {
-    bindContext(ctx);
-    const model = ctx.model;
-    if (!model || !record(event.payload)) {
-      return;
-    }
-    if (standardTierScope.getStore()) {
-      if (officialSurface(model)) event.payload.service_tier = "default";
-      return event.payload;
-    }
-    const found = resolveSetting(ctx, model);
-    if (found.kind === "absent") {
-      return;
-    }
-    if (found.kind === "invalid") {
-      if (officialSurface(model)) event.payload.service_tier = "default";
-      refreshStatus(ctx);
-      return event.payload;
-    }
-    const active = found.value;
-    if (!active.enabled) {
-      if (officialSurface(model)) event.payload.service_tier = "default";
-      return event.payload;
-    }
-    const support = nativeFastSupport(model);
-    if (!active.costAcknowledged || !support.supported || !authSurfaceMatches(ctx, support.surface, model)) {
-      event.payload.service_tier = "default";
-      return event.payload;
-    }
-    event.payload.service_tier = support.tier;
-    evidence = "requested";
-    refreshStatus(ctx);
-    return event.payload;
-  });
   pi.on("session_start", (_event, ctx) => {
     evidence = "requested";
+    const compatibilityError = bindContext(ctx);
     refreshStatus(ctx);
+    if (currentSetting(ctx)?.enabled && compatibilityError) ctx.ui.notify(compatibilityError, "error");
   });
   pi.on("model_select", (_event, ctx) => {
     evidence = "requested";
@@ -480,7 +516,7 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
   });
   pi.on("session_shutdown", () => {
     ui?.setStatus("die-native-fast", undefined);
-    if (boundRuntime) runtimeControllers.delete(boundRuntime);
+    if (boundRuntime) detachConcreteRequestGuard(boundRuntime, controller);
     boundRuntime = undefined;
     controller.context = undefined;
     ui = undefined;

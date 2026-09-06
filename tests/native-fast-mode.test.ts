@@ -42,10 +42,27 @@ function harness(
       entries.push({ type: "custom", customType, data });
     },
   } as any;
+  const runtime = {
+    isUsingOAuth: (provider: string) => provider === "openai-codex",
+    async prepareRequest(requestModel: any, requestOptions: any) {
+      return {
+        provider: {
+          id: requestModel.provider,
+          streamSimple: requestModel.provider === "openai-codex" ? codex.streamSimple : openai.streamSimple,
+        },
+        model: requestModel,
+        options: requestOptions,
+      };
+    },
+    streamSimple(model: any, context: any, requestOptions: any) {
+      const api = model.provider === "openai-codex" ? codex : openai;
+      return api.streamSimple(model, context, requestOptions);
+    },
+  };
   const ctx = {
     mode: options.mode ?? "tui",
     model,
-    modelRegistry: { isUsingOAuth: (value: any) => value.provider === "openai-codex" },
+    modelRegistry: { runtime, isUsingOAuth: (value: any) => value.provider === "openai-codex" },
     sessionManager: {
       getSessionId: () => options.sessionId ?? "session-a",
       getBranch: () => entries,
@@ -63,7 +80,7 @@ function harness(
     for (const handler of hooks.get(name) ?? []) value = await handler(event, ctx);
     return value;
   };
-  return { command, ctx, entries, notices, statuses, emit };
+  return { command, ctx, entries, notices, statuses, emit, runtime };
 }
 
 function sse(serviceTier: string) {
@@ -77,6 +94,40 @@ function sse(serviceTier: string) {
     status: 200,
     headers: { "content-type": "text/event-stream" },
   });
+}
+
+const CODEX_TOKEN = [
+  Buffer.from("{}").toString("base64url"),
+  Buffer.from(JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acct" } })).toString("base64url"),
+  "x",
+].join(".");
+
+async function wirePayload(
+  h: ReturnType<typeof harness>,
+  model = h.ctx.model,
+  options: { onPayload?: (payload: any) => any; sessionId?: string } = {},
+): Promise<any> {
+  let body: any;
+  await h.runtime
+    .streamSimple(
+      model,
+      { systemPrompt: "sys", messages: [{ role: "user", content: "hi", timestamp: 1 }], tools: [] },
+      {
+        apiKey: model.provider === "openai-codex" ? CODEX_TOKEN : "offline-key",
+        transport: "sse",
+        sessionId: options.sessionId ?? h.ctx.sessionManager.getSessionId(),
+        onPayload: options.onPayload,
+        fetch: (async (_url: any, init: any) => {
+          const bytes = Buffer.from(await new Response(init.body).arrayBuffer());
+          body = JSON.parse(
+            init.headers.get("content-encoding") === "zstd" ? zstdDecompressSync(bytes).toString() : bytes.toString(),
+          );
+          return sse(model.provider === "openai-codex" ? "priority" : "fast");
+        }) as typeof fetch,
+      },
+    )
+    .result();
+  return body;
 }
 
 test("exact provider/model/auth allowlist rejects lookalikes before dispatch", () => {
@@ -111,7 +162,6 @@ test("/fast is safe status; on requires consent and state is session/model/branc
   const model = getModel("openai-codex", "gpt-5.6-luna")!;
   const h = harness(model, { mode: "print", accept: false });
   await h.command.handler("", h.ctx);
-  expect(h.entries).toEqual([]);
   expect(h.notices.at(-1).message).toContain("no model-bound setting");
   await h.command.handler("on", h.ctx);
   expect(h.entries).toEqual([]);
@@ -119,21 +169,41 @@ test("/fast is safe status; on requires consent and state is session/model/branc
 
   const accepted = harness(model, { mode: "print", accept: true });
   await accepted.command.handler("on", accepted.ctx);
-  expect(accepted.entries[0].customType).toBe(NATIVE_FAST_ENTRY);
-  expect(accepted.entries[0].data).toMatchObject({ enabled: true, costAcknowledged: true, model: "gpt-5.6-luna" });
-  const payload: any = { model: model.id, input: [] };
-  await accepted.emit("before_provider_request", { payload });
-  expect(payload.service_tier).toBe("priority");
+  expect(accepted.entries[0].data).toMatchObject({ enabled: true, costAcknowledged: true, model: model.id });
+  expect((await wirePayload(accepted)).service_tier).toBe("priority");
 
   accepted.ctx.model = getModel("openai-codex", "gpt-5.5")!;
-  const changed: any = {};
-  await accepted.emit("before_provider_request", { payload: changed });
-  expect(changed.service_tier).toBeUndefined();
+  expect((await wirePayload(accepted)).service_tier).toBeUndefined();
   accepted.ctx.model = model;
   accepted.ctx.sessionManager.getSessionId = () => "new-child-session";
-  const child: any = {};
-  await accepted.emit("before_provider_request", { payload: child });
-  expect(child.service_tier).toBeUndefined();
+  expect((await wirePayload(accepted)).service_tier).toBeUndefined();
+});
+
+test("enabling and restoring fast fail visibly without the pinned runtime seam", async () => {
+  const model = getModel("openai", "gpt-5.3-codex")!;
+  const h = harness(model, { mode: "print", accept: true });
+  h.ctx.modelRegistry.runtime = undefined;
+  await h.command.handler("on", h.ctx);
+  expect(h.entries).toEqual([]);
+  expect(h.notices.at(-1)).toMatchObject({ kind: "error" });
+  expect(h.notices.at(-1).message).toContain("pinned Pi 0.85");
+
+  h.entries.push({
+    type: "custom",
+    customType: NATIVE_FAST_ENTRY,
+    data: {
+      version: 1,
+      sessionId: "session-a",
+      provider: model.provider,
+      model: model.id,
+      enabled: true,
+      costAcknowledged: true,
+      timestamp: 1,
+    },
+  });
+  await h.emit("session_start");
+  expect(h.notices.at(-1)).toMatchObject({ kind: "error" });
+  expect(h.notices.at(-1).message).toContain("compatibility seam is missing");
 });
 
 test("consent is rejected if session, branch, or model changes while confirmation is open", async () => {
@@ -152,84 +222,32 @@ test("consent is rejected if session, branch, or model changes while confirmatio
   expect(h.notices.at(-1).message).toContain("became stale");
 });
 
-test("restored records require an explicit cost acknowledgement", async () => {
-  const model = getModel("openai-codex", "gpt-5.5")!;
-  const h = harness(model);
-  h.entries.push({
-    type: "custom",
-    customType: NATIVE_FAST_ENTRY,
-    data: {
-      version: 1,
-      sessionId: "session-a",
-      provider: model.provider,
-      model: model.id,
-      enabled: true,
-      costAcknowledged: false,
-      timestamp: 1,
-    },
-  });
-  const payload: any = { model: model.id };
-  await expect(h.emit("before_provider_request", { payload })).resolves.toBe(payload);
-  expect(payload.service_tier).toBe("default");
-});
-
-test("newest matching malformed record fails closed instead of restoring an older grant", async () => {
-  const model = getModel("openai-codex", "gpt-5.5")!;
-  const h = harness(model);
-  const identity = { sessionId: "session-a", provider: model.provider, model: model.id };
-  h.entries.push(
-    {
-      type: "custom",
-      customType: NATIVE_FAST_ENTRY,
-      data: { version: 1, ...identity, enabled: true, costAcknowledged: true, timestamp: 1 },
-    },
-    {
-      type: "custom",
-      customType: NATIVE_FAST_ENTRY,
-      data: { version: 99, ...identity, enabled: true, costAcknowledged: true, timestamp: Number.POSITIVE_INFINITY },
-    },
-  );
-  const payload: any = { model: model.id, service_tier: "priority" };
-  await h.emit("before_provider_request", { payload });
-  expect(payload.service_tier).toBe("default");
-  expect(h.statuses.at(-1)?.value).toBeUndefined();
-});
-
-test("compaction forces default before capture and releases its session scope", async () => {
-  const model = getModel("openai-codex", "gpt-5.5")!;
+test("compaction snapshot is request-local and explicit off affects only later requests", async () => {
+  const model = getModel("openai", "gpt-5.3-codex")!;
   const h = harness(model, { mode: "print", accept: true });
   await h.command.handler("on", h.ctx);
-  const compacted: any = {};
-  await withStandardProviderTier(h.ctx.sessionManager, () => h.emit("before_provider_request", { payload: compacted }));
-  expect(compacted.service_tier).toBe("default");
-  const ordinary: any = {};
-  await h.emit("before_provider_request", { payload: ordinary });
-  expect(ordinary.service_tier).toBe("priority");
+  expect((await withStandardProviderTier(h.ctx.sessionManager, () => wirePayload(h))).service_tier).toBe("default");
+  expect((await wirePayload(h)).service_tier).toBe("fast");
 
   let release!: () => void;
-  const concurrentCompaction: any = {};
   const scoped = withStandardProviderTier(h.ctx.sessionManager, async () => {
     await new Promise<void>((resolve) => (release = resolve));
-    await h.emit("before_provider_request", { payload: concurrentCompaction });
+    return wirePayload(h);
   });
-  const concurrentOrdinary: any = {};
-  await h.emit("before_provider_request", { payload: concurrentOrdinary });
-  expect(concurrentOrdinary.service_tier).toBe("priority");
+  expect((await wirePayload(h)).service_tier).toBe("fast");
   release();
-  await scoped;
-  expect(concurrentCompaction.service_tier).toBe("default");
-});
+  expect((await scoped).service_tier).toBe("default");
 
-test("explicit off emits default without changing untouched provider defaults", async () => {
-  const model = getModel("openai", "gpt-5.3-codex")!;
+  await h.command.handler("off", h.ctx);
+  expect((await wirePayload(h)).service_tier).toBe("default");
   const untouched = harness(model);
-  const first: any = { service_tier: "project-custom" };
-  await untouched.emit("before_provider_request", { payload: first });
-  expect(first.service_tier).toBe("project-custom");
-  await untouched.command.handler("off", untouched.ctx);
-  const optedOut: any = { service_tier: "project-custom" };
-  await untouched.emit("before_provider_request", { payload: optedOut });
-  expect(optedOut.service_tier).toBe("default");
+  expect(
+    (
+      await wirePayload(untouched, model, {
+        onPayload: (payload) => ({ ...payload, service_tier: "project-custom" }),
+      })
+    ).service_tier,
+  ).toBe("project-custom");
 });
 
 test("actual Pi streamSimple OpenAI serialization carries injected fast tier", async () => {
@@ -237,7 +255,7 @@ test("actual Pi streamSimple OpenAI serialization carries injected fast tier", a
   const h = harness(model, { mode: "print", accept: true });
   await h.command.handler("on", h.ctx);
   let body: any;
-  const result = await openai
+  const result = await h.runtime
     .streamSimple(
       model,
       { systemPrompt: "sys", messages: [{ role: "user", content: "hi", timestamp: 1 }], tools: [] },
@@ -248,7 +266,7 @@ test("actual Pi streamSimple OpenAI serialization carries injected fast tier", a
           body = JSON.parse(init.body);
           return sse("fast");
         }) as typeof fetch,
-        onPayload: async (payload) => h.emit("before_provider_request", { payload }),
+        sessionId: "session-a",
       },
     )
     .result();
@@ -270,7 +288,7 @@ test("actual Pi streamSimple Codex SSE serialization carries priority and preser
     ),
     "x",
   ].join(".");
-  await codex
+  await h.runtime
     .streamSimple(
       model,
       { systemPrompt: "keep-system", messages: [{ role: "user", content: "hi", timestamp: 1 }], tools: [] },
@@ -285,7 +303,7 @@ test("actual Pi streamSimple Codex SSE serialization carries priority and preser
           );
           return sse("priority");
         }) as typeof fetch,
-        onPayload: async (payload) => h.emit("before_provider_request", { payload }),
+        sessionId: "session-a",
       },
     )
     .result();
@@ -335,14 +353,14 @@ test("actual Pi streamSimple Codex WebSocket frame carries priority", async () =
       ),
       "x",
     ].join(".");
-    const response = await codex
+    const response = await h.runtime
       .streamSimple(
         model,
         { systemPrompt: "ws-system", messages: [{ role: "user", content: "hi", timestamp: 1 }], tools: [] },
         {
           apiKey: token,
           transport: "websocket",
-          onPayload: async (payload) => h.emit("before_provider_request", { payload }),
+          sessionId: "session-a",
         },
       )
       .result();
@@ -350,6 +368,87 @@ test("actual Pi streamSimple Codex WebSocket frame carries priority", async () =
     expect(frame).toMatchObject({ type: "response.create", service_tier: "priority", instructions: "ws-system" });
   } finally {
     globalThis.WebSocket = original;
+  }
+});
+
+test("actual ModelRuntime request snapshot ignores model changes during delayed auth preparation", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-fast-snapshot-"));
+  const originalFetch = globalThis.fetch;
+  try {
+    const base = getModel("openai", "gpt-5.3-codex")!;
+    const other = { ...base, id: "gpt-6-astra" };
+    for (const authorizedModel of [other, base]) {
+      const runtime = await ModelRuntime.create({
+        authPath: join(dir, authorizedModel.id + ".json"),
+        modelsPath: null,
+        refreshOnCreate: false,
+      });
+      runtime.isUsingOAuth = () => false;
+      let release!: () => void;
+      runtime.getAuth = (async () => {
+        await new Promise<void>((resolve) => (release = resolve));
+        return { auth: { apiKey: "offline-key" } };
+      }) as any;
+      const entries: any[] = [
+        {
+          type: "custom",
+          customType: NATIVE_FAST_ENTRY,
+          data: {
+            version: 1,
+            sessionId: "session-a",
+            provider: authorizedModel.provider,
+            model: authorizedModel.id,
+            enabled: true,
+            costAcknowledged: true,
+            timestamp: 1,
+          },
+        },
+      ];
+      const hooks = new Map<string, any[]>();
+      const pi = {
+        registerFlag() {},
+        getFlag: () => false,
+        registerCommand() {},
+        on(name: string, handler: any) {
+          hooks.set(name, [...(hooks.get(name) ?? []), handler]);
+        },
+        appendEntry() {},
+      } as any;
+      const ctx = {
+        model: base,
+        modelRegistry: { runtime, isUsingOAuth: () => false },
+        sessionManager: {
+          getSessionId: () => "session-a",
+          getBranch: () => entries,
+          getEntries: () => entries,
+        },
+        ui: { notify() {}, setStatus() {} },
+      } as any;
+      registerNativeFastMode(pi);
+      for (const handler of hooks.get("session_start") ?? []) await handler({}, ctx);
+      let body: any;
+      globalThis.fetch = (async (_url: any, init: any) => {
+        body = JSON.parse(init.body);
+        return sse(authorizedModel === base ? "fast" : "default");
+      }) as typeof fetch;
+      const pending = runtime
+        .streamSimple(
+          base,
+          { systemPrompt: "sys", messages: [{ role: "user", content: "hi", timestamp: 1 }], tools: [] },
+          { sessionId: "session-a", onPayload: async (payload) => payload },
+        )
+        .result();
+      while (!release) await Promise.resolve();
+      ctx.model = other;
+      release();
+      await pending;
+      expect(body.model).toBe(base.id);
+      expect(body.service_tier).toBe(authorizedModel === base ? "fast" : undefined);
+      for (const handler of hooks.get("session_shutdown") ?? []) await handler({}, ctx);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
