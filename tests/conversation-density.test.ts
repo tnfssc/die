@@ -261,4 +261,22 @@ describe("native conversation density adapter", () => {
     expect(chat.handleMouse({ ...event, y: 8, screenY: 8 })?.handled).toBe(true);
     expect(assistantHits).toEqual([{ y: 1, height: 2 }]);
   });
+  test("foreign render chains stop applying density after disposal", () => {
+    const restore = installConversationDensity();
+    const chat = new Container();
+    const message = assistant("answer");
+    const nativeRender = message.render;
+    add(chat, new UserMessageComponent("question"), message);
+    const denseRender = message.render;
+    const foreign = (width: number) => denseRender.call(message, width);
+    message.render = foreign;
+    try {
+      expect(plain(message.render(80))).toEqual([" answer"]);
+      restore();
+      expect(message.render).toBe(foreign);
+      expect(message.render(80)).toEqual(nativeRender.call(message, 80));
+    } finally {
+      restore();
+    }
+  });
 });

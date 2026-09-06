@@ -180,6 +180,10 @@ export function installConversationDensity(): () => void {
     let restoration: Restoration;
     function denseRender(this: RenderComponent, width: number): string[] {
       const lines = originalRender.call(this, width);
+      if (!active) {
+        restoration.collapsed = false;
+        return lines;
+      }
       const parent = parentReference.deref();
       const index = parent ? parentIndexes.get(parent)?.get(this) : undefined;
       let collapsed = false;
@@ -197,7 +201,7 @@ export function installConversationDensity(): () => void {
       return collapsed ? lines.slice(1) : lines;
     }
     function denseMouse(this: RenderComponent, event: TuiMouseEvent): TuiMouseEventResult | undefined {
-      const offset = restoration.collapsedWidth === event.width && restoration.collapsed ? 1 : 0;
+      const offset = active && restoration.collapsedWidth === event.width && restoration.collapsed ? 1 : 0;
       return originalMouse.call(
         this,
         offset ? { ...event, y: event.y + offset, height: event.height + offset } : event,
