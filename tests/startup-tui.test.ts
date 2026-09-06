@@ -69,6 +69,7 @@ test("quiet startup hides Pi promotion and skill inventory without disabling ski
     expect(startupFrame).not.toContain("[Skills]");
     expect(startupFrame).not.toContain("Pi can explain its own features");
     expect(startupFrame).not.toContain("Ask it how to use or extend Pi");
+    expect(startupFrame).toContain("");
 
     // Startup paints before all command bindings are ready.
     await Bun.sleep(500);
