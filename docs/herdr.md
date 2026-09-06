@@ -1,0 +1,9 @@
+# Herdr integration
+
+When Herdr launches the root interactive pane with HERDR_ENV=1, HERDR_SOCKET_PATH, and HERDR_PANE_ID, die automatically reports that pane's agent lifecycle over Herdr's local socket. No configuration or installed Pi extension is required. Child worker processes (DIE_SUBAGENT_DEPTH greater than zero) and non-UI modes do not report, even if they inherit Herdr's environment.
+
+The implementation in src/herdr-agent-state.ts is an independent, type-safe adaptation of the Herdr-managed Pi integration v6 at ~/.pi/agent/extensions/herdr-agent-state.ts; the managed source is read-only and is not loaded or modified. It preserves pane.report_agent_session, pane.report_agent, and pane.release_agent, monotonic sequence numbers, and session path/ID references. The locally installed Herdr 0.7.5 CLI exposes agent as a free-form label, but Herdr's embedded render/detection identity enum does not include die (it does include pi). Because a native die identity therefore cannot be established end to end, reports conservatively use source herdr:die with compatible agent identity pi until Herdr documents native die support.
+
+State follows Pi's emitted lifecycle rather than polling background processes: agent_start reports working; agent_settled reports idle only when ctx.isIdle() is true; blocking UI prompts and herdr:blocked custom events report blocked. A background job by itself does not keep Pi's agent loop active, so the pane may be idle while such a job runs. A completion that starts another agent run reports working through the normal event. Session reload/new/resume/fork replaces reporting authority without releasing the pane; only a quit shutdown releases it.
+
+Socket failures are silent and nonfatal. Requests use short bounded timeouts, one retry, and coalesce pending state, so an absent or unresponsive Herdr socket does not block startup.
