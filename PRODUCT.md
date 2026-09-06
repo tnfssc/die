@@ -300,12 +300,12 @@ Status: user-approved direction, not implemented. Goal mode prevents accidental 
 - Possible design: a lazy persistent worker per agent, explicit state storage, reset controls, memory visibility, and continued availability of isolated execution. These are proposals, not settled requirements.
 - Benchmark isolated versus persistent execution under controlled load before choosing a direction.
 
-## Shelved idea — Project-local memory
+## Project-local memory
 
 - Revisit a simple, lightly structured filesystem for project-local agent notes under .agents/notes/.
 - Candidate structure: nested topic directories with small index.md files describing immediate children; focused Markdown notes, read selectively by following relevant branches.
 - Keep the concept filesystem-based; a database, search service, or dedicated memory tools are not the requested direction.
-- This is shelved for later discussion. The structure and prompt guidance are not finalized; do not implement it yet.
+- Implementation is authorized as an opt-in filesystem extension; see `docs/project-memory.md`. Central registration and automatic trigger/cost policy remain explicit integration choices.
 
 ### Recorded direction — Conditional memory consolidation
 
@@ -314,7 +314,8 @@ Status: user-approved direction, not implemented. Goal mode prevents accidental 
 - Fold notes into the existing memory rather than creating a separate memory system or endlessly appending summaries. Permit rewriting and reorganizing memory to remove duplication and reconcile outdated information, decisions, and risk assessments.
 - Mark source notes consumed only after the consolidated memory has been saved successfully; failed consolidation must leave notes available for retry.
 - Memory maintenance does not grant new permissions or override user constraints.
-- This records the agreed direction only, not implementation authorization. The precise end-of-run trigger, note format, concurrency/retry handling, and worker profile remain to be designed.
+- Initial trigger: explicit `/memory consolidate fast|normal --constraints <text>` consent while the session still owns managed work. No automatic consolidation on assistant turns, settled events, job completion, or shutdown. Empty pending notes must remain a zero-model-call path.
+- Automatic assignment-completion triggering and persistent profile/cost consent are not enabled. Assistant-turn completion is not assignment completion. See `docs/project-memory.md` for storage, retry, safety boundaries, and integration.
 
 
 ## Post-baseline — Combined session cost
@@ -575,3 +576,5 @@ Published v0.2.2 at 18f81f5fc57eb4e99f0a84363493485a3134dc87: https://github.com
 User authorized v0.2.3 release and installation for the shell-only default foreground wait increase to 3 seconds; subagent wait remains 1 second and execution deadlines/explicit waits are unchanged. Frozen install, format, lint, typecheck, build, full tests, smoke and tag validation passed (/tmp/die-v023-final-tests.log). Initial /tmp/die-v023-tests.log retained one stale prompt wording assertion, corrected to check both defaults. No dependency changes or paid probes. Publication and verified-artifact installation follow; existing tags remain immutable.
 
 Published and installed v0.2.3 from immutable commit 22fb0c8fb176c1940bd58850dd58eae5ac7649d2. Release run 34065824323 passed; published Linux x64 checksum, SOURCE commit and version verified. Installed atomically at /home/tnfssc/.local/bin/die with rollback at /home/tnfssc/.local/state/die/backups/pre-v0.2.3-1788736010727/die. Final local suite: 478 pass, 14 skip, 0 fail, 3032 assertions. Restart required for existing processes to adopt the new default.
+
+Project-memory implementation is isolated behind `registerProjectMemory` in `src/memory/extension.ts`; central registration remains pending. Explicit profile/constraint consent, managed job reconciliation, project-wide cooperative exclusion, saved-file hash receipts and content-addressed source consumption are covered by 26 focused tests. Final deterministic gate: 504 pass, 14 skip, 0 fail (`/tmp/die-memory-tests-trusted.log`); build, typecheck, format, lint and smoke passed. Initial full-suite log `/tmp/die-memory-tests.log` retains six unrelated exact-output failures from worktree-local mise trust warnings; rerun used scoped `MISE_TRUSTED_CONFIG_PATHS` without global trust changes. No live consolidation/model probes, release, dependency changes or central task-extension edits. Automatic assignment-completion triggering and persistent cost consent remain unenabled user choices.
