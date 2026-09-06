@@ -105,8 +105,9 @@ await jobs.stop("task_id");
 - shell(command, options?) accepts waitSeconds, timeoutSeconds, and closeInput.
 - subagent({type?, prompt, waitSeconds?, timeoutSeconds?}) selects a configured profile.
   prompts: string[] is supported instead of prompt and returns an array of jobs.
-- Both launches wait up to **1 second by default**. A completed job returns
-  background: false plus status, exitCode, and output, without a duplicate notification.
+- Shell launches wait up to **3 seconds by default**; sub-agent launches wait up to
+  **1 second by default**. A completed job returns background: false plus status,
+  exitCode, and output, without a duplicate notification.
   Otherwise background: true returns its id and completion is delivered automatically later.
 - waitSeconds: 0 backgrounds immediately. waitSeconds supports 0–86400;
   timeoutSeconds supports 0.1–86400 and independently limits job execution.
@@ -262,8 +263,8 @@ its own history later. Moving/deleting session files can break attribution.
 
 ## Background interaction
 
-Short foreground budgets—one second by default, or zero—preserve the user’s
-ability to redirect work. A longer wait deliberately holds the conversation even
+Short foreground budgets—three seconds by default for shell commands, one second
+for sub-agents, or zero—preserve the user’s ability to redirect work. A longer wait deliberately holds the conversation even
 if the script reads other files concurrently. `shell()` gives ordinary commands
 session ownership so progress can continue after the current turn ends.
 

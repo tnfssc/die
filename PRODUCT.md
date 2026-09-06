@@ -277,7 +277,7 @@ Status: user-approved direction, not implemented. Goal mode prevents accidental 
 
 ### Short foreground wait with background fallback
 
-- Shell commands and sub-agent launches start as managed jobs and wait up to one second by default.
+- Shell commands and sub-agent launches start as managed jobs. Shell commands wait up to three seconds by default; sub-agents wait up to one second by default.
 - Expose waitSeconds: zero returns immediately in the background; larger values allow a longer foreground wait.
 - If work finishes within the wait window, return its result directly in the execute call without a separate completion notification.
 - If it remains running, return its job ID and deliver automatic completion later.
@@ -571,3 +571,5 @@ User authorized the observability fixes and v0.2.2 release. Added bounded reason
 Final v0.2.2 gate passed on the stable eabcadf implementation: frozen install, format/lint/typecheck, compiled build, full tests (/tmp/die-v022-final-tests.log), smoke and version/tag validation. State review adds real SDK zero-dispatch carry-failure guard, session-scoped failure state, active-leaf rollback after append-then-throw, failed fast opt-out suppression and fresh-consent recovery, plus native credential/HTTP stale-session rejection. The intermediate /tmp/die-v022-tests.log (477 pass/14 skip/1 fail) ran while the recovery test was added after its implementation module had loaded; the final stable-tree rerun passed. Failed persistence is not claimed disk-atomic; off-branch diagnostic records may be the physical reopened leaf without changing conversational/fast/shake context, verified with real SDK.
 
 Published v0.2.2 at 18f81f5fc57eb4e99f0a84363493485a3134dc87: https://github.com/tnfssc/die/releases/tag/v0.2.2. Release run 34064686915 and CI runs 34064687250/34064686920 all passed. Published Linux x64 artifact checksum, SOURCE commit and version 0.2.2 verified in /tmp/die-v022-published. Final deterministic gate: 478 pass/14 skip/0 fail, 3031 assertions, 74 files. Existing published tags remain unchanged; installed executable remains v0.2.1 (this request authorized another release, not another installation).
+
+User authorized v0.2.3 release and installation for the shell-only default foreground wait increase to 3 seconds; subagent wait remains 1 second and execution deadlines/explicit waits are unchanged. Frozen install, format, lint, typecheck, build, full tests, smoke and tag validation passed (/tmp/die-v023-final-tests.log). Initial /tmp/die-v023-tests.log retained one stale prompt wording assertion, corrected to check both defaults. No dependency changes or paid probes. Publication and verified-artifact installation follow; existing tags remain immutable.

@@ -24,8 +24,9 @@ test("working values frame the agent separately from tool reference", () => {
     expect(workingValues.some((line) => line.startsWith(value))).toBe(true);
   const reference = executeReference.join("\n");
   for (const fact of [
-    "1 second",
-    "0 for immediate handoff",
+    "shell defaults to 3 seconds",
+    "subagent to 1 second",
+    "0 gives immediate handoff",
     "background:true",
     "background:false",
     "jobs.stop",

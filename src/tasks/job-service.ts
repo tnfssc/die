@@ -146,7 +146,7 @@ export class JobService {
           notifyOnComplete: false,
         });
         this.changed();
-        const result = await this.manager.foreground(task.id, (params.waitSeconds ?? 1) * 1000, signal);
+        const result = await this.manager.foreground(task.id, (params.waitSeconds ?? 3) * 1000, signal);
         this.changed();
         return preview(result);
       }

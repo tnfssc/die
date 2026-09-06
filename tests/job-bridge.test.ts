@@ -149,7 +149,7 @@ test("bridge budgets reject oversized messages without corrupting subsequent cal
   expect(result.stdout).toContain("still works");
 });
 
-test("default foreground budget is one second; zero wait returns promptly; timeout is independent", async () => {
+test("shell defaults to a three-second foreground budget; zero wait and timeout stay independent", async () => {
   const notifications: any[] = [];
   const manager = new TaskManager((t) => notifications.push(t));
   const service = new JobService(
@@ -168,8 +168,8 @@ test("default foreground budget is one second; zero wait returns promptly; timeo
     const elapsed = Date.now() - started;
     expect(normal.exitCode).toBe(0);
     expect(JSON.parse(normal.stdout).background).toBe(true);
-    expect(elapsed).toBeGreaterThanOrEqual(900);
-    expect(elapsed).toBeLessThan(3000);
+    expect(elapsed).toBeGreaterThanOrEqual(2900);
+    expect(elapsed).toBeLessThan(4900);
     started = Date.now();
     const immediate = await execute('console.log(JSON.stringify(await shell("read value", {waitSeconds:0})))');
     expect(immediate.exitCode).toBe(0);
