@@ -517,20 +517,36 @@ function nativeFallbackCode(
   if (!coversDiscardedMessages(request, event)) return "coverage_incomplete";
 }
 
+function restoreLeaf(manager: ExtensionContext["sessionManager"], priorLeaf: string | null | undefined): void {
+  if (priorLeaf === undefined) return;
+  try {
+    const mutable = manager as unknown as { resetLeaf?: () => void; branch?: (id: string) => void };
+    if (priorLeaf === null) mutable.resetLeaf?.();
+    else mutable.branch?.(priorLeaf);
+  } catch {
+    // The owning operation remains conservative if restoring the view fails.
+  }
+}
+
 function bestEffortDiagnostic(ctx: ExtensionContext, diagnostic: Parameters<typeof recordDiagnostic>[1]): void {
+  const priorLeaf = ctx.sessionManager.getLeafId();
   try {
     recordDiagnostic(ctx.sessionManager, diagnostic);
-  } catch {}
+  } catch {
+    // Diagnostics are observational.
+  } finally {
+    restoreLeaf(ctx.sessionManager, priorLeaf);
+  }
 }
 
 function bestEffortProviderObservation(
-  ctx: ExtensionContext,
+  manager: ExtensionContext["sessionManager"],
   model: Pick<Model<any>, "provider" | "id">,
   observedAt: "dispatch" | "response",
   operationId: ReturnType<typeof crypto.randomUUID>,
 ): void {
   try {
-    reportProviderAttempt(ctx.sessionManager as object, model, observedAt, Date.now(), operationId);
+    reportProviderAttempt(manager as object, model, observedAt, Date.now(), operationId);
   } catch {}
 }
 
@@ -542,6 +558,7 @@ function persistBillableUsage(
   operationId: ReturnType<typeof crypto.randomUUID>,
 ): boolean {
   if (!usage) return true;
+  const priorLeaf = ctx.sessionManager.getLeafId();
   try {
     pi.appendEntry(NATIVE_CODEX_USAGE_ENTRY, {
       strategy: "codex-native",
@@ -551,15 +568,14 @@ function persistBillableUsage(
     });
     return true;
   } catch {
-    try {
-      recordDiagnostic(ctx.sessionManager, {
-        component: "observer",
-        code: "state_write_failed",
-        outcome: "failed",
-        operationId,
-        dispatch: "response",
-      });
-    } catch {}
+    restoreLeaf(ctx.sessionManager, priorLeaf);
+    bestEffortDiagnostic(ctx, {
+      component: "observer",
+      code: "state_write_failed",
+      outcome: "failed",
+      operationId,
+      dispatch: "response",
+    });
     ctx.ui?.notify?.("Compaction usage checkpoint could not be written; compaction cancelled.", "error");
     return false;
   }
@@ -572,6 +588,7 @@ export function registerNativeCodexCompaction(
   let captured: CapturedRequest | undefined;
   let captureInvalidated = false;
   let blockOrdinaryRequest: string | undefined;
+  let generation = 0;
   pi.on("context", (event, ctx) => {
     const entries = nativeEntriesInContext(ctx);
     const invalid = entries.some((e) => !isNativeCodexCompactionDetails(e.details));
@@ -580,7 +597,7 @@ export function registerNativeCodexCompaction(
       (d) => ctx.model?.api !== d.api || ctx.model.provider !== d.provider || ctx.model.id !== d.model,
     );
     if (invalid || incompatible) {
-      recordDiagnostic(ctx.sessionManager, {
+      bestEffortDiagnostic(ctx, {
         component: "compaction",
         code: invalid ? "state_invalid" : "identity_stale",
         outcome: "blocked",
@@ -621,7 +638,7 @@ export function registerNativeCodexCompaction(
       payload = event.payload;
     const input = isRecord(payload) && Array.isArray(payload.input) ? payload.input : [];
     if (native.length && native.some((d) => !input.some((item: unknown) => isDeepStrictEqual(item, d.item)))) {
-      recordDiagnostic(ctx.sessionManager, {
+      bestEffortDiagnostic(ctx, {
         component: "compaction",
         code: "opaque_checkpoint",
         outcome: "blocked",
@@ -637,15 +654,18 @@ export function registerNativeCodexCompaction(
     if (captured) captured.payload = structuredClone(payload);
   });
   pi.on("session_start", () => {
+    generation++;
     captured = undefined;
     captureInvalidated = false;
     blockOrdinaryRequest = undefined;
   });
   pi.on("model_select", () => {
+    generation++;
     captured = undefined;
     captureInvalidated = false;
   });
   pi.on("thinking_level_select", () => {
+    generation++;
     captured = undefined;
     captureInvalidated = false;
   });
@@ -657,7 +677,7 @@ export function registerNativeCodexCompaction(
           (e) => e.type === "compaction" && isRecord(e.details) && e.details.strategy === "codex-native",
         ))
     ) {
-      recordDiagnostic(ctx.sessionManager, {
+      bestEffortDiagnostic(ctx, {
         component: "compaction",
         code: "opaque_checkpoint",
         outcome: "blocked",
@@ -759,9 +779,29 @@ export function registerNativeCodexCompaction(
     }
 
     const readyRequest = request as CapturedRequest & { payload: unknown; headers: Record<string, string | null> };
+    const scope = {
+      manager: ctx.sessionManager,
+      sessionId: ctx.sessionManager.getSessionId(),
+      leafId: ctx.sessionManager.getLeafId(),
+      api: ctx.model?.api,
+      provider: ctx.model?.provider,
+      model: ctx.model?.id,
+      thinkingLevel: ctx.thinkingLevel ?? null,
+      generation,
+    };
+    const scopeIsCurrent = () =>
+      generation === scope.generation &&
+      ctx.sessionManager === scope.manager &&
+      scope.manager.getSessionId() === scope.sessionId &&
+      scope.manager.getLeafId() === scope.leafId &&
+      ctx.model?.api === scope.api &&
+      ctx.model?.provider === scope.provider &&
+      ctx.model?.id === scope.model &&
+      (ctx.thinkingLevel ?? null) === scope.thinkingLevel;
     let dispatch: "none" | "initiated" | "response" | "unknown" = "none";
     try {
       const resolved = await ctx.modelRegistry.getApiKeyAndHeaders(readyRequest.model);
+      if (!scopeIsCurrent()) return { cancel: true };
       if (!resolved.ok) {
         bestEffortDiagnostic(ctx, {
           component: "provider",
@@ -809,13 +849,14 @@ export function registerNativeCodexCompaction(
         signal: event.signal,
         onDispatch: (model) => {
           dispatch = "initiated";
-          bestEffortProviderObservation(ctx, model, "dispatch", operationId);
+          if (scopeIsCurrent()) bestEffortProviderObservation(scope.manager, model, "dispatch", operationId);
         },
       });
       dispatch = "response";
+      if (!scopeIsCurrent()) return { cancel: true };
       // A successful native HTTP response refreshes the same provider cache as
       // ordinary traffic. Rejections and transport failures never reach here.
-      bestEffortProviderObservation(ctx, readyRequest.model, "response", operationId);
+      bestEffortProviderObservation(scope.manager, readyRequest.model, "response", operationId);
       if (event.signal.aborted) {
         persistBillableUsage(pi, ctx, native.usage, "cancelled", operationId);
         bestEffortDiagnostic(ctx, {
@@ -855,6 +896,7 @@ export function registerNativeCodexCompaction(
       };
       return { compaction: result };
     } catch (error) {
+      if (!scopeIsCurrent()) return { cancel: true };
       const usage = error instanceof NativeCodexResponseError ? error.usage : undefined;
       const callerCancelled = event.signal.aborted;
       const providerCancelled = error instanceof NativeCodexResponseError && error.message.includes("was cancelled");
@@ -889,6 +931,7 @@ export function registerNativeCodexCompaction(
   });
   return {
     invalidateCapture() {
+      generation++;
       captured = undefined;
       captureInvalidated = true;
     },

@@ -8,6 +8,21 @@ const ENTRY_VERSION = 1;
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
 const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const standardTierScope = new AsyncLocalStorage<boolean>();
+const volatileOptOuts = new WeakMap<object, Set<string>>();
+
+function settingScope(sessionId: string, provider: string, model: string): string {
+  return `${sessionId}\0${provider}\0${model}`;
+}
+function restoreLeaf(manager: ExtensionContext["sessionManager"], priorLeaf: string | null | undefined): void {
+  if (priorLeaf === undefined) return;
+  try {
+    const mutable = manager as unknown as { resetLeaf?: () => void; branch?: (id: string) => void };
+    if (priorLeaf === null) mutable.resetLeaf?.();
+    else mutable.branch?.(priorLeaf);
+  } catch {
+    // The original operation already failed; callers remain fail-closed.
+  }
+}
 
 export const FAST_REFUSED_INVALID_COMMAND = "request_blocked";
 export const FAST_REFUSED_NO_MODEL = "state_invalid";
@@ -34,8 +49,10 @@ function fastDiagnostic(
   operationId?: OperationId,
   cancellation?: "caller" | "provider" | "timeout" | "shutdown" | "safety",
 ): void {
+  const sessionManager = manager as ExtensionContext["sessionManager"];
+  const priorLeaf = (sessionManager as { getLeafId?: () => string | null }).getLeafId?.();
   try {
-    recordDiagnostic(manager as ExtensionContext["sessionManager"], {
+    recordDiagnostic(sessionManager, {
       component: "fast",
       code,
       outcome,
@@ -45,6 +62,8 @@ function fastDiagnostic(
     });
   } catch {
     // Diagnostics must not weaken or replace the request guard.
+  } finally {
+    restoreLeaf(sessionManager, priorLeaf);
   }
 }
 function commandDiagnostic(
@@ -138,6 +157,20 @@ function resolveSetting(
   sessionId = ctx.sessionManager.getSessionId(),
 ): SettingResolution {
   if (!model) return { kind: "absent" };
+  if (volatileOptOuts.get(ctx.sessionManager as object)?.has(settingScope(sessionId, model.provider, model.id))) {
+    return {
+      kind: "valid",
+      value: {
+        version: 1,
+        sessionId,
+        provider: model.provider,
+        model: model.id,
+        enabled: false,
+        costAcknowledged: false,
+        timestamp: 0,
+      },
+    };
+  }
   const entries = branch(ctx);
   for (let index = entries.length - 1; index >= 0; index--) {
     const entry = entries[index];
@@ -576,14 +609,21 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
         costAcknowledged: action === "on",
         timestamp: Date.now(),
       };
+      const priorLeaf = (ctx.sessionManager as { getLeafId?: () => string | null }).getLeafId?.();
       try {
         pi.appendEntry(NATIVE_FAST_ENTRY, entry);
-      } catch (error) {
+      } catch {
+        restoreLeaf(ctx.sessionManager, priorLeaf);
+        if (action === "off") {
+          let scopes = volatileOptOuts.get(ctx.sessionManager as object);
+          if (!scopes) {
+            scopes = new Set();
+            volatileOptOuts.set(ctx.sessionManager as object, scopes);
+          }
+          scopes.add(settingScope(consentScope.sessionId, model.provider, model.id));
+        }
         commandDiagnostic(ctx, FAST_CHECKPOINT_PERSIST_FAILED, "failed", operationId);
-        ctx.ui.notify(
-          "Could not persist native fast mode: " + (error instanceof Error ? error.message : String(error)),
-          "error",
-        );
+        ctx.ui.notify("Could not persist native fast mode; the requested setting was not activated.", "error");
         return;
       }
       evidence = "requested";

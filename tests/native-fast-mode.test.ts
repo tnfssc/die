@@ -653,3 +653,88 @@ test("fast checkpoint append failure is a controlled refusal with no setting", a
   expect(records.at(-1)).toMatchObject({ code: FAST_CHECKPOINT_PERSIST_FAILED, outcome: "failed" });
   expect(JSON.stringify(records)).not.toContain("private persistence detail");
 });
+
+test("append-then-throw restores the active leaf and cannot enable premium fast mode", async () => {
+  const manager = SessionManager.inMemory();
+  manager.appendMessage({ role: "user", content: "before", timestamp: 1 });
+  const priorLeaf = manager.getLeafId();
+  const model = getModel("openai", "gpt-5.3-codex")!;
+  let command: any;
+  const runtime: any = {
+    isUsingOAuth: () => false,
+    prepareRequest: async () => {
+      throw new Error("not used");
+    },
+    streamSimple: () => {
+      throw new Error("not used");
+    },
+  };
+  const registration = registerNativeFastMode({
+    registerFlag() {},
+    getFlag: () => true,
+    registerCommand: (_name: string, value: any) => (command = value),
+    on() {},
+    appendEntry: (type: string, data: any) => {
+      manager.appendCustomEntry(type, data);
+      throw new Error("private persistence detail");
+    },
+  } as any);
+  const notices: any[] = [];
+  const ctx: any = {
+    mode: "print",
+    model,
+    sessionManager: manager,
+    modelRegistry: { runtime, isUsingOAuth: () => false },
+    ui: { notify: (message: string, kind: string) => notices.push({ message, kind }), setStatus() {} },
+  };
+  await command.handler("on", ctx);
+  expect(manager.getLeafId()).toBe(priorLeaf);
+  expect(registration.currentSetting(ctx)).toBeUndefined();
+  expect(manager.getBranch().some((entry: any) => entry.customType === NATIVE_FAST_ENTRY)).toBe(false);
+  expect(JSON.stringify(notices)).not.toContain("private persistence detail");
+});
+
+test("append-then-throw while opting out keeps prior premium consent unusable", async () => {
+  const manager = SessionManager.inMemory();
+  const model = getModel("openai", "gpt-5.3-codex")!;
+  manager.appendCustomEntry(NATIVE_FAST_ENTRY, {
+    version: 1,
+    sessionId: manager.getSessionId(),
+    provider: model.provider,
+    model: model.id,
+    enabled: true,
+    costAcknowledged: true,
+    timestamp: 1,
+  });
+  const priorLeaf = manager.getLeafId();
+  let command: any;
+  const runtime: any = {
+    isUsingOAuth: () => false,
+    prepareRequest: async () => {
+      throw new Error("not used");
+    },
+    streamSimple: () => {
+      throw new Error("not used");
+    },
+  };
+  const registration = registerNativeFastMode({
+    registerFlag() {},
+    getFlag: () => true,
+    registerCommand: (_name: string, value: any) => (command = value),
+    on() {},
+    appendEntry: (type: string, data: any) => {
+      manager.appendCustomEntry(type, data);
+      throw new Error("disk");
+    },
+  } as any);
+  const ctx: any = {
+    mode: "print",
+    model,
+    sessionManager: manager,
+    modelRegistry: { runtime, isUsingOAuth: () => false },
+    ui: { notify() {}, setStatus() {} },
+  };
+  await command.handler("off", ctx);
+  expect(manager.getLeafId()).toBe(priorLeaf);
+  expect(registration.currentSetting(ctx)).toMatchObject({ enabled: false, costAcknowledged: false });
+});
