@@ -135,9 +135,10 @@ test("concurrent processes serialize records or explicitly report bounded conten
     const path = taskLifecycleFile(session);
     const lines = readFileSync(path, "utf8").trim().split("\n");
     const records = lines.map((line) => JSON.parse(line));
+    const failureCount = failures.reduce((sum, value) => sum + value, 0);
     expect(records.length).toBeGreaterThan(0);
-    expect(failures.reduce((sum, value) => sum + value, 0)).toBeGreaterThan(0);
-    expect(records.length + failures.reduce((sum, value) => sum + value, 0)).toBeLessThanOrEqual(400);
+    expect(failureCount).toBeGreaterThan(0);
+    expect(records.length + failureCount).toBe(400);
     expect(new Set(records.map((record) => record.taskId)).size).toBe(records.length);
     expect(statSync(path).size).toBeLessThanOrEqual(TASK_LIFECYCLE_MAX_BYTES);
     expect(statSync(path).mode & 0o777).toBe(0o600);
@@ -147,19 +148,93 @@ test("concurrent processes serialize records or explicitly report bounded conten
   }
 });
 
-test("dead-process lock is reclaimed and cannot permanently disable the index", () => {
-  const dir = mkdtempSync(join(tmpdir(), "die-lifecycle-stale-"));
+test("live contention is nonfatal and SIGKILL releases the kernel lock", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "die-lifecycle-kill-"));
+  let child: ReturnType<typeof Bun.spawn> | undefined;
   try {
     const session = join(dir, "owner.jsonl");
     const path = taskLifecycleFile(session);
-    writeFileSync(path + ".lock", JSON.stringify({ token: "dead", pid: 2_147_483_647, created: Date.now() }));
-    let failure: string | undefined;
-    createTaskLifecycleRecorder(session, (kind) => {
-      failure = kind;
-    })({ taskId: "task_recovered" });
-    expect(failure).toBeUndefined();
-    expect(JSON.parse(readFileSync(path, "utf8")).taskId).toBe("task_recovered");
+    const ready = join(dir, "ready");
+    createTaskLifecycleRecorder(session)({ taskId: "before" });
+    const holder =
+      'import {dlopen,FFIType} from "bun:ffi";' +
+      'import {openSync,writeFileSync} from "node:fs";' +
+      'const lib=dlopen("libc.so.6",{flock:{args:[FFIType.i32,FFIType.i32],returns:FFIType.i32}});' +
+      'const fd=openSync(process.argv[1],"r+");' +
+      "if(lib.symbols.flock(fd,2)!==0)process.exit(2);" +
+      'writeFileSync(process.argv[2],"ready");await Bun.sleep(60000);';
+    child = Bun.spawn([process.execPath, "-e", holder, path, ready], { stderr: "pipe" });
+    for (let i = 0; i < 100 && !existsSync(ready); i++) await Bun.sleep(10);
+    expect(existsSync(ready)).toBe(true);
+
+    const failures: string[] = [];
+    createTaskLifecycleRecorder(session, (failure) => failures.push(failure ?? "unknown"))({ taskId: "blocked" });
+    expect(failures).toEqual(["contention"]);
+    expect(readFileSync(path, "utf8")).not.toContain("blocked");
+
+    child.kill("SIGKILL");
+    await child.exited;
+    child = undefined;
+    createTaskLifecycleRecorder(session, (failure) => failures.push(failure ?? "unknown"))({ taskId: "after" });
+    expect(
+      readFileSync(path, "utf8")
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line))
+        .map((record) => record.taskId),
+    ).toEqual(["before", "after"]);
     expect(existsSync(path + ".lock")).toBe(false);
+  } finally {
+    child?.kill("SIGKILL");
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("an unavailable locking backend fails closed with a coalesced diagnostic", () => {
+  const dir = mkdtempSync(join(tmpdir(), "die-lifecycle-no-lock-"));
+  try {
+    const session = join(dir, "owner.jsonl");
+    const failures: string[] = [];
+    const record = createTaskLifecycleRecorder(session, (failure) => failures.push(failure ?? "unknown"), {
+      flock: () => {
+        throw new Error("FFI unavailable");
+      },
+    });
+    record({ taskId: "private", sessionFile: "/secret/path" });
+    record({ taskId: "private-again" });
+    expect(failures).toEqual(["locking"]);
+    expect(existsSync(taskLifecycleFile(session))).toBe(true);
+    expect(readFileSync(taskLifecycleFile(session), "utf8")).toBe("");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("compiled executable loads libc flock and writes a protected index", async () => {
+  if (process.platform !== "linux" || process.arch !== "x64") return;
+  const dir = mkdtempSync(join(tmpdir(), "die-lifecycle-compiled-"));
+  try {
+    const entry = join(dir, "entry.ts");
+    const executable = join(dir, "lifecycle-smoke");
+    const session = join(dir, "owner.jsonl");
+    const modulePath = join(import.meta.dir, "../src/tasks/task-lifecycle.ts");
+    writeFileSync(
+      entry,
+      "import {createTaskLifecycleRecorder} from " +
+        JSON.stringify(modulePath) +
+        ";createTaskLifecycleRecorder(process.argv[2],(failure)=>{console.error(failure);process.exitCode=2})({taskId:'compiled'});",
+    );
+    const build = Bun.spawn([process.execPath, "build", "--compile", entry, "--outfile", executable], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [buildExit, buildError] = await Promise.all([build.exited, new Response(build.stderr).text()]);
+    expect(buildExit, buildError).toBe(0);
+    const run = Bun.spawn([executable, session], { stdout: "pipe", stderr: "pipe" });
+    const [runExit, runError] = await Promise.all([run.exited, new Response(run.stderr).text()]);
+    expect(runExit, runError).toBe(0);
+    expect(readFileSync(taskLifecycleFile(session), "utf8")).toBe('{"taskId":"compiled"}\n');
+    expect(statSync(taskLifecycleFile(session)).mode & 0o777).toBe(0o600);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
