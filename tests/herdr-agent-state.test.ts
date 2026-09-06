@@ -247,6 +247,8 @@ describe("built-in Herdr agent state", () => {
     expect(() => throwing.fire("session_start", { reason: "startup" })).not.toThrow();
     await Bun.sleep(10);
     expect(inspectDiagnostics(throwing.ctx.sessionManager as object).records).toContainEqual({
+      version: 1,
+      generated: expect.any(String),
       component: "herdr",
       code: "delivery_failed",
       outcome: "failed",

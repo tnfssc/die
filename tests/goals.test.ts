@@ -67,6 +67,8 @@ describe("goal durable state", () => {
     const owner = {};
     expect(latestGoal(entries, owner)).toBeUndefined();
     expect(inspectDiagnostics(owner).records).toContainEqual({
+      version: 1,
+      generated: expect.any(String),
       component: "resume",
       code: "state_invalid",
       outcome: "fallback",

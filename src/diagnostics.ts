@@ -2,6 +2,17 @@
 export const DIAGNOSTIC_ENTRY_TYPE = "die-diagnostic";
 
 export const DIAGNOSTIC_CODES = [
+  "CHILD_IDENTITY_INVALID",
+  "JOBS_LIFECYCLE_WRITE_FAILED",
+  "JOBS_OPERATION_DISPATCH",
+  "JOBS_TASK_SPAWNED",
+  "JOBS_TASK_CHILD_LINKED",
+  "JOBS_TASK_TERMINATION_REQUESTED",
+  "JOBS_TASK_COMPLETED",
+  "JOBS_SHUTDOWN_STARTED",
+  "JOBS_SHUTDOWN_COMPLETED",
+  "JOBS_SHUTDOWN_CLOSURE_TIMEOUT",
+  "bridge_epipe",
   "capture_missing",
   "identity_stale",
   "payload_missing",

@@ -65,7 +65,15 @@ describe("execute process lifecycle and output", () => {
     const result = await execute('await Bun.write("should-not-exist", "bad")', AbortSignal.abort());
     expect(result.cancelled).toBe(true);
     expect(inspectDiagnostics(result).records).toEqual([
-      { component: "jobs", code: "caller_aborted", outcome: "cancelled", cancellation: "caller", dispatch: "none" },
+      {
+        version: 1,
+        generated: expect.any(String),
+        component: "jobs",
+        code: "caller_aborted",
+        outcome: "cancelled",
+        cancellation: "caller",
+        dispatch: "none",
+      },
     ]);
     expect(await Bun.file(join(directory, "should-not-exist")).exists()).toBe(false);
   });
@@ -96,7 +104,14 @@ describe("execute process lifecycle and output", () => {
     expect(timedOut.termination?.cause).toBe("timeout");
     expect(Number.isFinite(Date.parse(timedOut.termination!.requestedAt))).toBe(true);
     expect(inspectDiagnostics(timedOut).records).toEqual([
-      { component: "jobs", code: "timeout", outcome: "cancelled", cancellation: "timeout" },
+      {
+        version: 1,
+        generated: expect.any(String),
+        component: "jobs",
+        code: "timeout",
+        outcome: "cancelled",
+        cancellation: "timeout",
+      },
     ]);
 
     const beforeTimeout = new AbortController();
@@ -106,7 +121,14 @@ describe("execute process lifecycle and output", () => {
     expect(cancelled.timedOut).toBe(false);
     expect(cancelled.termination?.cause).toBe("execute-abort");
     expect(inspectDiagnostics(cancelled).records).toEqual([
-      { component: "jobs", code: "caller_aborted", outcome: "cancelled", cancellation: "caller" },
+      {
+        version: 1,
+        generated: expect.any(String),
+        component: "jobs",
+        code: "caller_aborted",
+        outcome: "cancelled",
+        cancellation: "caller",
+      },
     ]);
   });
 

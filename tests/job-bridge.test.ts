@@ -29,6 +29,8 @@ test("execute helpers multiplex responses, reject errors, and do not print impli
   expect(result.stdout).toContain('"command":"one"');
   expect(result.stdout).toContain("unknown job");
   expect(inspectDiagnostics(result).records).toContainEqual({
+    version: 1,
+    generated: expect.any(String),
     component: "bridge",
     code: "delivery_failed",
     outcome: "failed",
@@ -354,6 +356,8 @@ test("oversized reply releases foreground ownership exactly once", async () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("response exceeded 1 MB");
     expect(inspectDiagnostics(result).records).toContainEqual({
+      version: 1,
+      generated: expect.any(String),
       component: "bridge",
       code: "frame_oversize",
       outcome: "fallback",

@@ -1,3 +1,4 @@
+import { registerOperationDiagnostics } from "../diagnostics-extension";
 import { createTaskLifecycleRecorder } from "./task-lifecycle";
 import { attachDiagnosticSink, recordDiagnostic } from "../diagnostics";
 import { subagentGuidance, collaborationGuidance, productSystemPrompt } from "../prompts";
@@ -64,6 +65,7 @@ export default function asynchronousTasksExtension(
     executablePath?: string;
   } = {},
 ): void {
+  registerOperationDiagnostics(pi);
   // Must precede all payload capture/observation hooks so snapshots contain the
   // exact tier that the provider transport will serialize.
   registerNativeFastMode(pi);

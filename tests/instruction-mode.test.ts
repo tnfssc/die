@@ -71,6 +71,8 @@ test("latest corrupt mode is an authority boundary and falls back safely", () =>
   ]);
   expect(resumed.mode.get()).toBe("orchestrator");
   expect(inspectDiagnostics(resumed.ctx.sessionManager).records).toContainEqual({
+    version: 1,
+    generated: expect.any(String),
     component: "settings",
     code: "settings_invalid",
     outcome: "fallback",
