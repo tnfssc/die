@@ -61,10 +61,15 @@ extensions, prompt templates, and skills. Die's user-facing additions are:
 | `/goal` | Show goal status, or `set`, `pause`, `resume`, and `clear` an opt-in durable goal. See [Goal mode](./docs/goals.md). |
 | `/mode` | Show or select `fast`, `normal`, or `orchestrator` instructions for the main agent. This changes instructions only—not the model or thinking level. |
 | `/fast` | Show or explicitly set provider-native premium fast mode for the current session/model. Enabling requires cost acknowledgement; see [native fast mode](docs/native-fast-mode.md). |
+| `/shake` | Locally remove completed thinking/tool-call/tool-result traces from active model context without a provider request. The append-only transcript and recorded costs remain unchanged; ambiguous or active tool batches are preserved/refused. |
 | `/ps` | Open the interactive monitor for running jobs owned by this session; inspect bounded recent output or explicitly stop a selected job. TUI only. |
 | `/subagents` | Configure model and thinking inheritance for fast, normal, and orchestrator sub-agents. |
 | `/cache-ttl [duration]` | Show or set the local cache-expiry estimate (for example, `30m`, `1h`, or `1d`). It is informational, not a provider cache guarantee. |
 | `/status` | Show the compact session status, including combined descendant cost estimates. |
+
+### Manual context shake
+
+Run `/shake` only after the current turn and queued messages settle. It writes a bounded, branch-scoped projection marker and removes only unambiguous completed execution protocol from future model-facing context. User content, attachments, assistant prose, compaction summaries, and original JSONL usage/cost records remain intact. Upstream extension redactions are never replaced with raw history; if either side of a transformed tool call/result pair cannot be matched exactly, the whole pair is retained. Forked sessions inherit the projection, while branching before its marker does not. Opaque native Codex checkpoints are rejected. This is manual only: die does not shake automatically or summarize during `/shake`.
 
 Pi's session commands, including `/resume`, `/new`, `/session`, `/tree`, and
 `/compact`, remain available. Resumed worker/orchestrator child sessions are labeled
