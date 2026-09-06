@@ -1,7 +1,13 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { attachDiagnosticSink, inspectDiagnostics, scanDiagnosticRecords } from "./diagnostics";
 
-type SessionLike = { getSessionId?: () => unknown; getBranch?: () => unknown; getEntries?: () => unknown };
+type SessionLike = {
+  getSessionId?: () => unknown;
+  getEntries?: () => unknown;
+  getLeafId?: () => unknown;
+  branch?: (entryId: string) => void;
+  resetLeaf?: () => void;
+};
 
 function sessionId(manager: SessionLike | undefined): unknown {
   try {
@@ -13,10 +19,30 @@ function sessionId(manager: SessionLike | undefined): unknown {
 
 function entries(manager: SessionLike | undefined): readonly unknown[] {
   try {
-    const value = manager?.getBranch?.() ?? manager?.getEntries?.() ?? [];
+    const value = manager?.getEntries?.() ?? [];
     return Array.isArray(value) ? value : [];
   } catch {
     return [];
+  }
+}
+
+/** Prepare a public-API restoration before writing. Diagnostics are refused when
+ * the active leaf cannot be read and restored; persistence must not move the
+ * runtime conversation onto a diagnostic-only child. */
+function leafRestorer(manager: SessionLike): (() => void) | undefined {
+  try {
+    if (typeof manager.getLeafId !== "function") return;
+    const leafId = manager.getLeafId();
+    if (leafId === null) {
+      if (typeof manager.resetLeaf !== "function") return;
+      const resetLeaf = manager.resetLeaf.bind(manager);
+      return () => resetLeaf();
+    }
+    if (typeof leafId !== "string" || typeof manager.branch !== "function") return;
+    const branch = manager.branch.bind(manager);
+    return () => branch(leafId);
+  } catch {
+    return;
   }
 }
 
@@ -37,7 +63,13 @@ export function registerOperationDiagnostics(pi: ExtensionAPI): void {
         // appendEntry follows pi's mutable session, so reject closures captured for another session.
         if (owner !== capturedOwner || activeSessionId !== capturedSessionId) return;
         if (sessionId(capturedOwner) !== capturedSessionId) return;
-        pi.appendEntry(type, data);
+        const restoreLeaf = leafRestorer(capturedOwner as SessionLike);
+        if (!restoreLeaf) return;
+        try {
+          pi.appendEntry(type, data);
+        } finally {
+          restoreLeaf();
+        }
       },
       entries(capturedOwner as SessionLike),
     );
