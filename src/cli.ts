@@ -103,8 +103,12 @@ const [{ default: asynchronousTasksExtension }, { default: herdrAgentStateExtens
   import("./tasks/extension"),
   import("./herdr-agent-state"),
 ]);
-const { installQuietStartup } = await import("./ui/startup");
+const [{ installQuietStartup }, { installConversationDensity }] = await Promise.all([
+  import("./ui/startup"),
+  import("./ui/conversation-density"),
+]);
 const restoreStartupSettings = installQuietStartup();
+const restoreConversationDensity = installConversationDensity();
 
 function filterHelp(text: string): string {
   if (!text.includes("Usage:") || !text.includes("Options:")) return text;
@@ -148,6 +152,7 @@ try {
     ],
   });
 } finally {
+  restoreConversationDensity();
   restoreStartupSettings();
   console.log = originalLog;
 }
