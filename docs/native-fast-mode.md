@@ -23,24 +23,26 @@ Anthropic support is deferred. Its native API mechanism is `speed: "fast"` plus 
 
 ## Runtime compatibility and status evidence
 
-Pi 0.85's low-level OpenAI Responses and Codex SSE/WebSocket serializers support `serviceTier`, but `streamSimple` reconstructs base options and drops it. Die therefore inserts `service_tier` in the existing `before_provider_request` payload pipeline, before its capture and observation hooks. This preserves registry auth, headers/hooks, context filtering, model sampling/reasoning settings, tools, and the existing SSE/WebSocket transports. Offline integration fixtures assert the final serialized SSE bodies and WebSocket frame.
+Pi 0.85's low-level OpenAI Responses and Codex SSE/WebSocket serializers support `serviceTier`, but the agent path reconstructs simple options. Die supplies the typed option and validates the final serialized `service_tier` through a narrow `ModelRuntime` compatibility seam. The seam snapshots session, branch record, provider, model, endpoint, and auth surface before asynchronous preparation, then checks the final payload after every extension hook and before `provider.streamSimple`. Hook exceptions are not a safety boundary. Registry auth, headers/hooks, context filtering, sampling/reasoning settings, tools, and SSE/WebSocket transport are otherwise unchanged.
 
 The footer bolt is provider status, not a working spinner:
 
-- ` fast requested (unconfirmed)`: the final request payload asked for fast mode.
-- ` fast confirmed`: reserved for an actual response-tier value when the runtime exposes one.
-- ` standard (fast downgraded)`: reserved for actual `service_tier: "default"` response evidence.
-- ` fast requested (tier unknown)`: a response arrived without tier evidence.
+- ` fast requested (tier/cost estimate unavailable)`: the guarded final request asked for fast mode; it is not confirmation of the provider's actual response tier.
 - ` fast off`: the user explicitly selected default/standard for this model.
 
-Pi 0.85 does not expose the Responses body `service_tier` to extensions after serialization. Current real requests therefore remain requested/unconfirmed or tier-unknown; die does not claim confirmation from latency or estimated cost. It does not fail a successful tool-using turn because tier confirmation is unavailable, and it performs no automatic standard retry, upgrade, or model swap.
+Pi 0.85 does not expose the Responses body `service_tier` to extensions after serialization. Die therefore never claims a confirmed or downgraded tier, and never attributes response evidence from a different request. It performs no automatic standard retry, upgrade, or model swap.
 
 ## Cost and compaction policy
 
-Codex documentation currently describes model-dependent ChatGPT credit multipliers (2x or 2.5x), while API Priority/Fast uses separate token pricing (for example, the documented GPT-5.6 API rate differs from ChatGPT credits). Die does not estimate or claim credit counts. Footer dollar values are client-side SDK estimates, not provider billing; the provider dashboard is authoritative.
+Codex documentation describes model-dependent ChatGPT credit multipliers, while API Fast uses separate token pricing. Die does not invent or display credit estimates. Pi 0.85 prices `priority` responses but does not recognize the newer API `fast` response value, so die explicitly marks the session footer cost estimate unavailable once fast has been authorized (including after later opt-out) rather than presenting a dollar/credit estimate as authoritative. Provider billing is authoritative.
 
 Both plaintext and native Codex compaction explicitly send `service_tier: "default"`, even if an ordinary captured request was fast. There is no hidden premium fast compaction. No tier from a captured ordinary request leaks into compaction.
 
 ## Source evidence
 
-Implementation was checked against the supplied OpenAI API Fast mode page, Codex speed page, and the official OpenAI Codex source/model snapshot. The OpenAI API documents `fast` and `priority` as equivalent for supported models and reports `default` on a downgrade. The official Codex client normalizes legacy `fast` to the `priority` request value and its model metadata provides exact service-tier aliases.
+Pinned sources used for this allowlist and wire mapping:
+
+- OpenAI API Fast mode: https://developers.openai.com/api/docs/guides/fast-mode
+- OpenAI Codex commit `ad931a45b201e3877d6ba542ba5dbbd85e7e31b4`, model catalog (including the explicit Luna and Terra `priority` service tiers): https://github.com/openai/codex/blob/ad931a45b201e3877d6ba542ba5dbbd85e7e31b4/codex-rs/models-manager/models.json
+- The same pinned Codex commit's request mapping (`Fast => "priority"`, while both `fast` and `priority` parse as Fast): https://github.com/openai/codex/blob/ad931a45b201e3877d6ba542ba5dbbd85e7e31b4/codex-rs/protocol/src/config_types.rs#L527-L550
+- Pinned model capability check: https://github.com/openai/codex/blob/ad931a45b201e3877d6ba542ba5dbbd85e7e31b4/codex-rs/protocol/src/openai_models.rs#L905-L914

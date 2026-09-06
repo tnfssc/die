@@ -90,6 +90,20 @@ function footerUsage(ctx: ExtensionContext) {
   return { input, output, read, write, cost, cacheHit };
 }
 
+function hasUnavailableFastCost(ctx: ExtensionContext, statuses: ReadonlyMap<string, string>): boolean {
+  if (statuses.get("die-native-fast")?.includes("cost estimate unavailable")) return true;
+  return ctx.sessionManager
+    .getEntries()
+    .some(
+      (entry) =>
+        entry.type === "custom" &&
+        entry.customType === "die-native-fast-mode" &&
+        !!entry.data &&
+        typeof entry.data === "object" &&
+        (entry.data as { enabled?: unknown }).enabled === true,
+    );
+}
+
 function cacheBadge(estimate: CacheEstimate | undefined, theme: Theme): string | undefined {
   if (!estimate) return undefined;
   const color =
@@ -123,9 +137,12 @@ export function renderDetailedFooter(
   if (write) stats.push(`W${tokens(write)}`);
   if ((read || write) && cacheHit !== undefined) stats.push(`CH${cacheHit.toFixed(1)}%`);
   const model = ctx.model;
+  const statuses = data.getExtensionStatuses();
+  const fastCostUnavailable = hasUnavailableFastCost(ctx, statuses);
   const subscription = model && (model.provider === "kimi-coding" || ctx.modelRegistry.isUsingOAuth(model));
-  if (cost || descendantCost || subscription)
-    stats.push(`$${(cost + descendantCost).toFixed(3)}${descendantCost ? " total" : subscription ? " (sub)" : ""}`);
+  if (fastCostUnavailable) stats.push("$? (fast billing)");
+  else if (cost || descendantCost || subscription)
+    stats.push("$" + (cost + descendantCost).toFixed(3) + (descendantCost ? " total" : subscription ? " (sub)" : ""));
   const context = ctx.getContextUsage();
   const percent = context?.percent;
   const contextText = `${percent == null ? "?" : `${percent.toFixed(1)}%`}/${tokens(context?.contextWindow ?? model?.contextWindow ?? 0)}`;
@@ -145,7 +162,6 @@ export function renderDetailedFooter(
     const withProvider = `(${model.provider}) ${modelText}`;
     if (visibleWidth(stats.join(" ")) + 2 + visibleWidth(withProvider) <= width) modelText = withProvider;
   }
-  const statuses = data.getExtensionStatuses();
   const lines = [
     pathWithTasks(path, statuses.get("die-tasks"), width, theme),
     columns(theme.fg("dim", stats.join(" ")), theme.fg("dim", singleLine(modelText)), width),
@@ -186,7 +202,7 @@ export function renderCompactFooter(
     (key) => key !== "die-tasks" && key !== "die-mode" && key !== "die-native-fast",
   ).length;
   const extra = otherCount ? `+${otherCount} status` : "";
-  const cost = `$${(footerUsage(ctx).cost + descendantCost).toFixed(3)}`;
+  const cost = hasUnavailableFastCost(ctx, statuses) ? "$?" : "$" + (footerUsage(ctx).cost + descendantCost).toFixed(3);
   const percent = ctx.getContextUsage()?.percent;
   const percentText = percent == null ? "?" : `${percent.toFixed(1).replace(/\.0$/, "")}%`;
   const context = (label: string) =>

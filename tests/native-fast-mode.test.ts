@@ -1,8 +1,17 @@
 import { expect, test } from "bun:test";
 import { zstdDecompressSync } from "node:zlib";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { getModel } from "@earendil-works/pi-ai/compat";
 import * as codex from "@earendil-works/pi-ai/api/openai-codex-responses";
 import * as openai from "@earendil-works/pi-ai/api/openai-responses";
+import {
+  createAgentSession,
+  DefaultResourceLoader,
+  ModelRuntime,
+  SessionManager,
+} from "@earendil-works/pi-coding-agent";
 import {
   CODEX_FAST_MODELS,
   NATIVE_FAST_ENTRY,
@@ -11,7 +20,10 @@ import {
   withStandardProviderTier,
 } from "../src/tasks/native-fast-mode";
 
-function harness(model: any, options: { mode?: string; accept?: boolean; sessionId?: string } = {}) {
+function harness(
+  model: any,
+  options: { mode?: string; accept?: boolean; sessionId?: string; confirm?: () => Promise<boolean> } = {},
+) {
   const entries: any[] = [],
     notices: any[] = [],
     statuses: any[] = [];
@@ -40,7 +52,7 @@ function harness(model: any, options: { mode?: string; accept?: boolean; session
       getEntries: () => entries,
     },
     ui: {
-      confirm: async () => true,
+      confirm: options.confirm ?? (async () => true),
       notify: (message: string, kind: string) => notices.push({ message, kind }),
       setStatus: (key: string, value?: string) => statuses.push({ key, value }),
     },
@@ -124,6 +136,22 @@ test("/fast is safe status; on requires consent and state is session/model/branc
   expect(child.service_tier).toBeUndefined();
 });
 
+test("consent is rejected if session, branch, or model changes while confirmation is open", async () => {
+  const model = getModel("openai-codex", "gpt-5.6-luna")!;
+  let release!: (accepted: boolean) => void;
+  const h = harness(model, { confirm: () => new Promise((resolve) => (release = resolve)) });
+  h.ctx.sessionManager.getLeafId = () => "leaf-a";
+  const pending = h.command.handler("on", h.ctx);
+  await Promise.resolve();
+  h.ctx.model = getModel("openai-codex", "gpt-5.5")!;
+  h.ctx.sessionManager.getSessionId = () => "session-b";
+  h.ctx.sessionManager.getLeafId = () => "leaf-b";
+  release(true);
+  await pending;
+  expect(h.entries).toEqual([]);
+  expect(h.notices.at(-1).message).toContain("became stale");
+});
+
 test("restored records require an explicit cost acknowledgement", async () => {
   const model = getModel("openai-codex", "gpt-5.5")!;
   const h = harness(model);
@@ -140,7 +168,31 @@ test("restored records require an explicit cost acknowledgement", async () => {
       timestamp: 1,
     },
   });
-  expect(h.emit("before_provider_request", { payload: {} })).rejects.toThrow("authorization is missing");
+  const payload: any = { model: model.id };
+  await expect(h.emit("before_provider_request", { payload })).resolves.toBe(payload);
+  expect(payload.service_tier).toBe("default");
+});
+
+test("newest matching malformed record fails closed instead of restoring an older grant", async () => {
+  const model = getModel("openai-codex", "gpt-5.5")!;
+  const h = harness(model);
+  const identity = { sessionId: "session-a", provider: model.provider, model: model.id };
+  h.entries.push(
+    {
+      type: "custom",
+      customType: NATIVE_FAST_ENTRY,
+      data: { version: 1, ...identity, enabled: true, costAcknowledged: true, timestamp: 1 },
+    },
+    {
+      type: "custom",
+      customType: NATIVE_FAST_ENTRY,
+      data: { version: 99, ...identity, enabled: true, costAcknowledged: true, timestamp: Number.POSITIVE_INFINITY },
+    },
+  );
+  const payload: any = { model: model.id, service_tier: "priority" };
+  await h.emit("before_provider_request", { payload });
+  expect(payload.service_tier).toBe("default");
+  expect(h.statuses.at(-1)?.value).toBeUndefined();
 });
 
 test("compaction forces default before capture and releases its session scope", async () => {
@@ -153,6 +205,19 @@ test("compaction forces default before capture and releases its session scope", 
   const ordinary: any = {};
   await h.emit("before_provider_request", { payload: ordinary });
   expect(ordinary.service_tier).toBe("priority");
+
+  let release!: () => void;
+  const concurrentCompaction: any = {};
+  const scoped = withStandardProviderTier(h.ctx.sessionManager, async () => {
+    await new Promise<void>((resolve) => (release = resolve));
+    await h.emit("before_provider_request", { payload: concurrentCompaction });
+  });
+  const concurrentOrdinary: any = {};
+  await h.emit("before_provider_request", { payload: concurrentOrdinary });
+  expect(concurrentOrdinary.service_tier).toBe("priority");
+  release();
+  await scoped;
+  expect(concurrentCompaction.service_tier).toBe("default");
 });
 
 test("explicit off emits default without changing untouched provider defaults", async () => {
@@ -181,7 +246,7 @@ test("actual Pi streamSimple OpenAI serialization carries injected fast tier", a
         reasoning: "low",
         fetch: (async (_url: any, init: any) => {
           body = JSON.parse(init.body);
-          return sse("priority");
+          return sse("fast");
         }) as typeof fetch,
         onPayload: async (payload) => h.emit("before_provider_request", { payload }),
       },
@@ -287,3 +352,152 @@ test("actual Pi streamSimple Codex WebSocket frame carries priority", async () =
     globalThis.WebSocket = original;
   }
 });
+
+test("real AgentSession ModelRuntime guard survives swallowed hook throws and stops late mutation before mock fetch", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-fast-boundary-"));
+  const originalFetch = globalThis.fetch;
+  let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+  let dispatches = 0;
+  try {
+    const model = getModel("openai", "gpt-5.3-codex")!;
+    const manager = SessionManager.inMemory(dir);
+    manager.appendCustomEntry(NATIVE_FAST_ENTRY, {
+      version: 1,
+      sessionId: manager.getSessionId(),
+      provider: model.provider,
+      model: model.id,
+      enabled: true,
+      costAcknowledged: true,
+      timestamp: 1,
+    });
+    const loader = new DefaultResourceLoader({
+      cwd: dir,
+      agentDir: dir,
+      noExtensions: true,
+      noSkills: true,
+      noThemes: true,
+      noPromptTemplates: true,
+      extensionFactories: [
+        {
+          name: "native-fast",
+          factory: (pi) => {
+            registerNativeFastMode(pi);
+          },
+        },
+        {
+          name: "late-tier-mutator",
+          factory: (pi) =>
+            pi.on("before_provider_request", (event) => {
+              (event.payload as any).service_tier = "default";
+              throw new Error("swallowed late hook failure");
+            }),
+        },
+      ],
+    });
+    await loader.reload();
+    const runtime = await ModelRuntime.create({
+      authPath: join(dir, "auth.json"),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    runtime.hasConfiguredAuth = () => true;
+    runtime.isUsingOAuth = () => false;
+    runtime.getAuth = (async () => ({ auth: { apiKey: "offline-key" } })) as any;
+    globalThis.fetch = (async () => {
+      dispatches++;
+      return sse("fast");
+    }) as unknown as typeof fetch;
+    session = (
+      await createAgentSession({
+        cwd: dir,
+        agentDir: dir,
+        resourceLoader: loader,
+        modelRuntime: runtime,
+        model,
+        sessionManager: manager,
+        tools: [],
+      })
+    ).session;
+    await session.bindExtensions({ mode: "print" });
+    await session.prompt("prove no dispatch");
+    expect(dispatches).toBe(0);
+    const last = session.messages.at(-1) as any;
+    expect(last.stopReason).toBe("error");
+    expect(last.errorMessage).toContain("late service-tier mutation");
+  } finally {
+    session?.dispose();
+    globalThis.fetch = originalFetch;
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+for (const scenario of ["corrupt-record", "wrong-auth", "unsupported-model"] as const) {
+  test(`real ModelRuntime blocks ${scenario} at zero fetch dispatches`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "die-fast-reject-"));
+    const originalFetch = globalThis.fetch;
+    let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+    let dispatches = 0;
+    try {
+      const documented = getModel("openai", "gpt-5.3-codex")!;
+      const model = scenario === "unsupported-model" ? { ...documented, id: "gpt-5.3-codex-lookalike" } : documented;
+      const manager = SessionManager.inMemory(dir);
+      manager.appendCustomEntry(NATIVE_FAST_ENTRY, {
+        version: scenario === "corrupt-record" ? 99 : 1,
+        sessionId: manager.getSessionId(),
+        provider: model.provider,
+        model: model.id,
+        enabled: true,
+        costAcknowledged: true,
+        timestamp: 1,
+      });
+      const loader = new DefaultResourceLoader({
+        cwd: dir,
+        agentDir: dir,
+        noExtensions: true,
+        noSkills: true,
+        noThemes: true,
+        noPromptTemplates: true,
+        extensionFactories: [
+          {
+            name: "native-fast",
+            factory: (pi) => {
+              registerNativeFastMode(pi);
+            },
+          },
+        ],
+      });
+      await loader.reload();
+      const runtime = await ModelRuntime.create({
+        authPath: join(dir, "auth.json"),
+        modelsPath: null,
+        refreshOnCreate: false,
+      });
+      runtime.hasConfiguredAuth = () => true;
+      runtime.isUsingOAuth = () => scenario === "wrong-auth";
+      runtime.getAuth = (async () => ({ auth: { apiKey: "offline-key" } })) as any;
+      globalThis.fetch = (async () => {
+        dispatches++;
+        return sse("fast");
+      }) as unknown as typeof fetch;
+      session = (
+        await createAgentSession({
+          cwd: dir,
+          agentDir: dir,
+          resourceLoader: loader,
+          modelRuntime: runtime,
+          model,
+          sessionManager: manager,
+          tools: [],
+        })
+      ).session;
+      await session.bindExtensions({ mode: "print" });
+      await session.prompt("must fail closed");
+      expect(dispatches).toBe(0);
+      expect((session.messages.at(-1) as any).stopReason).toBe("error");
+    } finally {
+      session?.dispose();
+      globalThis.fetch = originalFetch;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+}
