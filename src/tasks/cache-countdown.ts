@@ -4,10 +4,15 @@ import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import type { Model } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { recordDiagnostic } from "../diagnostics.js";
 import { subscribeProviderAttempts } from "./provider-attempts";
 
 export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
 export const CACHE_CALL_ENTRY = "die-cache-call";
+export const CACHE_OBSERVATION_RECORDED = "cache_observation_recorded";
+export const CACHE_CORRELATION_UNAVAILABLE = "cache_correlation_unavailable";
+export const CACHE_HTTP_REJECTED = "http_rejected";
+export const CACHE_OBSERVER_FAILED = "observer_failed";
 const MIN_TTL_MS = 60_000;
 const MAX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -184,24 +189,79 @@ export function registerCacheCountdown(pi: ExtensionAPI, countdown: CacheCountdo
     });
   let unsubscribe = () => {};
   let owner: object | undefined;
-  let attempt: { model: Pick<Model<any>, "provider" | "id">; startedAt: number; observed: boolean } | undefined;
-  const observe = (model: Pick<Model<any>, "provider" | "id">, timestamp: number) => {
-    if (!attempt || attempt.observed) return;
-    attempt.observed = true;
-    // Provider hooks are on the inference path. Persistence/UI telemetry is not.
+  type Attempt = {
+    operationId: string;
+    model: Pick<Model<any>, "provider" | "id">;
+    startedAt: number;
+  };
+  const attempts = new Map<string, Attempt>();
+  const diagnostic = (input: Parameters<typeof recordDiagnostic>[1]) => {
+    if (owner) recordDiagnostic(owner, input);
+  };
+  const record = (
+    attempt: Attempt,
+    model: Pick<Model<any>, "provider" | "id">,
+    timestamp: number,
+    dispatch: "response" | "initiated",
+  ) => {
     try {
       countdown.record(pi, model, timestamp);
+      diagnostic({
+        component: "cache",
+        code: CACHE_OBSERVATION_RECORDED,
+        outcome: "success",
+        operationId: attempt.operationId,
+        dispatch,
+      });
     } catch {
-      /* non-fatal observer */
+      diagnostic({
+        component: "observer",
+        code: CACHE_OBSERVER_FAILED,
+        outcome: "failed",
+        operationId: attempt.operationId,
+        dispatch,
+      });
     }
+  };
+  const candidates = (model?: Pick<Model<any>, "provider" | "id">): Attempt[] => {
+    const all = [...attempts.values()];
+    if (!model) return all;
+    return all.filter((attempt) => attempt.model.provider === model.provider && attempt.model.id === model.id);
+  };
+  const correlate = (model: Pick<Model<any>, "provider" | "id"> | undefined): Attempt | undefined => {
+    const matches = candidates(model);
+    if (matches.length === 1) return matches[0];
+    if (model && matches.length === 0 && attempts.size === 1) return attempts.values().next().value;
+    if (matches.length > 1 || attempts.size > 1) {
+      // There is no SDK correlation token on response/terminal hooks. Never
+      // guess FIFO: discard every indistinguishable request conservatively.
+      const blocked = matches.length > 1 ? matches : [...attempts.values()];
+      for (const attempt of blocked) attempts.delete(attempt.operationId);
+      diagnostic({
+        component: "cache",
+        code: CACHE_CORRELATION_UNAVAILABLE,
+        outcome: "blocked",
+        dispatch: "unknown",
+        count: blocked.length,
+      });
+    }
+    return undefined;
   };
   pi.on("session_start", async (_event, ctx) => {
     unsubscribe();
     countdown.restore(ctx);
-    attempt = undefined;
+    attempts.clear();
     owner = ctx.sessionManager && typeof ctx.sessionManager === "object" ? ctx.sessionManager : undefined;
-    if (owner)
-      unsubscribe = subscribeProviderAttempts(owner, (event) => countdown.record(pi, event.model, event.timestamp));
+    if (owner) {
+      unsubscribe = subscribeProviderAttempts(owner, (event) => {
+        record(
+          { operationId: event.operationId, model: event.model, startedAt: event.timestamp },
+          event.model,
+          event.timestamp,
+          event.observedAt === "response" ? "response" : "initiated",
+        );
+      });
+    }
     await ready;
     if (loadError)
       ctx.ui?.notify?.(
@@ -213,37 +273,52 @@ export function registerCacheCountdown(pi: ExtensionAPI, countdown: CacheCountdo
     unsubscribe();
     unsubscribe = () => {};
     owner = undefined;
-    attempt = undefined;
+    attempts.clear();
   });
-  // Keep model identity and dispatch time request-local. The HTTP hook observes
-  // SSE immediately; a successful terminal assistant message covers transports
-  // (notably Codex WebSocket) that do not invoke onResponse.
   pi.on("before_provider_request", (_event, ctx) => {
     const model = ctx.model;
-    attempt = model
-      ? { model: { provider: model.provider, id: model.id }, startedAt: Date.now(), observed: false }
-      : undefined;
+    if (!model) return;
+    const attempt: Attempt = {
+      operationId: randomUUID(),
+      model: { provider: model.provider, id: model.id },
+      startedAt: Date.now(),
+    };
+    attempts.set(attempt.operationId, attempt);
   });
   pi.on("after_provider_response", (event) => {
-    const actual = (event as typeof event & { model?: Pick<Model<any>, "provider" | "id"> }).model;
-    if (attempt) observe(actual ?? attempt.model, Date.now());
-  });
-  pi.on("message_end", (event) => {
-    if (event.message.role !== "assistant" || !attempt) return;
-    const current = attempt;
-    if (current.observed || event.message.stopReason === "error" || event.message.stopReason === "aborted") {
-      attempt = undefined;
+    const response = event as typeof event & { model?: Pick<Model<any>, "provider" | "id"> };
+    const attempt = correlate(response.model);
+    if (!attempt) return;
+    attempts.delete(attempt.operationId);
+    if (!Number.isInteger(response.status) || response.status < 200 || response.status >= 300) {
+      diagnostic({
+        component: "cache",
+        code: CACHE_HTTP_REJECTED,
+        outcome: "noop",
+        operationId: attempt.operationId,
+        dispatch: "response",
+        ...(Number.isInteger(response.status) && response.status >= 100 && response.status <= 599
+          ? { httpStatus: response.status }
+          : {}),
+      });
       return;
     }
-    // For WebSocket there is no response-header timestamp. Using request start
-    // is deliberately conservative: the displayed TTL never gains stream time.
+    record(attempt, response.model ?? attempt.model, Date.now(), "response");
+  });
+  pi.on("message_end", (event) => {
+    if (event.message.role !== "assistant") return;
     const message = event.message as typeof event.message & { provider?: string; model?: string };
     const model =
       typeof message.provider === "string" && typeof message.model === "string"
         ? { provider: message.provider, id: message.model }
-        : current.model;
-    observe(model, current.startedAt);
-    attempt = undefined;
+        : undefined;
+    const attempt = correlate(model);
+    if (!attempt) return;
+    attempts.delete(attempt.operationId);
+    if (event.message.stopReason === "error" || event.message.stopReason === "aborted") return;
+    // A successful terminal event covers WebSocket transports. Request start is
+    // conservative: streaming time is never added to the displayed TTL.
+    record(attempt, model ?? attempt.model, attempt.startedAt, "initiated");
   });
   pi.on("model_select", () => countdown.modelChanged());
   pi.registerCommand("cache-ttl", {
