@@ -7,6 +7,7 @@
 - Stop rejected HTTP responses from refreshing cache estimates; correlate observations conservatively against Pi's actual HTTP/WebSocket event contracts.
 - Preserve job termination causes, IPC failure categories, and shutdown ownership history. Keep existing job-output inspection intact.
 - Restrict corrupt child identities, make corrupt goal/mode restoration inspectable, and retain attention monitoring after transient inspection errors.
+- Harden fast-mode and shake persistence-failure handling, and reject stale native compaction work after session switches.
 - Keep optional provider/UI/Herdr diagnostics nonfatal. New diagnostic metadata excludes prompts, credentials, headers, payloads, tool output, and arbitrary exception text.
 
 ## Limits
