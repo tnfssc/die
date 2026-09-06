@@ -149,10 +149,12 @@ function state(owner: object): State {
 /** Returns only the allowlisted projection. Any invalid allowlisted value rejects the whole record. */
 function validate(input: unknown, durable = false): DiagnosticRecord | undefined {
   if (!input || typeof input !== "object" || Array.isArray(input)) return;
-  const value = input as Record<string, unknown>;
+  const source = input as Record<string, unknown>;
+  if (durable && Reflect.ownKeys(source).some((key) => typeof key !== "string" || !DURABLE_KEYS.has(key))) return;
+  // Read accessors exactly once: a getter must not swap an allowlisted value for secret text after validation.
+  const value: Record<string, unknown> = {};
+  for (const key of durable ? DURABLE_KEYS : CORE_KEYS) value[key] = source[key];
   if (durable) {
-    const keys = Reflect.ownKeys(value);
-    if (keys.some((key) => typeof key !== "string" || !DURABLE_KEYS.has(key))) return;
     if (value.version !== 1 || typeof value.generated !== "string") return;
     const parsed = Date.parse(value.generated);
     if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value.generated) return;

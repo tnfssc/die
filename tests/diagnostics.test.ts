@@ -189,3 +189,19 @@ test("extension guards same-manager switches and preserves shutdown diagnostics"
   expect(output.durable).toHaveLength(1);
   expect(output.durableScan.scanLimited).toBe(false);
 });
+
+test("diagnostic getters cannot substitute unvalidated values after validation", () => {
+  const owner = {};
+  let reads = 0;
+  recordDiagnostic(owner, {
+    component: "cache",
+    code: "observer_failed",
+    outcome: "failed",
+    get taskId() {
+      return ++reads === 1 ? "task_12345678" : "SECRET_SENTINEL";
+    },
+  });
+  expect(reads).toBe(1);
+  expect(JSON.stringify(inspectDiagnostics(owner))).not.toContain("SECRET_SENTINEL");
+  expect(inspectDiagnostics(owner).records[0]?.taskId).toBe("task_12345678");
+});
