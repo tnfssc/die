@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { TaskManager, type TaskInspection } from "../src/tasks/task-manager";
+import { type TaskInspection, TaskManager } from "../src/tasks/task-manager";
 
 const managers: TaskManager[] = [];
 
@@ -216,6 +216,61 @@ describe("asynchronous task manager", () => {
     expect(results.size).toBe(50);
     for (const [index, task] of tasks.entries()) expect(results.get(task.id)).toBe(`task-${index}`);
   }, 10_000);
+
+  test("reports metadata-only task-child mappings through the lifecycle hook", async () => {
+    const mappings: object[] = [];
+    const manager = new TaskManager(() => {}, undefined, { onTaskChild: (mapping) => mappings.push(mapping) });
+    managers.push(manager);
+    const task = manager.spawn({
+      ...commandLaunch("printf secret-command"),
+      kind: "agent",
+      agent: { type: "normal", model: "p/m", depth: 1, sessionFile: "/sessions/child.jsonl" },
+    });
+    await manager.wait(task.id);
+    expect(mappings).toEqual([{ taskId: task.id, kind: "agent", sessionFile: "/sessions/child.jsonl" }]);
+    expect(JSON.stringify(mappings)).not.toContain("secret-command");
+  });
+
+  test("exposes the first termination cause immediately and keeps it stable", async () => {
+    const diagnostics: object[] = [];
+    const manager = new TaskManager(() => {}, 25, { recordDiagnostic: (input) => diagnostics.push(input) });
+    managers.push(manager);
+    const task = manager.spawn({ ...commandLaunch("sleep 30"), timeoutMs: 10_000 });
+
+    const stopping = manager.kill(task.id, "user-stop");
+    const repeated = manager.kill(task.id, "session-shutdown");
+    expect(stopping.termination?.cause).toBe("user-stop");
+    expect(Date.parse(stopping.termination!.requestedAt)).not.toBeNaN();
+    expect(repeated.termination).toEqual(stopping.termination);
+    expect(repeated.timedOut).toBe(false);
+    repeated.termination!.cause = "timeout";
+    expect(manager.inspect(task.id).termination?.cause).toBe("user-stop");
+
+    await manager.wait(task.id);
+    expect(manager.inspect(task.id).termination).toEqual(stopping.termination);
+    expect(diagnostics).toContainEqual({
+      component: "jobs",
+      code: "JOBS_TASK_TERMINATION_REQUESTED",
+      outcome: "success",
+      taskId: task.id,
+      cancellation: "caller",
+    });
+    expect(JSON.stringify(diagnostics)).not.toContain("sleep 30");
+  });
+
+  test("attributes automatic timeout and shutdown termination separately", async () => {
+    const manager = new TaskManager(() => {}, 25);
+    managers.push(manager);
+    const timed = manager.spawn({ ...commandLaunch("sleep 30"), timeoutMs: 10 });
+    const timedResult = await manager.wait(timed.id);
+    expect(timedResult.termination?.cause).toBe("timeout");
+    expect(timedResult.timedOut).toBe(true);
+
+    const shuttingDown = manager.spawn(commandLaunch("sleep 30"));
+    const shutdown = manager.shutdown();
+    expect(manager.inspect(shuttingDown.id).termination?.cause).toBe("session-shutdown");
+    await shutdown;
+  });
 
   test("terminates running process groups", async () => {
     const { manager, completion } = managerWithCompletion();

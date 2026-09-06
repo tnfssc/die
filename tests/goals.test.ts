@@ -3,9 +3,10 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { GOAL_ENTRY_TYPE, GoalStore, latestGoal } from "../src/goals/store";
+import { inspectDiagnostics } from "../src/diagnostics";
 import { GoalContinuationController, MAX_NO_PROGRESS_CONTINUATIONS } from "../src/goals/controller";
 import { registerGoalMode } from "../src/goals/extension";
+import { GOAL_ENTRY_TYPE, GoalStore, latestGoal } from "../src/goals/store";
 
 const input = {
   objective: "Ship goal mode",
@@ -55,6 +56,22 @@ describe("goal durable state", () => {
       data: { version: 1, operation: "update", goal: active, at: "latest" },
     });
     expect(latestGoal(entries)).toBeUndefined();
+  });
+
+  test("corrupt restore reports affected waiting job references", () => {
+    const entries: any[] = [];
+    const store = new GoalStore((customType, data) => entries.push({ type: "custom", customType, data }));
+    store.set(input);
+    store.update({ status: "waiting", pendingJobIds: ["task_owned"] }, new Set(["task_owned"]));
+    entries.push({ type: "custom", customType: GOAL_ENTRY_TYPE, data: { version: 99 } });
+    const owner = {};
+    expect(latestGoal(entries, owner)).toBeUndefined();
+    expect(inspectDiagnostics(owner).records).toContainEqual({
+      component: "resume",
+      code: "state_invalid",
+      outcome: "fallback",
+      taskId: "task_owned",
+    });
   });
 
   test("does not mutate memory when durable append fails", () => {
@@ -415,4 +432,17 @@ test("goal history is durable JSONL and branch scoped", async () => {
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("resumed waiting goal preserves all affected task references in pause explanation", () => {
+  const original = harness();
+  const ids = ["task_abc123", "task_def456"];
+  for (const id of ids) original.statuses.set(id, "running");
+  original.runtime.handle("goal.set", input);
+  original.runtime.handle("goal.update", { status: "waiting", pendingJobIds: ids });
+  const resumed = harness(original.appended);
+  resumed.statuses.clear();
+  resumed.handlers.context[0]({ messages: [] }, resumed.ctx);
+  expect(resumed.runtime.get()?.status).toBe("paused");
+  for (const id of ids) expect(resumed.runtime.get()?.pauseReason).toContain(id);
 });

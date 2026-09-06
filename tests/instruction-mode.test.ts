@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { inspectDiagnostics } from "../src/diagnostics";
 import { mainAgentGuidance, replaceMainAgentGuidance } from "../src/prompts";
 import { INSTRUCTION_MODE_ENTRY, registerInstructionMode } from "../src/tasks/instruction-mode";
 
@@ -61,6 +62,19 @@ test("resume uses the latest valid session mode and child mode is isolated", asy
   expect(child.mode.get()).toBe("orchestrator");
   expect(child.appended).toEqual([]);
   expect(child.notices.at(-1).message).toContain("fixed role and delegation depth");
+});
+
+test("latest corrupt mode is an authority boundary and falls back safely", () => {
+  const resumed = fixture(true, [
+    { type: "custom", customType: INSTRUCTION_MODE_ENTRY, data: { mode: "fast" } },
+    { type: "custom", customType: INSTRUCTION_MODE_ENTRY, data: { mode: "invalid" } },
+  ]);
+  expect(resumed.mode.get()).toBe("orchestrator");
+  expect(inspectDiagnostics(resumed.ctx.sessionManager).records).toContainEqual({
+    component: "settings",
+    code: "settings_invalid",
+    outcome: "fallback",
+  });
 });
 
 test("bounded mode replacement preserves framing before and after it", () => {

@@ -1,10 +1,15 @@
 import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import { decodeImageChannel, IMAGE_CHANNEL_ENV, MAX_IMAGE_CHANNEL_BYTES } from "./images";
+import { inspectDiagnostics, recordDiagnostic } from "../diagnostics";
 import { BoundedOutputBuffer } from "../tasks/output-buffer";
+import { decodeImageChannel, IMAGE_CHANNEL_ENV, MAX_IMAGE_CHANNEL_BYTES } from "./images";
+import { JOB_BRIDGE_ENV, openParentJobBridge, serveJobBridge } from "./job-bridge";
 import { INTERNAL_TYPESCRIPT_RUNNER_ARG } from "./runner";
-import { JOB_BRIDGE_ENV, serveJobBridge, openParentJobBridge } from "./job-bridge";
+
+export const EXECUTION_DIAGNOSTIC_CODES = ["process_exit", "timeout", "caller_aborted", "shutdown"] as const;
+
+export type ExecutionDiagnosticCode = (typeof EXECUTION_DIAGNOSTIC_CODES)[number];
 
 // Leave room for stream labels, status, and truncation guidance within 50 KB /
 // 2,000 lines overall. Details retain the same bounded output as model content.
@@ -20,6 +25,7 @@ export interface ExecutionResult {
   stderrLost: boolean;
   timedOut: boolean;
   cancelled: boolean;
+  termination?: { cause: "timeout" | "execute-abort" | "session-shutdown"; requestedAt: string };
   images: ImageContent[];
   imageError?: string;
 }
@@ -62,15 +68,27 @@ export async function executeIsolated(
   } = {},
 ): Promise<ExecutionResult> {
   if (signal?.aborted) {
-    return {
+    const result: ExecutionResult = {
       stdout: "",
       stderr: "",
       stdoutLost: false,
       stderrLost: false,
       timedOut: false,
       cancelled: true,
+      termination: {
+        cause: signal.reason === "shutdown" ? "session-shutdown" : "execute-abort",
+        requestedAt: new Date().toISOString(),
+      },
       images: [],
     };
+    recordDiagnostic(result, {
+      component: "jobs",
+      code: signal.reason === "shutdown" ? "shutdown" : "caller_aborted",
+      outcome: "cancelled",
+      cancellation: signal.reason === "shutdown" ? "shutdown" : "caller",
+      dispatch: "none",
+    });
+    return result;
   }
   const childEnv: NodeJS.ProcessEnv = { ...process.env, [IMAGE_CHANNEL_ENV]: "1" };
   if (options.jobHandler) childEnv[JOB_BRIDGE_ENV] = "1";
@@ -88,23 +106,36 @@ export async function executeIsolated(
   const imagePipe = child.stdio[3] as Readable | undefined;
   const jobPipe = options.jobHandler ? openParentJobBridge(child) : undefined;
   const executionController = new AbortController();
+  const bridgeDiagnosticOwner = {};
   const jobBridge =
-    options.jobHandler && jobPipe ? serveJobBridge(jobPipe, options.jobHandler, executionController.signal) : undefined;
+    options.jobHandler && jobPipe
+      ? serveJobBridge(jobPipe, options.jobHandler, executionController.signal, bridgeDiagnosticOwner)
+      : undefined;
   let imageError: string | undefined;
+  // The first termination request owns the result. In particular, a caller
+  // abort racing a timeout cannot rewrite an already-established cause.
+  let terminationCause: "timeout" | "abort" | undefined;
+  let termination: ExecutionResult["termination"];
   let timedOut = false;
   let cancelled = false;
   let killTimer: ReturnType<typeof setTimeout> | undefined;
   let timeout: ReturnType<typeof setTimeout> | undefined;
 
-  const terminate = (fromTimeout = false) => {
-    if (fromTimeout) timedOut = true;
-    else cancelled = true;
-    executionController.abort();
+  const terminate = (cause: "timeout" | "abort") => {
+    if (terminationCause) return;
+    terminationCause = cause;
+    termination = {
+      cause: cause === "timeout" ? "timeout" : signal?.reason === "shutdown" ? "session-shutdown" : "execute-abort",
+      requestedAt: new Date().toISOString(),
+    };
+    timedOut = cause === "timeout";
+    cancelled = cause === "abort";
+    executionController.abort(cause === "timeout" ? "timeout" : signal?.reason);
     signalProcessGroup(child, "SIGTERM");
     killTimer ??= setTimeout(() => signalProcessGroup(child, "SIGKILL"), options.killGraceMs ?? 5_000);
     killTimer.unref?.();
   };
-  const onAbort = () => terminate();
+  const onAbort = () => terminate("abort");
   // Install completion handlers before writing source or acting on cancellation.
   const completion = new Promise<{ exitCode: number | null; exitSignal: NodeJS.Signals | null }>((resolve, reject) => {
     child.once("error", reject);
@@ -136,7 +167,7 @@ export async function executeIsolated(
   signal?.addEventListener("abort", onAbort, { once: true });
   if (signal?.aborted) onAbort();
   if (timeoutMs) {
-    timeout = setTimeout(() => terminate(true), timeoutMs);
+    timeout = setTimeout(() => terminate("timeout"), timeoutMs);
     timeout.unref?.();
   }
   child.stdin!.end(code);
@@ -173,7 +204,7 @@ export async function executeIsolated(
   }
   const out = streamTail(stdout);
   const err = streamTail(stderr);
-  return {
+  const result: ExecutionResult = {
     exitCode: exitCode ?? undefined,
     signal: exitSignal ?? undefined,
     stdout: out.text,
@@ -182,9 +213,24 @@ export async function executeIsolated(
     stderrLost: err.lost,
     timedOut,
     cancelled,
+    ...(termination ? { termination } : {}),
     images,
     imageError,
   };
+  const diagnostic = timedOut
+    ? { code: "timeout" as const, outcome: "cancelled" as const, cancellation: "timeout" as const }
+    : cancelled
+      ? {
+          code: signal?.reason === "shutdown" ? ("shutdown" as const) : ("caller_aborted" as const),
+          outcome: "cancelled" as const,
+          cancellation: signal?.reason === "shutdown" ? ("shutdown" as const) : ("caller" as const),
+        }
+      : exitCode === 0 && !imageError
+        ? { code: "process_exit" as const, outcome: "success" as const }
+        : { code: "process_exit" as const, outcome: "failed" as const };
+  for (const record of inspectDiagnostics(bridgeDiagnosticOwner).records) recordDiagnostic(result, record);
+  recordDiagnostic(result, { component: "jobs", ...diagnostic });
+  return result;
 }
 
 export function formatResult(result: ExecutionResult): string {

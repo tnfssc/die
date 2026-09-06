@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { recordDiagnostic } from "../diagnostics";
 import { GOAL_STATUSES, type GoalEntry, type GoalState, type GoalStatus } from "./types";
 
 export const GOAL_ENTRY_TYPE = "die-goal";
@@ -101,26 +102,66 @@ function parseEntry(raw: unknown): GoalEntry | undefined {
   return goal ? { version: 1, operation: data.operation, goal, at: data.at } : undefined;
 }
 
-export function latestGoal(entries: readonly unknown[]): GoalState | undefined {
+export function latestGoal(entries: readonly unknown[], diagnosticOwner?: object): GoalState | undefined {
   let goal: GoalState | undefined;
+  let restoreFailure: { taskIds: string[] } | undefined;
+  const waitingIds = (value: unknown): string[] => {
+    if (!value || typeof value !== "object") return [];
+    const data = (value as { data?: unknown }).data;
+    if (!data || typeof data !== "object") return [];
+    const candidate = (data as { goal?: unknown }).goal;
+    if (!candidate || typeof candidate !== "object") return [];
+    const ids = (candidate as { pendingJobIds?: unknown }).pendingJobIds;
+    return Array.isArray(ids) ? ids.slice(0, MAX_ITEMS).filter((id): id is string => typeof id === "string") : [];
+  };
   for (const raw of entries) {
     const marker = raw as { type?: unknown; customType?: unknown } | undefined;
     if (marker?.type !== "custom" || marker.customType !== GOAL_ENTRY_TYPE) continue;
 
     // Every entry of our custom type is an authority boundary. A corrupt or
     // future-version entry must fail closed rather than revive an older goal.
+    const priorWaitingIds = goal?.status === "waiting" ? (goal.pendingJobIds ?? []) : [];
     const entry = parseEntry(raw);
-    if (!entry || entry.operation === "clear") {
+    if (!entry) {
+      restoreFailure = { taskIds: [...new Set([...priorWaitingIds, ...waitingIds(raw)])] };
       goal = undefined;
+      continue;
+    }
+    if (entry.operation === "clear") {
+      goal = undefined;
+      restoreFailure = undefined;
       continue;
     }
     const candidate = entry.goal!;
     if (entry.operation === "set") {
       goal = structuredClone(candidate);
+      restoreFailure = undefined;
     } else if (goal && candidate.id === goal.id && candidate.revision > goal.revision) {
       goal = structuredClone(candidate);
+      restoreFailure = undefined;
     } else {
+      restoreFailure = {
+        taskIds: [
+          ...new Set([...priorWaitingIds, ...(candidate.status === "waiting" ? (candidate.pendingJobIds ?? []) : [])]),
+        ],
+      };
       goal = undefined;
+    }
+  }
+  if (restoreFailure && diagnosticOwner) {
+    // Always diagnose the authority boundary, even when forged task references
+    // would themselves be rejected by the closed diagnostic schema.
+    const refs = [
+      undefined,
+      ...restoreFailure.taskIds.filter((id) => /^task_[A-Za-z0-9]{1,64}$/.test(id)).slice(0, MAX_ITEMS),
+    ];
+    for (const taskId of refs) {
+      recordDiagnostic(diagnosticOwner, {
+        component: "resume",
+        code: "state_invalid",
+        outcome: "fallback",
+        ...(taskId ? { taskId } : {}),
+      });
     }
   }
   return goal;
@@ -133,8 +174,9 @@ export class GoalStore {
     private readonly append: (type: string, data: GoalEntry) => void,
     entries: readonly unknown[] = [],
     private readonly now = () => new Date().toISOString(),
+    diagnosticOwner?: object,
   ) {
-    this.#goal = latestGoal(entries);
+    this.#goal = latestGoal(entries, diagnosticOwner);
   }
 
   get(): GoalState | undefined {

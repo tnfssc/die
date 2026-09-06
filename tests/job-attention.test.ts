@@ -1,13 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
-import { TaskManager, type TaskLaunch } from "../src/tasks/task-manager";
+import { inspectDiagnostics } from "../src/diagnostics";
 import {
-  JobAttentionScheduler,
-  MAX_SNOOZE_MINUTES,
-  formatAttentionNotification,
   type AttentionClock,
   type AttentionNotice,
+  formatAttentionNotification,
+  JobAttentionScheduler,
+  MAX_SNOOZE_MINUTES,
 } from "../src/tasks/job-attention";
 import { JobService } from "../src/tasks/job-service";
+import { type TaskLaunch, TaskManager } from "../src/tasks/task-manager";
 
 class FakeClock implements AttentionClock {
   nowMs = Date.now();
@@ -264,4 +265,36 @@ test("raw agent model chunks emit one activity even when reasoning is not retain
   const done = await manager.wait(task.id);
   expect(outputActivities).toBe(1);
   expect(done.output).not.toContain("secret");
+});
+
+test("transient inspection errors retain monitoring until pending confirms completion", () => {
+  const clock = new FakeClock(),
+    batches: AttentionNotice[][] = [];
+  const manager = new TaskManager(() => {}, 10);
+  managers.push(manager);
+  const task = manager.spawn(launch("transient inspect"));
+  const inspect = manager.inspect.bind(manager);
+  let fail = true;
+  (manager as any).inspect = (...args: unknown[]) => {
+    if (fail) throw new Error("temporary inspect failure");
+    return inspect(...(args as Parameters<TaskManager["inspect"]>));
+  };
+  const scheduler = new JobAttentionScheduler(manager, (items) => batches.push(items), {
+    clock,
+    quietMs: 100,
+    reviewMs: 200,
+  });
+
+  clock.advance(200);
+  expect(batches).toHaveLength(0);
+  expect(scheduler.diagnostics().activeJobs).toBe(1);
+  clock.advance(200);
+  expect(scheduler.diagnostics().activeJobs).toBe(1);
+  expect(inspectDiagnostics(manager).records.filter((item) => item.code === "inspection_failed")).toHaveLength(1);
+
+  fail = false;
+  clock.advance(200);
+  expect(batches).toHaveLength(1);
+  expect(batches[0]![0]!.id).toBe(task.id);
+  scheduler.dispose();
 });

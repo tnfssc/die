@@ -1,9 +1,11 @@
-import { test, expect } from "bun:test";
+import { expect, test } from "bun:test";
 import { resolve } from "node:path";
-import { executeIsolated } from "../src/typescript/execution";
-import { TaskManager } from "../src/tasks/task-manager";
+import { inspectDiagnostics } from "../src/diagnostics";
 import { JobService } from "../src/tasks/job-service";
+import { TaskManager } from "../src/tasks/task-manager";
+import { executeIsolated } from "../src/typescript/execution";
 import { registerExecuteTool } from "../src/typescript/extension";
+
 const binary = resolve(import.meta.dir, "../dist/die");
 test("execute helpers multiplex responses, reject errors, and do not print implicitly", async () => {
   const seen: string[] = [];
@@ -26,6 +28,12 @@ test("execute helpers multiplex responses, reject errors, and do not print impli
   expect(seen).toEqual(["shell", "jobs.list", "jobs.stop"]);
   expect(result.stdout).toContain('"command":"one"');
   expect(result.stdout).toContain("unknown job");
+  expect(inspectDiagnostics(result).records).toContainEqual({
+    component: "bridge",
+    code: "delivery_failed",
+    outcome: "failed",
+    dispatch: "response",
+  });
 });
 test("job helpers without a session bridge fail clearly", async () => {
   const result = await executeIsolated('await shell("echo nope")', process.cwd(), undefined, 3000, {
@@ -345,6 +353,12 @@ test("oversized reply releases foreground ownership exactly once", async () => {
     );
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("response exceeded 1 MB");
+    expect(inspectDiagnostics(result).records).toContainEqual({
+      component: "bridge",
+      code: "frame_oversize",
+      outcome: "fallback",
+      dispatch: "response",
+    });
     expect(notifications).toHaveLength(1);
     expect(notifications[0].output).toBe("retained");
   } finally {

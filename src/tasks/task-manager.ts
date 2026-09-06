@@ -1,17 +1,17 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { BoundedOutputBuffer } from "./output-buffer";
 import {
   getJobResponseDeliverySignal,
   JOB_RESPONSE_ACK_EVENT,
   supportsJobResponseAcknowledgement,
 } from "../typescript/job-bridge";
-
-import { AgentProgress, type AgentInfo } from "./agent-progress";
+import { type AgentInfo, AgentProgress } from "./agent-progress";
+import { BoundedOutputBuffer } from "./output-buffer";
 
 const MAX_CAPTURE_BYTES = 1_000_000;
 const MAX_INSPECT_BYTES = 5_000;
 const DEFAULT_KILL_GRACE_MS = 5_000;
+const DEFAULT_SHUTDOWN_WATCHDOG_MS = 10_000;
 
 function utf8SequenceLength(byte: number): number {
   if ((byte & 0x80) === 0) return 1;
@@ -41,6 +41,31 @@ function utf8SafeSlice(buffer: Buffer, limit: number): { start: number; end: num
 }
 
 export type TaskStatus = "running" | "completed" | "failed" | "killed";
+export type TaskTerminationCause = "timeout" | "user-stop" | "session-shutdown" | "execute-cancellation";
+export interface TaskTermination {
+  cause: TaskTerminationCause;
+  requestedAt: string;
+}
+/** Metadata-only integration hooks. Never receives command or captured output. */
+export interface TaskManagerHooks {
+  recordDiagnostic?: (input: {
+    component: "jobs";
+    code:
+      | "JOBS_TASK_SPAWNED"
+      | "JOBS_TASK_CHILD_LINKED"
+      | "JOBS_TASK_TERMINATION_REQUESTED"
+      | "JOBS_TASK_COMPLETED"
+      | "JOBS_SHUTDOWN_STARTED"
+      | "JOBS_SHUTDOWN_COMPLETED"
+      | "JOBS_SHUTDOWN_CLOSURE_TIMEOUT";
+    outcome: "success" | "failed" | "blocked" | "cancelled";
+    taskId?: string;
+    cancellation?: "caller" | "timeout" | "shutdown";
+    count?: number;
+  }) => void;
+  onTaskChild?: (mapping: { taskId: string; kind: TaskLaunch["kind"]; sessionFile?: string }) => void;
+  shutdownWatchdogMs?: number;
+}
 
 /** Lightweight lifecycle events. Payloads are snapshots; subscribers cannot mutate manager state. */
 export type TaskEvent =
@@ -79,6 +104,8 @@ export interface TaskSummary {
   baseOffset: number;
   outputEnd: number;
   timedOut: boolean;
+  /** Stable first request to terminate this task, exposed as soon as it is accepted. */
+  termination?: TaskTermination;
   /** Last observable output/input activity. This is evidence, not a liveness diagnosis. */
   lastActivityAt?: string;
   /** Whether the manager has not closed child stdin. The child may not be reading it. */
@@ -110,12 +137,22 @@ export class TaskManager {
   readonly #onComplete: (task: TaskInspection) => void;
   readonly #killGraceMs: number;
   readonly #listeners = new Set<TaskEventListener>();
+  readonly #hooks: TaskManagerHooks;
+  readonly #shutdownWatchdogMs: number;
   #shuttingDown = false;
   #shutdown?: Promise<void>;
+  #diagnosticFailureReported = false;
+  #childFailureReported = false;
 
-  constructor(onComplete: (task: TaskInspection) => void, killGraceMs = DEFAULT_KILL_GRACE_MS) {
+  constructor(
+    onComplete: (task: TaskInspection) => void,
+    killGraceMs = DEFAULT_KILL_GRACE_MS,
+    hooks: TaskManagerHooks = {},
+  ) {
     this.#onComplete = onComplete;
     this.#killGraceMs = killGraceMs;
+    this.#hooks = hooks;
+    this.#shutdownWatchdogMs = hooks.shutdownWatchdogMs ?? DEFAULT_SHUTDOWN_WATCHDOG_MS;
   }
 
   spawn(launch: TaskLaunch): TaskSummary {
@@ -155,6 +192,8 @@ export class TaskManager {
       resolveCompletion,
     };
     this.#tasks.set(id, task);
+    this.#diagnostic({ component: "jobs", code: "JOBS_TASK_SPAWNED", outcome: "success", taskId: id });
+    this.#taskChild({ taskId: id, kind: launch.kind, sessionFile: launch.agent?.sessionFile });
     if (launch.closeStdin) child.stdin.end();
     this.#emit({ type: "spawned", task: this.#summary(task) });
 
@@ -211,13 +250,19 @@ export class TaskManager {
       task.resolveCompletion = undefined;
       resolveTask?.(inspection);
       this.#emit({ type: "completed", task: this.#summary(task) });
+      this.#diagnostic({
+        component: "jobs",
+        code: "JOBS_TASK_COMPLETED",
+        outcome: task.termination ? "cancelled" : task.status === "completed" ? "success" : "failed",
+        taskId: id,
+        ...(task.termination ? { cancellation: this.#cancellation(task.termination.cause) } : {}),
+      });
       if (!this.#shuttingDown && task.notifyOnComplete) this.#notify(inspection);
     });
 
     if (launch.timeoutMs) {
       task.timeout = setTimeout(() => {
-        task.timedOut = true;
-        this.kill(id);
+        this.kill(id, "timeout");
       }, launch.timeoutMs);
       task.timeout.unref?.();
     }
@@ -361,10 +406,19 @@ export class TaskManager {
     return this.#summary(task);
   }
 
-  kill(id: string): TaskSummary {
+  kill(id: string, cause: TaskTerminationCause = "user-stop"): TaskSummary {
     const task = this.#require(id);
     if (task.status !== "running" || task.killRequested) return this.#summary(task);
     task.killRequested = true;
+    task.termination = { cause, requestedAt: new Date().toISOString() };
+    task.timedOut = cause === "timeout";
+    this.#diagnostic({
+      component: "jobs",
+      code: "JOBS_TASK_TERMINATION_REQUESTED",
+      outcome: "success",
+      taskId: id,
+      cancellation: this.#cancellation(cause),
+    });
     this.#emit({ type: "stopping", task: this.#summary(task) });
     this.#signal(task, "SIGTERM");
     task.killTimer = setTimeout(() => {
@@ -382,16 +436,81 @@ export class TaskManager {
       if (task.timeout) clearTimeout(task.timeout);
       if (task.status === "running") {
         pending.push(this.wait(task.id));
-        this.kill(task.id);
+        this.kill(task.id, "session-shutdown");
       }
     }
-    // The session must not dispose its runtime (or exit) before escalation and
-    // stream/process cleanup finish. Merely scheduling an unref'ed timer is
-    // insufficient in the compiled CLI.
-    this.#shutdown = Promise.all(pending).then(() => {
-      this.#listeners.clear();
+    this.#diagnostic({
+      component: "jobs",
+      code: "JOBS_SHUTDOWN_STARTED",
+      outcome: "success",
+      count: pending.length,
     });
+    // Keep the runtime alive for escalation/close, but bound a missing child close event.
+    this.#shutdown = (async () => {
+      let watchdog: ReturnType<typeof setTimeout> | undefined;
+      const withinBound = await Promise.race([
+        Promise.all(pending).then(() => true),
+        new Promise<false>((resolve) => {
+          watchdog = setTimeout(() => resolve(false), this.#shutdownWatchdogMs);
+        }),
+      ]);
+      if (watchdog) clearTimeout(watchdog);
+      if (!withinBound) {
+        const count = [...this.#tasks.values()].filter((task) => task.status === "running").length;
+        for (const task of this.#tasks.values()) {
+          if (task.status !== "running") continue;
+          this.#signal(task, "SIGKILL");
+          // The watchdog bounds runtime ownership as well as the returned
+          // promise. Do not fabricate completion when close was not observed.
+          task.process?.stdin.destroy();
+          task.process?.stdout.destroy();
+          task.process?.stderr.destroy();
+          task.process?.unref();
+        }
+        this.#diagnostic({ component: "jobs", code: "JOBS_SHUTDOWN_CLOSURE_TIMEOUT", outcome: "blocked", count });
+      }
+      this.#listeners.clear();
+      this.#diagnostic({
+        component: "jobs",
+        code: "JOBS_SHUTDOWN_COMPLETED",
+        outcome: withinBound ? "success" : "failed",
+        count: pending.length,
+      });
+    })();
     return this.#shutdown;
+  }
+
+  #diagnostic(input: Parameters<NonNullable<TaskManagerHooks["recordDiagnostic"]>>[0]): void {
+    try {
+      this.#hooks.recordDiagnostic?.(input);
+    } catch {
+      if (!this.#diagnosticFailureReported) {
+        this.#diagnosticFailureReported = true;
+        console.error("Task diagnostic callback failed");
+      }
+    }
+  }
+
+  #taskChild(mapping: Parameters<NonNullable<TaskManagerHooks["onTaskChild"]>>[0]): void {
+    try {
+      this.#hooks.onTaskChild?.(mapping);
+      if (mapping.sessionFile)
+        this.#diagnostic({
+          component: "jobs",
+          code: "JOBS_TASK_CHILD_LINKED",
+          outcome: "success",
+          taskId: mapping.taskId,
+        });
+    } catch {
+      if (!this.#childFailureReported) {
+        this.#childFailureReported = true;
+        console.error("Task child lifecycle callback failed");
+      }
+    }
+  }
+
+  #cancellation(cause: TaskTerminationCause): "caller" | "timeout" | "shutdown" {
+    return cause === "timeout" ? "timeout" : cause === "session-shutdown" ? "shutdown" : "caller";
   }
 
   #notify(task: TaskInspection): void {
@@ -430,7 +549,11 @@ export class TaskManager {
       if (process.platform !== "win32" && task.pid) process.kill(-task.pid, signal);
       else task.process?.kill(signal);
     } catch {
-      task.process?.kill(signal);
+      try {
+        task.process?.kill(signal);
+      } catch {
+        /* Process may already be gone. */
+      }
     }
   }
 
@@ -459,6 +582,10 @@ export class TaskManager {
       resolveCompletion: _resolveCompletion,
       ...summary
     } = task;
-    return { ...summary, ...(summary.agent ? { agent: { ...summary.agent } } : {}) };
+    return {
+      ...summary,
+      ...(summary.agent ? { agent: { ...summary.agent } } : {}),
+      ...(summary.termination ? { termination: { ...summary.termination } } : {}),
+    };
   }
 }

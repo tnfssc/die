@@ -1,3 +1,4 @@
+import { inspectDiagnostics, recordDiagnostic } from "../diagnostics";
 import executeDescription from "../prompts/execute-description.md" with { type: "text" };
 import { executeGuidance, backgroundHandoff } from "../prompts";
 import { SettingsManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -34,10 +35,13 @@ export function registerExecuteTool(
       }
       return padding;
     });
-  const shutdown = new AbortController();
+  let shutdown = new AbortController();
+  pi.on("session_start", () => {
+    if (shutdown.signal.aborted) shutdown = new AbortController();
+  });
   const active = new Set<Promise<unknown>>();
   pi.on("session_shutdown", async () => {
-    shutdown.abort();
+    shutdown.abort("shutdown");
     await Promise.allSettled([...active]);
   });
 
@@ -70,6 +74,8 @@ export function registerExecuteTool(
       ),
     async execute(_toolCallId, input, signal, _onUpdate, ctx) {
       const params = z.parse(ExecuteParameters, input);
+      const owner = ctx.sessionManager;
+      const ownerSessionId = owner?.getSessionId?.();
       const backgroundIds: string[] = [];
       const handoffWaits = new AbortController();
       let handoffMessage: string | undefined;
@@ -104,6 +110,10 @@ export function registerExecuteTool(
       active.add(execution);
       try {
         const result = await execution;
+        const diagnostics = inspectDiagnostics(result).records;
+        if (owner && owner.getSessionId?.() === ownerSessionId) {
+          for (const diagnostic of diagnostics) recordDiagnostic(owner, diagnostic);
+        }
         let text = formatResult(result);
         const handoff = backgroundHandoff(backgroundIds);
         if (handoff) text += "\n\n" + handoff;
@@ -133,6 +143,7 @@ export function registerExecuteTool(
           // Don't duplicate base64 payloads in persisted tool details.
           details: {
             ...details,
+            ...(diagnostics.length ? { diagnostics } : {}),
             ...(handoffMessage !== undefined ? { handoff: handoffMessage } : {}),
             backgroundJobs: backgroundIds,
             images: images.map((image) => ({

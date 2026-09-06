@@ -1,9 +1,10 @@
-import { test, expect, spyOn } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { TaskManager, type TaskLaunch } from "../src/tasks/task-manager";
-import { JobService } from "../src/tasks/job-service";
+import { join } from "node:path";
+import { type JobDiagnosticInput, JobService } from "../src/tasks/job-service";
+import { type TaskLaunch, TaskManager } from "../src/tasks/task-manager";
+
 const signal = new AbortController().signal;
 test("job helper validation rejects invalid inputs before spawning", async () => {
   const manager = new TaskManager(() => {}),
@@ -29,6 +30,39 @@ test("job helper validation rejects invalid inputs before spawning", async () =>
     await manager.shutdown();
   }
 });
+test("records metadata-only dispatch lifecycle against the supplied session recorder", async () => {
+  const manager = new TaskManager(() => {}),
+    records: JobDiagnosticInput[] = [];
+  const service = new JobService(
+    manager,
+    () => ({ depth: 0 }),
+    () => {},
+    undefined,
+    undefined,
+    (input) => records.push(input),
+  );
+  try {
+    const result = (await service.handle(
+      "shell",
+      { command: "printf private-value", waitSeconds: 1 },
+      { cwd: process.cwd() } as any,
+      signal,
+    )) as { id: string };
+    expect(records).toHaveLength(2);
+    expect(records[0]!.dispatch).toBe("initiated");
+    expect(records[1]).toMatchObject({ dispatch: "response", outcome: "success", taskId: result.id });
+    expect(records[1]!.operationId).toBe(records[0]!.operationId);
+    expect(JSON.stringify(records)).not.toContain("private-value");
+
+    await expect(service.handle("unknown", {}, { cwd: process.cwd() } as any, signal)).rejects.toThrow(
+      "Unknown job method",
+    );
+    expect(records.at(-1)).toMatchObject({ dispatch: "response", outcome: "failed" });
+  } finally {
+    await manager.shutdown();
+  }
+});
+
 test("profile settings, child identity, and three-tier limits survive helper migration", async () => {
   const dir = await mkdtemp(join(tmpdir(), "die-jobs-profile-")),
     path = join(dir, "profiles.json");
@@ -102,5 +136,27 @@ test("profile settings, child identity, and three-tier limits survive helper mig
     foreground.mockRestore();
     await manager.shutdown();
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("healthy inspection polling does not produce per-poll diagnostics", async () => {
+  const manager = new TaskManager(() => {}),
+    records: JobDiagnosticInput[] = [];
+  const service = new JobService(
+    manager,
+    () => ({ depth: 0 }),
+    () => {},
+    undefined,
+    undefined,
+    (input) => records.push(input),
+  );
+  try {
+    for (let i = 0; i < 100; i++) await service.handle("jobs.list", {}, {} as any, signal);
+    expect(records).toHaveLength(0);
+    for (let i = 0; i < 3; i++)
+      await expect(service.handle("jobs.inspect", { id: "task_missing" }, {} as any, signal)).rejects.toThrow();
+    expect(records).toHaveLength(1);
+  } finally {
+    await manager.shutdown();
   }
 });

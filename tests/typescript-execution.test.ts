@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
+import { inspectDiagnostics } from "../src/diagnostics";
 import { executeIsolated, formatResult } from "../src/typescript/execution";
 import { registerExecuteTool } from "../src/typescript/extension";
 
@@ -63,6 +64,9 @@ describe("execute process lifecycle and output", () => {
   test("does not launch already-cancelled code", async () => {
     const result = await execute('await Bun.write("should-not-exist", "bad")', AbortSignal.abort());
     expect(result.cancelled).toBe(true);
+    expect(inspectDiagnostics(result).records).toEqual([
+      { component: "jobs", code: "caller_aborted", outcome: "cancelled", cancellation: "caller", dispatch: "none" },
+    ]);
     expect(await Bun.file(join(directory, "should-not-exist")).exists()).toBe(false);
   });
 
@@ -81,6 +85,29 @@ describe("execute process lifecycle and output", () => {
     expect(result.cancelled).toBe(false);
     expect(result.signal).toBe("SIGKILL");
     expect(formatResult(result)).toContain("Execution timed out");
+  });
+
+  test.skipIf(process.platform === "win32")("keeps the first racing termination cause", async () => {
+    const afterTimeout = new AbortController();
+    setTimeout(() => afterTimeout.abort(), 70).unref?.();
+    const timedOut = await execute(hang, afterTimeout.signal, 20);
+    expect(timedOut.timedOut).toBe(true);
+    expect(timedOut.cancelled).toBe(false);
+    expect(timedOut.termination?.cause).toBe("timeout");
+    expect(Number.isFinite(Date.parse(timedOut.termination!.requestedAt))).toBe(true);
+    expect(inspectDiagnostics(timedOut).records).toEqual([
+      { component: "jobs", code: "timeout", outcome: "cancelled", cancellation: "timeout" },
+    ]);
+
+    const beforeTimeout = new AbortController();
+    setTimeout(() => beforeTimeout.abort(), 20).unref?.();
+    const cancelled = await execute(hang, beforeTimeout.signal, 70);
+    expect(cancelled.cancelled).toBe(true);
+    expect(cancelled.timedOut).toBe(false);
+    expect(cancelled.termination?.cause).toBe("execute-abort");
+    expect(inspectDiagnostics(cancelled).records).toEqual([
+      { component: "jobs", code: "caller_aborted", outcome: "cancelled", cancellation: "caller" },
+    ]);
   });
 
   test.skipIf(process.platform === "win32")("cancels a running process and escalates", async () => {
@@ -187,4 +214,33 @@ describe("execute process lifecycle and output", () => {
       "Execution cancelled",
     );
   });
+});
+
+test("execute shutdown cancellation is classified and a new session receives a fresh controller", async () => {
+  const preempted = await executeIsolated("", process.cwd(), AbortSignal.abort("shutdown"));
+  expect(preempted.termination?.cause).toBe("session-shutdown");
+  expect(inspectDiagnostics(preempted).records[0]).toMatchObject({ code: "shutdown", cancellation: "shutdown" });
+  let tool: any;
+  const handlers = new Map<string, Function>();
+  registerExecuteTool(
+    {
+      registerTool(value: any) {
+        tool = value;
+      },
+      on(event: string, handler: Function) {
+        handlers.set(event, handler);
+      },
+    } as any,
+    undefined,
+    binary,
+  );
+  await handlers.get("session_shutdown")!();
+  const ctx = { cwd: process.cwd() } as ExtensionContext;
+  await expect(tool.execute("closed", { code: "console.log(1)" }, undefined, undefined, ctx)).rejects.toThrow(
+    "Execution cancelled",
+  );
+  handlers.get("session_start")!();
+  const result = await tool.execute("fresh", { code: "console.log(2)" }, undefined, undefined, ctx);
+  expect(result.details.stdout.trim()).toBe("2");
+  expect(result.details.diagnostics).toContainEqual({ component: "jobs", code: "process_exit", outcome: "success" });
 });
