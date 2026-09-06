@@ -335,6 +335,38 @@ test("real SDK print completion cycles accept distinct explicit milestones", asy
   });
 }, 15_000);
 
+test("real SDK reports auth preparation failure before provider dispatch", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-goal-auth-sdk-"));
+  let restoreBudget: (() => void) | undefined;
+  try {
+    const model = getModel("openai-codex", "gpt-5.6-luna")!;
+    const runtime = await ModelRuntime.create({
+      authPath: join(dir, "missing-auth.json"),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    const dispatches: unknown[] = [];
+    const budget = installLiveDispatchBudget(runtime, model.provider, 1, (item) => dispatches.push(item));
+    restoreBudget = budget.restore;
+
+    const assistant = await runtime
+      .streamSimple(model, { systemPrompt: "offline auth fixture", messages: [], tools: [] }, { transport: "sse" })
+      .result();
+
+    expect(assistant.stopReason).toBe("error");
+    expect(assistant.errorMessage).toBe("Provider is not configured: openai-codex");
+    expect(assistant.usage.totalTokens).toBe(0);
+    expect({ invocations: budget.invocations, dispatches: budget.dispatches }).toEqual({
+      invocations: 1,
+      dispatches: 0,
+    });
+    expect(dispatches).toHaveLength(0);
+  } finally {
+    restoreBudget?.();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("live goal fixture reaches an intercepted real-runtime provider offline", async () => {
   const dir = await mkdtemp(join(tmpdir(), "die-goal-provider-sdk-"));
   let session: any;
