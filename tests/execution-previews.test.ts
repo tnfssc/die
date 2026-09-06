@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
+import { completionDiagnosticDetails } from "../src/tasks/extension";
 import {
   completionPreview,
   executeInputPreview,
@@ -111,4 +112,75 @@ test("images remain summarized collapsed and represented by Pi content", () => {
   ).render(80);
   expect(rendered).toHaveLength(1);
   expect(rendered[0]).toContain("1 image");
+});
+
+test("full-batch diagnostics retain a failure omitted after the first 50 tasks", () => {
+  const tasks = Array.from({ length: 51 }, (_, index) => ({
+    id: "task_" + index,
+    status: index === 50 ? "failed" : "completed",
+    command: "true",
+    output: "",
+  })) as any;
+  const details = completionDiagnosticDetails(tasks, []);
+  expect(details.tasks).toHaveLength(50);
+  expect(details.omittedTasks).toBe(1);
+  expect(details.taskStatusCounts).toEqual({ completed: 50, failed: 1, killed: 0, running: 0, unknown: 0 });
+  const row = completionPreview("51 asynchronous tasks completed.", false, theme, 0, "task-complete", details).render(
+    32,
+  )[0];
+  expect(row.startsWith("✗ Task completion")).toBe(true);
+  expect(visibleWidth(row)).toBeLessThanOrEqual(32);
+});
+
+test("legacy or incomplete completion metadata renders unknown rather than success", () => {
+  for (const details of [undefined, {}, { tasks: [{ id: "old" }] }, { tasks: [], omittedTasks: 1 }]) {
+    const row = completionPreview("Task update", false, theme, 0, "task-complete", details).render(80)[0];
+    expect(row).toStartWith("? Task completion");
+    expect(row).not.toStartWith("✓");
+  }
+});
+
+test("mixed failure and attention indicators precede truncatable descriptions", () => {
+  const row = completionPreview("A deliberately long completion description", false, theme, 0, "task-complete", {
+    tasks: [{ id: "task_bad", status: "failed", signal: "SIGTERM" }],
+    attention: [{ id: "task_waiting" }],
+  }).render(18)[0];
+  expect(row.startsWith("✗ ⚠ 1")).toBe(true);
+  expect(visibleWidth(row)).toBeLessThanOrEqual(18);
+});
+
+test("untrusted task metadata is sanitized before terminal coloring", () => {
+  const row = completionPreview("Done", false, theme, 0, "task-complete", {
+    tasks: [{ id: "safe\x1b[2J", status: "failed\x1b]0;bad\x07", signal: "SIG\x1b[31mTERM" }],
+  }).render(120)[0];
+  expect(row).toContain("safe");
+  expect(row).not.toContain("\x1b");
+  expect(stripTerminalSequences(row)).not.toContain("\x07");
+});
+
+test("collapsed execute puts loss, image, and background diagnostics before long code", () => {
+  const row = executeOutputPreview(
+    {
+      content: [{ type: "text", text: "Execution completed." }, { type: "image" }],
+      details: { exitCode: 0, stdoutLost: true, stderrLost: true, images: [{}], backgroundJobs: ["a", "b"] },
+    },
+    false,
+    false,
+    theme,
+    "LONG_COMMAND_SUFFIX".repeat(20),
+  ).render(82)[0];
+  expect(row).toContain("⚠ 2 streams lost");
+  expect(row).toContain("1 image");
+  expect(row).toContain("2 background");
+  expect(row).not.toContain("LONG_COMMAND_SUFFIX");
+});
+
+test("execute error flag takes precedence over handoff success", () => {
+  const row = executeOutputPreview(
+    { content: [{ type: "text", text: "Execution failed." }], details: { handoff: "later" } },
+    false,
+    true,
+    theme,
+  ).render(80)[0];
+  expect(row).toStartWith("✗ Execution failed.");
 });

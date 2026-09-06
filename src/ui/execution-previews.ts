@@ -51,6 +51,7 @@ export function executeInputPreview(
   executionStarted = true,
 ): Component {
   const source = typeof code === "string" ? code : "";
+  const summary = commandSummary(source);
   return component((width) => {
     // Pi vertically composes call and result slots. Suppress the call slot once
     // the result renderer runs, leaving one settled physical row.
@@ -60,7 +61,6 @@ export function executeInputPreview(
         truncateToWidth(theme.fg("toolTitle", "Execute · TypeScript"), width),
         ...foldedRows(source, width, 0, 0, true).map((line) => theme.fg("muted", line)),
       ];
-    const summary = commandSummary(source);
     const status = executionStarted ? "running" : "preparing";
     const line =
       theme.fg("warning", "…") +
@@ -91,9 +91,9 @@ function statusSummary(
   isError: boolean,
 ): { icon: string; color: "success" | "error"; text: string } {
   const first = oneLine(full.split("\n")[0] ?? "");
-  if (details?.handoff) return { icon: "✓", color: "success", text: "Execution handed off" };
   if (isError || details?.imageError || details?.timedOut || details?.cancelled)
     return { icon: "✗", color: "error", text: first || "Execution failed" };
+  if (details?.handoff) return { icon: "✓", color: "success", text: "Execution handed off" };
   if (details?.exitCode !== undefined) {
     const ok = details.exitCode === 0;
     return {
@@ -121,6 +121,19 @@ export function executeOutputPreview(
   const details = result.details as ExecuteDetails | undefined;
   const status = statusSummary(full, details, isError);
   const source = typeof code === "string" ? code : "";
+  const summary = commandSummary(code);
+  const imageCount = Array.isArray(details?.images)
+    ? details.images.length
+    : result.content.filter((part) => part.type === "image").length;
+  const lostStreams = Number(details?.stdoutLost === true) + Number(details?.stderrLost === true);
+  const backgroundCount = Array.isArray(details?.backgroundJobs) ? details.backgroundJobs.length : 0;
+  const diagnostic = [
+    lostStreams ? "⚠ " + lostStreams + " stream" + (lostStreams === 1 ? "" : "s") + " lost" : "",
+    imageCount ? imageCount + " image" + (imageCount === 1 ? "" : "s") : "",
+    backgroundCount ? backgroundCount + " background" : "",
+  ]
+    .filter(Boolean)
+    .join(" — ");
   return component((width) => {
     if (width < 1) return [];
     if (expanded) {
@@ -134,10 +147,7 @@ export function executeOutputPreview(
         lines.push(theme.fg("warning", "… earlier output discarded by execute"));
       return lines.map((line) => truncateToWidth(line, width));
     }
-    const imageCount = details?.images?.length ?? result.content.filter((part) => part.type === "image").length;
-    const suffix = [commandSummary(code), imageCount ? imageCount + " image" + (imageCount === 1 ? "" : "s") : ""]
-      .filter(Boolean)
-      .join(" — ");
+    const suffix = [diagnostic, summary].filter(Boolean).join(" — ");
     const line =
       theme.fg(status.color, status.icon) +
       theme.fg("toolTitle", " " + status.text) +
@@ -147,10 +157,19 @@ export function executeOutputPreview(
 }
 
 interface CompletionDetails {
-  tasks?: Array<{ id?: string; status?: string; exitCode?: number; signal?: string; timedOut?: boolean }>;
-  attention?: Array<{ id?: string }>;
-  omittedTasks?: number;
-  omittedAttention?: number;
+  tasks?: Array<{ id?: unknown; status?: unknown; exitCode?: unknown; signal?: unknown; timedOut?: unknown }>;
+  attention?: Array<{ id?: unknown }>;
+  taskStatusCounts?: Partial<Record<"completed" | "failed" | "killed" | "running" | "unknown", unknown>>;
+  taskCount?: unknown;
+  attentionCount?: unknown;
+  omittedTasks?: unknown;
+  omittedAttention?: unknown;
+}
+function count(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
+}
+function safeMetadata(value: unknown): string {
+  return typeof value === "string" ? oneLine(value) : "";
 }
 export function completionPreview(
   content: string | Array<{ type: string; text?: string }>,
@@ -176,36 +195,69 @@ export function completionPreview(
           index === 0 ? theme.fg(kind === "task-attention" ? "warning" : "accent", line) : line,
         );
       if (width < 1) return [];
-      const tasks = details?.tasks ?? [];
-      const failed = tasks.filter((task) => task.status && task.status !== "completed");
-      const attention = (details?.attention?.length ?? 0) + (details?.omittedAttention ?? 0);
+      const tasks = Array.isArray(details?.tasks) ? details.tasks : [];
+      const omittedTasks = count(details?.omittedTasks);
+      const statuses = tasks.map((task) => safeMetadata(task?.status));
+      const aggregate = details?.taskStatusCounts;
+      const hasAggregate =
+        !!aggregate &&
+        ["completed", "failed", "killed", "running", "unknown"].every(
+          (status) => typeof aggregate[status as keyof typeof aggregate] === "number",
+        );
+      const failedCount = hasAggregate
+        ? count(aggregate?.failed) + count(aggregate?.killed)
+        : statuses.filter((status) => status && status !== "completed").length;
+      const aggregateUnknown = hasAggregate
+        ? count(aggregate?.unknown) + count(aggregate?.running) > 0 ||
+          Object.values(aggregate ?? {}).reduce<number>((sum, value) => sum + count(value), 0) !==
+            count(details?.taskCount)
+        : false;
+      const unknown = hasAggregate
+        ? aggregateUnknown
+        : tasks.length === 0 || omittedTasks > 0 || statuses.some((status) => !status);
+      const attention =
+        typeof details?.attentionCount === "number"
+          ? count(details.attentionCount)
+          : (Array.isArray(details?.attention) ? details.attention.length : 0) + count(details?.omittedAttention);
       const first = oneLine(text.split("\n")[0] ?? "");
       let label: string;
       let color: "success" | "error" | "warning";
       if (kind === "task-attention") {
         label = "⚠ Task attention · " + (first || "running task needs attention");
         color = "warning";
-      } else if (failed.length) {
-        label = "✗ Task completion · " + first;
-        color = "error";
       } else {
-        label = "✓ Task complete · " + first;
-        color = "success";
+        const attentionPrefix = attention ? "⚠ " + attention + " need attention · " : "";
+        if (failedCount) {
+          label = "✗ " + attentionPrefix + "Task completion · " + first;
+          color = "error";
+        } else if (unknown) {
+          label = attentionPrefix + "? Task completion · " + first;
+          color = "warning";
+        } else {
+          label = attentionPrefix + "✓ Task complete · " + first;
+          color = attention ? "warning" : "success";
+        }
       }
       if (tasks.length) {
-        const statuses = tasks
+        const descriptions = tasks
           .slice(0, 3)
-          .map((task) =>
-            [task.id, task.status, task.exitCode !== undefined ? "exit " + task.exitCode : task.signal]
+          .map((task) => {
+            const exitCode =
+              typeof task.exitCode === "number" && Number.isFinite(task.exitCode) ? task.exitCode : undefined;
+            return [
+              safeMetadata(task.id),
+              safeMetadata(task.status),
+              exitCode !== undefined ? "exit " + exitCode : safeMetadata(task.signal),
+            ]
               .filter(Boolean)
-              .join(" "),
-          )
+              .join(" ");
+          })
+          .filter(Boolean)
           .join(", ");
-        if (statuses) label += " · " + statuses;
-        const omitted = (details?.omittedTasks ?? 0) + Math.max(0, tasks.length - 3);
+        if (descriptions) label += " · " + descriptions;
+        const omitted = omittedTasks + Math.max(0, tasks.length - 3);
         if (omitted) label += " (+" + omitted + " more)";
       }
-      if (attention && kind === "task-complete") label += " · ⚠ " + attention + " need attention";
       return [truncateToWidth(theme.fg(color, label), width)];
     }),
   );
