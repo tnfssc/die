@@ -27,6 +27,7 @@ import {
   type AttentionOptions,
 } from "./job-attention";
 import { registerGoalMode, type GoalRuntime } from "../goals/extension";
+import { registerProjectMemory, type ProjectMemoryRuntime } from "../memory/extension";
 import { registerNativeFastMode } from "./native-fast-mode";
 import { registerManualShake } from "./manual-shake";
 
@@ -262,6 +263,21 @@ export default function asynchronousTasksExtension(
   };
 
   let goals: GoalRuntime;
+  let projectMemory: ProjectMemoryRuntime | undefined;
+  const reconcileProjectMemory = () => {
+    const runtime = projectMemory;
+    if (!runtime) return;
+    // Completion can race both pending-record installation and an already-running
+    // reconciliation. Recheck once its current pass drains so the terminal edge
+    // cannot be absorbed by that in-flight promise.
+    void runtime
+      .jobsChanged()
+      .then(() => runtime.jobsChanged())
+      .catch(() => {
+        // Reconciliation reports actionable failures through UI; never leak a
+        // detached lifecycle promise as an unhandled rejection.
+      });
+  };
   const getManager = (ctx = owningContext) => {
     if (!manager) {
       // Capture ownership at manager creation, never through a mutable active
@@ -322,6 +338,7 @@ export default function asynchronousTasksExtension(
       );
       manager.subscribe((event) => {
         if (event.type === "activity") return;
+        if (event.type === "completed") reconcileProjectMemory();
         const task = event.task;
         lifecycle({
           event: event.type,
@@ -367,15 +384,14 @@ export default function asynchronousTasksExtension(
   });
   const history = new HistoryService();
   let service: JobService | undefined;
-  registerExecuteTool(
-    pi,
-    (ctx, method, params, signal) => {
-      if (method.startsWith("history.")) return history.handle(method, params, ctx);
-      if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
-      taskUi = ctx.ui;
-      owningContext = ctx;
-      const tasks = getManager(ctx);
-      service ??= new JobService(
+  const getService = (ctx: ExtensionContext) => {
+    taskUi = ctx.ui;
+    owningContext = ctx;
+    const tasks = getManager(ctx);
+    // The service belongs to exactly one manager/session attachment. Shutdown
+    // clears both, so a resumed or switched session cannot dispatch into stale state.
+    if (!service || service.manager !== tasks)
+      service = new JobService(
         tasks,
         () => ({ depth: subagentDepth, type: agentType }),
         updateTaskStatus,
@@ -383,7 +399,30 @@ export default function asynchronousTasksExtension(
         attention,
         managerRecorder,
       );
-      return service.handle(method, params, ctx, signal);
+    return service;
+  };
+  projectMemory = registerProjectMemory(pi, {
+    jobs: {
+      handle: (method, params, ctx, signal) => getService(ctx).handle(method, params, ctx, signal),
+    },
+    manager: {
+      inspect: (id, offset, limit) => {
+        if (!manager) throw new Error("Task manager is unavailable");
+        return manager.inspect(id, offset, limit);
+      },
+      kill: (id, cause) => {
+        if (!manager) throw new Error("Task manager is unavailable");
+        return manager.kill(id, cause);
+      },
+    },
+    isRoot: () => subagentDepth === 0,
+  });
+  registerExecuteTool(
+    pi,
+    (ctx, method, params, signal) => {
+      if (method.startsWith("history.")) return history.handle(method, params, ctx);
+      if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
+      return getService(ctx).handle(method, params, ctx, signal);
     },
     options.executablePath,
   );
