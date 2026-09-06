@@ -1,4 +1,4 @@
-import { inspectDiagnostics, recordDiagnostic } from "../diagnostics";
+import { diagnosticRecorder, inspectDiagnostics } from "../diagnostics";
 import executeDescription from "../prompts/execute-description.md" with { type: "text" };
 import { executeGuidance, backgroundHandoff } from "../prompts";
 import { SettingsManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -76,6 +76,7 @@ export function registerExecuteTool(
       const params = z.parse(ExecuteParameters, input);
       const owner = ctx.sessionManager;
       const ownerSessionId = owner?.getSessionId?.();
+      const recordForAttachment = owner ? diagnosticRecorder(owner) : undefined;
       const backgroundIds: string[] = [];
       const handoffWaits = new AbortController();
       let handoffMessage: string | undefined;
@@ -111,8 +112,12 @@ export function registerExecuteTool(
       try {
         const result = await execution;
         const diagnostics = inspectDiagnostics(result).records;
-        if (owner && owner.getSessionId?.() === ownerSessionId) {
-          for (const diagnostic of diagnostics) recordDiagnostic(owner, diagnostic);
+        try {
+          if (owner && owner.getSessionId?.() === ownerSessionId) {
+            for (const diagnostic of diagnostics) recordForAttachment?.(diagnostic);
+          }
+        } catch {
+          // Diagnostics are best effort when session ownership metadata is unavailable.
         }
         let text = formatResult(result);
         const handoff = backgroundHandoff(backgroundIds);

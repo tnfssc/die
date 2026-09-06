@@ -1,5 +1,5 @@
 import { createTaskLifecycleRecorder } from "./task-lifecycle";
-import { attachDiagnosticSink, recordDiagnostic } from "../diagnostics";
+import { attachDiagnosticSink, diagnosticRecorder, recordDiagnostic } from "../diagnostics";
 import { subagentGuidance, collaborationGuidance, productSystemPrompt } from "../prompts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { CompletionBatcher } from "./completion-batcher";
@@ -91,48 +91,82 @@ export default function asynchronousTasksExtension(
   let identityDiagnosticSession: object | undefined;
   let identityDiagnosticId: string | undefined;
   const restoreAgentIdentity = (ctx: ExtensionContext) => {
-    const sessionManager = ctx.sessionManager as { getBranch?: () => any[]; getEntries?: () => any[] } | undefined;
-    let entries: any[];
+    type RestoredIdentity =
+      | { kind: "absent" }
+      | { kind: "invalid" }
+      | { kind: "child"; type: (typeof SUBAGENT_TYPES)[number]; depth: number };
+    // Begin fail-closed. Only a completely successful scan can establish that
+    // the branch has no child marker and may therefore use root privileges.
+    let identity: RestoredIdentity = { kind: "invalid" };
     try {
-      entries = sessionManager?.getBranch?.() ?? sessionManager?.getEntries?.() ?? [];
+      const sessionManager = ctx.sessionManager as
+        | { getBranch?: () => unknown; getEntries?: () => unknown }
+        | undefined;
+      const entries = sessionManager?.getBranch?.() ?? sessionManager?.getEntries?.() ?? [];
       if (!Array.isArray(entries)) throw new Error("Invalid session entries");
+
+      let marker: Record<string, unknown> | undefined;
+      for (let index = entries.length - 1; index >= 0; index--) {
+        const candidate = entries[index];
+        if (!candidate || (typeof candidate !== "object" && typeof candidate !== "function"))
+          throw new Error("Malformed session entry");
+        // Access each possibly hostile property inside this guarded scan.
+        const type = (candidate as Record<string, unknown>).type;
+        const customType = (candidate as Record<string, unknown>).customType;
+        if (type === "custom" && customType === "die-agent") {
+          marker = candidate as Record<string, unknown>;
+          break;
+        }
+      }
+
+      if (!marker) {
+        identity = { kind: "absent" };
+      } else {
+        const rawData = marker.data;
+        if (!rawData || (typeof rawData !== "object" && typeof rawData !== "function"))
+          throw new Error("Invalid child identity");
+        const data = rawData as Record<string, unknown>;
+        const type = data.type;
+        const depth = data.depth;
+        if (
+          !SUBAGENT_TYPES.includes(type as (typeof SUBAGENT_TYPES)[number]) ||
+          !Number.isInteger(depth) ||
+          (depth as number) < 1
+        )
+          throw new Error("Invalid child identity");
+        identity = { kind: "child", type: type as (typeof SUBAGENT_TYPES)[number], depth: depth as number };
+      }
     } catch {
-      // Unreadable metadata cannot establish root privileges either.
-      entries = [{ type: "custom", customType: "die-agent" }];
+      identity = { kind: "invalid" };
     }
-    const entry = [...entries].reverse().find((entry) => entry.type === "custom" && entry.customType === "die-agent");
-    const data = entry?.type === "custom" ? (entry.data as { type?: string; depth?: number } | undefined) : undefined;
-    const validChild =
-      data &&
-      SUBAGENT_TYPES.includes(data.type as (typeof SUBAGENT_TYPES)[number]) &&
-      Number.isInteger(data.depth) &&
-      data.depth! >= 1;
-    if (validChild && data.depth! >= environmentDepth) {
+
+    if (identity.kind === "child" && identity.depth >= environmentDepth) {
       // A spawned process may resume/fork deeper metadata, but its actual role
       // is a capability cap: session metadata cannot turn a leaf into an
       // orchestrator (or change an orchestrator into a different role). Root
       // processes intentionally remain free to traverse session identities.
-      agentType = environmentDepth > 0 && environmentType ? environmentType : data.type;
-      subagentDepth = data.depth!;
-    } else if (entry) {
-      // A present but invalid identity is not evidence of a root session.
-      // Use a leaf capability floor even in an orchestrator process.
+      agentType = environmentDepth > 0 && environmentType ? environmentType : identity.type;
+      subagentDepth = identity.depth;
+    } else if (identity.kind === "invalid" || identity.kind === "child") {
+      // Invalid or shallower metadata is never evidence of a root session.
       agentType = environmentType === "fast" ? "fast" : "normal";
       subagentDepth = Math.max(1, environmentDepth);
-      const sessionId = ctx.sessionManager?.getSessionId?.();
-      if (identityDiagnosticSession !== ctx.sessionManager || identityDiagnosticId !== sessionId) {
-        identityDiagnosticSession = ctx.sessionManager;
-        identityDiagnosticId = sessionId;
-        recordDiagnostic(ctx.sessionManager as object, {
-          component: "resume",
-          code: "CHILD_IDENTITY_INVALID",
-          outcome: "blocked",
-          cancellation: "safety",
-        });
+      try {
+        const sessionId = ctx.sessionManager?.getSessionId?.();
+        if (identityDiagnosticSession !== ctx.sessionManager || identityDiagnosticId !== sessionId) {
+          identityDiagnosticSession = ctx.sessionManager;
+          identityDiagnosticId = sessionId;
+          recordDiagnostic(ctx.sessionManager as object, {
+            component: "resume",
+            code: "CHILD_IDENTITY_INVALID",
+            outcome: "blocked",
+            cancellation: "safety",
+          });
+        }
+      } catch {
+        // Hostile session metadata must not interrupt capability restriction.
       }
     } else {
-      // No active-branch child metadata means root in a root process. Do not
-      // retain identity from a previously resumed child session.
       agentType = environmentType;
       subagentDepth = environmentDepth;
     }
@@ -231,8 +265,16 @@ export default function asynchronousTasksExtension(
       // context. SessionManager objects may themselves be reused on /resume.
       const owner = ctx?.sessionManager;
       const sessionId = owner?.getSessionId?.();
+      // Generation capture prevents an old manager from writing after the same
+      // SessionManager object is detached and reattached, even when its SID is
+      // unchanged or unavailable.
+      const recordForAttachment = owner ? diagnosticRecorder(owner) : undefined;
       const recordOwned = (input: Parameters<typeof recordDiagnostic>[1]) => {
-        if (owner && owner.getSessionId?.() === sessionId) recordDiagnostic(owner, input);
+        try {
+          if (owner && owner.getSessionId?.() === sessionId) recordForAttachment?.(input);
+        } catch {
+          // Diagnostics remain best effort when manager metadata is hostile.
+        }
       };
       managerRecorder = recordOwned;
       const lifecycle = createTaskLifecycleRecorder(owner?.getSessionFile?.(), () =>
