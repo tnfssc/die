@@ -80,3 +80,22 @@ test("handoff unwinds cleanup but does not swallow cleanup errors", async () => 
   expect(result.stdout.trim()).toBe("cleanup");
   expect(result.stderr).toContain("cleanup failed");
 });
+
+test("compiled runner preserves cleanup messages omitted from Error.stack", async () => {
+  const result = await executeIsolated(
+    `try { await handoff("pending"); } finally {
+      const cleanupError = new Error("cleanup failed");
+      cleanupError.stack = "Error\\n    at <execute-module>:5:9\\n    at processTicksAndRejections (unknown:7:39)";
+      throw cleanupError;
+    }`,
+    process.cwd(),
+    undefined,
+    3000,
+    { executablePath: binary, jobHandler: async () => ({ accepted: true }) },
+  );
+
+  expect(result.exitCode).not.toBe(0);
+  expect(result.stderr).toContain(
+    "Error: cleanup failed\n    at <execute-module>:5:9\n    at processTicksAndRejections (unknown:7:39)",
+  );
+});
