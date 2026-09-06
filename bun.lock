@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "die-cli",
+      "name": "die",
       "dependencies": {
         "@earendil-works/pi-ai": "0.85.0",
         "@earendil-works/pi-coding-agent": "0.85.0",
