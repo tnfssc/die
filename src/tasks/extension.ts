@@ -1,3 +1,4 @@
+import { HistoryService } from "../history/service";
 import { registerOperationDiagnostics } from "../diagnostics-extension";
 import { createTaskLifecycleRecorder } from "./task-lifecycle";
 import { attachDiagnosticSink, diagnosticRecorder, recordDiagnostic } from "../diagnostics";
@@ -364,10 +365,12 @@ export default function asynchronousTasksExtension(
       return task.status === "running" ? "running" : "finished";
     },
   });
+  const history = new HistoryService();
   let service: JobService | undefined;
   registerExecuteTool(
     pi,
     (ctx, method, params, signal) => {
+      if (method.startsWith("history.")) return history.handle(method, params, ctx);
       if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
       taskUi = ctx.ui;
       owningContext = ctx;
