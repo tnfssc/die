@@ -417,21 +417,14 @@ export function registerProjectMemory(pi: ExtensionAPI, options: ProjectMemoryOp
     currentContext = undefined;
     currentSessionId = undefined;
   });
-  pi.on("context", (event, ctx) => {
+  pi.on("before_agent_start", (event, ctx) => {
     adopt(ctx);
     if (!rootAllowed(options.isRoot)) return;
     return {
-      messages: [
-        ...event.messages,
-        {
-          role: "custom" as const,
-          customType: "die-project-memory",
-          content:
-            "Project memory is indexed at .agents/notes/index.md; pending inputs are under .agents/notes/.pending/. Use execute for selective reads when relevant; do not load the full corpus by default.",
-          display: false,
-          timestamp: Date.now(),
-        },
-      ],
+      systemPrompt:
+        event.systemPrompt +
+        "\n\nProject memory is indexed at .agents/notes/index.md; pending inputs are under .agents/notes/.pending/. " +
+        "Use execute for selective reads when relevant; do not load the full corpus by default.",
     };
   });
 

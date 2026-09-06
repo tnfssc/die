@@ -263,7 +263,7 @@ test("session switch while launch handle is pending kills the returned job", asy
   expect(f.killed).toEqual([{ id: "task_mem", cause: "session-shutdown" }]);
 });
 
-test("shutdown cancels and context only advertises the memory location", async () => {
+test("shutdown cancels and the root system prompt only advertises the memory location", async () => {
   const cwd = await temp();
   await putPending(cwd, "a.md", "secret corpus");
   const f = fixture(cwd);
@@ -271,9 +271,12 @@ test("shutdown cancels and context only advertises the memory location", async (
   await f.fire("session_shutdown", {}, f.ctx);
   expect(f.killed).toEqual([{ id: "task_mem", cause: "session-shutdown" }]);
   const root = fixture(cwd);
-  const result = await root.fire("context", { messages: [] }, root.ctx);
-  expect(result.messages[0].content).toContain("index.md");
-  expect(result.messages[0].content).not.toContain("secret corpus");
+  const result = await root.fire("before_agent_start", { systemPrompt: "base" }, root.ctx);
+  expect(result.systemPrompt).toContain("index.md");
+  expect(result.systemPrompt).not.toContain("secret corpus");
+  expect(await root.fire("context", { messages: [] }, root.ctx)).toBeUndefined();
+  root.setRoot(false);
+  expect(await root.fire("before_agent_start", { systemPrompt: "child base" }, root.ctx)).toBeUndefined();
 });
 
 test("empty notes, ordinary turns, and child sessions never dispatch consolidation", async () => {
