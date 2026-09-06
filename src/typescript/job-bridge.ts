@@ -108,6 +108,23 @@ export interface ExecuteJobGlobals {
   shell(command: string, options?: Options): Promise<unknown>;
   subagent(options: Options): Promise<unknown>;
   handoff(message: string): Promise<never>;
+  history: {
+    search(input: {
+      query: string;
+      cursor?: string;
+      limit?: number;
+      excerptChars?: number;
+      sessionFile?: string;
+      allowCrossSession?: boolean;
+    }): Promise<unknown>;
+    read(input: {
+      ref: string;
+      cursor?: string;
+      maxChars?: number;
+      sessionFile?: string;
+      allowCrossSession?: boolean;
+    }): Promise<unknown>;
+  };
   goal: {
     get(): Promise<unknown>;
     set(input: { objective: string; criteria: string[]; constraints: string[] }): Promise<unknown>;
@@ -129,6 +146,10 @@ declare global {
   var shell: ExecuteJobGlobals["shell"];
   var subagent: ExecuteJobGlobals["subagent"];
   var handoff: ExecuteJobGlobals["handoff"];
+  interface History {
+    search: ExecuteJobGlobals["history"]["search"];
+    read: ExecuteJobGlobals["history"]["read"];
+  }
   var goal: ExecuteJobGlobals["goal"];
   var jobs: ExecuteJobGlobals["jobs"];
 }
@@ -297,6 +318,10 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
     handoff: async (message): Promise<never> => {
       await request("handoff", { message });
       throw new HandoffSignal();
+    },
+    history: {
+      search: async (input) => request("history.search", input),
+      read: async (input) => request("history.read", input),
     },
     goal: {
       get: async () => request("goal.get", {}),
