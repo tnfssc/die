@@ -7,6 +7,7 @@ import {
   type SessionEntry,
   sessionEntryToContextMessages,
 } from "@earendil-works/pi-coding-agent";
+import { recordDiagnostic } from "../diagnostics.js";
 import { getInstructionContinuitySession } from "./instruction-continuity";
 
 /** Durable, branch-scoped manual context projection. Session JSONL stays append-only. */
@@ -16,6 +17,41 @@ const MAX_IDS_PER_KIND = 2048;
 const MAX_RECORD_BYTES = 256 * 1024;
 const MAX_ID_LENGTH = 512;
 const MAX_SESSION_ID_LENGTH = 512;
+
+export const SHAKE_REFUSED_ACTIVE_WORK = "request_blocked";
+export const SHAKE_REFUSED_OPAQUE_CHECKPOINT = "opaque_checkpoint";
+export const SHAKE_REFUSED_CONTEXT_FAILURE = "preparation_failed";
+export const SHAKE_REFUSED_STALE = "identity_stale";
+export const SHAKE_REFUSED_STORAGE_LIMIT = "capacity_insufficient";
+export const SHAKE_REFUSED_AMBIGUOUS_TOOL = "protocol_invalid";
+export const SHAKE_NOOP = "shake_noop";
+export const SHAKE_CHECKPOINT_PERSIST_FAILED = "state_write_failed";
+export const SHAKE_SUCCEEDED = "shake_applied";
+export const SHAKE_CARRY_FORWARD_PERSIST_FAILED = "state_write_failed";
+export const SHAKE_CARRY_FORWARD_SUCCEEDED = "shake_applied";
+export const SHAKE_INVALID_CHECKPOINT = "state_invalid";
+
+const projectionFailures = new WeakMap<object, Error>();
+function shakeDiagnostic(
+  ctx: ExtensionContext,
+  code: string,
+  outcome: "success" | "failed" | "fallback" | "blocked" | "cancelled" | "noop",
+  operationId?: `${string}-${string}-${string}-${string}-${string}`,
+  count?: number,
+): void {
+  try {
+    recordDiagnostic(ctx.sessionManager, {
+      component: "shake",
+      code,
+      outcome,
+      ...(operationId ? { operationId } : {}),
+      dispatch: "none",
+      ...(count === undefined ? {} : { count }),
+    });
+  } catch {
+    // Diagnostics are observational and must never alter shake safety decisions.
+  }
+}
 
 export type ShakeRecord = {
   version: 1;
@@ -396,13 +432,21 @@ export function installShakeAccountingAdapter(): void {
 export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot: () => void = () => {}): void {
   installShakeAccountingAdapter();
   pi.on("context", (event, ctx) => {
+    const carryFailure = projectionFailures.get(ctx.sessionManager as object);
+    if (carryFailure) throw carryFailure;
     const entries = ctx.sessionManager.buildContextEntries();
-    const record = latestShakeRecord(entries, ctx.sessionManager.getSessionId());
-    return record ? { messages: projectShakenContext(event.messages, entries, record) } : undefined;
+    try {
+      const record = latestShakeRecord(entries, ctx.sessionManager.getSessionId());
+      return record ? { messages: projectShakenContext(event.messages, entries, record) } : undefined;
+    } catch (error) {
+      shakeDiagnostic(ctx, SHAKE_INVALID_CHECKPOINT, "blocked");
+      throw error;
+    }
   });
   // Compaction may hide the old marker while retaining some of its tail. Carry
   // only still-active IDs; an empty projection needs no marker after the summary.
   pi.on("session_compact", (_event, ctx) => {
+    const operationId = crypto.randomUUID();
     const sessionId = ctx.sessionManager.getSessionId();
     const prior = latestShakeRecord(ctx.sessionManager.getBranch(), sessionId);
     if (!prior) return;
@@ -415,11 +459,33 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
       toolResultEntryIds: prior.toolResultEntryIds.filter((id) => active.has(id)),
       shakenAt: Date.now(),
     };
-    if (record.assistantEntryIds.length || record.toolResultEntryIds.length) pi.appendEntry(MANUAL_SHAKE_ENTRY, record);
+    if (!record.assistantEntryIds.length && !record.toolResultEntryIds.length) {
+      projectionFailures.delete(ctx.sessionManager as object);
+      return;
+    }
+    try {
+      pi.appendEntry(MANUAL_SHAKE_ENTRY, record);
+      projectionFailures.delete(ctx.sessionManager as object);
+      shakeDiagnostic(
+        ctx,
+        SHAKE_CARRY_FORWARD_SUCCEEDED,
+        "success",
+        operationId,
+        record.assistantEntryIds.length + record.toolResultEntryIds.length,
+      );
+    } catch {
+      const failure = new Error(
+        "Manual-shake checkpoint could not be carried forward after compaction. Refusing to expose context until the session is reloaded or a checkpoint is persisted.",
+      );
+      projectionFailures.set(ctx.sessionManager as object, failure);
+      shakeDiagnostic(ctx, SHAKE_CARRY_FORWARD_PERSIST_FAILED, "failed", operationId);
+      ctx.ui.notify(failure.message, "error");
+    }
   });
   pi.registerCommand("shake", {
     description: "Prune completed execution traces from active model context",
     handler: async (args, ctx) => {
+      const operationId = crypto.randomUUID();
       if (args.trim()) {
         ctx.ui.notify("Usage: /shake", "error");
         return;
@@ -434,11 +500,13 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
         signal: ctx.signal,
       };
       if (!snapshot.idle || snapshot.pending) {
+        shakeDiagnostic(ctx, SHAKE_REFUSED_ACTIVE_WORK, "blocked", operationId);
         ctx.ui.notify("Shake refused: wait until the active turn and queued message batch are settled.", "warning");
         return;
       }
       const entries = snapshot.manager.buildContextEntries();
       if (hasOpaqueNativeCheckpoint(entries)) {
+        shakeDiagnostic(ctx, SHAKE_REFUSED_OPAQUE_CHECKPOINT, "blocked", operationId);
         ctx.ui.notify(
           "Shake refused: this branch contains opaque native Codex checkpoint state. Branch before the checkpoint or continue without shaking; die will not flatten or relabel it.",
           "error",
@@ -451,6 +519,7 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
         plan = buildShakePlan(entries, snapshot.sessionId);
         beforeMessages = await currentTransformedContext(ctx, entries);
       } catch (error) {
+        shakeDiagnostic(ctx, SHAKE_REFUSED_CONTEXT_FAILURE, "failed", operationId);
         ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
         return;
       }
@@ -464,6 +533,7 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
         ctx.signal !== snapshot.signal ||
         snapshot.signal?.aborted === true;
       if (stale) {
+        shakeDiagnostic(ctx, SHAKE_REFUSED_STALE, "blocked", operationId);
         ctx.ui.notify(
           "Shake refused: session, branch, model, or work state changed while context hooks were running; no context was changed.",
           "warning",
@@ -471,10 +541,18 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
         return;
       }
       if (plan.storageError) {
+        shakeDiagnostic(ctx, SHAKE_REFUSED_STORAGE_LIMIT, "blocked", operationId);
         ctx.ui.notify(plan.storageError, "error");
         return;
       }
       if (plan.unresolvedToolCallIds.length || plan.orphanToolResultIds.length) {
+        shakeDiagnostic(
+          ctx,
+          SHAKE_REFUSED_AMBIGUOUS_TOOL,
+          "blocked",
+          operationId,
+          plan.unresolvedToolCallIds.length + plan.orphanToolResultIds.length,
+        );
         ctx.ui.notify(
           "Shake refused: the active branch has an unresolved or ambiguous tool batch; no context was changed.",
           "warning",
@@ -483,6 +561,7 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
       }
       const projected = projection(beforeMessages, entries, plan.record);
       if (!projected.removedAssistantBlocks && !projected.removedToolResults) {
+        shakeDiagnostic(ctx, SHAKE_NOOP, "noop", operationId, 0);
         ctx.ui.notify(
           "Shake made no changes: active transformed context has no unambiguous newly eligible completed execution trace.",
           "info",
@@ -491,8 +570,25 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
       }
       const before = estimateContext(beforeMessages);
       const after = estimateContext(projected.messages);
-      pi.appendEntry(MANUAL_SHAKE_ENTRY, plan.record);
+      try {
+        pi.appendEntry(MANUAL_SHAKE_ENTRY, plan.record);
+      } catch {
+        shakeDiagnostic(ctx, SHAKE_CHECKPOINT_PERSIST_FAILED, "failed", operationId);
+        ctx.ui.notify(
+          "Shake refused: the projection checkpoint could not be persisted; no context was changed.",
+          "error",
+        );
+        return;
+      }
+      projectionFailures.delete(ctx.sessionManager as object);
       invalidateProviderSnapshot();
+      shakeDiagnostic(
+        ctx,
+        SHAKE_SUCCEEDED,
+        "success",
+        operationId,
+        projected.removedAssistantBlocks + projected.removedToolResults,
+      );
       ctx.ui.notify(
         "Shake complete (local estimates, no provider request): ~" +
           before +

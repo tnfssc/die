@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { convertToLlm, type SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
+import { inspectDiagnostics } from "../src/diagnostics";
 import { bindInstructionContinuitySession, clearInstructionContinuity } from "../src/tasks/instruction-continuity";
 import {
   buildShakePlan,
@@ -11,6 +12,14 @@ import {
   MANUAL_SHAKE_ENTRY,
   projectShakenContext,
   registerManualShake,
+  SHAKE_CARRY_FORWARD_PERSIST_FAILED,
+  SHAKE_CHECKPOINT_PERSIST_FAILED,
+  SHAKE_REFUSED_AMBIGUOUS_TOOL,
+  SHAKE_REFUSED_OPAQUE_CHECKPOINT,
+  SHAKE_REFUSED_STALE,
+  SHAKE_REFUSED_STORAGE_LIMIT,
+  SHAKE_NOOP,
+  SHAKE_SUCCEEDED,
 } from "../src/tasks/manual-shake";
 
 const usage = {
@@ -471,5 +480,160 @@ describe("manual command safeguards", () => {
     await h2.command.handler("", h2.ctx);
     expect(h2.appended).toEqual([]);
     expect(h2.notices[0]![0]).toContain("opaque native Codex");
+  });
+});
+
+describe("manual shake diagnostic persistence guards", () => {
+  function shakeHarness(manager: SessionManager) {
+    const handlers = new Map<string, Function[]>();
+    let command: any;
+    const ctx: any = {
+      sessionManager: manager,
+      isIdle: () => true,
+      hasPendingMessages: () => false,
+      ui: { notify() {} },
+    };
+    registerManualShake({
+      on: (name: string, fn: Function) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
+      registerCommand: (_name: string, value: any) => (command = value),
+      appendEntry: (type: string, data: any) => manager.appendCustomEntry(type, data),
+    } as any);
+    return { handlers, command, ctx };
+  }
+
+  test("append refusal leaves projection and invalidation untouched", async () => {
+    const manager = SessionManager.inMemory();
+    completed(manager, "persist-failure", "must remain visible");
+    const handlers = new Map<string, Function[]>();
+    let command: any;
+    let invalidations = 0;
+    const notices: string[] = [];
+    registerManualShake(
+      {
+        on: (name: string, fn: Function) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
+        registerCommand: (_name: string, value: any) => (command = value),
+        appendEntry: () => {
+          throw new Error("sensitive storage detail");
+        },
+      } as any,
+      () => invalidations++,
+    );
+    const ctx: any = {
+      sessionManager: manager,
+      isIdle: () => true,
+      hasPendingMessages: () => false,
+      ui: { notify: (message: string) => notices.push(message) },
+    };
+    await command.handler("", ctx);
+    expect(invalidations).toBe(0);
+    expect(latestShakeRecord(manager.buildContextEntries(), manager.getSessionId())).toBeUndefined();
+    expect(notices.at(-1)).toContain("checkpoint could not be persisted");
+    expect(inspectDiagnostics(manager).records.at(-1)).toMatchObject({
+      component: "shake",
+      code: SHAKE_CHECKPOINT_PERSIST_FAILED,
+      outcome: "failed",
+      dispatch: "none",
+    });
+  });
+
+  test("carry-forward append failure is notified and keeps the context hook failed closed", () => {
+    const manager = SessionManager.inMemory();
+    completed(manager, "carry-failure");
+    manager.appendCustomEntry(
+      MANUAL_SHAKE_ENTRY,
+      buildShakePlan(manager.buildContextEntries(), manager.getSessionId()).record,
+    );
+    const handlers = new Map<string, Function[]>();
+    const notices: string[] = [];
+    registerManualShake({
+      on: (name: string, fn: Function) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
+      registerCommand() {},
+      appendEntry: () => {
+        throw new Error("private disk path");
+      },
+    } as any);
+    const ctx: any = { sessionManager: manager, ui: { notify: (message: string) => notices.push(message) } };
+    handlers.get("session_compact")![0]!({}, ctx);
+    expect(notices.at(-1)).toContain("Refusing to expose context");
+    expect(() => handlers.get("context")![0]!({ messages: manager.buildSessionContext().messages }, ctx)).toThrow(
+      "Refusing to expose context",
+    );
+    expect(inspectDiagnostics(manager).records.at(-1)?.code).toBe(SHAKE_CARRY_FORWARD_PERSIST_FAILED);
+    expect(JSON.stringify(inspectDiagnostics(manager))).not.toContain("private disk path");
+  });
+
+  test("records static outcomes for opaque, ambiguous, stale, and successful decisions only", async () => {
+    const opaque = SessionManager.inMemory();
+    const first = opaque.appendMessage({ role: "user", content: "opaque secret", timestamp: 1 });
+    opaque.appendCompaction("opaque summary", first, 1, { strategy: "codex-native" }, true);
+    const oh = shakeHarness(opaque);
+    await oh.command.handler("", oh.ctx);
+    expect(inspectDiagnostics(opaque).records.at(-1)?.code).toBe(SHAKE_REFUSED_OPAQUE_CHECKPOINT);
+
+    const ambiguous = SessionManager.inMemory();
+    ambiguous.appendMessage(assistant([{ type: "toolCall", id: "pending", name: "execute", arguments: {} }]));
+    const ah = shakeHarness(ambiguous);
+    await ah.command.handler("", ah.ctx);
+    expect(inspectDiagnostics(ambiguous).records.at(-1)?.code).toBe(SHAKE_REFUSED_AMBIGUOUS_TOOL);
+
+    const noop = SessionManager.inMemory();
+    const nh = shakeHarness(noop);
+    await nh.command.handler("", nh.ctx);
+    expect(inspectDiagnostics(noop).records.at(-1)).toMatchObject({ code: SHAKE_NOOP, outcome: "noop", count: 0 });
+
+    const bounded = SessionManager.inMemory();
+    const activeIds: string[] = [];
+    for (let index = 0; index < 2048; index++) {
+      bounded.appendMessage({ role: "user", content: "x", timestamp: index });
+      activeIds.push(bounded.getLeafId()!);
+    }
+    bounded.appendCustomEntry(MANUAL_SHAKE_ENTRY, {
+      version: 1,
+      sessionId: bounded.getSessionId(),
+      assistantEntryIds: activeIds,
+      toolResultEntryIds: [],
+      shakenAt: 1,
+    });
+    completed(bounded, "over-limit");
+    const bh = shakeHarness(bounded);
+    await bh.command.handler("", bh.ctx);
+    expect(inspectDiagnostics(bounded).records.at(-1)?.code).toBe(SHAKE_REFUSED_STORAGE_LIMIT);
+
+    const stale = SessionManager.inMemory();
+    completed(stale, "race-private");
+    const sh = shakeHarness(stale);
+    sh.ctx.signal = new AbortController().signal;
+    sh.ctx.model = { id: "one" };
+    bindInstructionContinuitySession({
+      sessionManager: stale,
+      agent: {
+        transformContext: async (messages: any[]) => {
+          sh.ctx.model = { id: "two" };
+          return messages;
+        },
+      },
+    } as any);
+    try {
+      await sh.command.handler("", sh.ctx);
+      expect(inspectDiagnostics(stale).records.at(-1)?.code).toBe(SHAKE_REFUSED_STALE);
+    } finally {
+      clearInstructionContinuity(stale);
+    }
+
+    const success = SessionManager.inMemory();
+    completed(success, "success-private");
+    const good = shakeHarness(success);
+    await good.command.handler("", good.ctx);
+    const diagnostic = inspectDiagnostics(success).records.at(-1)!;
+    expect(diagnostic).toMatchObject({ code: SHAKE_SUCCEEDED, outcome: "success", dispatch: "none", count: 3 });
+    expect(Object.keys(diagnostic).filter((key) => key !== "version" && key !== "generated").sort()).toEqual([
+      "code",
+      "component",
+      "count",
+      "dispatch",
+      "operationId",
+      "outcome",
+    ]);
+    expect(JSON.stringify(diagnostic)).not.toContain("success-private");
   });
 });

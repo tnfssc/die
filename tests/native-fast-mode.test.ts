@@ -12,8 +12,13 @@ import {
   ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { inspectDiagnostics } from "../src/diagnostics";
 import {
   CODEX_FAST_MODELS,
+  FAST_CHECKPOINT_PERSIST_FAILED,
+  FAST_GUARD_TIER_MUTATION,
+  FAST_REFUSED_AUTH,
+  FAST_REFUSED_STALE,
   NATIVE_FAST_ENTRY,
   nativeFastSupport,
   registerNativeFastMode,
@@ -22,7 +27,13 @@ import {
 
 function harness(
   model: any,
-  options: { mode?: string; accept?: boolean; sessionId?: string; confirm?: () => Promise<boolean> } = {},
+  options: {
+    mode?: string;
+    accept?: boolean;
+    sessionId?: string;
+    confirm?: () => Promise<boolean>;
+    appendFails?: boolean;
+  } = {},
 ) {
   const entries: any[] = [],
     notices: any[] = [],
@@ -39,6 +50,7 @@ function harness(
       hooks.set(name, [...(hooks.get(name) ?? []), handler]);
     },
     appendEntry(customType: string, data: any) {
+      if (options.appendFails) throw new Error("private persistence detail");
       entries.push({ type: "custom", customType, data });
     },
   } as any;
@@ -523,6 +535,10 @@ test("real AgentSession ModelRuntime guard survives swallowed hook throws and st
     const last = session.messages.at(-1) as any;
     expect(last.stopReason).toBe("error");
     expect(last.errorMessage).toContain("late service-tier mutation");
+    const diagnostic = inspectDiagnostics(manager).records.at(-1)!;
+    expect(diagnostic).toMatchObject({ code: FAST_GUARD_TIER_MUTATION, outcome: "blocked", dispatch: "none" });
+    expect(Object.keys(diagnostic).filter((key) => key !== "version" && key !== "generated").sort()).toEqual(["code", "component", "dispatch", "operationId", "outcome"]);
+    expect(JSON.stringify(diagnostic)).not.toContain("swallowed late hook failure");
   } finally {
     session?.dispose();
     globalThis.fetch = originalFetch;
@@ -600,3 +616,36 @@ for (const scenario of ["corrupt-record", "wrong-auth", "unsupported-model"] as 
     }
   });
 }
+
+test("fast refusals and the concrete tier guard emit privacy-bounded static diagnostics", async () => {
+  const model = getModel("openai", "gpt-5.3-codex")!;
+  const auth = harness(model, { mode: "print", accept: true });
+  auth.ctx.modelRegistry.isUsingOAuth = () => true;
+  await auth.command.handler("on", auth.ctx);
+  expect(inspectDiagnostics(auth.ctx.sessionManager).records.at(-1)).toMatchObject({
+    component: "fast",
+    code: FAST_REFUSED_AUTH,
+    outcome: "blocked",
+    dispatch: "none",
+  });
+
+  const stale = harness(model, {
+    confirm: async () => {
+      stale.ctx.sessionManager.getSessionId = () => "changed-session";
+      return true;
+    },
+  });
+  await stale.command.handler("on", stale.ctx);
+  expect(inspectDiagnostics(stale.ctx.sessionManager).records.at(-1)?.code).toBe(FAST_REFUSED_STALE);
+});
+
+test("fast checkpoint append failure is a controlled refusal with no setting", async () => {
+  const model = getModel("openai", "gpt-5.3-codex")!;
+  const h = harness(model, { mode: "print", accept: true, appendFails: true });
+  await h.command.handler("on", h.ctx);
+  expect(h.entries).toEqual([]);
+  expect(h.notices.at(-1)).toMatchObject({ kind: "error" });
+  const records = inspectDiagnostics(h.ctx.sessionManager).records;
+  expect(records.at(-1)).toMatchObject({ code: FAST_CHECKPOINT_PERSIST_FAILED, outcome: "failed" });
+  expect(JSON.stringify(records)).not.toContain("private persistence detail");
+});

@@ -1,18 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import type { Model } from "@earendil-works/pi-ai";
 import { convertResponsesMessages } from "@earendil-works/pi-ai/api/openai-responses-shared";
-import { SessionManager, buildSessionContext } from "@earendil-works/pi-coding-agent";
+import { buildSessionContext, SessionManager } from "@earendil-works/pi-coding-agent";
+import { inspectDiagnostics } from "../src/diagnostics";
 import {
   adaptNativeCompactionMessages,
   buildCodexCompactionHeaders,
   buildNativeCodexRequest,
   NATIVE_CODEX_SUMMARY,
-  parseNativeCodexEvents,
-  requestNativeCodexCompaction,
-  registerNativeCodexCompaction,
-  resolveCodexResponsesUrl,
   type NativeCodexCompactionDetails,
+  parseNativeCodexEvents,
+  registerNativeCodexCompaction,
+  requestNativeCodexCompaction,
+  resolveCodexResponsesUrl,
 } from "../src/tasks/native-compaction";
+import { subscribeProviderAttempts } from "../src/tasks/provider-attempts";
 
 const model: Model<any> = {
   id: "gpt-test",
@@ -210,6 +212,18 @@ describe("native Codex request", () => {
       }),
     ).rejects.toThrow("early");
     expect(seen).toHaveLength(1);
+    await expect(
+      requestNativeCodexCompaction({
+        model,
+        payload,
+        headers: { Authorization: "Bearer hidden", "chatgpt-account-id": "acct" },
+        onDispatch: (m) => seen.push(m),
+        fetch: (() => {
+          throw new Error("synchronous failure");
+        }) as any,
+      }),
+    ).rejects.toThrow("synchronous failure");
+    expect(seen).toHaveLength(1);
     const cyclic: any = { role: "user" };
     cyclic.self = cyclic;
     await expect(
@@ -257,6 +271,10 @@ describe("native Codex request", () => {
     expect(seen.init.headers.get("x-route")).toBe("kept");
     expect(seen.init.headers.get("chatgpt-account-id")).toBe("acct");
     expect(seen.init.headers.get("session-id")).toBe("session-key");
+    expect(seen.init.headers.get("x-client-request-id")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(seen.init.headers.get("x-client-request-id")).not.toBe("session-key");
     expect(seen.init.headers.get("accept")).toBe("text/event-stream");
   });
 });
@@ -302,12 +320,12 @@ describe("opaque checkpoint adapter", () => {
 });
 
 describe("fail-closed checkpoint lifecycle", () => {
-  function harness(manager: any, currentModel: any) {
+  function harness(manager: any, currentModel: any, append?: (type: string, data: any) => void) {
     const handlers = new Map<string, Function>();
     const entries: any[] = [];
     const capture = registerNativeCodexCompaction({
       on: (name: string, fn: Function) => handlers.set(name, fn),
-      appendEntry: (type: string, data: any) => entries.push({ type, data }),
+      appendEntry: append ?? ((type: string, data: any) => entries.push({ type, data })),
     } as any);
     let aborted = 0;
     const notifications: string[] = [];
@@ -356,6 +374,98 @@ describe("fail-closed checkpoint lifecycle", () => {
     h.capture.invalidateCapture();
     expect(h.capture.hasFreshCapture()).toBe(false);
   });
+  test("records individual native fallback reasons and releases the cache-affine hook", async () => {
+    const run = async (
+      setup: (h: ReturnType<typeof harness>, manager: ReturnType<typeof SessionManager.inMemory>) => void,
+      mutateEvent: (value: any) => any = (value) => value,
+    ) => {
+      const manager = SessionManager.inMemory();
+      manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });
+      const h = harness(manager, model);
+      setup(h, manager);
+      const branch = manager.getBranch();
+      const value: any = {
+        type: "session_before_compact",
+        branchEntries: branch,
+        reason: "manual",
+        willRetry: false,
+        signal: new AbortController().signal,
+        preparation: {
+          firstKeptEntryId: branch[0].id,
+          messagesToSummarize: [],
+          turnPrefixMessages: [],
+          isSplitTurn: false,
+          tokensBefore: 10,
+          fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+          settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+        },
+      };
+      expect(await h.handlers.get("session_before_compact")!(mutateEvent(value), h.ctx)).toBeUndefined();
+      expect(h.capture.hasFreshCapture()).toBe(false);
+      return { h, code: inspectDiagnostics(manager).records.at(-1)?.code };
+    };
+    expect((await run(() => {})).code).toBe("capture_missing");
+    expect(
+      (
+        await run((h, manager) => {
+          h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+          h.capture.invalidateCapture();
+        })
+      ).code,
+    ).toBe("state_invalid");
+    expect(
+      (
+        await run((h, manager) => {
+          h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+          h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+          h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+          h.ctx.thinkingLevel = "high";
+        })
+      ).code,
+    ).toBe("identity_stale");
+    expect(
+      (
+        await run((h, manager) => {
+          h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+        })
+      ).code,
+    ).toBe("payload_missing");
+    expect(
+      (
+        await run((h, manager) => {
+          h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+          h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+        })
+      ).code,
+    ).toBe("headers_missing");
+    expect(
+      (
+        await run((h, manager) => {
+          h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+          h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+          h.handlers.get("before_provider_request")!({ payload: {} }, h.ctx);
+        })
+      ).code,
+    ).toBe("payload_incompatible");
+    expect(
+      (
+        await run(
+          (h, manager) => {
+            h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+            h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+            h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+          },
+          (value) => ({
+            ...value,
+            preparation: {
+              ...value.preparation,
+              messagesToSummarize: [{ role: "user", content: [{ type: "text", text: "not captured" }], timestamp: 1 }],
+            },
+          }),
+        )
+      ).code,
+    ).toBe("coverage_incomplete");
+  });
   test("aborts a switched-model request before a provider payload can proceed", () => {
     const h = harness(checkpointManager(), { ...model, provider: "foreign", api: "openai-responses" });
     const messages = buildSessionContext(h.ctx.sessionManager.getEntries()).messages;
@@ -389,6 +499,128 @@ describe("fail-closed checkpoint lifecycle", () => {
     });
     expect(await h.handlers.get("session_before_compact")!(base, h.ctx)).toEqual({ cancel: true });
   });
+  test("usage append failure cannot replace a billable provider failure or permit fallback", async () => {
+    const manager = SessionManager.inMemory();
+    manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });
+    let appends = 0;
+    const h = harness(manager, model, () => {
+      appends++;
+      throw new Error("private append failure");
+    });
+    h.ctx.modelRegistry.getApiKeyAndHeaders = async () => ({
+      ok: true,
+      headers: { Authorization: "Bearer hidden", "chatgpt-account-id": "acct" },
+    });
+    h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+    h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+    h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+    const branch = manager.getBranch();
+    const oldFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        "data: " +
+          JSON.stringify({
+            type: "response.failed",
+            response: {
+              status: "failed",
+              output: [],
+              usage: { input_tokens: 4, output_tokens: 1, total_tokens: 5 },
+            },
+          }) +
+          "\n\n",
+        { status: 200 },
+      )) as any;
+    try {
+      const result = await h.handlers.get("session_before_compact")!(
+        {
+          type: "session_before_compact",
+          branchEntries: branch,
+          signal: new AbortController().signal,
+          preparation: {
+            firstKeptEntryId: branch[0].id,
+            messagesToSummarize: [],
+            turnPrefixMessages: [],
+            tokensBefore: 10,
+            fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+            settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+          },
+        },
+        h.ctx,
+      );
+      expect(result).toEqual({ cancel: true });
+      expect(appends).toBe(1);
+      expect(h.notifications.some((message) => message.includes("usage checkpoint could not be written"))).toBe(true);
+      expect(JSON.stringify(h.notifications)).not.toContain("private append failure");
+      expect(inspectDiagnostics(manager).records.map((record) => record.code)).toContain("state_write_failed");
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+  test("refreshes observers only after native HTTP success and isolates observer failures", async () => {
+    const manager = SessionManager.inMemory();
+    manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });
+    const h = harness(manager, model);
+    h.ctx.modelRegistry.getApiKeyAndHeaders = async () => ({
+      ok: true,
+      headers: { Authorization: "Bearer hidden", "chatgpt-account-id": "acct" },
+    });
+    h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+    h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+    h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+    const observed: Array<{ observedAt: string; operationId: string }> = [];
+    const unsubscribeThrowing = subscribeProviderAttempts(manager, () => {
+      throw new Error("private observer failure");
+    });
+    const unsubscribe = subscribeProviderAttempts(manager, (event) => observed.push(event));
+    const branch = manager.getBranch();
+    const compactEvent = () => ({
+      type: "session_before_compact",
+      branchEntries: branch,
+      signal: new AbortController().signal,
+      preparation: {
+        firstKeptEntryId: branch[0].id,
+        messagesToSummarize: [],
+        turnPrefixMessages: [],
+        tokensBefore: 10,
+        fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+        settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+      },
+    });
+    const item = { type: "compaction", id: "cmp_observed", encrypted_content: "opaque" };
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () =>
+        new Response(
+          [
+            { type: "response.output_item.done", item },
+            {
+              type: "response.completed",
+              response: { status: "completed", output: [item], usage: { input_tokens: 4, output_tokens: 1 } },
+            },
+          ]
+            .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+            .join(""),
+          { status: 200 },
+        )) as any;
+      expect(await h.handlers.get("session_before_compact")!(compactEvent(), h.ctx)).toHaveProperty("compaction");
+      expect(observed.map((event) => event.observedAt)).toEqual(["dispatch", "response"]);
+      expect(new Set(observed.map((event) => event.operationId)).size).toBe(1);
+
+      observed.length = 0;
+      globalThis.fetch = (async () => new Response("rate limited", { status: 429 })) as any;
+      expect(await h.handlers.get("session_before_compact")!(compactEvent(), h.ctx)).toEqual({ cancel: true });
+      expect(observed.map((event) => event.observedAt)).toEqual(["dispatch"]);
+      const rejection = inspectDiagnostics(manager).records.at(-1);
+      expect(rejection).toMatchObject({ code: "http_rejected", dispatch: "response", httpStatus: 429 });
+      expect(rejection?.operationId).toBe(observed[0]?.operationId);
+      expect(JSON.stringify(h.notifications)).not.toContain("private observer failure");
+    } finally {
+      unsubscribe();
+      unsubscribeThrowing();
+      globalThis.fetch = oldFetch;
+    }
+  });
+
   test("constructs provider-equivalent OAuth and cache headers", () => {
     const claim = Buffer.from(
         JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-jwt" } }),

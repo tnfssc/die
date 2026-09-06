@@ -1,5 +1,6 @@
 import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "bun:test";
+import { inspectDiagnostics } from "../src/diagnostics";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   bindCurrentCompactionSession,
@@ -341,8 +342,15 @@ describe("extension lifecycle", () => {
     const handlers = new Map<string, Function>();
     const attempts: any[] = [];
     const notices: Array<[string, string]> = [];
+    let appendCalls = 0;
+    let throwAppend = false;
+    let abortOnResponse: AbortController | undefined;
     const pi = {
-      appendEntry: (type: string, data: any) => attempts.push({ type, data }),
+      appendEntry: (type: string, data: any) => {
+        appendCalls++;
+        if (throwAppend) throw new Error("private disk failure");
+        attempts.push({ type, data });
+      },
       on: (n: string, f: Function) => handlers.set(n, f),
       getActiveTools: () => [],
       getAllTools: () => [],
@@ -362,6 +370,7 @@ describe("extension lifecycle", () => {
               { role: "assistant", content: "new" },
             ],
           });
+          abortOnResponse?.abort();
           return {
             role: "assistant",
             api: model.api,
@@ -383,6 +392,20 @@ describe("extension lifecycle", () => {
     expect(attempts).toEqual([
       { type: "die-compaction-attempt", data: { strategy: "cache-affine-plaintext", stopReason: "length", usage } },
     ]);
+    throwAppend = true;
+    const callsBeforeFailure = appendCalls;
+    expect(await handlers.get("session_before_compact")!(event(), ctx)).toEqual({ cancel: true });
+    expect(appendCalls).toBe(callsBeforeFailure + 1);
+    expect(notices.some(([message]) => message.includes("usage checkpoint could not be written"))).toBe(true);
+    expect(notices.at(-1)?.[0]).toContain("avoid duplicate inference");
+    expect(JSON.stringify(notices)).not.toContain("private disk failure");
+    const abortController = new AbortController();
+    abortOnResponse = abortController;
+    const callsBeforeAbort = appendCalls;
+    expect(await handlers.get("session_before_compact")!(event({ signal: abortController.signal }), ctx)).toEqual({
+      cancel: true,
+    });
+    expect(appendCalls).toBe(callsBeforeAbort + 1);
   });
 
   test("makes unavailable preparation observable without flattening raw history", async () => {
@@ -406,6 +429,11 @@ describe("extension lifecycle", () => {
     await handlers.get("before_provider_request")!({ payload: { input: [{}] } }, ctx);
     expect(await handlers.get("session_before_compact")!(event(), ctx)).toEqual({ cancel: true });
     expect(notices[0]).toContain("this Pi runtime has no current-context preparation seam");
+    expect(inspectDiagnostics(ctx.sessionManager).records.at(-1)).toMatchObject({
+      code: "preparation_failed",
+      outcome: "blocked",
+      dispatch: "none",
+    });
   });
 
   test("provider errors and aborts cancel without alternate inference", async () => {
@@ -431,10 +459,21 @@ describe("extension lifecycle", () => {
     await handlers.get("context")!({ messages: snapshot().messages }, ctx);
     await handlers.get("before_provider_request")!({ payload: { input: [{ role: "user", content: "old" }] } }, ctx);
     expect(await handlers.get("session_before_compact")!(event(), ctx)).toEqual({ cancel: true });
+    expect(inspectDiagnostics(ctx.sessionManager).records.at(-1)).toMatchObject({
+      code: "provider_failed",
+      outcome: "failed",
+      dispatch: "none",
+    });
     const controller = new AbortController();
     controller.abort();
     expect(await handlers.get("session_before_compact")!(event({ signal: controller.signal }), ctx)).toEqual({
       cancel: true,
+    });
+    expect(inspectDiagnostics(ctx.sessionManager).records.at(-1)).toMatchObject({
+      code: "caller_aborted",
+      outcome: "cancelled",
+      dispatch: "none",
+      cancellation: "caller",
     });
   });
 });

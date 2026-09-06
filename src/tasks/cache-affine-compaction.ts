@@ -1,20 +1,20 @@
-import { adjustMaxTokensForThinking } from "@earendil-works/pi-ai/api/simple-options";
-import prefixScopeTemplate from "../prompts/compaction-prefix-scope.md" with { type: "text" };
-import wholeScopeTemplate from "../prompts/compaction-whole-scope.md" with { type: "text" };
-import { withStandardProviderTier } from "./native-fast-mode";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, Message, Model, Tool } from "@earendil-works/pi-ai";
+import { adjustMaxTokensForThinking } from "@earendil-works/pi-ai/api/simple-options";
 import {
   buildSessionContext,
   convertToLlm,
-  estimateTokens,
   type ExtensionAPI,
   type ExtensionContext,
+  estimateTokens,
   type SessionBeforeCompactEvent,
 } from "@earendil-works/pi-coding-agent";
+import { recordDiagnostic } from "../diagnostics.js";
 import promptTemplate from "../prompts/compaction.md" with { type: "text" };
-
 import jobsTemplate from "../prompts/compaction-jobs.md" with { type: "text" };
+import prefixScopeTemplate from "../prompts/compaction-prefix-scope.md" with { type: "text" };
+import wholeScopeTemplate from "../prompts/compaction-whole-scope.md" with { type: "text" };
+import { withStandardProviderTier } from "./native-fast-mode";
 
 export const CACHE_AFFINE_COMPACTION_VERSION = 4;
 
@@ -412,6 +412,15 @@ export function isUsableSummaryResponse(response: AssistantMessage): boolean {
   return textOf(response).length > 0;
 }
 
+function bestEffortCompactionDiagnostic(
+  ctx: ExtensionContext,
+  diagnostic: Parameters<typeof recordDiagnostic>[1],
+): void {
+  try {
+    recordDiagnostic(ctx.sessionManager, diagnostic);
+  } catch {}
+}
+
 export function registerCacheAffineCompaction(
   pi: ExtensionAPI,
   pendingJobs: () => readonly { id: string; kind: string; status: string }[] = () => [],
@@ -458,8 +467,9 @@ export function registerCacheAffineCompaction(
   });
 
   pi.on("session_before_compact", async (event, ctx) => {
-    // Codex uses the Phase 2 opaque native path. If it is unavailable, leaving
-    // this hook empty selects Pi's visibly distinct standard plaintext fallback.
+    const operationId = crypto.randomUUID();
+    // Skip only while the native hook owns this event. On an explicit native
+    // fallback it clears its capture, allowing this cache-affine path to run.
     const skipCodexNative =
       typeof options.skipCodexNative === "function" ? options.skipCodexNative() : options.skipCodexNative;
     if (skipCodexNative && ctx.model?.api === "openai-codex-responses") return;
@@ -474,8 +484,26 @@ export function registerCacheAffineCompaction(
               sessionId: ctx.sessionManager.getSessionId(),
             }
           : undefined;
-    if (event.signal.aborted) return { cancel: true };
+    if (event.signal.aborted) {
+      bestEffortCompactionDiagnostic(ctx, {
+        component: "compaction",
+        code: "caller_aborted",
+        outcome: "cancelled",
+        operationId,
+        dispatch: "none",
+        cancellation: "caller",
+      });
+      return { cancel: true };
+    }
     if (!captured || !sameIdentity(captured, event, ctx)) {
+      bestEffortCompactionDiagnostic(ctx, {
+        component: "compaction",
+        code: "identity_stale",
+        outcome: "blocked",
+        operationId,
+        dispatch: "none",
+        cancellation: "safety",
+      });
       ctx.ui?.notify?.(
         "Cache-affine compaction unavailable: model, thinking, or session identity changed. Compaction cancelled; conversation preserved.",
         "warning",
@@ -485,16 +513,53 @@ export function registerCacheAffineCompaction(
     let current: PreparedConversation | undefined;
     try {
       current = await prepareCurrentConversation(event, ctx, captured);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
+    } catch {
+      if (event.signal.aborted) {
+        bestEffortCompactionDiagnostic(ctx, {
+          component: "compaction",
+          code: "caller_aborted",
+          outcome: "cancelled",
+          operationId,
+          dispatch: "none",
+          cancellation: "caller",
+        });
+        return { cancel: true };
+      }
+      bestEffortCompactionDiagnostic(ctx, {
+        component: "compaction",
+        code: "preparation_failed",
+        outcome: "blocked",
+        operationId,
+        dispatch: "none",
+        cancellation: "safety",
+      });
       ctx.ui?.notify?.(
-        `Cache-affine compaction unavailable: current context preparation failed: ${reason}. Compaction cancelled; conversation preserved.`,
+        "Cache-affine compaction unavailable: current context preparation failed. Compaction cancelled; conversation preserved.",
         "warning",
       );
       return { cancel: true };
     }
+    if (event.signal.aborted) {
+      bestEffortCompactionDiagnostic(ctx, {
+        component: "compaction",
+        code: "caller_aborted",
+        outcome: "cancelled",
+        operationId,
+        dispatch: "none",
+        cancellation: "caller",
+      });
+      return { cancel: true };
+    }
     if (!current) {
       const reason = "this Pi runtime has no current-context preparation seam";
+      bestEffortCompactionDiagnostic(ctx, {
+        component: "compaction",
+        code: "preparation_failed",
+        outcome: "blocked",
+        operationId,
+        dispatch: "none",
+        cancellation: "safety",
+      });
       ctx.ui?.notify?.(
         `Cache-affine compaction unavailable: ${reason}. Compaction cancelled; conversation preserved.`,
         "warning",
@@ -503,6 +568,15 @@ export function registerCacheAffineCompaction(
     }
     const prepared = prepareCacheAffineRequest(captured, event, current);
     if (!("request" in prepared)) {
+      bestEffortCompactionDiagnostic(ctx, {
+        component: "compaction",
+        code:
+          prepared.reason === "the prepared summary scope is empty" ? "capacity_insufficient" : "capacity_insufficient",
+        outcome: "blocked",
+        operationId,
+        dispatch: "none",
+        cancellation: "safety",
+      });
       ctx.ui?.notify?.(
         `Cache-affine compaction unavailable: ${prepared.reason}. Compaction cancelled; conversation preserved.`,
         "warning",
@@ -518,6 +592,14 @@ export function registerCacheAffineCompaction(
       captured.model.contextWindow - request.estimatedInputTokens - (current.thinkingBudget ?? 0) - 256,
     );
     if (answerTokens < 1024) {
+      bestEffortCompactionDiagnostic(ctx, {
+        component: "compaction",
+        code: "capacity_insufficient",
+        outcome: "blocked",
+        operationId,
+        dispatch: "none",
+        cancellation: "safety",
+      });
       ctx.ui?.notify?.(
         "Cache-affine compaction unavailable: insufficient space for unchanged thinking and summary output. Compaction cancelled; conversation preserved.",
         "warning",
@@ -526,14 +608,29 @@ export function registerCacheAffineCompaction(
     }
     let responseUsageRecorded = false;
     let paidResponse: AssistantMessage | undefined;
-    const recordFailedUsage = () => {
-      if (!responseUsageRecorded && paidResponse && paidResponse.usage.totalTokens > 0) {
-        responseUsageRecorded = true;
-        pi.appendEntry?.("die-compaction-attempt", {
+    const recordFailedUsage = (): boolean => {
+      if (responseUsageRecorded || !paidResponse || paidResponse.usage.totalTokens <= 0) return true;
+      // Mark first: a failing append must not be retried by the surrounding catch.
+      responseUsageRecorded = true;
+      try {
+        pi.appendEntry("die-compaction-attempt", {
           strategy: "cache-affine-plaintext",
           stopReason: paidResponse.stopReason,
           usage: paidResponse.usage,
         });
+        return true;
+      } catch {
+        try {
+          recordDiagnostic(ctx.sessionManager, {
+            component: "observer",
+            code: "state_write_failed",
+            outcome: "failed",
+            operationId,
+            dispatch: "response",
+          });
+        } catch {}
+        ctx.ui?.notify?.("Compaction usage checkpoint could not be written; compaction cancelled.", "error");
+        return false;
       }
     };
     let payloadAccepted = false;
@@ -566,9 +663,25 @@ export function registerCacheAffineCompaction(
       paidResponse = response;
       if (event.signal.aborted) {
         recordFailedUsage();
+        bestEffortCompactionDiagnostic(ctx, {
+          component: "compaction",
+          code: "caller_aborted",
+          outcome: "cancelled",
+          operationId,
+          dispatch: "response",
+          cancellation: "caller",
+        });
         return { cancel: true };
       }
       if (!payloadAccepted && prefixRejection) {
+        bestEffortCompactionDiagnostic(ctx, {
+          component: "provider",
+          code: "capacity_insufficient",
+          outcome: "blocked",
+          operationId,
+          dispatch: "none",
+          cancellation: "safety",
+        });
         ctx.ui?.notify?.(
           `Cache-affine compaction rejected before inference: ${prefixRejection}. Compaction cancelled; conversation preserved.`,
           "warning",
@@ -577,10 +690,18 @@ export function registerCacheAffineCompaction(
       }
       if (!isUsableSummaryResponse(response)) {
         recordFailedUsage();
+        bestEffortCompactionDiagnostic(ctx, {
+          component: "provider",
+          code: "response_invalid",
+          outcome: response.stopReason === "aborted" ? "cancelled" : "failed",
+          operationId,
+          dispatch: "response",
+          ...(response.stopReason === "aborted" ? { cancellation: "provider" as const } : {}),
+        });
         // A response may already be billable. Cancelling is safer than silently
         // launching Pi's fallback summarizer and losing this usage checkpoint.
         ctx.ui?.notify?.(
-          `Cache-affine summary was unusable (stop reason: ${response.stopReason}); compaction was cancelled to avoid duplicate inference.`,
+          "Cache-affine summary was unusable; compaction was cancelled to avoid duplicate inference.",
           "error",
         );
         return { cancel: true };
@@ -611,13 +732,36 @@ export function registerCacheAffineCompaction(
           },
         },
       };
-    } catch (error) {
+    } catch {
       recordFailedUsage();
-      if (event.signal.aborted) return { cancel: true };
-      const reason = error instanceof Error ? error.message : String(error);
+      const callerCancelled = event.signal.aborted;
+      if (prefixRejection && !payloadAccepted && !callerCancelled) {
+        bestEffortCompactionDiagnostic(ctx, {
+          component: "provider",
+          code: "capacity_insufficient",
+          outcome: "blocked",
+          operationId,
+          dispatch: "none",
+          cancellation: "safety",
+        });
+        ctx.ui?.notify?.(
+          "Cache-affine compaction rejected before inference: provider output ceiling exceeds the context window. Compaction cancelled; conversation preserved.",
+          "warning",
+        );
+        return { cancel: true };
+      }
+      bestEffortCompactionDiagnostic(ctx, {
+        component: "provider",
+        code: callerCancelled ? "caller_aborted" : payloadAccepted ? "provider_failed" : "provider_failed",
+        outcome: callerCancelled ? "cancelled" : "failed",
+        operationId,
+        dispatch: paidResponse ? "response" : payloadAccepted ? "unknown" : "none",
+        ...(callerCancelled ? { cancellation: "caller" as const } : {}),
+      });
+      if (callerCancelled) return { cancel: true };
       if (!payloadAccepted) {
         ctx.ui?.notify?.(
-          `Cache-affine compaction rejected before inference: ${reason}. Compaction cancelled; conversation preserved.`,
+          "Cache-affine compaction rejected before inference. Compaction cancelled; conversation preserved.",
           "warning",
         );
         return { cancel: true };
@@ -625,7 +769,7 @@ export function registerCacheAffineCompaction(
       // Once a payload was accepted, the provider may have billed the request.
       // Do not silently start a second summarization with no usage checkpoint.
       ctx.ui?.notify?.(
-        `Cache-affine compaction failed after inference began: ${reason}. Compaction was cancelled to avoid duplicate inference.`,
+        "Cache-affine compaction failed after inference began. Compaction was cancelled to avoid duplicate inference.",
         "error",
       );
       return { cancel: true };

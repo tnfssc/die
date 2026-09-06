@@ -1,12 +1,61 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { lazyStream, type Model } from "@earendil-works/pi-ai";
+import { recordDiagnostic } from "../diagnostics.js";
 
 export const NATIVE_FAST_ENTRY = "die-native-fast-mode";
 const ENTRY_VERSION = 1;
 const OPENAI_BASE_URL = "https://api.openai.com/v1";
 const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
 const standardTierScope = new AsyncLocalStorage<boolean>();
+
+export const FAST_REFUSED_INVALID_COMMAND = "request_blocked";
+export const FAST_REFUSED_NO_MODEL = "state_invalid";
+export const FAST_REFUSED_UNSUPPORTED = "payload_incompatible";
+export const FAST_REFUSED_COMPATIBILITY = "coverage_incomplete";
+export const FAST_REFUSED_AUTH = "identity_stale";
+export const FAST_CANCELLED_COST = "caller_aborted";
+export const FAST_REFUSED_STALE = "identity_stale";
+export const FAST_CHECKPOINT_PERSIST_FAILED = "state_write_failed";
+export const FAST_GUARD_AMBIGUOUS_AUTHORIZATION = "state_invalid";
+export const FAST_GUARD_BLOCKED_AUTHORIZATION = "request_blocked";
+export const FAST_GUARD_MISSING_TIER = "state_invalid";
+export const FAST_GUARD_INVALID_PAYLOAD = "payload_incompatible";
+export const FAST_GUARD_MODEL_MISMATCH = "identity_stale";
+export const FAST_GUARD_TIER_MUTATION = "payload_incompatible";
+export const FAST_GUARD_IDENTITY_MISMATCH = "identity_stale";
+export const FAST_GUARD_UNSUPPORTED_ENDPOINT = "payload_incompatible";
+
+type OperationId = `${string}-${string}-${string}-${string}-${string}`;
+function fastDiagnostic(
+  manager: object,
+  code: string,
+  outcome: "success" | "failed" | "fallback" | "blocked" | "cancelled" | "noop",
+  operationId?: OperationId,
+  cancellation?: "caller" | "provider" | "timeout" | "shutdown" | "safety",
+): void {
+  try {
+    recordDiagnostic(manager as ExtensionContext["sessionManager"], {
+      component: "fast",
+      code,
+      outcome,
+      ...(operationId ? { operationId } : {}),
+      dispatch: "none",
+      ...(cancellation ? { cancellation } : {}),
+    });
+  } catch {
+    // Diagnostics must not weaken or replace the request guard.
+  }
+}
+function commandDiagnostic(
+  ctx: ExtensionContext,
+  code: string,
+  outcome: "success" | "failed" | "blocked" | "cancelled" | "noop",
+  operationId: OperationId,
+  cancellation?: "caller" | "provider" | "timeout" | "shutdown" | "safety",
+): void {
+  fastDiagnostic(ctx.sessionManager as object, code, outcome, operationId, cancellation);
+}
 
 /** Keep only this asynchronous compaction request standard-priced. The owner is
  * retained for source compatibility; AsyncLocalStorage prevents concurrent
@@ -165,6 +214,8 @@ type RequestAuthorization = {
   oauth: boolean;
   tier?: "default" | "fast" | "priority";
   blocked?: string;
+  operationId: OperationId;
+  manager: object;
 };
 type FastController = {
   context?: ExtensionContext;
@@ -220,6 +271,7 @@ function attachConcreteRequestGuard(runtime: unknown, controller: FastController
     const authorization = authorizations[0];
     if (authorizations.length !== 1)
       return lazyStream(model, async () => {
+        fastDiagnostic(authorization.manager, FAST_GUARD_AMBIGUOUS_AUTHORIZATION, "blocked", authorization.operationId);
         throw new Error("Native fast mode found ambiguous request authorization before dispatch.");
       });
     const priorPayload = options?.onPayload;
@@ -227,21 +279,34 @@ function attachConcreteRequestGuard(runtime: unknown, controller: FastController
       ...options,
       ...(authorization.tier === undefined ? {} : { serviceTier: authorization.tier }),
       onPayload: async (payload: unknown, payloadModel: Model<any>) => {
-        if (authorization.blocked) throw new Error(authorization.blocked);
-        if (authorization.tier === undefined)
+        if (authorization.blocked) {
+          fastDiagnostic(authorization.manager, FAST_GUARD_BLOCKED_AUTHORIZATION, "blocked", authorization.operationId);
+          throw new Error(authorization.blocked);
+        }
+        if (authorization.tier === undefined) {
+          fastDiagnostic(authorization.manager, FAST_GUARD_MISSING_TIER, "blocked", authorization.operationId);
           throw new Error("Native fast mode authorization did not select a provider tier.");
-        if (!record(payload))
+        }
+        if (!record(payload)) {
+          fastDiagnostic(authorization.manager, FAST_GUARD_INVALID_PAYLOAD, "blocked", authorization.operationId);
           throw new Error("Native fast mode rejected a non-object provider payload before dispatch.");
+        }
         // Snapshot injection happens before the complete extension hook pipeline.
         // No hook can cause us to re-read mutable session/model state.
         payload.service_tier = authorization.tier;
         const finalPayload = priorPayload ? await priorPayload(payload, payloadModel) : payload;
-        if (!record(finalPayload))
+        if (!record(finalPayload)) {
+          fastDiagnostic(authorization.manager, FAST_GUARD_INVALID_PAYLOAD, "blocked", authorization.operationId);
           throw new Error("Native fast mode rejected a non-object provider payload before dispatch.");
-        if (finalPayload.model !== authorization.model)
+        }
+        if (finalPayload.model !== authorization.model) {
+          fastDiagnostic(authorization.manager, FAST_GUARD_MODEL_MISMATCH, "blocked", authorization.operationId);
           throw new Error("Native fast mode rejected a provider payload for a different model before dispatch.");
-        if (finalPayload.service_tier !== authorization.tier)
+        }
+        if (finalPayload.service_tier !== authorization.tier) {
+          fastDiagnostic(authorization.manager, FAST_GUARD_TIER_MUTATION, "blocked", authorization.operationId);
           throw new Error("Native fast mode rejected a late service-tier mutation before dispatch.");
+        }
         return finalPayload;
       },
     };
@@ -254,15 +319,24 @@ function attachConcreteRequestGuard(runtime: unknown, controller: FastController
         prepared.model?.provider !== authorization.provider ||
         prepared.model?.id !== authorization.model ||
         this.isUsingOAuth(authorization.provider) !== authorization.oauth
-      )
+      ) {
+        fastDiagnostic(authorization.manager, FAST_GUARD_IDENTITY_MISMATCH, "blocked", authorization.operationId);
         throw new Error("Native fast mode request identity or authentication changed before provider dispatch.");
-      if (authorization.blocked) throw new Error(authorization.blocked);
-      if (authorization.tier === undefined)
+      }
+      if (authorization.blocked) {
+        fastDiagnostic(authorization.manager, FAST_GUARD_BLOCKED_AUTHORIZATION, "blocked", authorization.operationId);
+        throw new Error(authorization.blocked);
+      }
+      if (authorization.tier === undefined) {
+        fastDiagnostic(authorization.manager, FAST_GUARD_MISSING_TIER, "blocked", authorization.operationId);
         throw new Error("Native fast mode authorization did not select a provider tier.");
+      }
       if (authorization.tier !== "default") {
         const actualSupport = nativeFastSupport(prepared.model);
-        if (!actualSupport.supported || actualSupport.tier !== authorization.tier)
+        if (!actualSupport.supported || actualSupport.tier !== authorization.tier) {
+          fastDiagnostic(authorization.manager, FAST_GUARD_UNSUPPORTED_ENDPOINT, "blocked", authorization.operationId);
           throw new Error("Native fast mode actual provider endpoint is not authorized for this request.");
+        }
       }
       return prepared.provider.streamSimple(prepared.model, context, prepared.options);
     });
@@ -307,6 +381,8 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
       if (standardTierScope.getStore() && officialSurface(model)) {
         return {
           sessionId: requestedSessionId,
+          operationId: crypto.randomUUID(),
+          manager: ctx.sessionManager as object,
           provider: model.provider,
           model: model.id,
           tier: "default",
@@ -318,6 +394,8 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
       if (found.kind === "invalid")
         return {
           sessionId: requestedSessionId,
+          operationId: crypto.randomUUID(),
+          manager: ctx.sessionManager as object,
           provider: model.provider,
           model: model.id,
           oauth: ctx.modelRegistry.isUsingOAuth(model),
@@ -327,6 +405,8 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
       if (!active.enabled) {
         return {
           sessionId: requestedSessionId,
+          operationId: crypto.randomUUID(),
+          manager: ctx.sessionManager as object,
           provider: model.provider,
           model: model.id,
           tier: "default",
@@ -348,6 +428,8 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
             : undefined;
       return {
         sessionId: requestedSessionId,
+        operationId: crypto.randomUUID(),
+        manager: ctx.sessionManager as object,
         provider: model.provider,
         model: model.id,
         ...(blocked ? {} : { tier: support.supported ? support.tier : undefined }),
@@ -386,6 +468,7 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
       return ["on", "off", "status"].filter((item) => item.startsWith(value)).map((value) => ({ value, label: value }));
     },
     handler: async (args, ctx) => {
+      const operationId = crypto.randomUUID();
       const compatibilityError = bindContext(ctx);
       const action = args.trim().toLowerCase() || "status";
       if (action === "status") {
@@ -401,11 +484,13 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
         return;
       }
       if (action !== "on" && action !== "off") {
+        commandDiagnostic(ctx, FAST_REFUSED_INVALID_COMMAND, "blocked", operationId);
         ctx.ui.notify("Usage: /fast on|off|status", "error");
         return;
       }
       const model = ctx.model;
       if (!model) {
+        commandDiagnostic(ctx, FAST_REFUSED_NO_MODEL, "blocked", operationId);
         ctx.ui.notify("Select a model before changing native fast mode.", "error");
         return;
       }
@@ -417,6 +502,7 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
       };
       const support = nativeFastSupport(model);
       if (action === "off" && !officialSurface(model)) {
+        commandDiagnostic(ctx, FAST_REFUSED_UNSUPPORTED, "blocked", operationId);
         ctx.ui.notify(
           "Native fast opt-out applies only to the official OpenAI API and Codex provider surfaces.",
           "error",
@@ -424,15 +510,18 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
         return;
       }
       if (action === "on" && !support.supported) {
+        commandDiagnostic(ctx, FAST_REFUSED_UNSUPPORTED, "blocked", operationId);
         ctx.ui.notify(support.reason, "error");
         return;
       }
       if (action === "on" && compatibilityError) {
+        commandDiagnostic(ctx, FAST_REFUSED_COMPATIBILITY, "blocked", operationId);
         ctx.ui.notify(compatibilityError, "error");
         return;
       }
       if (action === "on") {
         if (!support.supported || !authSurfaceMatches(ctx, support.surface)) {
+          commandDiagnostic(ctx, FAST_REFUSED_AUTH, "blocked", operationId);
           ctx.ui.notify(
             support.supported && support.surface === "codex"
               ? "Codex fast mode requires ChatGPT OAuth sign-in; API-key traffic uses the OpenAI API pricing surface."
@@ -450,6 +539,7 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
               : "Fast mode uses premium API token pricing. Provider billing is authoritative.",
           );
         if (!accepted) {
+          commandDiagnostic(ctx, FAST_CANCELLED_COST, "cancelled", operationId, "caller");
           ctx.ui.notify("Fast mode was not enabled. Use the TUI confirmation or launch with --accept-cost.", "warning");
           return;
         }
@@ -462,6 +552,7 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
         currentModel.provider !== consentScope.provider ||
         currentModel.id !== consentScope.model
       ) {
+        commandDiagnostic(ctx, FAST_REFUSED_STALE, "blocked", operationId);
         ctx.ui.notify(
           "Fast mode consent became stale because the session, branch, or model changed; nothing was enabled.",
           "warning",
@@ -469,6 +560,7 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
         return;
       }
       if (action === "on" && (!support.supported || !authSurfaceMatches(ctx, support.surface, currentModel))) {
+        commandDiagnostic(ctx, FAST_REFUSED_STALE, "blocked", operationId);
         ctx.ui.notify(
           "Fast mode consent became stale because the authentication surface changed; nothing was enabled.",
           "warning",
@@ -487,6 +579,7 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
       try {
         pi.appendEntry(NATIVE_FAST_ENTRY, entry);
       } catch (error) {
+        commandDiagnostic(ctx, FAST_CHECKPOINT_PERSIST_FAILED, "failed", operationId);
         ctx.ui.notify(
           "Could not persist native fast mode: " + (error instanceof Error ? error.message : String(error)),
           "error",
@@ -508,7 +601,10 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
     evidence = "requested";
     const compatibilityError = bindContext(ctx);
     refreshStatus(ctx);
-    if (currentSetting(ctx)?.enabled && compatibilityError) ctx.ui.notify(compatibilityError, "error");
+    if (currentSetting(ctx)?.enabled && compatibilityError) {
+      commandDiagnostic(ctx, FAST_REFUSED_COMPATIBILITY, "blocked", crypto.randomUUID());
+      ctx.ui.notify(compatibilityError, "error");
+    }
   });
   pi.on("model_select", (_event, ctx) => {
     evidence = "requested";

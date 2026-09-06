@@ -13,6 +13,7 @@ import {
   registerCacheCountdown,
 } from "../src/tasks/cache-countdown";
 import { reportProviderAttempt, subscribeProviderAttempts } from "../src/tasks/provider-attempts";
+import { inspectDiagnostics } from "../src/diagnostics";
 
 function context(provider = "openai", id = "alpha", entries: any[] = []) {
   return {
@@ -105,6 +106,10 @@ describe("cache countdown", () => {
         kind = k;
       };
       await handlers.get("session_start")!({}, ctx);
+      reportProviderAttempt(ctx.sessionManager as object, { provider: "openai", id: "alpha" }, "dispatch", 123455);
+      handlers.get("before_provider_request")!({}, ctx);
+      handlers.get("after_provider_response")!({ status: 401, model: { provider: "openai", id: "alpha" } }, ctx);
+      expect(appended).toHaveLength(0);
       reportProviderAttempt(ctx.sessionManager as object, { provider: "openai", id: "alpha" }, "response", 123456);
       reportProviderAttempt(ctx.sessionManager as object, { provider: "openai", id: "alpha" }, "response", 123457); // response-backed retry
       expect(appended).toHaveLength(2);
@@ -130,13 +135,18 @@ describe("cache countdown", () => {
       appendEntry: (type: string, data: any) => appended.push({ type, data }),
     } as unknown as ExtensionAPI;
     registerCacheCountdown(pi, new CacheCountdown(), join(tmpdir(), "missing-cache-settings-" + Date.now()));
-    const ctx = context("p", "prepared");
+    const ctx = context("p", "actual");
     await handlers.get("session_start")!({}, ctx);
+    for (const status of [401, 429, 500]) {
+      handlers.get("before_provider_request")!({ payload: {} }, ctx);
+      (ctx as any).model = { provider: "p", id: "selected-later" };
+      handlers.get("after_provider_response")!({ status, headers: {}, model: { provider: "p", id: "actual" } }, ctx);
+      (ctx as any).model = { provider: "p", id: "actual" };
+    }
     handlers.get("before_provider_request")!({ payload: {} }, ctx);
     (ctx as any).model = { provider: "p", id: "selected-later" };
-    handlers.get("after_provider_response")!({ status: 429, headers: {}, model: { provider: "p", id: "actual" } }, ctx);
-    handlers.get("before_provider_request")!({ payload: {} }, ctx); // provider retry is a new attempt
     handlers.get("after_provider_response")!({ status: 200, headers: {}, model: { provider: "p", id: "actual" } }, ctx);
+    (ctx as any).model = { provider: "p", id: "actual-ws" };
     handlers.get("before_provider_request")!({ payload: {} }, ctx);
     (ctx as any).model = { provider: "p", id: "selected-after-dispatch" };
     handlers.get("message_end")!(
@@ -147,7 +157,88 @@ describe("cache countdown", () => {
       { message: { role: "assistant", provider: "p", model: "duplicate", stopReason: "stop" } },
       ctx,
     );
-    expect(appended.map((entry) => entry.data.model)).toEqual(["actual", "actual", "actual-ws"]);
+    expect(appended.map((entry) => entry.data.model)).toEqual(["actual", "actual-ws"]);
+  });
+
+  test("correlates distinguishable interleaved responses and blocks ambiguous overlap", async () => {
+    const handlers = new Map<string, Function>(),
+      appended: any[] = [];
+    const pi = {
+      on: (name: string, fn: Function) => handlers.set(name, fn),
+      registerCommand() {},
+      appendEntry: (type: string, data: any) => appended.push({ type, data }),
+    } as unknown as ExtensionAPI;
+    registerCacheCountdown(pi, new CacheCountdown(), join(tmpdir(), "missing-cache-settings-" + Date.now()));
+    const ctx = context("p", "one");
+    await handlers.get("session_start")!({}, ctx);
+    handlers.get("before_provider_request")!({}, ctx);
+    (ctx as any).model = { provider: "p", id: "two" };
+    handlers.get("before_provider_request")!({}, ctx);
+    handlers.get("after_provider_response")!({ status: 200, model: { provider: "p", id: "two" } }, ctx);
+    handlers.get("after_provider_response")!({ status: 200, model: { provider: "p", id: "one" } }, ctx);
+    expect(appended.map((entry) => entry.data.model)).toEqual(["two", "one"]);
+
+    // A's trailing terminal event must not consume the sole remaining B
+    // attempt, even though the hooks arrive interleaved.
+    (ctx as any).model = { provider: "p", id: "http-a" };
+    handlers.get("before_provider_request")!({}, ctx);
+    (ctx as any).model = { provider: "p", id: "ws-b" };
+    handlers.get("before_provider_request")!({}, ctx);
+    handlers.get("after_provider_response")!({ status: 200, model: { provider: "p", id: "http-a" } }, ctx);
+    handlers.get("message_end")!(
+      { message: { role: "assistant", provider: "p", model: "http-a", stopReason: "stop" } },
+      ctx,
+    );
+    handlers.get("message_end")!(
+      { message: { role: "assistant", provider: "p", model: "ws-b", stopReason: "stop" } },
+      ctx,
+    );
+    expect(appended.map((entry) => entry.data.model)).toEqual(["two", "one", "http-a", "ws-b"]);
+
+    // Once an HTTP response for a model has been observed, its uncorrelated
+    // terminal hook makes a newly-overlapping same-model request ambiguous.
+    (ctx as any).model = { provider: "p", id: "overlap" };
+    handlers.get("before_provider_request")!({}, ctx);
+    handlers.get("after_provider_response")!({ status: 200, model: { provider: "p", id: "overlap" } }, ctx);
+    handlers.get("before_provider_request")!({}, ctx);
+    handlers.get("message_end")!(
+      { message: { role: "assistant", provider: "p", model: "overlap", stopReason: "stop" } },
+      ctx,
+    );
+    handlers.get("message_end")!(
+      { message: { role: "assistant", provider: "p", model: "overlap", stopReason: "stop" } },
+      ctx,
+    );
+    expect(appended.map((entry) => entry.data.model)).toEqual(["two", "one", "http-a", "ws-b", "overlap"]);
+
+    (ctx as any).model = { provider: "p", id: "same" };
+    handlers.get("before_provider_request")!({}, ctx);
+    handlers.get("before_provider_request")!({}, ctx);
+    handlers.get("after_provider_response")!({ status: 200, model: { provider: "p", id: "same" } }, ctx);
+    handlers.get("after_provider_response")!({ status: 200, model: { provider: "p", id: "same" } }, ctx);
+    expect(appended).toHaveLength(5);
+  });
+
+  test("attempt IDs are unique and observer diagnostics contain no private failure data", () => {
+    const owner = {},
+      ids: string[] = [];
+    subscribeProviderAttempts(owner, (event) => ids.push(event.operationId));
+    subscribeProviderAttempts(owner, () => {
+      throw new Error("secret payload and credential");
+    });
+    reportProviderAttempt(owner, { provider: "p", id: "m" }, "dispatch", 1);
+    reportProviderAttempt(owner, { provider: "p", id: "m" }, "dispatch", 2);
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).not.toBe(ids[1]);
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    const records = inspectDiagnostics(owner).records;
+    expect(records.filter((record) => record.code === "observer_failed")).toHaveLength(2);
+    expect(JSON.stringify(records)).not.toContain("secret");
+    expect(
+      records.every(
+        (record) => !Object.keys(record).some((key) => ["error", "payload", "headers", "usage"].includes(key)),
+      ),
+    ).toBe(true);
   });
   test("warns about corrupt cache settings without changing them", async () => {
     const dir = await mkdtemp(join(tmpdir(), "die-cache-corrupt-"));
