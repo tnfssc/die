@@ -12,7 +12,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import tasks from "../src/tasks/extension";
-import { installLiveDispatchBudget, type LiveDispatchEvidence } from "./live-dispatch-budget";
+import { assertLiveRuntimeReady, installLiveDispatchBudget, type LiveDispatchEvidence } from "./live-dispatch-budget";
 
 // This is a paid, single-scenario smoke test, not a claim about general goal quality.
 // No mocked stream is used: /goal is dispatched by the SDK and the configured model
@@ -53,6 +53,9 @@ test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
         modelsPath: null,
         refreshOnCreate: false,
       });
+      evidence.phase = "auth-preflight";
+      await assertLiveRuntimeReady(runtime, model);
+      evidence.authReady = true;
       // This guard is on the real runtime method, outside extension error handling.
       // maxRetries=0 makes each admitted call correspond to at most one paid dispatch.
       budget = installLiveDispatchBudget(runtime, model.provider, 4, (item) => requestEvidence.push(item));

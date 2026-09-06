@@ -18,6 +18,20 @@ interface StreamRuntime {
   getProvider(providerId: string): StreamProvider | undefined;
 }
 
+interface AuthRuntime {
+  hasConfiguredAuth(providerId: string): boolean;
+  getAuth(model: unknown, options: { minOAuthValidityMs: number }): Promise<unknown>;
+}
+
+/** Resolve and, where necessary, refresh credentials before starting a paid smoke. */
+export async function assertLiveRuntimeReady(runtime: AuthRuntime, model: { provider: string }): Promise<void> {
+  if (!runtime.hasConfiguredAuth(model.provider)) {
+    throw new Error("Live smoke auth is not configured for provider: " + model.provider);
+  }
+  const auth = await runtime.getAuth(model, { minOAuthValidityMs: 300_000 });
+  if (!auth) throw new Error("Live smoke could not resolve usable auth for provider: " + model.provider);
+}
+
 /**
  * Installs a hard synchronous guard at the concrete provider boundary. The
  * runtime wrapper disables retries before request preparation, while the
