@@ -1,6 +1,8 @@
-import { test, expect, spyOn, afterEach } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
+import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import extension from "../src/tasks/extension";
 import * as execution from "../src/typescript/execution";
+
 const originalDepth = process.env.DIE_SUBAGENT_DEPTH,
   originalType = process.env.DIE_SUBAGENT_TYPE;
 afterEach(() => {
@@ -9,6 +11,68 @@ afterEach(() => {
   if (originalType === undefined) delete process.env.DIE_SUBAGENT_TYPE;
   else process.env.DIE_SUBAGENT_TYPE = originalType;
 });
+
+type FixtureContext = ExtensionContext & {
+  notices: Array<{ message: string; kind?: string }>;
+  statuses: Map<string, string>;
+};
+
+function contextFixture(
+  options: {
+    sessionId?: string;
+    entries?: any[];
+    sessionManager?: Partial<ExtensionContext["sessionManager"]>;
+    mode?: ExtensionContext["mode"];
+    signal?: AbortSignal;
+  } = {},
+): FixtureContext {
+  const entries = options.entries ?? [];
+  const notices: FixtureContext["notices"] = [];
+  const statuses = new Map<string, string>();
+  const runtime = {
+    streamSimple() {},
+    async prepareRequest() {},
+    isUsingOAuth() {
+      return false;
+    },
+  };
+  const sessionManager = {
+    getSessionId: () => options.sessionId ?? "fixture-session",
+    getEntries: () => entries,
+    getLeafId: () => null,
+    ...options.sessionManager,
+  } as ExtensionContext["sessionManager"];
+  const ui = {
+    notify(message: string, kind?: string) {
+      notices.push({ message, kind });
+    },
+    setStatus(key: string, value: string | undefined) {
+      if (value === undefined) statuses.delete(key);
+      else statuses.set(key, value);
+    },
+  } as ExtensionContext["ui"];
+  return {
+    ui,
+    mode: options.mode ?? "print",
+    hasUI: false,
+    cwd: process.cwd(),
+    sessionManager,
+    modelRegistry: { runtime, isUsingOAuth: () => false } as unknown as ExtensionContext["modelRegistry"],
+    model: undefined,
+    scopedModels: [],
+    isIdle: () => true,
+    isProjectTrusted: () => true,
+    signal: options.signal,
+    abort() {},
+    hasPendingMessages: () => false,
+    shutdown() {},
+    getContextUsage: () => undefined,
+    compact() {},
+    getSystemPrompt: () => "base",
+    notices,
+    statuses,
+  };
+}
 function load(depth = 0, type?: string, options: any = {}) {
   process.env.DIE_SUBAGENT_DEPTH = String(depth);
   if (type) process.env.DIE_SUBAGENT_TYPE = type;
@@ -48,26 +112,37 @@ test("root and all agent profiles expose only execute", async () => {
     [2, "normal"],
   ] as const) {
     const e = load(depth, type);
-    await e.fire("session_start", {}, {});
+    const ctx = contextFixture();
+    await e.fire("session_start", {}, ctx);
     expect([...e.tools.keys()]).toEqual(["execute"]);
     expect(e.active()).toEqual(["execute"]);
     expect(e.tools.get("execute").promptGuidelines.join("\n")).toContain("jobs.inspect");
-    await e.fire("session_shutdown", {}, {});
+    await e.fire("session_shutdown", {}, ctx);
   }
 });
+
+test("unconfigured native fast startup adds no UI output", async () => {
+  const e = load();
+  const ctx = contextFixture();
+  await e.fire("session_start", {}, ctx);
+  expect(ctx.notices).toEqual([]);
+  expect(ctx.statuses.has("die-native-fast")).toBe(false);
+  expect(ctx.statuses.get("die-mode")).toBe("mode: orchestrator");
+  await e.fire("session_shutdown", {}, ctx);
+});
+
 test("resumed leaf identity is retained in instructions", async () => {
   const e = load();
-  const ctx = {
-    sessionManager: {
-      getEntries: () => [{ type: "custom", customType: "die-agent", data: { type: "fast", depth: 1 } }],
-    },
-  };
+  const ctx = contextFixture({
+    entries: [{ type: "custom", customType: "die-agent", data: { type: "fast", depth: 1 } }],
+  });
   await e.fire("session_start", {}, ctx);
   const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
   expect(result.systemPrompt).toContain("You are a fast sub-agent");
   expect(result.systemPrompt).toContain("Delegation is disabled");
+  await e.fire("session_shutdown", {}, ctx);
 });
-for (const mode of ["print", "json"])
+for (const mode of ["print", "json"] as const)
   test(mode + " idle boundary still resumes background jobs", async () => {
     const e = load();
     let rpc: any;
@@ -88,9 +163,10 @@ for (const mode of ["print", "json"])
       await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, { cwd: process.cwd() });
       mock.mockRestore();
       const signal = new AbortController().signal;
+      const ctx = contextFixture({ mode, signal });
       const task = await rpc("shell", { command: "read value; printf ready", waitSeconds: 0 }, signal);
       let ended = false;
-      const boundary = e.fire("agent_end", { messages: [] }, { mode }).then(() => (ended = true));
+      const boundary = e.fire("agent_end", { messages: [] }, ctx).then(() => (ended = true));
       await Bun.sleep(10);
       expect(ended).toBe(false);
       await rpc("jobs.input", { id: task.id, data: "go\n", closeInput: true }, signal);
@@ -99,7 +175,7 @@ for (const mode of ["print", "json"])
       expect(e.messages[0].content).toContain("ready");
     } finally {
       mock.mockRestore();
-      await e.fire("session_shutdown", {}, {});
+      await e.fire("session_shutdown", {}, contextFixture({ mode }));
     }
   });
 
@@ -123,8 +199,9 @@ test("print agent_end wakes on attention while a job is still running", async ()
     await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, { cwd: process.cwd() });
     mock.mockRestore();
     const signal = new AbortController().signal,
+      ctx = contextFixture({ mode: "print", signal }),
       task = await rpc("shell", { command: "read value", waitSeconds: 0 }, signal);
-    await e.fire("agent_end", { messages: [] }, { mode: "print", signal });
+    await e.fire("agent_end", { messages: [] }, ctx);
     await Bun.sleep(120);
     expect(e.messages).toHaveLength(1);
     expect(e.messages[0].customType).toBe("task-attention");
@@ -133,7 +210,7 @@ test("print agent_end wakes on attention while a job is still running", async ()
     await rpc("jobs.stop", { id: task.id }, signal);
   } finally {
     mock.mockRestore();
-    await e.fire("session_shutdown", {}, {});
+    await e.fire("session_shutdown", {}, contextFixture());
   }
 });
 
@@ -157,8 +234,9 @@ test("attention and a racing completion produce one deduplicated parent wakeup",
     await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, { cwd: process.cwd() });
     mock.mockRestore();
     const signal = new AbortController().signal;
+    const ctx = contextFixture({ mode: "print", signal });
     const task = await rpc("shell", { command: "read value; printf done", waitSeconds: 0 }, signal);
-    const boundary = e.fire("agent_end", { messages: [] }, { mode: "print", signal });
+    const boundary = e.fire("agent_end", { messages: [] }, ctx);
     await Bun.sleep(25);
     await rpc("jobs.input", { id: task.id, data: "go\n", closeInput: true }, signal);
     await boundary;
@@ -171,13 +249,14 @@ test("attention and a racing completion produce one deduplicated parent wakeup",
     expect(e.messages[0].content).not.toContain("attention checkpoint");
   } finally {
     mock.mockRestore();
-    await e.fire("session_shutdown", {}, {});
+    await e.fire("session_shutdown", {}, contextFixture());
   }
 });
 
 test("root values are part of the agent frame and explicit user prompts retain precedence", async () => {
   const e = load();
-  const framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, {});
+  const ctx = contextFixture();
+  const framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, ctx);
   expect(framed.systemPrompt).toContain("Working together");
   expect(framed.systemPrompt).toContain("Responsive collaboration");
   expect(framed.systemPrompt).toContain("main agent in orchestrator instruction mode");
@@ -185,22 +264,18 @@ test("root values are part of the agent frame and explicit user prompts retain p
   const custom = await e.fire(
     "before_agent_start",
     { systemPrompt: "user custom", systemPromptOptions: { customPrompt: "user custom" } },
-    {},
+    ctx,
   );
   expect(custom).toBeUndefined();
 });
 
 test("session lifecycle resets resumed child identity when returning to root", async () => {
   const e = load();
-  const manager = (id: string, entries: any[]) => ({
-    getEntries: () => entries,
-    getBranch: () => entries,
-    getSessionId: () => id,
+  const root = contextFixture({ sessionId: "root" });
+  const child = contextFixture({
+    sessionId: "child",
+    entries: [{ type: "custom", customType: "die-agent", data: { type: "normal", depth: 1 } }],
   });
-  const root = { sessionManager: manager("root", []) };
-  const child = {
-    sessionManager: manager("child", [{ type: "custom", customType: "die-agent", data: { type: "normal", depth: 1 } }]),
-  };
   let framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, root);
   expect(framed.systemPrompt).toContain("main agent in orchestrator instruction mode");
   await e.fire("session_shutdown", {}, root);
@@ -217,7 +292,7 @@ test("session lifecycle resets resumed child identity when returning to root", a
 
 test("spawned child environment remains the identity floor before metadata is attached", async () => {
   const e = load(1, "fast");
-  const ctx = { sessionManager: { getEntries: () => [], getBranch: () => [], getSessionId: () => "fresh-child" } };
+  const ctx = contextFixture({ sessionId: "fresh-child" });
   await e.fire("session_start", {}, ctx);
   const framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, ctx);
   expect(framed.systemPrompt).toContain("You are a fast sub-agent");
@@ -233,13 +308,7 @@ test("spawned environment roles cannot be changed by resumed metadata", async ()
   for (const item of cases) {
     const e = load(1, item.environment);
     const entries = [{ type: "custom", customType: "die-agent", data: { type: item.metadata, depth: 1 } }];
-    const ctx = {
-      sessionManager: {
-        getEntries: () => entries,
-        getBranch: () => entries,
-        getSessionId: () => "role-cap-" + item.environment,
-      },
-    };
+    const ctx = contextFixture({ sessionId: "role-cap-" + item.environment, entries });
     await e.fire("session_start", {}, ctx);
     const framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, ctx);
     expect(framed.systemPrompt).toContain("You are a " + item.environment + " sub-agent");
@@ -290,13 +359,14 @@ test("mixed completion and attention reserve bounded evidence for both", async (
     await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, { cwd: process.cwd() });
     mock.mockRestore();
     const signal = new AbortController().signal;
+    const ctx = contextFixture({ mode: "print", signal });
     const idle = await rpc("shell", { command: "read value", waitSeconds: 0 }, signal);
     const finishing = await rpc(
       "shell",
       { command: "read value; head -c 20000 /dev/zero | tr '\\0' x", waitSeconds: 0 },
       signal,
     );
-    const boundary = e.fire("agent_end", { messages: [] }, { mode: "print", signal });
+    const boundary = e.fire("agent_end", { messages: [] }, ctx);
     advance(15);
     await rpc("jobs.input", { id: finishing.id, data: "go\n", closeInput: true }, signal);
     while ((await rpc("jobs.inspect", { id: finishing.id }, signal)).status === "running") await Bun.sleep(1);
@@ -312,6 +382,6 @@ test("mixed completion and attention reserve bounded evidence for both", async (
     await rpc("jobs.stop", { id: idle.id }, signal);
   } finally {
     mock.mockRestore();
-    await e.fire("session_shutdown", {}, {});
+    await e.fire("session_shutdown", {}, contextFixture());
   }
 });
