@@ -269,7 +269,11 @@ function projection(
   const eligibleEntries = new Set<string>();
   for (const assistantEntryId of selectedAssistants) {
     const group = groups.get(assistantEntryId) ?? new Set([assistantEntryId]);
-    if ([...group].every(exactEntry)) for (const entryId of group) eligibleEntries.add(entryId);
+    // A marker is atomic at the protocol-group level. In particular, never
+    // remove selected tool calls unless every associated result was also
+    // explicitly selected by the durable record.
+    const fullySelected = [...group].every((entryId) => entryId === assistantEntryId || selectedResults.has(entryId));
+    if (fullySelected && [...group].every(exactEntry)) for (const entryId of group) eligibleEntries.add(entryId);
   }
   // A result is removable only through its exact call/result group.
   for (const resultEntryId of selectedResults) {
@@ -327,8 +331,7 @@ async function currentTransformedContext(
   const agent = session?.agent;
   const transform = agent?.transformContext;
   if (typeof transform === "function") {
-    const getSignal = (ctx as ExtensionContext & { getSignal?: () => AbortSignal }).getSignal;
-    const signal = typeof getSignal === "function" ? getSignal.call(ctx) : new AbortController().signal;
+    const signal = ctx.signal ?? new AbortController().signal;
     return await transform.call(agent, structuredClone(raw), signal);
   }
   const prior = latestShakeRecord(entries, ctx.sessionManager.getSessionId());
@@ -378,7 +381,10 @@ export function installShakeAccountingAdapter(): void {
   };
   accountingAdapterInstalled = true;
   prototype._checkCompaction = async function (message, skipAbortedCheck) {
-    if (lacksFreshUsage(this)) return false;
+    // Only suppress Pi's stale last-response threshold check before a new
+    // prompt. A response that just came back may itself report overflow (often
+    // as an error with no usage), and must retain Pi's compact-and-retry path.
+    if (skipAbortedCheck === false && lacksFreshUsage(this)) return false;
     return await originalCheck.call(this, message, skipAbortedCheck);
   };
   prototype.getContextUsage = function () {
@@ -418,11 +424,20 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
         ctx.ui.notify("Usage: /shake", "error");
         return;
       }
-      if (!ctx.isIdle() || ctx.hasPendingMessages()) {
+      const snapshot = {
+        manager: ctx.sessionManager,
+        sessionId: ctx.sessionManager.getSessionId(),
+        leafId: ctx.sessionManager.getLeafId(),
+        model: ctx.model,
+        idle: ctx.isIdle(),
+        pending: ctx.hasPendingMessages(),
+        signal: ctx.signal,
+      };
+      if (!snapshot.idle || snapshot.pending) {
         ctx.ui.notify("Shake refused: wait until the active turn and queued message batch are settled.", "warning");
         return;
       }
-      const entries = ctx.sessionManager.buildContextEntries();
+      const entries = snapshot.manager.buildContextEntries();
       if (hasOpaqueNativeCheckpoint(entries)) {
         ctx.ui.notify(
           "Shake refused: this branch contains opaque native Codex checkpoint state. Branch before the checkpoint or continue without shaking; die will not flatten or relabel it.",
@@ -433,11 +448,26 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
       let plan: ShakePlan;
       let beforeMessages: AgentMessage[];
       try {
-        const sessionId = ctx.sessionManager.getSessionId();
-        plan = buildShakePlan(entries, sessionId);
+        plan = buildShakePlan(entries, snapshot.sessionId);
         beforeMessages = await currentTransformedContext(ctx, entries);
       } catch (error) {
         ctx.ui.notify(error instanceof Error ? error.message : String(error), "error");
+        return;
+      }
+      const stale =
+        ctx.sessionManager !== snapshot.manager ||
+        ctx.sessionManager.getSessionId() !== snapshot.sessionId ||
+        ctx.sessionManager.getLeafId() !== snapshot.leafId ||
+        ctx.model !== snapshot.model ||
+        ctx.isIdle() !== snapshot.idle ||
+        ctx.hasPendingMessages() !== snapshot.pending ||
+        ctx.signal !== snapshot.signal ||
+        snapshot.signal?.aborted === true;
+      if (stale) {
+        ctx.ui.notify(
+          "Shake refused: session, branch, model, or work state changed while context hooks were running; no context was changed.",
+          "warning",
+        );
         return;
       }
       if (plan.storageError) {

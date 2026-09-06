@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { convertToLlm, type SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
+import { bindInstructionContinuitySession, clearInstructionContinuity } from "../src/tasks/instruction-continuity";
 import {
   buildShakePlan,
   isShakeRecord,
@@ -138,6 +139,16 @@ describe("manual shake projection", () => {
     const projected = projectShakenContext([structuredClone(duplicate)], entries, plan.record);
     expect(projected).toHaveLength(1);
     expect(JSON.stringify(projected)).toContain("same");
+  });
+
+  test("preserves an entire protocol group when a marker selects calls but omits their result", () => {
+    const manager = SessionManager.inMemory();
+    completed(manager, "partial", "kept prose");
+    const entries = manager.buildContextEntries();
+    const incoming = manager.buildSessionContext().messages;
+    const record = buildShakePlan(entries, manager.getSessionId()).record;
+    const inconsistent = { ...record, toolResultEntryIds: [] };
+    expect(projectShakenContext(incoming, entries, inconsistent)).toEqual(incoming);
   });
 
   test("removes an exact group beside an ambiguous transformed group", () => {
@@ -312,7 +323,8 @@ describe("manual command safeguards", () => {
     const handlers = new Map<string, Function[]>(),
       commands = new Map<string, any>(),
       notices: Array<[string, string]> = [],
-      appended: any[] = [];
+      appended: any[] = [],
+      invalidations: string[] = [];
     const pi: any = {
       on: (name: string, fn: Function) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
       registerCommand: (name: string, command: any) => commands.set(name, command),
@@ -321,14 +333,14 @@ describe("manual command safeguards", () => {
         manager.appendCustomEntry(type, data);
       },
     };
-    registerManualShake(pi);
+    registerManualShake(pi, () => invalidations.push("invalidated"));
     const ctx: any = {
       sessionManager: manager,
       isIdle: () => idle,
       hasPendingMessages: () => pending,
       ui: { notify: (m: string, t: string) => notices.push([m, t]) },
     };
-    return { handlers, command: commands.get("shake"), notices, appended, ctx };
+    return { handlers, command: commands.get("shake"), notices, appended, invalidations, ctx };
   }
   test("persists before projection, keeps background ownership external, and carries state after compaction", async () => {
     const manager = SessionManager.inMemory();
@@ -373,6 +385,76 @@ describe("manual command safeguards", () => {
     expect(() => h.handlers.get("context")?.[0]?.({ messages: manager.buildSessionContext().messages }, h.ctx)).toThrow(
       "Refusing to expose unprojected context",
     );
+  });
+
+  test("rejects a shake whose branch or work state changes during an async context hook", async () => {
+    const manager = SessionManager.inMemory();
+    completed(manager, "race");
+    const h = harness(manager);
+    const signal = new AbortController().signal;
+    h.ctx.signal = signal;
+    h.ctx.model = { provider: "test", id: "one" };
+    let release!: () => void;
+    let started!: () => void;
+    const waiting = new Promise<void>((resolve) => (release = resolve));
+    const entered = new Promise<void>((resolve) => (started = resolve));
+    bindInstructionContinuitySession({
+      sessionManager: manager,
+      agent: {
+        transformContext: async (messages: any[], receivedSignal: AbortSignal) => {
+          expect(receivedSignal).toBe(signal);
+          started();
+          await waiting;
+          return messages;
+        },
+      },
+    } as any);
+    try {
+      const command = h.command.handler("", h.ctx);
+      await entered;
+      manager.appendMessage({ role: "user", content: "new work", timestamp: Date.now() } as any);
+      h.ctx.isIdle = () => false;
+      release();
+      await command;
+      expect(h.appended).toEqual([]);
+      expect(h.invalidations).toEqual([]);
+      expect(h.notices.at(-1)?.[0]).toContain("changed while context hooks were running");
+    } finally {
+      clearInstructionContinuity(manager);
+    }
+  });
+
+  test("rejects a shake when the model changes during an async context hook", async () => {
+    const manager = SessionManager.inMemory();
+    completed(manager, "model-race");
+    const h = harness(manager);
+    const firstModel = { provider: "test", id: "one" };
+    h.ctx.model = firstModel;
+    let release!: () => void;
+    let started!: () => void;
+    const waiting = new Promise<void>((resolve) => (release = resolve));
+    const entered = new Promise<void>((resolve) => (started = resolve));
+    bindInstructionContinuitySession({
+      sessionManager: manager,
+      agent: {
+        transformContext: async (messages: any[]) => {
+          started();
+          await waiting;
+          return messages;
+        },
+      },
+    } as any);
+    try {
+      const command = h.command.handler("", h.ctx);
+      await entered;
+      h.ctx.model = { provider: "test", id: "two" };
+      release();
+      await command;
+      expect(h.appended).toEqual([]);
+      expect(h.invalidations).toEqual([]);
+    } finally {
+      clearInstructionContinuity(manager);
+    }
   });
 
   test("refuses active batches and opaque native checkpoints without durable mutation", async () => {

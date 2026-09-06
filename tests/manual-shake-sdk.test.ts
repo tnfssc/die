@@ -62,6 +62,19 @@ function response(text: string, usage = smallUsage): ReturnType<typeof createAss
   return stream;
 }
 
+function errorResponse(messageText: string): ReturnType<typeof createAssistantMessageEventStream> {
+  const stream = createAssistantMessageEventStream();
+  const message = {
+    ...assistant([], { ...smallUsage, input: 0, output: 0, totalTokens: 0 }),
+    stopReason: "error",
+    errorMessage: messageText,
+  } as AssistantMessage;
+  stream.push({ type: "start", partial: message });
+  stream.push({ type: "error", reason: "error", error: message });
+  stream.end(message);
+  return stream;
+}
+
 for (const changedSide of ["result", "call"] as const) {
   test("actual SDK preserves a transformed tool group when the " + changedSide + " side changes", async () => {
     const dir = await mkdtemp(join(tmpdir(), "die-shake-sdk-"));
@@ -164,6 +177,79 @@ for (const changedSide of ["result", "call"] as const) {
     }
   });
 }
+
+test("actual SDK preserves first post-shake overflow compaction and retries once", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-shake-overflow-"));
+  let session: any;
+  try {
+    const manager = SessionManager.inMemory(dir);
+    manager.appendMessage({ role: "user", content: "task", timestamp: 1 });
+    appendTrace(manager, "large", "trace ".repeat(3000));
+    for (let index = 0; index < 5; index++) {
+      manager.appendMessage({
+        role: "user",
+        content: "retained history " + "content ".repeat(600),
+        timestamp: 2 + index * 2,
+      } as any);
+      manager.appendMessage(assistant([{ type: "text", text: "retained reply " + index }], staleUsage));
+    }
+    const runtime = await ModelRuntime.create({
+      authPath: join(dir, "auth.json"),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    runtime.hasConfiguredAuth = () => true;
+    const loader = new DefaultResourceLoader({
+      cwd: dir,
+      agentDir: dir,
+      noExtensions: true,
+      noSkills: true,
+      noThemes: true,
+      noPromptTemplates: true,
+      extensionFactories: [{ name: "die-tasks", factory: tasks }],
+    });
+    await loader.reload();
+    const model = { ...getModel("openai", "gpt-4o")!, contextWindow: 12000, maxTokens: 4000 };
+    ({ session } = await createAgentSession({
+      cwd: dir,
+      agentDir: dir,
+      resourceLoader: loader,
+      model,
+      modelRuntime: runtime,
+      sessionManager: manager,
+      settingsManager: SettingsManager.inMemory({
+        compaction: { enabled: true, reserveTokens: 5000, keepRecentTokens: 200 },
+        retry: { enabled: false },
+      }),
+      tools: ["execute"],
+    }));
+    await session.bindExtensions({ mode: "print" });
+    await session.prompt("/shake");
+
+    const contexts: any[] = [];
+    session.agent.streamFunction = (_model: any, context: any) => {
+      contexts.push(structuredClone(context.messages));
+      if (contexts.length === 1) return errorResponse("context_length_exceeded");
+      if (contexts.length === 2) return response("automatic summary");
+      return response("retry succeeded");
+    };
+    await session.prompt("overflow once");
+
+    expect(contexts).toHaveLength(3);
+    expect(manager.getEntries().filter((entry) => entry.type === "compaction")).toHaveLength(1);
+    expect(
+      (
+        manager
+          .getEntries()
+          .filter((entry: any) => entry.type === "message" && entry.message.role === "assistant")
+          .at(-1) as any
+      )?.message.content[0]?.text,
+    ).toBe("retry succeeded");
+  } finally {
+    session?.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 10_000);
 
 test("actual SDK uses post-shake context for pre-request automatic compaction threshold", async () => {
   const dir = await mkdtemp(join(tmpdir(), "die-shake-threshold-"));
