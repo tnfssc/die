@@ -118,6 +118,16 @@ test("real TUI /ps selects live jobs and only stops the confirmed target", async
     }
     expect(frame).toContain("ALPHA");
     expect(frame).toContain("BETA");
+    await tmux("send-keys", "-t", name, "Enter");
+    await Bun.sleep(200);
+    frame = await capture();
+    expect(frame).toContain("Inspect task_");
+    expect(frame).toContain("ALPHA");
+    await tmux("send-keys", "-t", name, "-l", "i");
+    await Bun.sleep(200);
+    frame = await capture();
+    expect(frame).toContain("Running jobs");
+    expect(frame).not.toContain("Inspect task_");
     await tmux("send-keys", "-t", name, "Down");
     await Bun.sleep(300);
     frame = await capture();

@@ -68,7 +68,7 @@ test("empty registry and no-output state are explicit", async () => {
   try {
     expect(panel.render(80).join("\n")).toContain("No jobs have been started");
     launch(manager, "sleep 10");
-    expect(panel.render(80).join("\n")).toContain("No output received yet");
+    expect(panel.render(80).join("\n")).toContain("No output available yet");
   } finally {
     panel.dispose();
     await manager.shutdown();
@@ -89,9 +89,42 @@ test("/ps uses the supplied shared registry and refuses non-TUI", async () => {
     } as any,
     () => manager,
   );
-  await handler("", { mode: "print", ui: { notify: (...x: any[]) => notes.push(x) } });
+  await handler("", {
+    mode: "print",
+    ui: { notify: (...x: any[]) => notes.push(x) },
+  });
   expect(notes[0][0]).toContain("interactive");
   await manager.shutdown();
+});
+
+test("inspect view is explicit, bounded, navigable, and Escape returns to the list", async () => {
+  const manager = new TaskManager(() => {}, 20);
+  const a = launch(manager, "printf detail-a; sleep 10", "worker-a"),
+    b = launch(manager, "printf detail-b; sleep 10", "worker-b");
+  const panel = new TaskMonitorPanel(
+    manager,
+    theme as any,
+    getKeybindings(),
+    () => {},
+    () => {},
+    () => 16,
+  );
+  try {
+    await Bun.sleep(30);
+    panel.handleInput("i");
+    const lines = panel.render(48);
+    expect(lines.join("\n")).toContain("Inspect " + a.id);
+    expect(lines.join("\n")).toContain("detail-a");
+    expect(lines.length).toBeLessThanOrEqual(16);
+    panel.handleInput("\x1b[B");
+    expect(panel.render(48).join("\n")).toContain("Inspect " + b.id);
+    panel.handleInput("\x1b");
+    expect(panel.render(48).join("\n")).not.toContain("Inspect " + b.id);
+    expect(manager.list().find((task) => task.id === b.id)?.status).toBe("running");
+  } finally {
+    panel.dispose();
+    await manager.shutdown();
+  }
 });
 
 test("confirmation freezes identity and selection survives asynchronous updates", async () => {

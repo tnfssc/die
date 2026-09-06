@@ -10,6 +10,7 @@ import type { TaskManager, TaskSummary } from "../tasks/task-manager";
 
 const OUTPUT_BYTES = 2400;
 const OUTPUT_LINES = 12;
+const INSPECT_BYTES = 5000;
 const COMMAND_CHARS = 300;
 const RENDER_INTERVAL_MS = 100;
 
@@ -38,6 +39,7 @@ export class TaskMonitorPanel implements Component, Focusable {
   private selected = 0;
   private selectedId?: string;
   private confirming?: { id: string; identity: string };
+  private inspecting = false;
   private disposed = false;
   private renderTimer?: ReturnType<typeof setTimeout>;
   private clock?: ReturnType<typeof setInterval>;
@@ -111,7 +113,17 @@ export class TaskMonitorPanel implements Component, Focusable {
       return;
     }
     if (cancel) {
-      this.done();
+      if (this.inspecting) {
+        this.inspecting = false;
+        this.changed();
+      } else this.done();
+      return;
+    }
+    if (confirm || data.toLowerCase() === "i") {
+      if (this.running().length) {
+        this.inspecting = !this.inspecting;
+        this.changed();
+      }
       return;
     }
     if (data === "\x1b[A" || data === "k" || this.keys.matches(data, "tui.select.up")) {
@@ -153,59 +165,103 @@ export class TaskMonitorPanel implements Component, Focusable {
       return lines.map((line) => truncateToWidth(line, width));
     }
     lines.push("");
-    const hasActivity = !!tasks[this.selected]?.agent?.lastActivityAt;
-    const height = Math.max(10, this.maxRows());
-    const fixedRows = 8 + (hasActivity ? 1 : 0);
-    const available = Math.max(2, height - fixedRows);
-    const previewRows = Math.min(OUTPUT_LINES, Math.max(1, Math.floor(available / 2)));
-    const taskRows = Math.max(1, available - previewRows);
-    const pageStart = Math.max(0, Math.min(this.selected - Math.floor(taskRows / 2), tasks.length - taskRows));
-    const pageEnd = Math.min(tasks.length, pageStart + taskRows);
-    for (let i = pageStart; i < pageEnd; i++) {
-      const task = tasks[i],
-        selected = i === this.selected;
-      const role = task.agent ? task.agent.type : task.kind;
-      const label =
-        (selected ? "› " : "  ") +
-        this.theme.fg(selected ? "accent" : "muted", task.id) +
-        " " +
-        this.theme.fg(
-          task.agent?.type === "orchestrator" ? "warning" : task.agent ? "accent" : "dim",
-          "[" + role + "]",
-        ) +
-        " " +
-        cleanCommand(task.command) +
-        "  " +
-        this.theme.fg("dim", age(Date.now() - Date.parse(task.startedAt)));
-      lines.push(selected ? this.theme.bold(label) : label);
-    }
     const task = tasks[this.selected];
-    lines.push(
-      "",
-      this.theme.fg("muted", "Live output · last " + OUTPUT_BYTES + " bytes / " + OUTPUT_LINES + " lines"),
-    );
-    const inspection = this.manager.inspect(
-      task.id,
-      Math.max(task.baseOffset, task.outputEnd - OUTPUT_BYTES),
-      OUTPUT_BYTES,
-    );
-    const outputLines = cleanOutput(inspection.output).slice(-previewRows);
-    if (task.outputEnd === 0) lines.push(this.theme.fg("dim", "No output received yet."));
-    else if (!outputLines.some((line) => line.trim()))
-      lines.push(this.theme.fg("dim", "Output received, but it is whitespace only."));
-    else lines.push(...outputLines.map((line) => "  " + line));
-    if (task.agent?.lastActivityAt) {
-      const quiet = Date.now() - Date.parse(task.agent.lastActivityAt);
+    // syncSelection above guarantees a selected task whenever the running list is non-empty.
+    if (!task) return lines.map((line) => truncateToWidth(line, width));
+    if (this.inspecting) {
+      const height = Math.max(10, this.maxRows());
+      const metadataRows = 9 + (task.agent?.lastActivityAt ? 1 : 0);
+      const outputRows = Math.max(1, Math.min(OUTPUT_LINES, height - metadataRows));
+      const inspection = this.manager.inspect(
+        task.id,
+        Math.max(task.baseOffset, task.outputEnd - INSPECT_BYTES),
+        INSPECT_BYTES,
+      );
       lines.push(
+        this.theme.bold(this.theme.fg("accent", "Inspect " + task.id)),
         this.theme.fg(
           "dim",
-          "Agent quiet for " +
-            age(quiet) +
-            " · " +
-            (task.agent.phase ?? "running") +
-            (task.agent.events !== undefined ? " · " + task.agent.events + " events" : ""),
+          [
+            task.agent ? "agent " + task.agent.type : task.kind,
+            task.pid ? "pid " + task.pid : "pid unavailable",
+            task.cwd,
+          ].join(" · "),
         ),
+        this.theme.fg("muted", "Bounded output · last " + INSPECT_BYTES + " bytes / " + outputRows + " visible lines"),
       );
+      const outputLines = cleanOutput(inspection.output).slice(-outputRows);
+      if (task.outputEnd === 0) lines.push(this.theme.fg("dim", "No output available yet."));
+      else if (!outputLines.some((line) => line.trim()))
+        lines.push(this.theme.fg("dim", "Output received, but it is whitespace only."));
+      else lines.push(...outputLines.map((line) => "  " + line));
+      if (task.agent?.lastActivityAt) {
+        const quiet = Date.now() - Date.parse(task.agent.lastActivityAt);
+        lines.push(
+          this.theme.fg(
+            "dim",
+            "Agent quiet for " +
+              age(quiet) +
+              " · " +
+              (task.agent.phase ?? "running") +
+              (task.agent.events !== undefined ? " · " + task.agent.events + " events" : ""),
+          ),
+        );
+      }
+    } else {
+      const hasActivity = !!task.agent?.lastActivityAt;
+      const height = Math.max(10, this.maxRows());
+      const fixedRows = 8 + (hasActivity ? 1 : 0);
+      const available = Math.max(2, height - fixedRows);
+      const previewRows = Math.min(OUTPUT_LINES, Math.max(1, Math.floor(available / 2)));
+      const taskRows = Math.max(1, available - previewRows);
+      const pageStart = Math.max(0, Math.min(this.selected - Math.floor(taskRows / 2), tasks.length - taskRows));
+      const pageEnd = Math.min(tasks.length, pageStart + taskRows);
+      for (let i = pageStart; i < pageEnd; i++) {
+        const listed = tasks[i],
+          selected = i === this.selected;
+        if (!listed) continue;
+        const role = listed.agent ? listed.agent.type : listed.kind;
+        const label =
+          (selected ? "› " : "  ") +
+          this.theme.fg(selected ? "accent" : "muted", listed.id) +
+          " " +
+          this.theme.fg(
+            listed.agent?.type === "orchestrator" ? "warning" : listed.agent ? "accent" : "dim",
+            "[" + role + "]",
+          ) +
+          " " +
+          cleanCommand(listed.command) +
+          "  " +
+          this.theme.fg("dim", age(Date.now() - Date.parse(listed.startedAt)));
+        lines.push(selected ? this.theme.bold(label) : label);
+      }
+      lines.push(
+        "",
+        this.theme.fg("muted", "Live preview · last " + OUTPUT_BYTES + " bytes / " + OUTPUT_LINES + " lines"),
+      );
+      const inspection = this.manager.inspect(
+        task.id,
+        Math.max(task.baseOffset, task.outputEnd - OUTPUT_BYTES),
+        OUTPUT_BYTES,
+      );
+      const outputLines = cleanOutput(inspection.output).slice(-previewRows);
+      if (task.outputEnd === 0) lines.push(this.theme.fg("dim", "No output available yet."));
+      else if (!outputLines.some((line) => line.trim()))
+        lines.push(this.theme.fg("dim", "Output received, but it is whitespace only."));
+      else lines.push(...outputLines.map((line) => "  " + line));
+      if (task.agent?.lastActivityAt) {
+        const quiet = Date.now() - Date.parse(task.agent.lastActivityAt);
+        lines.push(
+          this.theme.fg(
+            "dim",
+            "Agent quiet for " +
+              age(quiet) +
+              " · " +
+              (task.agent.phase ?? "running") +
+              (task.agent.events !== undefined ? " · " + task.agent.events + " events" : ""),
+          ),
+        );
+      }
     }
     lines.push(
       "",
@@ -214,7 +270,12 @@ export class TaskMonitorPanel implements Component, Focusable {
             "error",
             "Stop " + this.confirming.id + " (" + this.confirming.identity + ")? Enter/y confirm · Esc/n cancel",
           )
-        : this.theme.fg("dim", "↑↓/j/k select · s/x stop · Esc close"),
+        : this.theme.fg(
+            "dim",
+            this.inspecting
+              ? "↑↓/j/k select · Enter/i back · s/x stop · Esc back"
+              : "↑↓/j/k select · Enter/i inspect · s/x stop · Esc close",
+          ),
       this.theme.fg("accent", "─".repeat(width)),
     );
     return lines.map((line) => truncateToWidth(line, width));
