@@ -708,6 +708,7 @@ test("append-then-throw while opting out keeps prior premium consent unusable", 
   });
   const priorLeaf = manager.getLeafId();
   let command: any;
+  let failWrite = true;
   const runtime: any = {
     isUsingOAuth: () => false,
     prepareRequest: async () => {
@@ -724,7 +725,7 @@ test("append-then-throw while opting out keeps prior premium consent unusable", 
     on() {},
     appendEntry: (type: string, data: any) => {
       manager.appendCustomEntry(type, data);
-      throw new Error("disk");
+      if (failWrite) throw new Error("disk");
     },
   } as any);
   const ctx: any = {
@@ -737,4 +738,7 @@ test("append-then-throw while opting out keeps prior premium consent unusable", 
   await command.handler("off", ctx);
   expect(manager.getLeafId()).toBe(priorLeaf);
   expect(registration.currentSetting(ctx)).toMatchObject({ enabled: false, costAcknowledged: false });
+  failWrite = false;
+  await command.handler("on", ctx);
+  expect(registration.currentSetting(ctx)).toMatchObject({ enabled: true, costAcknowledged: true });
 });

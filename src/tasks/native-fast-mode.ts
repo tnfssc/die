@@ -626,6 +626,9 @@ export function registerNativeFastMode(pi: ExtensionAPI) {
         ctx.ui.notify("Could not persist native fast mode; the requested setting was not activated.", "error");
         return;
       }
+      volatileOptOuts
+        .get(ctx.sessionManager as object)
+        ?.delete(settingScope(consentScope.sessionId, model.provider, model.id));
       evidence = "requested";
       refreshStatus(ctx);
       ctx.ui.notify(
