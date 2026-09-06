@@ -21,7 +21,7 @@ const usage = {
   totalTokens: 2,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
-async function make(root: string, rejectPayload = false, noHttpHook = false) {
+async function make(root: string, rejectPayload = false, noHttpHook = false, responseStatus = 200) {
   let network = 0;
   const model = getModel("anthropic", "claude-sonnet-4-5")!;
   const runtime = await ModelRuntime.create({
@@ -39,7 +39,7 @@ async function make(root: string, rejectPayload = false, noHttpHook = false) {
       if (rejectPayload) throw new Error("payload rejected before fetch");
       await o?.transformHeaders?.({});
       network++;
-      if (!noHttpHook) await o?.onResponse?.({ status: 200, headers: {} }, m);
+      if (!noHttpHook) await o?.onResponse?.({ status: responseStatus, headers: {} }, m);
       const message: AssistantMessage = {
         role: "assistant",
         api: m.api,
@@ -166,6 +166,23 @@ test("successful terminal observation covers transports without an HTTP hook", a
     expect(calls).toHaveLength(1);
     expect((calls[0] as any).data).toMatchObject({ provider: "anthropic", model: "claude-sonnet-4-5" });
     run.session.dispose();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("actual SDK HTTP hook does not record rejected responses", async () => {
+  const root = await mkdtemp(join(tmpdir(), "die-cache-http-reject-"));
+  try {
+    for (const status of [401, 429, 500]) {
+      const run = await make(join(root, String(status)), false, false, status);
+      await run.session.prompt("rejected HTTP response");
+      expect(run.network).toBe(1);
+      expect(
+        run.manager.getEntries().filter((e) => e.type === "custom" && e.customType === CACHE_CALL_ENTRY),
+      ).toHaveLength(0);
+      run.session.dispose();
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

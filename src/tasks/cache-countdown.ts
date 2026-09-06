@@ -244,11 +244,12 @@ export function registerCacheCountdown(pi: ExtensionAPI, countdown: CacheCountdo
     });
   };
   const correlate = (model: Pick<Model<any>, "provider" | "id"> | undefined): Attempt | undefined => {
-    // Model identity is the only correlation information supplied by these
-    // hooks. An absent or mismatched identity must never fall back to whichever
-    // request happens to remain in the map.
+    // The SDK's HTTP hook has no model identity. Its response can only be
+    // attributed when exactly one request snapshot is outstanding. With
+    // overlap, discard every candidate rather than guessing by insertion order.
     if (!model) {
-      if (attempts.size > 0) block([...attempts.values()]);
+      if (attempts.size === 1) return attempts.values().next().value;
+      if (attempts.size > 1) block([...attempts.values()]);
       return undefined;
     }
     const matches = candidates(model);
@@ -301,13 +302,15 @@ export function registerCacheCountdown(pi: ExtensionAPI, countdown: CacheCountdo
   });
   pi.on("after_provider_response", (event) => {
     const response = event as typeof event & { model?: Pick<Model<any>, "provider" | "id"> };
-    if (response.model) {
-      const key = modelKey(response.model);
-      httpTerminalDebt.set(key, (httpTerminalDebt.get(key) ?? 0) + 1);
-    }
     const attempt = correlate(response.model);
     if (!attempt) return;
     attempts.delete(attempt.operationId);
+    // A terminal message follows an HTTP response, including a rejected one.
+    // Key that debt by the request snapshot when the SDK omits model identity,
+    // so the terminal hook cannot turn a rejected response into an observation.
+    const responseModel = response.model ?? attempt.model;
+    const key = modelKey(responseModel);
+    httpTerminalDebt.set(key, (httpTerminalDebt.get(key) ?? 0) + 1);
     if (!Number.isInteger(response.status) || response.status < 200 || response.status >= 300) {
       diagnostic({
         component: "cache",
@@ -321,7 +324,7 @@ export function registerCacheCountdown(pi: ExtensionAPI, countdown: CacheCountdo
       });
       return;
     }
-    record(attempt, response.model ?? attempt.model, Date.now(), "response");
+    record(attempt, responseModel, Date.now(), "response");
   });
   pi.on("message_end", (event) => {
     if (event.message.role !== "assistant") return;

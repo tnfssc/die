@@ -126,7 +126,7 @@ describe("cache countdown", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
-  test("response observations use event identity and count retries, never the later selected model", async () => {
+  test("model-less SDK responses use the sole request snapshot and reject unsuccessful statuses", async () => {
     const handlers = new Map<string, Function>(),
       appended: any[] = [];
     const pi = {
@@ -140,12 +140,12 @@ describe("cache countdown", () => {
     for (const status of [401, 429, 500]) {
       handlers.get("before_provider_request")!({ payload: {} }, ctx);
       (ctx as any).model = { provider: "p", id: "selected-later" };
-      handlers.get("after_provider_response")!({ status, headers: {}, model: { provider: "p", id: "actual" } }, ctx);
+      handlers.get("after_provider_response")!({ status, headers: {} }, ctx);
       (ctx as any).model = { provider: "p", id: "actual" };
     }
     handlers.get("before_provider_request")!({ payload: {} }, ctx);
     (ctx as any).model = { provider: "p", id: "selected-later" };
-    handlers.get("after_provider_response")!({ status: 200, headers: {}, model: { provider: "p", id: "actual" } }, ctx);
+    handlers.get("after_provider_response")!({ status: 200, headers: {} }, ctx);
     (ctx as any).model = { provider: "p", id: "actual-ws" };
     handlers.get("before_provider_request")!({ payload: {} }, ctx);
     (ctx as any).model = { provider: "p", id: "selected-after-dispatch" };
@@ -211,11 +211,21 @@ describe("cache countdown", () => {
     );
     expect(appended.map((entry) => entry.data.model)).toEqual(["two", "one", "http-a", "ws-b", "overlap"]);
 
-    (ctx as any).model = { provider: "p", id: "same" };
+    // The real SDK response carries status and headers only. More than one
+    // outstanding snapshot is ambiguous even when the terminal models match.
+    (ctx as any).model = { provider: "p", id: "missing-a" };
     handlers.get("before_provider_request")!({}, ctx);
+    (ctx as any).model = { provider: "p", id: "missing-b" };
     handlers.get("before_provider_request")!({}, ctx);
-    handlers.get("after_provider_response")!({ status: 200, model: { provider: "p", id: "same" } }, ctx);
-    handlers.get("after_provider_response")!({ status: 200, model: { provider: "p", id: "same" } }, ctx);
+    handlers.get("after_provider_response")!({ status: 200, headers: {} }, ctx);
+    handlers.get("message_end")!(
+      { message: { role: "assistant", provider: "p", model: "missing-a", stopReason: "stop" } },
+      ctx,
+    );
+    handlers.get("message_end")!(
+      { message: { role: "assistant", provider: "p", model: "missing-b", stopReason: "stop" } },
+      ctx,
+    );
     expect(appended).toHaveLength(5);
   });
 
