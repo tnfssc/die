@@ -2,6 +2,8 @@
 export const DIAGNOSTIC_ENTRY_TYPE = "die-diagnostic";
 
 export const DIAGNOSTIC_CODES = [
+  "lifecycle_lock_contended",
+  "lifecycle_lock_unavailable",
   "cache_correlation_unavailable",
   "cache_observation_recorded",
   "provider_attempt_observed",

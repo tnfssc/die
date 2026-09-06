@@ -11,3 +11,5 @@ Optional logger failures must not throw onto inference paths, cause provider ret
 Session-bound asynchronous work must capture diagnosticRecorder(owner) when it begins, rather than resolving a recorder after a session switch. The recorder invalidates stale attachment generations. Shutdown diagnostics remain available to later lifecycle listeners; startup reattaches the next generation.
 
 Job ownership also has a protected, session-bound index at <session-file>.jobs.jsonl. It retains newest lifecycle records within 2 MiB, including termination causes and child-session pointers but no commands, prompts, or output. It does not reattach historical jobs to jobs.inspect; abrupt host death before a record is written remains unobservable.
+
+Lifecycle locking uses the Linux x64 libc advisory-lock ABI through Bun FFI; no external helper executable is required. The kernel releases locks on process death. Unsupported locking and contention drop the optional record with distinct diagnostics rather than risk an unlocked write.

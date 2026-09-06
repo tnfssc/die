@@ -279,10 +279,15 @@ export default function asynchronousTasksExtension(
         }
       };
       managerRecorder = recordOwned;
-      const lifecycle = createTaskLifecycleRecorder(owner?.getSessionFile?.(), () =>
+      const lifecycle = createTaskLifecycleRecorder(owner?.getSessionFile?.(), (failure) =>
         recordOwned({
           component: "jobs",
-          code: "JOBS_LIFECYCLE_WRITE_FAILED",
+          code:
+            failure === "contention"
+              ? "lifecycle_lock_contended"
+              : failure === "locking"
+                ? "lifecycle_lock_unavailable"
+                : "JOBS_LIFECYCLE_WRITE_FAILED",
           outcome: "failed",
         }),
       );
