@@ -1,71 +1,186 @@
-import { test, expect } from "bun:test";
-import { visibleWidth } from "@earendil-works/pi-tui";
-import { foldedRows, executeInputPreview, executeOutputPreview, completionPreview } from "../src/ui/execution-previews";
+import { expect, test } from "bun:test";
+import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
+import { completionDiagnosticDetails } from "../src/tasks/extension";
+import {
+  completionPreview,
+  executeInputPreview,
+  executeOutputPreview,
+  foldedRows,
+  type ExecutePreviewState,
+} from "../src/ui/execution-previews";
+
 const theme = { fg: (_color: string, text: string) => text } as any;
-test("execute shows the input head and output tail with explicit ellipses", () => {
-  const code = Array.from({ length: 30 }, (_, i) => "INPUT_" + i).join("\n");
-  const output = Array.from({ length: 30 }, (_, i) => "OUTPUT_" + i).join("\n");
-  const call = executeInputPreview(code, false, theme).render(100);
-  expect(call).toHaveLength(5);
-  expect(call.join("\n")).toContain("INPUT_0");
-  expect(call.join("\n")).not.toContain("INPUT_10");
-  expect(call.join("\n")).toContain("…");
-  const result = {
-    content: [{ type: "text", text: "Execution completed with exit code 0.\n\nstdout:\n" + output }],
-    details: { stdout: output, stderr: "" },
-  };
-  const rendered = executeOutputPreview(result, false, false, theme).render(100);
-  expect(rendered).toHaveLength(7);
-  expect(rendered[0]).toContain("completed");
-  expect(rendered.join("\n")).toContain("OUTPUT_29");
-  expect(rendered.join("\n")).not.toContain("OUTPUT_10");
-  expect(executeInputPreview(code, true, theme).render(100).join("\n")).toContain("INPUT_10");
-  expect(executeOutputPreview(result, true, false, theme).render(100).join("\n")).toContain("OUTPUT_10");
+const code = 'console.log("first");\nconsole.log("last");';
+const success = {
+  content: [{ type: "text", text: "Execution completed with exit code 0.\n\nstdout:\nfirst\nlast" }],
+  details: { exitCode: 0, stdout: "first\nlast", stderr: "", images: [] },
+};
+
+test("collapsed execute call and settled result are deterministic single rows", () => {
+  expect(executeInputPreview(code, false, theme, undefined, true).render(100)).toEqual([
+    '… Execute running · console.log("first"); console.log("last");',
+  ]);
+  expect(executeOutputPreview(success, false, false, theme, code).render(120)).toEqual([
+    '✓ Execution completed · exit 0 · console.log("first"); console.log("last");',
+  ]);
 });
-test("completion notifications collapse by rendered rows and expand unchanged", () => {
-  const message = "1 task completed\n" + Array.from({ length: 40 }, (_, i) => "LINE_" + i).join("\n");
-  const compact = completionPreview(message, false, theme).render(80);
-  expect(compact).toHaveLength(7);
-  expect(compact.join("\n")).toContain("…");
-  expect(compact.join("\n")).not.toContain("LINE_20");
-  expect(compact.join("\n")).toContain("LINE_39");
-  expect(completionPreview(message, true, theme).render(80).join("\n")).toContain("LINE_20");
+
+test("shared renderer state prevents Pi call/result composition from adding a second row", () => {
+  const state: ExecutePreviewState = {};
+  const call = executeInputPreview(code, false, theme, state, true);
+  expect(call.render(100)).toHaveLength(1);
+  const result = executeOutputPreview(success, false, false, theme, code, state);
+  expect([...call.render(100), ...result.render(100)]).toHaveLength(1);
 });
-test("long single lines and narrow terminals stay bounded", () => {
-  for (const width of [1, 5, 20, 80]) {
-    const lines = foldedRows("x".repeat(10000) + "END", width, 2, 3, false);
-    expect(lines.length).toBeLessThanOrEqual(6);
-    for (const line of lines) expect(visibleWidth(line)).toBeLessThanOrEqual(width);
-  }
-  expect(foldedRows("text", 0, 3, 3, false)).toEqual([]);
+
+test("expanded execute includes the full command and output", () => {
+  const rendered = executeOutputPreview(success, true, false, theme, code).render(100).join("\n");
+  expect(rendered).toContain('console.log("first")');
+  expect(rendered).toContain('console.log("last")');
+  expect(rendered).toContain("stdout:");
+  expect(rendered).toContain("first\nlast");
 });
-test("small results, errors, empty input, and images remain readable", () => {
-  expect(foldedRows("short", 80, 3, 3, false)).toEqual(["short"]);
-  expect(executeInputPreview(undefined, false, theme).render(80)).toEqual(["Execute · TypeScript"]);
+
+test("task completion and attention collapse to recognizable summaries without output", () => {
+  const content = "1 asynchronous task completed.\ntask_1 completed\nFinal output preview:\nSECRET_OUTPUT";
+  const complete = completionPreview(content, false, theme, 0, "task-complete", {
+    tasks: [{ id: "task_1", status: "completed", exitCode: 0 }],
+  }).render(100);
+  expect(complete.map((line) => line.trimEnd())).toEqual([
+    "✓ Task complete · 1 asynchronous task completed. · task_1 completed exit 0",
+  ]);
+  expect(complete.join("\n")).not.toContain("SECRET_OUTPUT");
+  const attention = completionPreview(
+    "task_2 needs a progress checkpoint.\nSECRET_PROGRESS",
+    false,
+    theme,
+    0,
+    "task-attention",
+    {
+      attention: [{ id: "task_2" }],
+    },
+  ).render(100);
+  expect(attention.map((line) => stripTerminalSequences(line).trimEnd())).toEqual([
+    "⚠ Task attention · task_2 needs a progress checkpoint.",
+  ]);
+  expect(attention.join("\n")).not.toContain("SECRET_PROGRESS");
+});
+
+test("failed task and execute summaries retain failure status", () => {
+  const failedTask = completionPreview("1 asynchronous task completed.\noutput", false, theme, 0, "task-complete", {
+    tasks: [{ id: "task_bad", status: "failed", exitCode: 7 }],
+  }).render(100);
+  expect(failedTask[0]).toContain("✗ Task completion");
+  expect(failedTask[0]).toContain("task_bad failed exit 7");
   const failure = executeOutputPreview(
-    { content: [{ type: "text", text: "Execution failed\n\nstderr:\nERROR_LAST" }] },
+    { content: [{ type: "text", text: "Execution failed with exit code 2.\n\nstderr:\nBAD" }] },
     false,
     true,
     theme,
-  )
-    .render(80)
-    .join("\n");
-  expect(failure).toContain("Execution failed");
-  expect(failure).toContain("ERROR_LAST");
-  const image = executeOutputPreview(
-    { content: [{ type: "image" }], details: { stdout: "", stderr: "", images: [{}] } },
+    "throw new Error()",
+  ).render(100);
+  expect(failure).toHaveLength(1);
+  expect(failure[0]).toContain("✗ Execution failed with exit code 2.");
+});
+
+test("collapsed rows are control-safe and bounded at small widths", () => {
+  const hostile = "safe\x1b[2J\x1b]0;bad\x07\n" + "x".repeat(1_000);
+  const result = { content: [{ type: "text", text: "Execution completed.\n" + hostile }] };
+  const before = JSON.stringify(result);
+  for (const width of [1, 5, 20, 80]) {
+    for (const lines of [
+      executeInputPreview(hostile, false, theme).render(width),
+      executeOutputPreview(result, false, false, theme, hostile).render(width),
+      completionPreview(hostile, false, theme).render(width),
+    ]) {
+      expect(lines).toHaveLength(1);
+      expect(visibleWidth(lines[0])).toBeLessThanOrEqual(width);
+      expect(stripTerminalSequences(lines[0])).not.toContain("\x1b");
+    }
+  }
+  expect(JSON.stringify(result)).toBe(before);
+  expect(foldedRows("text", 0, 3, 3, false)).toEqual([]);
+});
+
+test("images remain summarized collapsed and represented by Pi content", () => {
+  const rendered = executeOutputPreview(
+    { content: [{ type: "image" }], details: { exitCode: 0, stdout: "", stderr: "", images: [{}] } },
     false,
     false,
     theme,
-  )
-    .render(80)
-    .join("\n");
-  expect(image).toContain("Images: 1");
+    "emitImage()",
+  ).render(80);
+  expect(rendered).toHaveLength(1);
+  expect(rendered[0]).toContain("1 image");
 });
-test("terminal controls are stripped from previews and data is not mutated", () => {
-  const text = "safe\x1b[2J\x1b]0;bad\x07\nlast";
-  const result = { content: [{ type: "text", text }] };
-  const before = JSON.stringify(result);
-  expect(executeOutputPreview(result, true, false, theme).render(80).join("\n")).not.toContain("\x1b");
-  expect(JSON.stringify(result)).toBe(before);
+
+test("full-batch diagnostics retain a failure omitted after the first 50 tasks", () => {
+  const tasks = Array.from({ length: 51 }, (_, index) => ({
+    id: "task_" + index,
+    status: index === 50 ? "failed" : "completed",
+    command: "true",
+    output: "",
+  })) as any;
+  const details = completionDiagnosticDetails(tasks, []);
+  expect(details.tasks).toHaveLength(50);
+  expect(details.omittedTasks).toBe(1);
+  expect(details.taskStatusCounts).toEqual({ completed: 50, failed: 1, killed: 0, running: 0, unknown: 0 });
+  const row = completionPreview("51 asynchronous tasks completed.", false, theme, 0, "task-complete", details).render(
+    32,
+  )[0];
+  expect(row.startsWith("✗ Task completion")).toBe(true);
+  expect(visibleWidth(row)).toBeLessThanOrEqual(32);
+});
+
+test("legacy or incomplete completion metadata renders unknown rather than success", () => {
+  for (const details of [undefined, {}, { tasks: [{ id: "old" }] }, { tasks: [], omittedTasks: 1 }]) {
+    const row = completionPreview("Task update", false, theme, 0, "task-complete", details).render(80)[0];
+    expect(row).toStartWith("? Task completion");
+    expect(row).not.toStartWith("✓");
+  }
+});
+
+test("mixed failure and attention indicators precede truncatable descriptions", () => {
+  const row = completionPreview("A deliberately long completion description", false, theme, 0, "task-complete", {
+    tasks: [{ id: "task_bad", status: "failed", signal: "SIGTERM" }],
+    attention: [{ id: "task_waiting" }],
+  }).render(18)[0];
+  expect(row.startsWith("✗ ⚠ 1")).toBe(true);
+  expect(visibleWidth(row)).toBeLessThanOrEqual(18);
+});
+
+test("untrusted task metadata is sanitized before terminal coloring", () => {
+  const row = completionPreview("Done", false, theme, 0, "task-complete", {
+    tasks: [{ id: "safe\x1b[2J", status: "failed\x1b]0;bad\x07", signal: "SIG\x1b[31mTERM" }],
+  }).render(120)[0];
+  expect(row).toContain("safe");
+  expect(row).not.toContain("\x1b");
+  expect(stripTerminalSequences(row)).not.toContain("\x07");
+});
+
+test("collapsed execute puts loss, image, and background diagnostics before long code", () => {
+  const row = executeOutputPreview(
+    {
+      content: [{ type: "text", text: "Execution completed." }, { type: "image" }],
+      details: { exitCode: 0, stdoutLost: true, stderrLost: true, images: [{}], backgroundJobs: ["a", "b"] },
+    },
+    false,
+    false,
+    theme,
+    "LONG_COMMAND_SUFFIX".repeat(20),
+  ).render(82)[0];
+  expect(row).toContain("⚠ 2 streams lost");
+  expect(row).toContain("1 image");
+  expect(row).toContain("2 background");
+  expect(row).not.toContain("LONG_COMMAND_SUFFIX");
+});
+
+test("execute error flag takes precedence over handoff success", () => {
+  const row = executeOutputPreview(
+    { content: [{ type: "text", text: "Execution failed." }], details: { handoff: "later" } },
+    false,
+    true,
+    theme,
+  ).render(80)[0];
+  expect(row).toStartWith("✗ Execution failed.");
 });

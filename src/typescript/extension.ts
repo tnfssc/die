@@ -33,10 +33,24 @@ export function registerExecuteTool(
     promptSnippet: "Execute code for filesystem, process, and general coding operations",
     promptGuidelines: executeGuidance,
     parameters: toolParameters(ExecuteParameters),
+    renderShell: "self",
     renderCall: (args, theme, context) =>
-      executeInputPreview((args as { code?: unknown } | undefined)?.code, context.expanded, theme),
+      executeInputPreview(
+        (args as { code?: unknown } | undefined)?.code,
+        context.expanded,
+        theme,
+        context.state,
+        context.executionStarted,
+      ),
     renderResult: (result, options, theme, context) =>
-      executeOutputPreview(result, options.expanded, context.isError, theme),
+      executeOutputPreview(
+        result,
+        options.expanded,
+        context.isError,
+        theme,
+        (context.args as { code?: unknown } | undefined)?.code,
+        context.state,
+      ),
     async execute(_toolCallId, input, signal, _onUpdate, ctx) {
       const params = z.parse(ExecuteParameters, input);
       const backgroundIds: string[] = [];

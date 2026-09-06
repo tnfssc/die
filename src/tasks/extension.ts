@@ -24,6 +24,33 @@ import {
 } from "./job-attention";
 import { registerGoalMode, type GoalRuntime } from "../goals/extension";
 
+export function completionDiagnosticDetails(tasks: TaskInspection[], notices: AttentionNotice[]) {
+  const taskStatusCounts = { completed: 0, failed: 0, killed: 0, running: 0, unknown: 0 };
+  for (const task of tasks) {
+    switch (task.status) {
+      case "completed":
+      case "failed":
+      case "killed":
+      case "running":
+        taskStatusCounts[task.status]++;
+        break;
+      default:
+        taskStatusCounts.unknown++;
+    }
+  }
+  return {
+    tasks: tasks
+      .slice(0, 50)
+      .map(({ output: _output, command, ...summary }) => ({ ...summary, command: command.slice(0, 400) })),
+    attention: notices.slice(0, 50).map(({ task: _task, ...notice }) => notice),
+    taskStatusCounts,
+    taskCount: tasks.length,
+    attentionCount: notices.length,
+    omittedTasks: Math.max(0, tasks.length - 50),
+    omittedAttention: Math.max(0, notices.length - 50),
+  };
+}
+
 export default function asynchronousTasksExtension(
   pi: ExtensionAPI,
   options: {
@@ -37,10 +64,10 @@ export default function asynchronousTasksExtension(
   registerCacheCountdown(pi, cacheCountdown, options.cacheSettingsPath);
   const installUI = createCompactUI(pi, cacheCountdown);
   pi.registerMessageRenderer("task-complete", (message, options, theme) =>
-    completionPreview(message.content, options.expanded, theme, options.outputPad),
+    completionPreview(message.content, options.expanded, theme, options.outputPad, "task-complete", message.details),
   );
   pi.registerMessageRenderer("task-attention", (message, options, theme) =>
-    completionPreview(message.content, options.expanded, theme, options.outputPad),
+    completionPreview(message.content, options.expanded, theme, options.outputPad, "task-attention", message.details),
   );
   registerSubagentSettings(pi, options.profilesPath);
   // Environment identity is the floor for genuinely spawned child processes.
@@ -136,14 +163,7 @@ export default function asynchronousTasksExtension(
           customType: tasks.length ? "task-complete" : "task-attention",
           content,
           display: true,
-          details: {
-            tasks: tasks
-              .slice(0, 50)
-              .map(({ output: _output, command, ...summary }) => ({ ...summary, command: command.slice(0, 400) })),
-            attention: notices.slice(0, 50).map(({ task: _task, ...notice }) => notice),
-            omittedTasks: Math.max(0, tasks.length - 50),
-            omittedAttention: Math.max(0, notices.length - 50),
-          },
+          details: completionDiagnosticDetails(tasks, notices),
         },
         { deliverAs: "steer", triggerTurn: true },
       );
