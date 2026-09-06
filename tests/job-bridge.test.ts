@@ -516,3 +516,26 @@ test("goal helpers share the single execute bridge and do not print implicitly",
   expect(result.stdout.trim()).toBe("completed");
   expect(seen.map((x) => x[0])).toEqual(["goal.get", "goal.set", "goal.update"]);
 });
+
+test("history helpers share the execute bridge with explicit parameters", async () => {
+  const seen: any[] = [];
+  const result = await executeIsolated(
+    'const found=await history.search({query:"needle",limit:2}); console.log((await history.read({ref:found.ref,maxChars:9})).text)',
+    process.cwd(),
+    undefined,
+    3000,
+    {
+      executablePath: binary,
+      jobHandler: async (method, params) => {
+        seen.push([method, params]);
+        return method === "history.search" ? { ref: "die-history-v1:s:e:0" } : { text: "evidence" };
+      },
+    },
+  );
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout.trim()).toBe("evidence");
+  expect(seen).toEqual([
+    ["history.search", { query: "needle", limit: 2 }],
+    ["history.read", { ref: "die-history-v1:s:e:0", maxChars: 9 }],
+  ]);
+});

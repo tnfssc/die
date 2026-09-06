@@ -79,7 +79,7 @@ test("invalid ACK and parent cancellation release requests exactly once with dis
 
 test("client EPIPE has a stable symbolic category rather than generic disconnect", async () => {
   const saved = Object.fromEntries(
-    ["shell", "subagent", "handoff", "goal", "jobs"].map((key) => [key, (globalThis as any)[key]]),
+    ["shell", "subagent", "handoff", "history", "goal", "jobs"].map((key) => [key, (globalThis as any)[key]]),
   );
   const stream = new Duplex({
     read() {},
