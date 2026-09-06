@@ -578,3 +578,33 @@ User authorized v0.2.3 release and installation for the shell-only default foreg
 Published and installed v0.2.3 from immutable commit 22fb0c8fb176c1940bd58850dd58eae5ac7649d2. Release run 34065824323 passed; published Linux x64 checksum, SOURCE commit and version verified. Installed atomically at /home/tnfssc/.local/bin/die with rollback at /home/tnfssc/.local/state/die/backups/pre-v0.2.3-1788736010727/die. Final local suite: 478 pass, 14 skip, 0 fail, 3032 assertions. Restart required for existing processes to adopt the new default.
 
 Project-memory implementation is isolated behind `registerProjectMemory` in `src/memory/extension.ts`; central registration remains pending. Explicit profile/constraint consent, managed job reconciliation, project-wide cooperative exclusion, saved-file hash receipts and content-addressed source consumption are covered by 26 focused tests. Final deterministic gate: 504 pass, 14 skip, 0 fail (`/tmp/die-memory-tests-trusted.log`); build, typecheck, format, lint and smoke passed. Initial full-suite log `/tmp/die-memory-tests.log` retains six unrelated exact-output failures from worktree-local mise trust warnings; rerun used scoped `MISE_TRUSTED_CONFIG_PATHS` without global trust changes. No live consolidation/model probes, release, dependency changes or central task-extension edits. Automatic assignment-completion triggering and persistent cost consent remain unenabled user choices.
+
+## Recorded idea — Ask-user form
+
+- Let the model ask the user a question and receive an answer through a simple question-and-answer form.
+- Support asynchronous and blocking modes; asynchronous is the default. In asynchronous mode, the agent can continue other work while the question awaits the user's answer. Blocking mode waits for the answer before continuing the requesting operation.
+- Keep the initial scope to question and answer only; no richer form fields or workflow builder.
+- TUI presentation and interaction remain undecided. Question/answer correlation, answer delivery, cancellation, and what exactly blocking suspends need design before implementation.
+- Recorded for later design, not implementation authorization; do not add it to the current memory/history/monitor work.
+
+### Ask-user API and TUI direction
+
+- Expose asking through helpers inside execute, not a separate model-facing tool. Proposed API: `await askUser(question)` returns a question ID immediately by default; the answer arrives later as a correlated session notification. Optional `await askUser(question, { wait: true })` waits for an answer. Exact API names remain provisional.
+- Pending questions belong to the session, not the short-lived execute process, so asynchronous questions survive execute exit.
+- Preferred initial TUI: an inline question card in the conversation, a persistent pending-question footer indicator, and a shortcut opening a small free-text answer overlay. Submission updates the card and delivers the correlated answer.
+- Async questions must not steal focus. Blocking questions use the same presentation with a waiting label; the TUI remains usable. Preserve any existing editor draft.
+- Keep initial interaction to question text, free-text answer, submit, and dismiss. Shortcut bindings, dismissal/cancellation semantics, multiple pending questions, and exact blocking scope remain design details.
+- Inbox and editor-answer-mode alternatives were discussed; the inline-card/overlay approach is the preferred starting point, not an implemented feature.
+
+## Recorded direction — Discoverable execute API reference
+
+- Provide a generated api.d.ts reference plus a help() helper inside execute; no separate model-facing tool.
+- help() lists available helpers; help("shell") or help("history.search") returns the relevant TypeScript declaration, parameter types/defaults, return shape, brief behavioral notes, and a short example. Exact signatures remain design details.
+- Generate the reference and help content from shared API definitions used for validation wherever practical, with consistency tests to prevent drift.
+- Keep the initial prompt to a compact helper index and essential lifecycle/ownership rules; let the agent look up full options on demand.
+- Invalid calls should give actionable accepted-option guidance, with validation before the affected operation causes side effects.
+- Reference-file location and availability in compiled installations remain to be designed. This is recorded direction, not implementation authorization or added scope for the current feature work.
+
+## Memory, history, and monitor integration verification
+
+Implemented explicit project-memory consolidation, execute history.search/history.read, and the /ps inspection view. Automatic memory triggering remains undecided and disabled; ask-user and generated API-reference proposals remain documentation only. Root format/lint/typecheck/build/full-suite/smoke passed against 8524c9b (/tmp/die-features-final-tests.log). Retained initial combined failure log /tmp/die-features-tests.log: memory context-message injection altered compaction boundaries and defeated empty-context refusal; fixed by moving guidance to before_agent_start system framing without weakening compaction assertions. History cursor regression tests enforce current shake exclusions; cross-session reads are bounded and read-only. No new release or installation performed; installed version remains v0.2.3.
