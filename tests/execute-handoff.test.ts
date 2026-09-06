@@ -118,10 +118,18 @@ test("cooperative handoff releases a foreground wait, preserves its job, and not
     expect((result.details as any).backgroundJobs).toEqual([id]);
     expect(manager.inspect(id).status).toBe("running");
     expect(notifications).toBe(0);
-    const preview = executeOutputPreview(result, false, false, { fg: (_: unknown, text: string) => text } as any)
-      .render(80)
+    const theme = { fg: (_: unknown, text: string) => text } as any;
+    const collapsed = executeOutputPreview(result, false, false, theme).render(80);
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0]).toContain("Execution handed off");
+    expect(collapsed[0]).not.toContain("Waiting for a dependency");
+    const expanded = executeOutputPreview(result, true, false, theme).render(80).join("\n");
+    expect(expanded).toContain("Waiting for a dependency");
+    const modelVisible = result.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
       .join("\n");
-    expect(preview).toContain("Waiting for a dependency");
+    expect(modelVisible).toContain("Waiting for a dependency");
     await manager.write(id, "go\n", true);
     await completion;
     expect(manager.inspect(id).output).toBe("survived");

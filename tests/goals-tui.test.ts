@@ -38,11 +38,28 @@ test.skipIf(!hasTmux)(
         .join(" ");
       expect((await tmux("new-session", "-d", "-s", name, "-x", "120", "-y", "35", "-c", home, launch)).code).toBe(0);
 
-      await Bun.sleep(700);
+      // A painted footer is not a startup barrier: Pi can render it before
+      // extension command bindings are ready. Probe the goal command itself and
+      // proceed only after it has handled a slash command without starting an LLM turn.
+      let frame = "";
+      for (let attempt = 0; attempt < 100; attempt++) {
+        await tmux("send-keys", "-t", name, "C-u");
+        await tmux("send-keys", "-t", name, "-l", "/goal status");
+        await tmux("send-keys", "-t", name, "Enter");
+        await Bun.sleep(50);
+        frame = (await capture()).stdout;
+        if (frame.includes("No goal is set.")) break;
+      }
+      expect(frame).toContain("No goal is set.");
+      const readyEntries = (await readFile(sessionFile, "utf8"))
+        .trim()
+        .split("\n")
+        .map((line) => JSON.parse(line));
+      expect(readyEntries.some((entry) => entry.type === "message")).toBe(false);
+
       await tmux("send-keys", "-t", name, "-l", "/goal set TUI objective --criteria persisted --constraints offline");
       await tmux("send-keys", "-t", name, "Enter");
 
-      let frame = "";
       for (let attempt = 0; attempt < 100; attempt++) {
         frame = (await capture()).stdout;
         if (frame.includes("TUI objective") && frame.includes("Status: active")) break;
