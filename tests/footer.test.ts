@@ -90,6 +90,10 @@ describe("compact extension footer", () => {
     statuses.set("die-mode", "mode: fast");
     expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("mode: fast");
     expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).not.toContain("+1 status");
+    statuses.set("die-native-fast", " fast requested (unconfirmed)");
+    const fastFooter = plain(renderSingleRowFooter(ctx, data, theme, 120))[0]!;
+    expect(fastFooter).toContain(" fast requested (unconfirmed)");
+    expect(fastFooter).not.toContain("+1 status");
     statuses.set("review", "review in progress");
     expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("+1 status");
     for (const width of [1, 4, 10, 20, 40, 44, 80, 120]) {

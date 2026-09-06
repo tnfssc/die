@@ -21,6 +21,10 @@ function load(depth = 0, type?: string, options: any = {}) {
     {
       registerTool: (t: any) => tools.set(t.name, t),
       registerCommand() {},
+      registerFlag() {},
+      getFlag() {
+        return false;
+      },
       registerMessageRenderer() {},
       on: (e: string, h: Function) => handlers.set(e, [...(handlers.get(e) ?? []), h]),
       setActiveTools: (names: string[]) => (active = names),

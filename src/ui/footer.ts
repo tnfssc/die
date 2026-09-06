@@ -171,7 +171,20 @@ export function renderCompactFooter(
   const task = singleLine(statuses.get("die-tasks") ?? "").replace(/^(\d+ tasks?) running$/, "$1");
   const shortTask = task.replace(/^(\d+) tasks?$/, "$1t");
   const mode = singleLine(statuses.get("die-mode") ?? "");
-  const otherCount = [...statuses.keys()].filter((key) => key !== "die-tasks" && key !== "die-mode").length;
+  // Native fast mode owns the bolt badge; it is provider status, never an editor spinner.
+  const nativeFast = singleLine(statuses.get("die-native-fast") ?? "");
+  const shortNativeFast = nativeFast.includes("confirmed")
+    ? "fast✓"
+    : nativeFast.includes("downgraded")
+      ? "std"
+      : nativeFast.endsWith("off")
+        ? "off"
+        : nativeFast
+          ? "fast?"
+          : "";
+  const otherCount = [...statuses.keys()].filter(
+    (key) => key !== "die-tasks" && key !== "die-mode" && key !== "die-native-fast",
+  ).length;
   const extra = otherCount ? `+${otherCount} status` : "";
   const cost = `$${(footerUsage(ctx).cost + descendantCost).toFixed(3)}`;
   const percent = ctx.getContextUsage()?.percent;
@@ -191,6 +204,7 @@ export function renderCompactFooter(
         branch ? `${project}:${singleLine(branch)}` : project,
         accent(task),
         accent(mode),
+        accent(nativeFast),
         cost,
         context("ctx "),
         cacheText,
@@ -199,9 +213,13 @@ export function renderCompactFooter(
       modelWithThinking,
       " · ",
     ],
-    [[project, accent(task), accent(mode), cost, context("ctx "), cacheText, extra], modelWithThinking, " · "],
-    [[accent(shortTask), accent(mode), cost, context("C"), cacheText, project, extra], model, " "],
-    [[accent(shortTask), accent(mode), cost, context("C"), cacheText, extra], model, " "],
+    [
+      [project, accent(task), accent(mode), accent(nativeFast), cost, context("ctx "), cacheText, extra],
+      modelWithThinking,
+      " · ",
+    ],
+    [[accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, project, extra], model, " "],
+    [[accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, extra], model, " "],
   ];
   for (const [parts, right, separator] of candidates) {
     const left = parts.filter(Boolean).join(separator);
