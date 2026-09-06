@@ -1,5 +1,7 @@
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
-import { latestShakeRecord } from "../tasks/manual-shake";
+import { open } from "node:fs/promises";
+import { resolve } from "node:path";
+import { InvalidShakeRecordError, isShakeRecord, MANUAL_SHAKE_ENTRY } from "../tasks/manual-shake";
 import type { HistoryProvenance, HistoryReadResult, HistorySearchMatch, HistorySearchResult } from "./types";
 
 const MAX_QUERY_CHARS = 500;
@@ -10,13 +12,17 @@ const DEFAULT_EXCERPT_CHARS = 240;
 const MAX_READ_CHARS = 16_000;
 const DEFAULT_READ_CHARS = 8_000;
 const MAX_SCAN_ENTRIES = 20_000;
+const MAX_SESSION_PATH_CHARS = 4_096;
+const MAX_CURSOR_CHARS = 16_000;
+const MAX_SESSION_FILE_BYTES = 64 * 1024 * 1024;
+const MAX_SESSION_ENTRIES = 100_000;
+const MAX_SESSION_ENTRY_BYTES = 4 * 1024 * 1024;
 const REF_PREFIX = "die-history-v1";
 const CURSOR_PREFIX = "dhc1.";
 
 type Manager = Pick<SessionManager, "getSessionId" | "getSessionFile" | "getCwd" | "getLeafId" | "getBranch">;
 type Context = { sessionManager: Manager };
 type ScopeInput = { sessionFile?: string; allowCrossSession?: boolean };
-type OpenSession = (path: string) => Manager | Promise<Manager>;
 type TextItem = { text: string; provenance: HistoryProvenance; rank: number };
 type Cursor = { kind: "search" | "read"; sessionId: string; leafId: string | null; offset: number; key: string };
 
@@ -34,7 +40,8 @@ function cursorEncode(value: Cursor): string {
 }
 function cursorDecode(value: unknown, kind: Cursor["kind"]): Cursor | undefined {
   if (value === undefined) return;
-  if (typeof value !== "string" || !value.startsWith(CURSOR_PREFIX)) throw new Error("Invalid history cursor");
+  if (typeof value !== "string" || value.length > MAX_CURSOR_CHARS || !value.startsWith(CURSOR_PREFIX))
+    throw new Error("Invalid history cursor");
   let decoded: unknown;
   try {
     decoded = JSON.parse(Buffer.from(value.slice(CURSOR_PREFIX.length), "base64url").toString("utf8"));
@@ -53,6 +60,108 @@ function cursorDecode(value: unknown, kind: Cursor["kind"]): Cursor | undefined 
     throw new Error("Invalid history cursor");
   return decoded as unknown as Cursor;
 }
+/** Read a session without the SDK's persistent open path, which may repair or migrate files. */
+async function openReadonlySession(path: string): Promise<Manager> {
+  const sessionFile = resolve(path);
+  const handle = await open(sessionFile, "r");
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size <= 0) throw new Error("Cross-session history requires a non-empty regular file");
+    if (stat.size > MAX_SESSION_FILE_BYTES)
+      throw new Error(`Cross-session file exceeds the ${MAX_SESSION_FILE_BYTES}-byte history limit`);
+    const bytes = Buffer.alloc(stat.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const result = await handle.read(bytes, offset, bytes.length - offset, offset);
+      if (result.bytesRead === 0) break;
+      offset += result.bytesRead;
+    }
+    const parsed: Record<string, unknown>[] = [];
+    for (const line of bytes.subarray(0, offset).toString("utf8").split("\n")) {
+      if (!line.trim()) continue;
+      if (Buffer.byteLength(line) > MAX_SESSION_ENTRY_BYTES)
+        throw new Error(`Cross-session entry exceeds the ${MAX_SESSION_ENTRY_BYTES}-byte history limit`);
+      let value: unknown;
+      try {
+        value = JSON.parse(line);
+      } catch {
+        throw new Error("Cross-session file contains invalid JSONL");
+      }
+      if (!record(value)) throw new Error("Cross-session file contains an invalid entry");
+      parsed.push(value);
+      if (parsed.length > MAX_SESSION_ENTRIES)
+        throw new Error(`Cross-session file exceeds the ${MAX_SESSION_ENTRIES}-entry history limit`);
+    }
+    const header = parsed[0];
+    if (
+      header?.type !== "session" ||
+      typeof header.id !== "string" ||
+      header.id.length > 128 ||
+      !/^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/.test(header.id)
+    )
+      throw new Error("Cross-session file is not a valid session");
+    if (!Number.isInteger(header.version) || (header.version as number) < 2)
+      throw new Error("Cross-session history requires a version 2 or newer session; migrate a copy first");
+    if (typeof header.cwd === "string" && header.cwd.length > MAX_SESSION_PATH_CHARS)
+      throw new Error("Cross-session cwd exceeds the history limit");
+    const byId = new Map<string, SessionEntry>();
+    let leafId: string | null = null;
+    for (const value of parsed.slice(1)) {
+      if (
+        typeof value.id !== "string" ||
+        !value.id ||
+        value.id.length > 128 ||
+        value.id.includes(":") ||
+        !(
+          value.parentId === null ||
+          (typeof value.parentId === "string" && value.parentId.length > 0 && value.parentId.length <= 128)
+        ) ||
+        byId.has(value.id) ||
+        typeof value.timestamp !== "string" ||
+        value.timestamp.length > 128
+      )
+        throw new Error("Cross-session file contains an invalid or duplicate entry id");
+      byId.set(value.id, value as unknown as SessionEntry);
+      leafId = value.id;
+    }
+    const getBranch = (fromId?: string): SessionEntry[] => {
+      const result: SessionEntry[] = [];
+      const seen = new Set<string>();
+      let id: string | null | undefined = fromId ?? leafId;
+      while (id) {
+        if (seen.has(id)) throw new Error("Cross-session file contains a cyclic branch");
+        seen.add(id);
+        const entry = byId.get(id);
+        if (!entry) throw new Error("Cross-session file contains a broken branch");
+        result.push(entry);
+        id = entry.parentId;
+      }
+      return result.reverse();
+    };
+    return {
+      getSessionId: () => header.id as string,
+      getSessionFile: () => sessionFile,
+      getCwd: () => (typeof header.cwd === "string" ? header.cwd : ""),
+      getLeafId: () => leafId,
+      getBranch,
+    };
+  } finally {
+    await handle.close();
+  }
+}
+
+function retrievalExcludedResults(entries: readonly SessionEntry[]): Set<string> {
+  const excluded = new Set<string>();
+  for (const entry of entries) {
+    if (entry.type !== "custom" || entry.customType !== MANUAL_SHAKE_ENTRY) continue;
+    // A compaction carry can trim IDs from provider context; it must not make
+    // an earlier, explicitly excluded result recoverable through history.
+    if (!isShakeRecord(entry.data)) throw new InvalidShakeRecordError();
+    for (const id of entry.data.toolResultEntryIds) excluded.add(id);
+  }
+  return excluded;
+}
+
 function textParts(content: unknown): Array<{ part: number; text: string }> {
   if (typeof content === "string") return [{ part: 0, text: content }];
   if (!Array.isArray(content)) return [];
@@ -65,6 +174,7 @@ function ref(sessionId: string, entryId: string, part: number): string {
 }
 function parseRef(value: unknown): { sessionId: string; entryId: string; part: number } {
   if (typeof value !== "string") throw new Error("History ref must be a string");
+  if (value.length > 300) throw new Error("Invalid history ref");
   const match = /^die-history-v1:([^:]{1,128}):([^:]{1,128}):(\d+)$/.exec(value);
   if (!match?.[1] || !match[2]) throw new Error("Invalid history ref");
   const part = Number(match[3]);
@@ -78,16 +188,6 @@ function excerpt(text: string, match: number, limit: number): string {
 }
 
 export class HistoryService {
-  readonly #open: OpenSession;
-  constructor(openSession?: OpenSession) {
-    this.#open =
-      openSession ??
-      (async (path) => {
-        const { SessionManager } = await import("@earendil-works/pi-coding-agent");
-        return SessionManager.open(path);
-      });
-  }
-
   async handle(method: string, params: unknown, ctx: Context): Promise<unknown> {
     if (method === "history.search") return await this.search(params, ctx);
     if (method === "history.read") return await this.read(params, ctx);
@@ -189,10 +289,14 @@ export class HistoryService {
       if (input.allowCrossSession === true) throw new Error("allowCrossSession requires an explicit sessionFile");
       return { manager: ctx.sessionManager, scope: "active-session-branch" };
     }
-    if (typeof input.sessionFile !== "string" || !input.sessionFile)
-      throw new Error("sessionFile must be a non-empty string");
+    if (
+      typeof input.sessionFile !== "string" ||
+      !input.sessionFile ||
+      input.sessionFile.length > MAX_SESSION_PATH_CHARS
+    )
+      throw new Error(`sessionFile must be a non-empty string of at most ${MAX_SESSION_PATH_CHARS} characters`);
     if (input.allowCrossSession !== true) throw new Error("Cross-session history requires allowCrossSession: true");
-    return { manager: await this.#open(input.sessionFile), scope: "cross-session-branch" };
+    return { manager: await openReadonlySession(input.sessionFile), scope: "cross-session-branch" };
   }
 
   #validateCursor(cursor: Cursor | undefined, manager: Manager, key: string): void {
@@ -212,8 +316,8 @@ export class HistoryService {
     const branch = leafId === null ? [] : manager.getBranch(leafId);
     const scanLimited = branch.length > MAX_SCAN_ENTRIES;
     const selected = scanLimited ? branch.slice(-MAX_SCAN_ENTRIES) : branch;
-    const shake = latestShakeRecord(branch as SessionEntry[], manager.getSessionId());
-    const excludedResults = new Set(shake?.toolResultEntryIds ?? []);
+    // Cursor data remains pinned to its snapshot, but exclusion policy is live.
+    const excludedResults = retrievalExcludedResults(manager.getBranch() as SessionEntry[]);
     const values: TextItem[] = [];
     for (const entry of selected) {
       if (entry.type !== "message" || excludedResults.has(entry.id)) continue;

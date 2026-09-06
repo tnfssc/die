@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, stat, truncate, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
@@ -137,7 +137,7 @@ describe("original history", () => {
     const other = await persisted();
     other.appendMessage(user("cross-session-needle"));
     other.appendMessage(assistant([{ type: "text", text: "ack" }]));
-    const service = new HistoryService((path) => SessionManager.open(path));
+    const service = new HistoryService();
     const ctx = { sessionManager: current };
     expect(((await service.search({ query: "cross-session-needle" }, ctx)) as any).matches).toEqual([]);
     await expect(
@@ -161,6 +161,124 @@ describe("original history", () => {
         )) as any
       ).text,
     ).toBe("cross-session-needle");
+  });
+
+  test("applies a new shake to old search and read cursor snapshots", async () => {
+    const manager = SessionManager.inMemory("/project");
+    manager.appendMessage(user("cursor-policy-needle one"));
+    manager.appendMessage(user("cursor-policy-needle two"));
+    const callEntry = manager.appendMessage(
+      assistant([{ type: "toolCall", id: "cursor-call", name: "execute", arguments: {} }]),
+    );
+    const resultEntry = manager.appendMessage(toolResult("cursor-call", "cursor-policy-needle secret-tail"));
+    const service = new HistoryService();
+    const searchPage: any = await service.search(
+      { query: "cursor-policy-needle", limit: 2 },
+      { sessionManager: manager },
+    );
+    expect(searchPage.nextCursor).toBeString();
+    const found: any = await service.search({ query: "secret-tail" }, { sessionManager: manager });
+    const readPage: any = await service.read({ ref: found.matches[0].ref, maxChars: 6 }, { sessionManager: manager });
+    expect(readPage.nextCursor).toBeString();
+
+    manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, {
+      version: MANUAL_SHAKE_VERSION,
+      sessionId: manager.getSessionId(),
+      assistantEntryIds: [callEntry],
+      toolResultEntryIds: [resultEntry],
+      shakenAt: Date.now(),
+    });
+
+    const after: any = await service.search(
+      { query: "cursor-policy-needle", limit: 2, cursor: searchPage.nextCursor },
+      { sessionManager: manager },
+    );
+    expect(after.matches).toEqual([]);
+    await expect(
+      service.read(
+        { ref: found.matches[0].ref, maxChars: 6, cursor: readPage.nextCursor },
+        { sessionManager: manager },
+      ),
+    ).rejects.toThrow("excluded from retrieval");
+  });
+
+  test("does not undo historical exclusions when compaction carry trims IDs", async () => {
+    const manager = SessionManager.inMemory("/project");
+    manager.appendMessage(user("carry-policy-needle one"));
+    manager.appendMessage(user("carry-policy-needle two"));
+    const callEntry = manager.appendMessage(
+      assistant([{ type: "toolCall", id: "carry-call", name: "execute", arguments: {} }]),
+    );
+    const resultEntry = manager.appendMessage(toolResult("carry-call", "carry-policy-needle excluded"));
+    const service = new HistoryService();
+    const before: any = await service.search({ query: "carry-policy-needle", limit: 2 }, { sessionManager: manager });
+    manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, {
+      version: MANUAL_SHAKE_VERSION,
+      sessionId: manager.getSessionId(),
+      assistantEntryIds: [callEntry],
+      toolResultEntryIds: [resultEntry],
+      shakenAt: 1,
+    });
+    const kept = manager.appendMessage(user("retained tail"));
+    manager.appendCompaction("summary", kept, 100);
+    manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, {
+      version: MANUAL_SHAKE_VERSION,
+      sessionId: manager.getSessionId(),
+      assistantEntryIds: [],
+      toolResultEntryIds: [],
+      shakenAt: 2,
+    });
+    const after: any = await service.search(
+      { query: "carry-policy-needle", limit: 2, cursor: before.nextCursor },
+      { sessionManager: manager },
+    );
+    expect(after.matches).toEqual([]);
+    expect(((await service.search({ query: "excluded" }, { sessionManager: manager })) as any).matches).toEqual([]);
+  });
+
+  test("cross-session loading is read-only and rejects missing, empty, and oversized files", async () => {
+    const current = await persisted();
+    const other = await persisted();
+    other.appendMessage(user("readonly-cross-needle"));
+    other.appendMessage(assistant([{ type: "text", text: "flush" }]));
+    const file = other.getSessionFile()!;
+    const before = await readFile(file);
+    const beforeStat = await stat(file);
+    const service = new HistoryService();
+    const result: any = await service.search(
+      { query: "readonly-cross-needle", sessionFile: file, allowCrossSession: true },
+      { sessionManager: current },
+    );
+    expect(result.matches).toHaveLength(1);
+    expect(await readFile(file)).toEqual(before);
+    expect((await stat(file)).mtimeMs).toBe(beforeStat.mtimeMs);
+
+    const dir = await mkdtemp(join(tmpdir(), "die-history-readonly-"));
+    dirs.push(dir);
+    const missing = join(dir, "new", "missing.jsonl");
+    await expect(
+      service.search({ query: "x", sessionFile: missing, allowCrossSession: true }, { sessionManager: current }),
+    ).rejects.toThrow();
+    await expect(access(join(dir, "new"))).rejects.toThrow();
+    const empty = join(dir, "empty.jsonl");
+    await writeFile(empty, "");
+    await expect(
+      service.search({ query: "x", sessionFile: empty, allowCrossSession: true }, { sessionManager: current }),
+    ).rejects.toThrow("non-empty regular file");
+    expect((await stat(empty)).size).toBe(0);
+    const legacy = join(dir, "legacy.jsonl");
+    const legacyBytes = '{"type":"session","version":1,"id":"legacy","timestamp":"2020-01-01","cwd":"/tmp"}\n';
+    await writeFile(legacy, legacyBytes);
+    await expect(
+      service.search({ query: "x", sessionFile: legacy, allowCrossSession: true }, { sessionManager: current }),
+    ).rejects.toThrow("migrate a copy");
+    expect(await readFile(legacy, "utf8")).toBe(legacyBytes);
+    const large = join(dir, "large.jsonl");
+    await writeFile(large, "");
+    await truncate(large, 64 * 1024 * 1024 + 1);
+    await expect(
+      service.search({ query: "x", sessionFile: large, allowCrossSession: true }, { sessionManager: current }),
+    ).rejects.toThrow("history limit");
   });
 
   test("bounds and pages search and reads, and rejects cursors after branch changes", async () => {

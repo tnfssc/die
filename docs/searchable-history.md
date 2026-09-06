@@ -6,10 +6,10 @@ Die's history service retrieves bounded, attributable text from the append-only 
 
 - Search defaults to the current session's **active branch**. It uses the original branch rather than the compaction-aware context window, so exact dialogue remains discoverable after compaction.
 - Inactive branches and other sessions are not searched implicitly.
-- Cross-session calls must provide both an explicit `sessionFile` and `allowCrossSession: true` on each search or read. A ref alone never grants cross-session access.
+- Cross-session calls must provide both an explicit `sessionFile` and `allowCrossSession: true` on each search or read. A ref alone never grants cross-session access. Cross-session files are opened through a read-only parser rather than the SDK persistent manager, so history reads do not create, repair, migrate, or rewrite sessions.
 - Assistant thinking and tool-call payloads are never indexed.
 - Hidden custom messages and `bashExecution` messages marked `excludeFromContext` are never indexed.
-- Tool results deliberately removed by the latest valid `/shake` checkpoint remain excluded. Public assistant text in the same entry remains available, matching shake's projection.
+- Tool results deliberately removed by any `/shake` checkpoint on the active branch remain excluded. Later appends and compaction carry checkpoints cannot make those original results recoverable. Public assistant text in the same entry remains available, matching shake's projection.
 - Compaction summaries, branch summaries and custom state are not indexed as original evidence. Direct user and assistant dialogue ranks ahead of execution output, reducing repeated tool-produced summaries and retrieval echoes.
 
 These rules protect deliberately excluded/private material; they do not hide the user's own messages on the active branch.
@@ -18,7 +18,7 @@ These rules protect deliberately excluded/private material; they do not hide the
 
 `history.search({ query, cursor?, limit?, excerptChars?, sessionFile?, allowCrossSession? })`
 
-Returns at most 20 matches by default (maximum 50), each with a bounded excerpt, a stable `die-history-v1:<session-id>:<entry-id>:<part>` ref, and provenance. Search examines at most 20,000 active-branch entries and reports `scanLimited` if that bound is reached. Use `nextCursor` to continue the same query. Cursors are tied to the query, session and a branch snapshot; later appends do not disturb the page, while switching away from that branch invalidates it.
+Returns at most 20 matches by default (maximum 50), each with a bounded excerpt, a stable `die-history-v1:<session-id>:<entry-id>:<part>` ref, and provenance. Search examines at most 20,000 active-branch entries and reports `scanLimited` if that bound is reached. Cross-session input is additionally limited to a 4,096-character path, a 64 MiB regular file, 100,000 JSONL entries, and 4 MiB per entry. Legacy v1 files are rejected because assigning their missing stable tree IDs requires migration; migrate a copy before retrieval. Use `nextCursor` to continue the same query. Cursors are tied to the query, session and a branch snapshot; later ordinary appends do not disturb the page, while switching away from that branch invalidates it. Active-branch exclusions remain live across pages, so a new shake can remove matches and shift or shorten a previously issued page.
 
 `history.read({ ref, cursor?, maxChars?, sessionFile?, allowCrossSession? })`
 
