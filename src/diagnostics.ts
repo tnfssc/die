@@ -64,7 +64,14 @@ export interface DiagnosticInput {
   httpStatus?: number;
   count?: number;
 }
-export type DiagnosticRecord = Readonly<DiagnosticInput>;
+export type DiagnosticRecord = Readonly<DiagnosticInput & { version: 1; generated: string }>;
+export type DiagnosticRecorder = (input: DiagnosticInput) => void;
+export interface DiagnosticReplay {
+  records: DiagnosticRecord[];
+  scanned: number;
+  scanLimit: number;
+  scanLimited: boolean;
+}
 export interface DiagnosticsSnapshot {
   records: DiagnosticRecord[];
   accepted: number;
@@ -96,11 +103,26 @@ const CANCELLATION = new Set(["caller", "provider", "timeout", "shutdown", "safe
 const ID = /^(?:task_[A-Za-z0-9]{1,64}|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
 const RING_LIMIT = 100;
 const DURABLE_BUDGET = 128;
+const DURABLE_SCAN_LIMIT = 10_000;
+const CORE_KEYS = new Set([
+  "component",
+  "code",
+  "outcome",
+  "operationId",
+  "taskId",
+  "dispatch",
+  "cancellation",
+  "httpStatus",
+  "count",
+]);
+const DURABLE_KEYS = new Set([...CORE_KEYS, "version", "generated"]);
 
 type State = DiagnosticsSnapshot & {
   sink?: (type: string, data: unknown) => void;
   seen: Set<string>;
   generation: number;
+  durableUsed: number;
+  writing: boolean;
 };
 const states = new WeakMap<object, State>();
 function state(owner: object): State {
@@ -116,6 +138,8 @@ function state(owner: object): State {
       writeFailures: 0,
       seen: new Set(),
       generation: 0,
+      durableUsed: 0,
+      writing: false,
     };
     states.set(owner, value);
   }
@@ -123,9 +147,16 @@ function state(owner: object): State {
 }
 
 /** Returns only the allowlisted projection. Any invalid allowlisted value rejects the whole record. */
-function validate(input: unknown): DiagnosticRecord | undefined {
+function validate(input: unknown, durable = false): DiagnosticRecord | undefined {
   if (!input || typeof input !== "object" || Array.isArray(input)) return;
   const value = input as Record<string, unknown>;
+  if (durable) {
+    const keys = Reflect.ownKeys(value);
+    if (keys.some((key) => typeof key !== "string" || !DURABLE_KEYS.has(key))) return;
+    if (value.version !== 1 || typeof value.generated !== "string") return;
+    const parsed = Date.parse(value.generated);
+    if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== value.generated) return;
+  }
   if (
     !COMPONENTS.has(value.component as string) ||
     !CODES.has(value.code as string) ||
@@ -146,56 +177,84 @@ function validate(input: unknown): DiagnosticRecord | undefined {
     (!Number.isSafeInteger(value.count) || (value.count as number) < 0 || (value.count as number) > 1_000_000_000)
   )
     return;
-  const record: DiagnosticInput = {
+  const record: DiagnosticInput & { version: 1; generated: string } = {
+    version: 1,
+    generated: durable ? (value.generated as string) : new Date().toISOString(),
     component: value.component as DiagnosticComponent,
     code: value.code as string,
     outcome: value.outcome as DiagnosticInput["outcome"],
   };
-  if (value.operationId !== undefined) record.operationId = value.operationId as string;
-  if (value.taskId !== undefined) record.taskId = value.taskId as string;
-  if (value.dispatch !== undefined) record.dispatch = value.dispatch as DiagnosticInput["dispatch"];
-  if (value.cancellation !== undefined) record.cancellation = value.cancellation as DiagnosticInput["cancellation"];
-  if (value.httpStatus !== undefined) record.httpStatus = value.httpStatus as number;
-  if (value.count !== undefined) record.count = value.count as number;
+  for (const key of ["operationId", "taskId", "dispatch", "cancellation", "httpStatus", "count"] as const) {
+    if (value[key] !== undefined) (record as unknown as Record<string, unknown>)[key] = value[key];
+  }
   return Object.freeze(record);
 }
 
+function dedupKey(record: DiagnosticRecord): string {
+  const { generated: _generated, ...stable } = record;
+  return JSON.stringify(stable);
+}
+
 export function recordDiagnostic(owner: object, input: DiagnosticInput): void {
-  if (!owner || (typeof owner !== "object" && typeof owner !== "function")) return;
-  const current = state(owner);
-  const record = validate(input);
-  if (!record) {
-    current.invalid++;
-    current.dropped++;
-    return;
-  }
-  current.accepted++;
-  current.records.push(record);
-  if (current.records.length > RING_LIMIT) current.records.splice(0, current.records.length - RING_LIMIT);
-  if (!current.sink) return;
-  const key = JSON.stringify(record);
-  if (current.seen.has(key)) {
-    current.deduplicated++;
-    current.dropped++;
-    return;
-  }
-  if (current.seen.size >= DURABLE_BUDGET) {
-    current.budgetDropped++;
-    current.dropped++;
-    return;
-  }
-  // Reserve before writing: a throwing store cannot induce unbounded retries or recursion.
-  current.seen.add(key);
+  // This API sits on inference error paths: even hostile getters/proxies and reentrant sinks must not escape.
   try {
-    current.sink(DIAGNOSTIC_ENTRY_TYPE, record);
+    if (!owner || (typeof owner !== "object" && typeof owner !== "function")) return;
+    const current = state(owner);
+    const record = validate(input);
+    if (!record) {
+      current.invalid++;
+      current.dropped++;
+      return;
+    }
+    current.accepted++;
+    current.records.push(record);
+    if (current.records.length > RING_LIMIT) current.records.splice(0, current.records.length - RING_LIMIT);
+    if (!current.sink) return;
+    const key = dedupKey(record);
+    if (current.seen.has(key)) {
+      current.deduplicated++;
+      current.dropped++;
+      return;
+    }
+    if (current.durableUsed >= DURABLE_BUDGET || current.writing) {
+      current.budgetDropped++;
+      current.dropped++;
+      return;
+    }
+    // Reserve before writing: a throwing/reentrant store cannot induce retries or recursion.
+    current.seen.add(key);
+    current.durableUsed++;
+    current.writing = true;
+    try {
+      current.sink(DIAGNOSTIC_ENTRY_TYPE, record);
+    } catch {
+      current.writeFailures++;
+      current.dropped++;
+    } finally {
+      current.writing = false;
+    }
   } catch {
-    current.writeFailures++;
-    current.dropped++;
+    // Diagnostics are strictly best effort and can never disrupt inference.
   }
 }
 
-/** Attaches one session's append function. Reattachment starts a fresh bounded session view/budget. */
-export function attachDiagnosticSink(owner: object, append: (type: string, data: unknown) => void): () => void {
+/** Captures the current attachment generation so work from an old session cannot write after a switch. */
+export function diagnosticRecorder(owner: object): DiagnosticRecorder {
+  const current = state(owner);
+  const generation = current.generation;
+  return (input) => {
+    try {
+      if (state(owner).generation === generation) recordDiagnostic(owner, input);
+    } catch {}
+  };
+}
+
+/** Attaches one session's append function and seeds its lifetime durable cap from persisted entries. */
+export function attachDiagnosticSink(
+  owner: object,
+  append: (type: string, data: unknown) => void,
+  existingEntries: readonly unknown[] = [],
+): () => void {
   const current = state(owner);
   const generation = ++current.generation;
   current.sink = append;
@@ -208,6 +267,13 @@ export function attachDiagnosticSink(owner: object, append: (type: string, data:
     current.writeFailures =
       0;
   current.seen.clear();
+  current.durableUsed = 0;
+  current.writing = false;
+  try {
+    const replay = scanDiagnosticRecords(existingEntries, DURABLE_BUDGET, DURABLE_SCAN_LIMIT);
+    current.durableUsed = replay.scanLimited ? DURABLE_BUDGET : replay.records.length;
+    for (const record of replay.records) current.seen.add(dedupKey(record));
+  } catch {}
   return () => {
     if (current.generation === generation) current.sink = undefined;
   };
@@ -228,14 +294,39 @@ export function inspectDiagnostics(owner: object): DiagnosticsSnapshot {
   });
 }
 
-/** Validates durable records too, so forged legacy fields never reach inspection output. */
-export function diagnosticRecords(entries: readonly unknown[]): DiagnosticRecord[] {
+/** Bounded backward replay. scanLimited reports possible loss when the entry scan cap was reached. */
+export function scanDiagnosticRecords(
+  entries: readonly unknown[],
+  recordLimit = RING_LIMIT,
+  scanLimit = DURABLE_SCAN_LIMIT,
+): DiagnosticReplay {
   const result: DiagnosticRecord[] = [];
-  for (const raw of entries.slice(-512)) {
-    const entry = raw as { type?: unknown; customType?: unknown; data?: unknown };
-    if (entry?.type !== "custom" || entry.customType !== DIAGNOSTIC_ENTRY_TYPE) continue;
-    const record = validate(entry.data);
-    if (record) result.push(record);
+  let scanned = 0;
+  let length = 0;
+  let unreadable = false;
+  try {
+    length = Math.max(0, Number.isSafeInteger(entries.length) ? entries.length : 0);
+  } catch {
+    unreadable = true;
   }
-  return result.slice(-RING_LIMIT);
+  for (let index = length - 1; index >= 0 && scanned < scanLimit && result.length < recordLimit; index--) {
+    scanned++;
+    try {
+      const raw = entries[index] as { type?: unknown; customType?: unknown; data?: unknown };
+      if (raw?.type !== "custom" || raw.customType !== DIAGNOSTIC_ENTRY_TYPE) continue;
+      const record = validate(raw.data, true);
+      if (record) result.push(record);
+    } catch {}
+  }
+  result.reverse();
+  return Object.freeze({
+    records: result,
+    scanned,
+    scanLimit,
+    scanLimited: unreadable || (scanned >= scanLimit && length > scanned),
+  });
+}
+
+export function diagnosticRecords(entries: readonly unknown[]): DiagnosticRecord[] {
+  return scanDiagnosticRecords(entries).records;
 }
