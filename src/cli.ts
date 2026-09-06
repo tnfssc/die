@@ -99,7 +99,10 @@ registerBunOAuthFlows();
 const { main } = await import("@earendil-works/pi-coding-agent");
 // The UI extension imports Pi's CustomEditor, so it must also load only after
 // die's runtime paths and product metadata are configured.
-const { default: asynchronousTasksExtension } = await import("./tasks/extension");
+const [{ default: asynchronousTasksExtension }, { default: herdrAgentStateExtension }] = await Promise.all([
+  import("./tasks/extension"),
+  import("./herdr-agent-state"),
+]);
 const { installQuietStartup } = await import("./ui/startup");
 const restoreStartupSettings = installQuietStartup();
 
@@ -139,7 +142,10 @@ if (topLevelHelp) {
 }
 try {
   await main(cliArgs, {
-    extensionFactories: [{ name: "die-tools", factory: asynchronousTasksExtension, hidden: true }],
+    extensionFactories: [
+      { name: "die-tools", factory: asynchronousTasksExtension, hidden: true },
+      { name: "die-herdr-agent-state", factory: herdrAgentStateExtension, hidden: true },
+    ],
   });
 } finally {
   restoreStartupSettings();

@@ -172,6 +172,10 @@ are not accepted: profiles control those choices. Only orchestrator
 sub-agents may delegate, and the two-level depth limit still applies. This is a
 tool policy, not a security sandbox: execute can still run arbitrary processes.
 
+## Herdr integration
+
+When launched in a Herdr root pane, die automatically reports its lifecycle over the inherited local socket. See [docs/herdr.md](docs/herdr.md) for activation, state, and compatibility details.
+
 ## Code execution
 
 The model-facing `execute` tool replaces `read`, `edit`, `write`, `bash`, and `powershell`. It transpiles submitted TypeScript in memory using `Bun.Transpiler`, then executes it as a module in an isolated child process in the current working directory. It supports top-level await, static imports and exports, dynamic imports, CommonJS `require`, local modules, Bun APIs, Node built-ins, installed packages, and subprocesses. Results are returned through stdout and stderr; no temporary source file is created.
