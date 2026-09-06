@@ -13,6 +13,7 @@ import themeSchema from "../runtime-assets/theme/theme-schema.json" with { type:
 import exportTemplate from "../runtime-assets/export-html/template.html" with { type: "file" };
 import highlight from "../runtime-assets/export-html/vendor/highlight.min.js" with { type: "file" };
 import marked from "../runtime-assets/export-html/vendor/marked.min.js" with { type: "file" };
+import { formatThrownValue } from "./typescript/error-diagnostic";
 import { INTERNAL_TYPESCRIPT_RUNNER_ARG, runTypeScriptFromStdin } from "./typescript/runner";
 
 const cliArgs = process.argv.slice(2);
@@ -21,8 +22,8 @@ if (cliArgs[0] === INTERNAL_TYPESCRIPT_RUNNER_ARG) {
     await runTypeScriptFromStdin();
     process.exit(0);
   } catch (error) {
-    const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-    console.error(message.replaceAll(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g, "<execute-module>"));
+    const diagnostic = formatThrownValue(error);
+    console.error(diagnostic.replaceAll(/data:text\/javascript;base64,[A-Za-z0-9+/=]+/g, "<execute-module>"));
     process.exit(1);
   }
 }
