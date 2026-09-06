@@ -4,9 +4,18 @@ import {
   ToolExecutionComponent,
   UserMessageComponent,
 } from "@earendil-works/pi-coding-agent";
-import { Container, stripTerminalSequences, type Component } from "@earendil-works/pi-tui";
+import {
+  Container,
+  stripTerminalSequences,
+  type Component,
+  type TuiMouseEventResult,
+  type TuiMouseEvent,
+} from "@earendil-works/pi-tui";
 
-type RenderComponent = Component & { render: (width: number) => string[] };
+type RenderComponent = Component & {
+  render: (width: number) => string[];
+  handleMouse: (event: TuiMouseEvent) => TuiMouseEventResult | undefined;
+};
 type DensityKind = "user" | "assistant" | "compact";
 
 type ToolShape = RenderComponent & {
@@ -87,12 +96,14 @@ function isBlank(line: string): boolean {
 /**
  * Pi 0.85 gives each native message component ownership of its leading space,
  * but does not expose a transition-spacing hook on InteractiveMode's chat
- * container. Adapt only recognized top-level message instances as they are
- * attached to a Container. This leaves paragraph/output lines, images, editor
- * layout, and every unrelated Container untouched.
+ * container. Container.addChild is global, so this adapts recognized message
+ * instances added to any Container parent; it is not gated to the top-level
+ * chat tree. Unrecognized components, paragraph/output lines, images, and
+ * editor layout are unchanged.
  *
  * Remove this pinned compatibility seam when Pi exposes chat transition
- * spacing. Restoration is conditional so a later wrapper is never clobbered.
+ * spacing. Every patched method and component restoration is identity-checked
+ * so wrappers installed later are never clobbered.
  */
 export function installConversationDensity(): () => void {
   const seam = [UserMessageComponent, AssistantMessageComponent, ToolExecutionComponent, CustomMessageComponent];
@@ -101,13 +112,58 @@ export function installConversationDensity(): () => void {
   }
   const prototype = Container.prototype;
   const originalAddChild = prototype.addChild;
-  const restorations = new Map<
-    RenderComponent,
-    { original: (width: number) => string[]; wrapper: (width: number) => string[] }
-  >();
+  const originalRemoveChild = prototype.removeChild;
+  const originalClear = prototype.clear;
+  type Restoration = {
+    original: (width: number) => string[];
+    wrapper: (width: number) => string[];
+    reference: WeakRef<RenderComponent>;
+    originalMouse: RenderComponent["handleMouse"];
+    mouseWrapper: RenderComponent["handleMouse"];
+    collapsedWidth?: number;
+    collapsed: boolean;
+  };
+  const restorations = new WeakMap<RenderComponent, Restoration>();
+  const liveReferences = new Set<WeakRef<RenderComponent>>();
+  const finalized = new FinalizationRegistry<WeakRef<RenderComponent>>((reference) => {
+    liveReferences.delete(reference);
+  });
+  const parentIndexes = new WeakMap<Container, WeakMap<Component, number>>();
+  let active = true;
+
+  function rebuildIndexes(parent: Container): void {
+    const indexes = new WeakMap<Component, number>();
+    for (let index = 0; index < parent.children.length; index++) {
+      const child = parent.children[index];
+      if (child) indexes.set(child, index);
+    }
+    parentIndexes.set(parent, indexes);
+  }
+
+  function indexAddedChild(parent: Container, component: Component): void {
+    const indexes = parentIndexes.get(parent);
+    if (indexes) {
+      indexes.set(component, parent.children.length - 1);
+    } else {
+      rebuildIndexes(parent);
+    }
+  }
+
+  function restoreComponent(component: Component): void {
+    const renderable = component as RenderComponent;
+    const restoration = restorations.get(renderable);
+    if (!restoration) return;
+    if (renderable.render === restoration.wrapper) renderable.render = restoration.original;
+    if (renderable.handleMouse === restoration.mouseWrapper) renderable.handleMouse = restoration.originalMouse;
+    restorations.delete(renderable);
+    liveReferences.delete(restoration.reference);
+    finalized.unregister(restoration);
+  }
 
   function denseAddChild(this: Container, component: Component): void {
     originalAddChild.call(this, component);
+    if (!active) return;
+    indexAddedChild(this, component);
     const componentKind = kind(component);
     if (!componentKind || restorations.has(component as RenderComponent)) return;
 
@@ -116,31 +172,83 @@ export function installConversationDensity(): () => void {
       throw new Error("Pi 0.85 conversation-density seam changed: message component has no render method");
     }
     const originalRender = renderable.render;
-    const parent = this;
+    const originalMouse = renderable.handleMouse;
+    if (typeof originalMouse !== "function") {
+      throw new Error("Pi 0.85 conversation-density seam changed: message component has no mouse handler");
+    }
+    const parentReference = new WeakRef(this);
+    let restoration: Restoration;
     function denseRender(this: RenderComponent, width: number): string[] {
       const lines = originalRender.call(this, width);
-      if (lines.length < 2 || !isBlank(lines[0] ?? "")) return lines;
-
-      const index = parent.children.indexOf(this);
-      if (index < 1) return lines;
-      const precedingKind = previousKind(parent, index);
-      const currentKind = kind(this);
-      const collapseUserBoundary = currentKind === "user" && precedingKind === "user";
-      const collapseUserAssistantBoundary = currentKind === "assistant" && precedingKind === "user";
-      const collapseCompactBoundary =
-        currentKind === "compact" && precedingKind === "compact" && lines.length === 2 && !isBlank(lines[1] ?? "");
-      return collapseUserBoundary || collapseUserAssistantBoundary || collapseCompactBoundary ? lines.slice(1) : lines;
+      const parent = parentReference.deref();
+      const index = parent ? parentIndexes.get(parent)?.get(this) : undefined;
+      let collapsed = false;
+      if (lines.length >= 2 && isBlank(lines[0] ?? "") && parent && index !== undefined && index >= 1) {
+        const precedingKind = previousKind(parent, index);
+        const currentKind = kind(this);
+        const collapseUserBoundary = currentKind === "user" && precedingKind === "user";
+        const collapseUserAssistantBoundary = currentKind === "assistant" && precedingKind === "user";
+        const collapseCompactBoundary =
+          currentKind === "compact" && precedingKind === "compact" && lines.length === 2 && !isBlank(lines[1] ?? "");
+        collapsed = collapseUserBoundary || collapseUserAssistantBoundary || collapseCompactBoundary;
+      }
+      restoration.collapsedWidth = width;
+      restoration.collapsed = collapsed;
+      return collapsed ? lines.slice(1) : lines;
     }
-    restorations.set(renderable, { original: originalRender, wrapper: denseRender });
+    function denseMouse(this: RenderComponent, event: TuiMouseEvent): TuiMouseEventResult | undefined {
+      const offset = restoration.collapsedWidth === event.width && restoration.collapsed ? 1 : 0;
+      return originalMouse.call(
+        this,
+        offset ? { ...event, y: event.y + offset, height: event.height + offset } : event,
+      );
+    }
+    const reference = new WeakRef(renderable);
+    restoration = {
+      original: originalRender,
+      wrapper: denseRender,
+      reference,
+      originalMouse,
+      mouseWrapper: denseMouse,
+      collapsed: false,
+    };
+    restorations.set(renderable, restoration);
+    liveReferences.add(reference);
+    finalized.register(renderable, reference, restoration);
     renderable.render = denseRender;
+    renderable.handleMouse = denseMouse;
+  }
+
+  function denseRemoveChild(this: Container, component: Component): void {
+    originalRemoveChild.call(this, component);
+    if (!active) return;
+    if (!this.children.includes(component)) restoreComponent(component);
+    rebuildIndexes(this);
+  }
+
+  function denseClear(this: Container): void {
+    if (!active) {
+      originalClear.call(this);
+      return;
+    }
+    const removed = [...this.children];
+    originalClear.call(this);
+    for (const component of removed) restoreComponent(component);
+    parentIndexes.delete(this);
   }
 
   prototype.addChild = denseAddChild;
+  prototype.removeChild = denseRemoveChild;
+  prototype.clear = denseClear;
   return () => {
+    active = false;
     if (prototype.addChild === denseAddChild) prototype.addChild = originalAddChild;
-    for (const [component, render] of restorations) {
-      if (component.render === render.wrapper) component.render = render.original;
+    if (prototype.removeChild === denseRemoveChild) prototype.removeChild = originalRemoveChild;
+    if (prototype.clear === denseClear) prototype.clear = originalClear;
+    for (const reference of liveReferences) {
+      const component = reference.deref();
+      if (component) restoreComponent(component);
     }
-    restorations.clear();
+    liveReferences.clear();
   };
 }

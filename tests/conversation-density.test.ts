@@ -144,8 +144,121 @@ describe("native conversation density adapter", () => {
     const message = assistant("answer");
     add(chat, new UserMessageComponent("question"), message);
     const foreign = () => ["foreign"];
+    const foreignMouse: NonNullable<Component["handleMouse"]> = () => ({ handled: true });
     message.render = foreign;
+    (message as Component).handleMouse = foreignMouse;
     restore();
     expect(message.render).toBe(foreign);
+    expect((message as Component).handleMouse).toBe(foreignMouse);
+  });
+  test("untracks removed and cleared components, then rebuilds and reinstalls cleanly", () => {
+    const firstRestore = installConversationDensity();
+    const chat = new Container();
+    const first = new UserMessageComponent("first");
+    const second = new UserMessageComponent("second");
+    const answer = assistant("answer");
+    const firstRender = first.render;
+    const secondRender = second.render;
+    const answerRender = answer.render;
+
+    add(chat, first, second, answer);
+    expect(second.render).not.toBe(secondRender);
+    chat.removeChild(second);
+    expect(second.render).toBe(secondRender);
+    chat.clear();
+    expect(first.render).toBe(firstRender);
+    expect(answer.render).toBe(answerRender);
+
+    add(chat, first, second, answer);
+    expect(plain(chat.render(80)).filter((line) => line.trim())).toEqual([" first", " second", " answer"]);
+    firstRestore();
+    expect(first.render).toBe(firstRender);
+    expect(second.render).toBe(secondRender);
+    expect(answer.render).toBe(answerRender);
+
+    const secondRestore = installConversationDensity();
+    const rebuilt = new Container();
+    add(rebuilt, first, second, answer);
+    expect(blankRuns(rebuilt.render(80))).toEqual([1, 1, 1]);
+    secondRestore();
+  });
+
+  test("preserves a foreign addChild wrapper installed after the density adapter", () => {
+    const prototype = Container.prototype;
+    const originalAddChild = prototype.addChild;
+    const restore = installConversationDensity();
+    const densityAddChild = prototype.addChild;
+    function foreignAddChild(this: Container, component: Component): void {
+      densityAddChild.call(this, component);
+    }
+    prototype.addChild = foreignAddChild;
+    try {
+      restore();
+      expect(prototype.addChild).toBe(foreignAddChild);
+      const chat = new Container();
+      chat.addChild(new UserMessageComponent("still works"));
+      expect(plain(chat.render(80))).toContain(" still works");
+    } finally {
+      if (prototype.addChild === foreignAddChild) prototype.addChild = originalAddChild;
+      restore();
+    }
+  });
+
+  test("keeps dense native rows aligned with their original mouse hit areas", () => {
+    restores.push(installConversationDensity());
+    const chat = new Container();
+    const first = tool("first");
+    const toggleHits: Array<{ y: number; height: number }> = [];
+    const second = tool("second");
+    (second as Component).handleMouse = (event) => {
+      toggleHits.push({ y: event.y, height: event.height });
+      return { handled: true };
+    };
+    const firstUser = new UserMessageComponent("copy user one");
+    const userHits: Array<{ y: number; height: number }> = [];
+    const secondUser = new UserMessageComponent("copy user two");
+    (secondUser as Component).handleMouse = (event) => {
+      userHits.push({ y: event.y, height: event.height });
+      return { handled: true };
+    };
+    const assistantHits: Array<{ y: number; height: number }> = [];
+    const answer = assistant("copy assistant");
+    (answer as Component).handleMouse = (event) => {
+      assistantHits.push({ y: event.y, height: event.height });
+      return { handled: true };
+    };
+    add(chat, first, second, firstUser, secondUser, answer);
+
+    const rows = chat.render(80);
+    expect(plain(rows)).toEqual([
+      "",
+      " first",
+      " second",
+      "",
+      " copy user one",
+      "",
+      " copy user two",
+      "",
+      " copy assistant",
+    ]);
+    const event = {
+      type: "click",
+      button: "left",
+      x: 1,
+      y: 2,
+      screenX: 1,
+      screenY: 2,
+      width: 80,
+      height: rows.length,
+      shift: false,
+      alt: false,
+      ctrl: false,
+    } as const;
+    expect(chat.handleMouse(event)?.handled).toBe(true);
+    expect(toggleHits).toEqual([{ y: 1, height: 2 }]);
+    expect(chat.handleMouse({ ...event, y: 6, screenY: 6 })?.handled).toBe(true);
+    expect(userHits).toEqual([{ y: 1, height: 3 }]);
+    expect(chat.handleMouse({ ...event, y: 8, screenY: 8 })?.handled).toBe(true);
+    expect(assistantHits).toEqual([{ y: 1, height: 2 }]);
   });
 });
