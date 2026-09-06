@@ -2,6 +2,9 @@
 export const DIAGNOSTIC_ENTRY_TYPE = "die-diagnostic";
 
 export const DIAGNOSTIC_CODES = [
+  "cache_correlation_unavailable",
+  "cache_observation_recorded",
+  "provider_attempt_observed",
   "CHILD_IDENTITY_INVALID",
   "JOBS_LIFECYCLE_WRITE_FAILED",
   "JOBS_OPERATION_DISPATCH",

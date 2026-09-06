@@ -537,7 +537,11 @@ test("real AgentSession ModelRuntime guard survives swallowed hook throws and st
     expect(last.errorMessage).toContain("late service-tier mutation");
     const diagnostic = inspectDiagnostics(manager).records.at(-1)!;
     expect(diagnostic).toMatchObject({ code: FAST_GUARD_TIER_MUTATION, outcome: "blocked", dispatch: "none" });
-    expect(Object.keys(diagnostic).filter((key) => key !== "version" && key !== "generated").sort()).toEqual(["code", "component", "dispatch", "operationId", "outcome"]);
+    expect(
+      Object.keys(diagnostic)
+        .filter((key) => key !== "version" && key !== "generated")
+        .sort(),
+    ).toEqual(["code", "component", "dispatch", "operationId", "outcome"]);
     expect(JSON.stringify(diagnostic)).not.toContain("swallowed late hook failure");
   } finally {
     session?.dispose();

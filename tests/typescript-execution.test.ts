@@ -264,5 +264,11 @@ test("execute shutdown cancellation is classified and a new session receives a f
   handlers.get("session_start")!();
   const result = await tool.execute("fresh", { code: "console.log(2)" }, undefined, undefined, ctx);
   expect(result.details.stdout.trim()).toBe("2");
-  expect(result.details.diagnostics).toContainEqual({ component: "jobs", code: "process_exit", outcome: "success" });
+  expect(result.details.diagnostics).toContainEqual({
+    version: 1,
+    generated: expect.any(String),
+    component: "jobs",
+    code: "process_exit",
+    outcome: "success",
+  });
 });

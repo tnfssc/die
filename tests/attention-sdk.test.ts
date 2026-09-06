@@ -130,10 +130,10 @@ test("real SDK print session keeps repeated attention boundaries subscription-bo
     expect(Date.now() - started).toBeGreaterThanOrEqual(10);
     expect(calls).toBeGreaterThanOrEqual(8);
     expect(JSON.stringify(session.messages)).toContain("attention checkpoint");
-    // One permanent scheduler subscription plus one disposable agent_end wait.
+    // Permanent scheduler and lifecycle-index subscriptions, plus one disposable agent_end wait.
     expect(subscriptionCalls).toBeGreaterThanOrEqual(6);
-    expect(maxSubscriptions).toBe(2);
-    expect(activeSubscriptions).toBe(1);
+    expect(maxSubscriptions).toBe(3);
+    expect(activeSubscriptions).toBe(2);
     expect(waitCalls).toBe(0);
   } finally {
     session?.dispose();

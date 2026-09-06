@@ -9,3 +9,5 @@ The recorder retains 100 recent entries in memory, deduplicates durable records,
 Optional logger failures must not throw onto inference paths, cause provider retries, or replace the original operation failure. Dispatch initiation is not proof of network transmission or billing. Existing usage records remain the cost authority; diagnostic metadata does not add a second charge.
 
 Session-bound asynchronous work must capture diagnosticRecorder(owner) when it begins, rather than resolving a recorder after a session switch. The recorder invalidates stale attachment generations. Shutdown diagnostics remain available to later lifecycle listeners; startup reattaches the next generation.
+
+Job ownership also has a protected, session-bound index at <session-file>.jobs.jsonl. It retains newest lifecycle records within 2 MiB, including termination causes and child-session pointers but no commands, prompts, or output. It does not reattach historical jobs to jobs.inspect; abrupt host death before a record is written remains unobservable.
