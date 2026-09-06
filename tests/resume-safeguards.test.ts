@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
-import { registerResumeSafeguards, readSessionRole } from "../src/tasks/resume-safeguards";
 import { prepareAgentSession } from "../src/tasks/agent-session";
+import { readSessionRole, registerResumeSafeguards } from "../src/tasks/resume-safeguards";
 
 test("durable agent metadata drives picker labels and deliberate child confirmation", async () => {
   const dir = await mkdtemp(join(tmpdir(), "die-resume-role-"));
@@ -204,6 +204,25 @@ test("malformed roles stay unknown and task IDs are safe and bounded", async () 
     expect(await readSessionRole(unknown)).toEqual({ kind: "unknown" });
     expect(await readSessionRole(missing)).toEqual({ kind: "unknown" });
     expect(await readSessionRole(broken)).toEqual({ kind: "unknown" });
+    const unknownHandlers = new Map<string, Function>();
+    let unknownPrompt = "";
+    registerResumeSafeguards({ on: (event: string, handler: Function) => unknownHandlers.set(event, handler) } as any);
+    expect(
+      await unknownHandlers.get("session_before_switch")?.(
+        { reason: "resume", targetSessionFile: broken },
+        {
+          mode: "tui",
+          ui: {
+            confirm: async (title: string, detail: string) => {
+              unknownPrompt = title + "\n" + detail;
+              return false;
+            },
+          },
+        },
+      ),
+    ).toEqual({ cancel: true });
+    expect(unknownPrompt).toContain("unverified session");
+    expect(unknownPrompt).toContain("root privileges cannot be established");
     const role = await readSessionRole(safe);
     expect(role.kind).toBe("orchestrator");
     expect(role.taskId?.length).toBeLessThanOrEqual(80);

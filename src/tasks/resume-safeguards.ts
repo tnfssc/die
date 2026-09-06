@@ -156,12 +156,23 @@ export function registerResumeSafeguards(pi: ExtensionAPI): void {
   pi.on("session_before_switch", async (event, ctx) => {
     if (event.reason !== "resume" || !event.targetSessionFile || ctx.mode !== "tui") return;
     const role = await readSessionRole(event.targetSessionFile);
-    if (role.kind === "root" || role.kind === "unknown") return;
-    const identity = role.kind === "orchestrator" ? "orchestrator child" : "worker child (" + role.type + ")";
+    if (role.kind === "root") return;
+    // Unknown is deliberately gated: unreadable or malformed child metadata must
+    // never be treated as proof that a session is unrestricted root state.
+    const identity =
+      role.kind === "unknown"
+        ? "unverified session"
+        : role.kind === "orchestrator"
+          ? "orchestrator child"
+          : "worker child (" + role.type + ")";
     const detail = [
-      "This session has delegated-agent restrictions.",
+      role.kind === "unknown"
+        ? "Session identity metadata is unreadable or invalid; root privileges cannot be established."
+        : "This session has delegated-agent restrictions.",
       role.taskId ? "Task: " + role.taskId : undefined,
-      "Resume it deliberately rather than its root session.",
+      role.kind === "unknown"
+        ? "Resume only if you intend to preserve the process environment restrictions."
+        : "Resume it deliberately rather than its root session.",
     ]
       .filter(Boolean)
       .join("\n");
