@@ -1,19 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { inspectDiagnostics } from "../src/diagnostics";
 import type { Model } from "@earendil-works/pi-ai";
 import { convertResponsesMessages } from "@earendil-works/pi-ai/api/openai-responses-shared";
-import { SessionManager, buildSessionContext } from "@earendil-works/pi-coding-agent";
+import { buildSessionContext, SessionManager } from "@earendil-works/pi-coding-agent";
+import { inspectDiagnostics } from "../src/diagnostics";
 import {
   adaptNativeCompactionMessages,
   buildCodexCompactionHeaders,
   buildNativeCodexRequest,
   NATIVE_CODEX_SUMMARY,
-  parseNativeCodexEvents,
-  requestNativeCodexCompaction,
-  registerNativeCodexCompaction,
-  resolveCodexResponsesUrl,
   type NativeCodexCompactionDetails,
+  parseNativeCodexEvents,
+  registerNativeCodexCompaction,
+  requestNativeCodexCompaction,
+  resolveCodexResponsesUrl,
 } from "../src/tasks/native-compaction";
+import { subscribeProviderAttempts } from "../src/tasks/provider-attempts";
 
 const model: Model<any> = {
   id: "gpt-test",
@@ -555,6 +556,71 @@ describe("fail-closed checkpoint lifecycle", () => {
       globalThis.fetch = oldFetch;
     }
   });
+  test("refreshes observers only after native HTTP success and isolates observer failures", async () => {
+    const manager = SessionManager.inMemory();
+    manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });
+    const h = harness(manager, model);
+    h.ctx.modelRegistry.getApiKeyAndHeaders = async () => ({
+      ok: true,
+      headers: { Authorization: "Bearer hidden", "chatgpt-account-id": "acct" },
+    });
+    h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+    h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+    h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+    const observed: Array<{ observedAt: string; operationId: string }> = [];
+    const unsubscribeThrowing = subscribeProviderAttempts(manager, () => {
+      throw new Error("private observer failure");
+    });
+    const unsubscribe = subscribeProviderAttempts(manager, (event) => observed.push(event));
+    const branch = manager.getBranch();
+    const compactEvent = () => ({
+      type: "session_before_compact",
+      branchEntries: branch,
+      signal: new AbortController().signal,
+      preparation: {
+        firstKeptEntryId: branch[0].id,
+        messagesToSummarize: [],
+        turnPrefixMessages: [],
+        tokensBefore: 10,
+        fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+        settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+      },
+    });
+    const item = { type: "compaction", id: "cmp_observed", encrypted_content: "opaque" };
+    const oldFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = (async () =>
+        new Response(
+          [
+            { type: "response.output_item.done", item },
+            {
+              type: "response.completed",
+              response: { status: "completed", output: [item], usage: { input_tokens: 4, output_tokens: 1 } },
+            },
+          ]
+            .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+            .join(""),
+          { status: 200 },
+        )) as any;
+      expect(await h.handlers.get("session_before_compact")!(compactEvent(), h.ctx)).toHaveProperty("compaction");
+      expect(observed.map((event) => event.observedAt)).toEqual(["dispatch", "response"]);
+      expect(new Set(observed.map((event) => event.operationId)).size).toBe(1);
+
+      observed.length = 0;
+      globalThis.fetch = (async () => new Response("rate limited", { status: 429 })) as any;
+      expect(await h.handlers.get("session_before_compact")!(compactEvent(), h.ctx)).toEqual({ cancel: true });
+      expect(observed.map((event) => event.observedAt)).toEqual(["dispatch"]);
+      const rejection = inspectDiagnostics(manager).records.at(-1);
+      expect(rejection).toMatchObject({ code: "http_rejected", dispatch: "response", httpStatus: 429 });
+      expect(rejection?.operationId).toBe(observed[0]?.operationId);
+      expect(JSON.stringify(h.notifications)).not.toContain("private observer failure");
+    } finally {
+      unsubscribe();
+      unsubscribeThrowing();
+      globalThis.fetch = oldFetch;
+    }
+  });
+
   test("constructs provider-equivalent OAuth and cache headers", () => {
     const claim = Buffer.from(
         JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-jwt" } }),

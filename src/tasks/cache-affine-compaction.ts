@@ -1,21 +1,20 @@
-import { adjustMaxTokensForThinking } from "@earendil-works/pi-ai/api/simple-options";
-import prefixScopeTemplate from "../prompts/compaction-prefix-scope.md" with { type: "text" };
-import wholeScopeTemplate from "../prompts/compaction-whole-scope.md" with { type: "text" };
-import { withStandardProviderTier } from "./native-fast-mode";
-import { recordDiagnostic } from "../diagnostics.js";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, Message, Model, Tool } from "@earendil-works/pi-ai";
+import { adjustMaxTokensForThinking } from "@earendil-works/pi-ai/api/simple-options";
 import {
   buildSessionContext,
   convertToLlm,
-  estimateTokens,
   type ExtensionAPI,
   type ExtensionContext,
+  estimateTokens,
   type SessionBeforeCompactEvent,
 } from "@earendil-works/pi-coding-agent";
+import { recordDiagnostic } from "../diagnostics.js";
 import promptTemplate from "../prompts/compaction.md" with { type: "text" };
-
 import jobsTemplate from "../prompts/compaction-jobs.md" with { type: "text" };
+import prefixScopeTemplate from "../prompts/compaction-prefix-scope.md" with { type: "text" };
+import wholeScopeTemplate from "../prompts/compaction-whole-scope.md" with { type: "text" };
+import { withStandardProviderTier } from "./native-fast-mode";
 
 export const CACHE_AFFINE_COMPACTION_VERSION = 4;
 
@@ -413,17 +412,13 @@ export function isUsableSummaryResponse(response: AssistantMessage): boolean {
   return textOf(response).length > 0;
 }
 
-function requiredCompactionDiagnostic(
+function bestEffortCompactionDiagnostic(
   ctx: ExtensionContext,
   diagnostic: Parameters<typeof recordDiagnostic>[1],
-): boolean {
+): void {
   try {
     recordDiagnostic(ctx.sessionManager, diagnostic);
-    return true;
-  } catch {
-    ctx.ui?.notify?.("Compaction diagnostic checkpoint could not be written; compaction cancelled.", "error");
-    return false;
-  }
+  } catch {}
 }
 
 export function registerCacheAffineCompaction(
@@ -490,7 +485,7 @@ export function registerCacheAffineCompaction(
             }
           : undefined;
     if (event.signal.aborted) {
-      requiredCompactionDiagnostic(ctx, {
+      bestEffortCompactionDiagnostic(ctx, {
         component: "compaction",
         code: "caller_aborted",
         outcome: "cancelled",
@@ -501,7 +496,7 @@ export function registerCacheAffineCompaction(
       return { cancel: true };
     }
     if (!captured || !sameIdentity(captured, event, ctx)) {
-      requiredCompactionDiagnostic(ctx, {
+      bestEffortCompactionDiagnostic(ctx, {
         component: "compaction",
         code: "identity_stale",
         outcome: "blocked",
@@ -520,7 +515,7 @@ export function registerCacheAffineCompaction(
       current = await prepareCurrentConversation(event, ctx, captured);
     } catch {
       if (event.signal.aborted) {
-        requiredCompactionDiagnostic(ctx, {
+        bestEffortCompactionDiagnostic(ctx, {
           component: "compaction",
           code: "caller_aborted",
           outcome: "cancelled",
@@ -530,7 +525,7 @@ export function registerCacheAffineCompaction(
         });
         return { cancel: true };
       }
-      requiredCompactionDiagnostic(ctx, {
+      bestEffortCompactionDiagnostic(ctx, {
         component: "compaction",
         code: "preparation_failed",
         outcome: "blocked",
@@ -545,7 +540,7 @@ export function registerCacheAffineCompaction(
       return { cancel: true };
     }
     if (event.signal.aborted) {
-      requiredCompactionDiagnostic(ctx, {
+      bestEffortCompactionDiagnostic(ctx, {
         component: "compaction",
         code: "caller_aborted",
         outcome: "cancelled",
@@ -557,7 +552,7 @@ export function registerCacheAffineCompaction(
     }
     if (!current) {
       const reason = "this Pi runtime has no current-context preparation seam";
-      requiredCompactionDiagnostic(ctx, {
+      bestEffortCompactionDiagnostic(ctx, {
         component: "compaction",
         code: "preparation_failed",
         outcome: "blocked",
@@ -573,7 +568,7 @@ export function registerCacheAffineCompaction(
     }
     const prepared = prepareCacheAffineRequest(captured, event, current);
     if (!("request" in prepared)) {
-      requiredCompactionDiagnostic(ctx, {
+      bestEffortCompactionDiagnostic(ctx, {
         component: "compaction",
         code:
           prepared.reason === "the prepared summary scope is empty" ? "capacity_insufficient" : "capacity_insufficient",
@@ -597,7 +592,7 @@ export function registerCacheAffineCompaction(
       captured.model.contextWindow - request.estimatedInputTokens - (current.thinkingBudget ?? 0) - 256,
     );
     if (answerTokens < 1024) {
-      requiredCompactionDiagnostic(ctx, {
+      bestEffortCompactionDiagnostic(ctx, {
         component: "compaction",
         code: "capacity_insufficient",
         outcome: "blocked",
@@ -668,7 +663,7 @@ export function registerCacheAffineCompaction(
       paidResponse = response;
       if (event.signal.aborted) {
         recordFailedUsage();
-        requiredCompactionDiagnostic(ctx, {
+        bestEffortCompactionDiagnostic(ctx, {
           component: "compaction",
           code: "caller_aborted",
           outcome: "cancelled",
@@ -679,7 +674,7 @@ export function registerCacheAffineCompaction(
         return { cancel: true };
       }
       if (!payloadAccepted && prefixRejection) {
-        requiredCompactionDiagnostic(ctx, {
+        bestEffortCompactionDiagnostic(ctx, {
           component: "provider",
           code: "capacity_insufficient",
           outcome: "blocked",
@@ -695,7 +690,7 @@ export function registerCacheAffineCompaction(
       }
       if (!isUsableSummaryResponse(response)) {
         recordFailedUsage();
-        requiredCompactionDiagnostic(ctx, {
+        bestEffortCompactionDiagnostic(ctx, {
           component: "provider",
           code: "response_invalid",
           outcome: response.stopReason === "aborted" ? "cancelled" : "failed",
@@ -741,7 +736,7 @@ export function registerCacheAffineCompaction(
       recordFailedUsage();
       const callerCancelled = event.signal.aborted;
       if (prefixRejection && !payloadAccepted && !callerCancelled) {
-        requiredCompactionDiagnostic(ctx, {
+        bestEffortCompactionDiagnostic(ctx, {
           component: "provider",
           code: "capacity_insufficient",
           outcome: "blocked",
@@ -755,7 +750,7 @@ export function registerCacheAffineCompaction(
         );
         return { cancel: true };
       }
-      requiredCompactionDiagnostic(ctx, {
+      bestEffortCompactionDiagnostic(ctx, {
         component: "provider",
         code: callerCancelled ? "caller_aborted" : payloadAccepted ? "provider_failed" : "provider_failed",
         outcome: callerCancelled ? "cancelled" : "failed",

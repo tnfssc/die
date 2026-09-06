@@ -1,11 +1,7 @@
-import { getPiUserAgent } from "@earendil-works/pi-ai/utils/pi-user-agent";
 import { isDeepStrictEqual } from "node:util";
-import noticeTemplate from "../prompts/native-compaction.md" with { type: "text" };
-import jobsTemplate from "../prompts/compaction-jobs.md" with { type: "text" };
-import { reportProviderAttempt } from "./provider-attempts";
-import { recordDiagnostic } from "../diagnostics.js";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { calculateCost, type Model, type Usage } from "@earendil-works/pi-ai";
+import { getPiUserAgent } from "@earendil-works/pi-ai/utils/pi-user-agent";
 import type {
   CompactionEntry,
   CompactionResult,
@@ -13,6 +9,10 @@ import type {
   ExtensionContext,
   SessionBeforeCompactEvent,
 } from "@earendil-works/pi-coding-agent";
+import { recordDiagnostic } from "../diagnostics.js";
+import jobsTemplate from "../prompts/compaction-jobs.md" with { type: "text" };
+import noticeTemplate from "../prompts/native-compaction.md" with { type: "text" };
+import { reportProviderAttempt } from "./provider-attempts";
 
 export const NATIVE_CODEX_COMPACTION_VERSION = 1;
 export const NATIVE_CODEX_SUMMARY = noticeTemplate.trimEnd();
@@ -517,14 +517,21 @@ function nativeFallbackCode(
   if (!coversDiscardedMessages(request, event)) return "coverage_incomplete";
 }
 
-function requiredDiagnostic(ctx: ExtensionContext, diagnostic: Parameters<typeof recordDiagnostic>[1]): boolean {
+function bestEffortDiagnostic(ctx: ExtensionContext, diagnostic: Parameters<typeof recordDiagnostic>[1]): void {
   try {
     recordDiagnostic(ctx.sessionManager, diagnostic);
-    return true;
-  } catch {
-    ctx.ui?.notify?.("Compaction diagnostic checkpoint could not be written; compaction cancelled.", "error");
-    return false;
-  }
+  } catch {}
+}
+
+function bestEffortProviderObservation(
+  ctx: ExtensionContext,
+  model: Pick<Model<any>, "provider" | "id">,
+  observedAt: "dispatch" | "response",
+  operationId: ReturnType<typeof crypto.randomUUID>,
+): void {
+  try {
+    reportProviderAttempt(ctx.sessionManager as object, model, observedAt, Date.now(), operationId);
+  } catch {}
 }
 
 function persistBillableUsage(
@@ -670,7 +677,7 @@ export function registerNativeCodexCompaction(
     const existing = nativeEntriesInContext(ctx);
     if (ctx.model?.api !== "openai-codex-responses") {
       if (existing.length) {
-        requiredDiagnostic(ctx, {
+        bestEffortDiagnostic(ctx, {
           component: "compaction",
           code: "opaque_checkpoint",
           outcome: "blocked",
@@ -686,7 +693,7 @@ export function registerNativeCodexCompaction(
     const request = captured;
     if (event.customInstructions?.trim()) {
       if (existing.length) {
-        requiredDiagnostic(ctx, {
+        bestEffortDiagnostic(ctx, {
           component: "compaction",
           code: "custom_instructions",
           outcome: "blocked",
@@ -700,16 +707,13 @@ export function registerNativeCodexCompaction(
         );
         return { cancel: true };
       }
-      if (
-        !requiredDiagnostic(ctx, {
-          component: "compaction",
-          code: "custom_instructions",
-          outcome: "fallback",
-          operationId,
-          dispatch: "none",
-        })
-      )
-        return { cancel: true };
+      bestEffortDiagnostic(ctx, {
+        component: "compaction",
+        code: "custom_instructions",
+        outcome: "fallback",
+        operationId,
+        dispatch: "none",
+      });
       captured = undefined;
       ctx.ui?.notify?.(
         "Codex native compaction does not support custom instructions; trying cache-affine plaintext compaction.",
@@ -720,17 +724,14 @@ export function registerNativeCodexCompaction(
     const fallbackCode = nativeFallbackCode(request, captureInvalidated, event, ctx);
     if (fallbackCode) {
       const outcome = existing.length ? "blocked" : "fallback";
-      if (
-        !requiredDiagnostic(ctx, {
-          component: "compaction",
-          code: fallbackCode,
-          outcome,
-          operationId,
-          dispatch: "none",
-          ...(existing.length ? { cancellation: "safety" as const } : {}),
-        })
-      )
-        return { cancel: true };
+      bestEffortDiagnostic(ctx, {
+        component: "compaction",
+        code: fallbackCode,
+        outcome,
+        operationId,
+        dispatch: "none",
+        ...(existing.length ? { cancellation: "safety" as const } : {}),
+      });
       if (existing.length) {
         ctx.ui?.notify?.(
           "No safe native request covers every message that would be discarded; opaque checkpoint preserved and compaction cancelled.",
@@ -762,7 +763,7 @@ export function registerNativeCodexCompaction(
     try {
       const resolved = await ctx.modelRegistry.getApiKeyAndHeaders(readyRequest.model);
       if (!resolved.ok) {
-        requiredDiagnostic(ctx, {
+        bestEffortDiagnostic(ctx, {
           component: "provider",
           code: "provider_failed",
           outcome: "failed",
@@ -782,7 +783,7 @@ export function registerNativeCodexCompaction(
             ([name, current]) => name.toLowerCase() === key.toLowerCase() && current === value,
           )
         ) {
-          requiredDiagnostic(ctx, {
+          bestEffortDiagnostic(ctx, {
             component: "provider",
             code: "identity_stale",
             outcome: "blocked",
@@ -808,13 +809,16 @@ export function registerNativeCodexCompaction(
         signal: event.signal,
         onDispatch: (model) => {
           dispatch = "initiated";
-          reportProviderAttempt(ctx.sessionManager as object, model, "dispatch", Date.now(), operationId);
+          bestEffortProviderObservation(ctx, model, "dispatch", operationId);
         },
       });
       dispatch = "response";
+      // A successful native HTTP response refreshes the same provider cache as
+      // ordinary traffic. Rejections and transport failures never reach here.
+      bestEffortProviderObservation(ctx, readyRequest.model, "response", operationId);
       if (event.signal.aborted) {
         persistBillableUsage(pi, ctx, native.usage, "cancelled", operationId);
-        requiredDiagnostic(ctx, {
+        bestEffortDiagnostic(ctx, {
           component: "compaction",
           code: "caller_aborted",
           outcome: "cancelled",
@@ -856,7 +860,7 @@ export function registerNativeCodexCompaction(
       const providerCancelled = error instanceof NativeCodexResponseError && error.message.includes("was cancelled");
       const cancelled = callerCancelled || providerCancelled;
       persistBillableUsage(pi, ctx, usage, cancelled ? "cancelled" : "failed", operationId);
-      requiredDiagnostic(ctx, {
+      bestEffortDiagnostic(ctx, {
         component: "provider",
         code: callerCancelled
           ? "caller_aborted"
