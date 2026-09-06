@@ -1,6 +1,8 @@
 import { CustomEditor } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, type TuiMouseEvent, type TuiMouseEventResult } from "@earendil-works/pi-tui";
 
+export const IDLE_PROMPT_ICON = ""; // nf-oct-chevron_right, U+F460
+
 /** Borderless presentation; all editing, IME, paste and app shortcuts stay in Pi. */
 export class CompactEditor extends CustomEditor {
   private bodyRows = 1;
@@ -30,14 +32,11 @@ export class CompactEditor extends CustomEditor {
 
   override render(width: number): string[] {
     if (width < 1) return [];
-    this.gutter = width > 2 && this.indicator ? 2 : 0;
-    let lines = super.render(width - this.gutter);
-    // Idle input starts at column zero. Reserve a gutter only for a working
-    // spinner or scroll indicators when part of a long draft is hidden.
-    if (!this.gutter && width > 2 && (this.above || this.below)) {
-      this.gutter = 2;
-      lines = super.render(width - this.gutter);
-    }
+    // Keep input, cursor, and autocomplete columns fixed while the idle
+    // chevron is replaced by the working spinner. At two columns or fewer,
+    // prioritize editable content over decoration.
+    this.gutter = width > 2 ? 2 : 0;
+    const lines = super.render(width - this.gutter);
     // Pi's border hooks delimit input and autocomplete. Drop only those two
     // rows, not the last row (which may belong to an autocomplete menu).
     const bottom = lines.indexOf("", 1);
@@ -48,7 +47,8 @@ export class CompactEditor extends CustomEditor {
         let prefix = " ";
         if (index === 0) {
           prefix =
-            this.indicator?.renderSpinnerInBorder(1) || this.borderColor(this.above ? (this.below ? "↕" : "↑") : " ");
+            this.indicator?.renderSpinnerInBorder(1) ||
+            this.borderColor(this.above ? (this.below ? "↕" : "↑") : IDLE_PROMPT_ICON);
         } else if (index === this.bodyRows - 1 && this.below) {
           prefix = this.borderColor("↓");
         }
