@@ -11,6 +11,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import tasks from "../src/tasks/extension";
+import { buildShakePlan, MANUAL_SHAKE_ENTRY, registerManualShake } from "../src/tasks/manual-shake";
 
 const smallUsage = {
   input: 20,
@@ -60,6 +61,18 @@ function response(text: string, usage = smallUsage): ReturnType<typeof createAss
   stream.push({ type: "done", reason: "stop", message });
   stream.end(message);
   return stream;
+}
+
+function sseForShakeTest(): Response {
+  const response = {
+    status: "completed",
+    output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: "ok", annotations: [] }] }],
+    usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2, input_tokens_details: { cached_tokens: 0 } },
+  };
+  return new Response(`data: ${JSON.stringify({ type: "response.completed", response })}\n\n`, {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
 }
 
 function errorResponse(messageText: string): ReturnType<typeof createAssistantMessageEventStream> {
@@ -344,3 +357,84 @@ test("actual SDK uses post-shake context for pre-request automatic compaction th
     await rm(dir, { recursive: true, force: true });
   }
 }, 10_000);
+
+test("actual SDK aborts provider dispatch after a carry-forward persistence failure", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-shake-failclosed-"));
+  let session: any;
+  const originalFetch = globalThis.fetch;
+  try {
+    const manager = SessionManager.inMemory(dir);
+    manager.appendMessage({ role: "user", content: "task", timestamp: 1 });
+    appendTrace(manager, "carry", "secret result");
+    manager.appendCustomEntry(
+      MANUAL_SHAKE_ENTRY,
+      buildShakePlan(manager.buildContextEntries(), manager.getSessionId()).record,
+    );
+    const runtime = await ModelRuntime.create({
+      authPath: join(dir, "auth.json"),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    runtime.hasConfiguredAuth = () => true;
+    runtime.getAuth = (async () => ({ auth: { apiKey: "offline-key" } })) as any;
+    const loader = new DefaultResourceLoader({
+      cwd: dir,
+      agentDir: dir,
+      noExtensions: true,
+      noSkills: true,
+      noThemes: true,
+      noPromptTemplates: true,
+      extensionFactories: [
+        {
+          name: "shake-failure",
+          factory: (pi) =>
+            registerManualShake(
+              new Proxy(pi as any, {
+                get(target, property, receiver) {
+                  if (property !== "appendEntry") return Reflect.get(target, property, receiver);
+                  return (type: string, data: any) => {
+                    target.appendEntry(type, data);
+                    throw new Error("simulated persistence failure");
+                  };
+                },
+              }),
+            ),
+        },
+      ],
+    });
+    await loader.reload();
+    ({ session } = await createAgentSession({
+      cwd: dir,
+      agentDir: dir,
+      resourceLoader: loader,
+      model: getModel("openai", "gpt-4o"),
+      modelRuntime: runtime,
+      sessionManager: manager,
+      settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
+      tools: ["execute"],
+    }));
+    await session.bindExtensions({ mode: "print" });
+    const priorLeaf = manager.getLeafId();
+    await session._extensionRunner.emit({
+      type: "session_compact",
+      compactionEntry: manager.getBranch().at(-1),
+      fromExtension: false,
+      reason: "manual",
+      willRetry: false,
+    });
+    expect(manager.getLeafId()).toBe(priorLeaf);
+    let dispatches = 0;
+    globalThis.fetch = (async () => {
+      dispatches++;
+      return sseForShakeTest();
+    }) as any;
+    await session.prompt("ordinary request");
+    expect(dispatches).toBe(0);
+    expect(session.messages.at(-1)?.stopReason).toBe("error");
+    expect(session.messages.at(-1)?.errorMessage).toContain("Refusing to expose context");
+  } finally {
+    session?.dispose();
+    globalThis.fetch = originalFetch;
+    await rm(dir, { recursive: true, force: true });
+  }
+});

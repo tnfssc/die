@@ -621,6 +621,107 @@ describe("fail-closed checkpoint lifecycle", () => {
     }
   });
 
+  test("session changes during deferred credentials prevent fetch and new-session observations", async () => {
+    const manager = SessionManager.inMemory();
+    manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });
+    const h = harness(manager, model);
+    let resolveCredentials!: (value: any) => void;
+    h.ctx.modelRegistry.getApiKeyAndHeaders = () => new Promise((resolve) => (resolveCredentials = resolve));
+    h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+    h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+    h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+    const branch = manager.getBranch();
+    const event: any = {
+      type: "session_before_compact",
+      branchEntries: branch,
+      signal: new AbortController().signal,
+      preparation: {
+        firstKeptEntryId: branch[0].id,
+        messagesToSummarize: [],
+        turnPrefixMessages: [],
+        tokensBefore: 10,
+        fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+        settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+      },
+    };
+    let fetches = 0;
+    const oldFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      fetches++;
+      throw new Error("must not fetch");
+    }) as any;
+    const pending = h.handlers.get("session_before_compact")!(event, h.ctx);
+    await Promise.resolve();
+    manager.newSession();
+    h.handlers.get("session_start")!({ type: "session_start" }, h.ctx);
+    const observed: any[] = [];
+    const unsubscribe = subscribeProviderAttempts(manager, (value) => observed.push(value));
+    try {
+      resolveCredentials({ ok: true, headers: { Authorization: "Bearer hidden", "chatgpt-account-id": "acct" } });
+      expect(await pending).toEqual({ cancel: true });
+      expect(fetches).toBe(0);
+      expect(observed).toEqual([]);
+      expect(inspectDiagnostics(manager).records).toEqual([]);
+    } finally {
+      unsubscribe();
+      globalThis.fetch = oldFetch;
+    }
+  });
+
+  test("session changes during deferred HTTP prevent a checkpoint in the new session", async () => {
+    const manager = SessionManager.inMemory();
+    manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });
+    const h = harness(manager, model);
+    h.ctx.modelRegistry.getApiKeyAndHeaders = async () => ({
+      ok: true,
+      headers: { Authorization: "Bearer hidden", "chatgpt-account-id": "acct" },
+    });
+    h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+    h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+    h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+    const branch = manager.getBranch();
+    const event: any = {
+      type: "session_before_compact",
+      branchEntries: branch,
+      signal: new AbortController().signal,
+      preparation: {
+        firstKeptEntryId: branch[0].id,
+        messagesToSummarize: [],
+        turnPrefixMessages: [],
+        tokensBefore: 10,
+        fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+        settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+      },
+    };
+    let resolveFetch!: (response: Response) => void;
+    const oldFetch = globalThis.fetch;
+    globalThis.fetch = (() => new Promise<Response>((resolve) => (resolveFetch = resolve))) as any;
+    const observed: any[] = [];
+    const unsubscribe = subscribeProviderAttempts(manager, (value) => observed.push(value));
+    try {
+      const pending = h.handlers.get("session_before_compact")!(event, h.ctx);
+      while (!resolveFetch) await Promise.resolve();
+      manager.newSession();
+      h.handlers.get("session_start")!({ type: "session_start" }, h.ctx);
+      const item = { type: "compaction", id: "cmp_stale", encrypted_content: "opaque" };
+      const body =
+        "data: " +
+        JSON.stringify({
+          type: "response.completed",
+          response: { status: "completed", output: [item], usage: { input_tokens: 4, output_tokens: 1 } },
+        }) +
+        "\n\n";
+      resolveFetch(new Response(body, { status: 200 }));
+      expect(await pending).toEqual({ cancel: true });
+      expect(observed.map((value) => value.observedAt)).toEqual(["dispatch"]);
+      expect(h.entries).toEqual([]);
+      expect(manager.getEntries()).toEqual([]);
+    } finally {
+      unsubscribe();
+      globalThis.fetch = oldFetch;
+    }
+  });
+
   test("constructs provider-equivalent OAuth and cache headers", () => {
     const claim = Buffer.from(
         JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acct-jwt" } }),

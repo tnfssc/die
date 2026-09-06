@@ -31,7 +31,73 @@ export const SHAKE_CARRY_FORWARD_PERSIST_FAILED = "state_write_failed";
 export const SHAKE_CARRY_FORWARD_SUCCEEDED = "shake_applied";
 export const SHAKE_INVALID_CHECKPOINT = "state_invalid";
 
-const projectionFailures = new WeakMap<object, Error>();
+const projectionFailures = new WeakMap<object, { sessionId: string; error: Error }>();
+function restoreLeaf(manager: ExtensionContext["sessionManager"], priorLeaf: string | null | undefined): void {
+  if (priorLeaf === undefined) return;
+  try {
+    const mutable = manager as unknown as { resetLeaf?: () => void; branch?: (id: string) => void };
+    if (priorLeaf === null) mutable.resetLeaf?.();
+    else mutable.branch?.(priorLeaf);
+  } catch {
+    // The owning operation remains failed closed.
+  }
+}
+type ShakeGuardController = { context?: ExtensionContext };
+type ShakeRuntimeSeam = { prepareRequest: (model: unknown, options?: Record<string, any>) => Promise<unknown> };
+type ShakeRuntimePatch = {
+  original: ShakeRuntimeSeam["prepareRequest"];
+  wrapper: ShakeRuntimeSeam["prepareRequest"];
+  controllers: Set<ShakeGuardController>;
+  ownDescriptor?: PropertyDescriptor;
+};
+const shakeRuntimePatches = new WeakMap<object, ShakeRuntimePatch>();
+function activeProjectionFailure(controller: ShakeGuardController, requestedSessionId: unknown): Error | undefined {
+  const ctx = controller.context;
+  if (!ctx || requestedSessionId !== ctx.sessionManager.getSessionId()) return;
+  const failure = projectionFailures.get(ctx.sessionManager as object);
+  return failure?.sessionId === requestedSessionId ? failure.error : undefined;
+}
+function attachShakeRequestGuard(runtime: unknown, controller: ShakeGuardController): void {
+  if (!runtime || typeof runtime !== "object") return;
+  const seam = runtime as ShakeRuntimeSeam;
+  if (typeof seam.prepareRequest !== "function") return;
+  const existing = shakeRuntimePatches.get(runtime);
+  if (existing) {
+    if (seam.prepareRequest === existing.wrapper) existing.controllers.add(controller);
+    return;
+  }
+  const original = seam.prepareRequest;
+  const patch: ShakeRuntimePatch = {
+    original,
+    wrapper: original,
+    controllers: new Set([controller]),
+    ownDescriptor: Object.getOwnPropertyDescriptor(runtime, "prepareRequest"),
+  };
+  patch.wrapper = async function (this: ShakeRuntimeSeam, model, options) {
+    const failure = [...patch.controllers]
+      .map((candidate) => activeProjectionFailure(candidate, options?.sessionId))
+      .find((value) => value !== undefined);
+    if (failure) throw failure;
+    return original.call(this, model, options);
+  };
+  try {
+    seam.prepareRequest = patch.wrapper;
+    if (seam.prepareRequest === patch.wrapper) shakeRuntimePatches.set(runtime, patch);
+  } catch {}
+}
+function detachShakeRequestGuard(runtime: object, controller: ShakeGuardController): void {
+  const patch = shakeRuntimePatches.get(runtime);
+  if (!patch) return;
+  patch.controllers.delete(controller);
+  if (patch.controllers.size) return;
+  const seam = runtime as ShakeRuntimeSeam;
+  if (seam.prepareRequest === patch.wrapper) {
+    if (patch.ownDescriptor) Object.defineProperty(runtime, "prepareRequest", patch.ownDescriptor);
+    else delete (runtime as { prepareRequest?: unknown }).prepareRequest;
+  }
+  shakeRuntimePatches.delete(runtime);
+}
+
 function shakeDiagnostic(
   ctx: ExtensionContext,
   code: string,
@@ -39,6 +105,7 @@ function shakeDiagnostic(
   operationId?: `${string}-${string}-${string}-${string}-${string}`,
   count?: number,
 ): void {
+  const priorLeaf = ctx.sessionManager.getLeafId();
   try {
     recordDiagnostic(ctx.sessionManager, {
       component: "shake",
@@ -50,6 +117,8 @@ function shakeDiagnostic(
     });
   } catch {
     // Diagnostics are observational and must never alter shake safety decisions.
+  } finally {
+    restoreLeaf(ctx.sessionManager, priorLeaf);
   }
 }
 
@@ -431,9 +500,23 @@ export function installShakeAccountingAdapter(): void {
 
 export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot: () => void = () => {}): void {
   installShakeAccountingAdapter();
+  const guardController: ShakeGuardController = {};
+  let boundRuntime: object | undefined;
+  const bindGuard = (ctx: ExtensionContext) => {
+    guardController.context = ctx;
+    const runtime = (ctx.modelRegistry as unknown as { runtime?: object } | undefined)?.runtime;
+    if (boundRuntime && boundRuntime !== runtime) detachShakeRequestGuard(boundRuntime, guardController);
+    boundRuntime = runtime;
+    attachShakeRequestGuard(runtime, guardController);
+  };
   pi.on("context", (event, ctx) => {
+    bindGuard(ctx);
     const carryFailure = projectionFailures.get(ctx.sessionManager as object);
-    if (carryFailure) throw carryFailure;
+    if (carryFailure?.sessionId === ctx.sessionManager.getSessionId()) {
+      ctx.abort?.();
+      throw carryFailure.error;
+    }
+    if (carryFailure) projectionFailures.delete(ctx.sessionManager as object);
     const entries = ctx.sessionManager.buildContextEntries();
     try {
       const record = latestShakeRecord(entries, ctx.sessionManager.getSessionId());
@@ -442,6 +525,16 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
       shakeDiagnostic(ctx, SHAKE_INVALID_CHECKPOINT, "blocked");
       throw error;
     }
+  });
+  pi.on("session_start", (_event, ctx) => {
+    projectionFailures.delete(ctx.sessionManager as object);
+    bindGuard(ctx);
+  });
+  pi.on("session_shutdown", (_event, ctx) => {
+    projectionFailures.delete(ctx.sessionManager as object);
+    if (boundRuntime) detachShakeRequestGuard(boundRuntime, guardController);
+    boundRuntime = undefined;
+    guardController.context = undefined;
   });
   // Compaction may hide the old marker while retaining some of its tail. Carry
   // only still-active IDs; an empty projection needs no marker after the summary.
@@ -463,6 +556,7 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
       projectionFailures.delete(ctx.sessionManager as object);
       return;
     }
+    const priorLeaf = ctx.sessionManager.getLeafId();
     try {
       pi.appendEntry(MANUAL_SHAKE_ENTRY, record);
       projectionFailures.delete(ctx.sessionManager as object);
@@ -474,10 +568,11 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
         record.assistantEntryIds.length + record.toolResultEntryIds.length,
       );
     } catch {
+      restoreLeaf(ctx.sessionManager, priorLeaf);
       const failure = new Error(
         "Manual-shake checkpoint could not be carried forward after compaction. Refusing to expose context until the session is reloaded or a checkpoint is persisted.",
       );
-      projectionFailures.set(ctx.sessionManager as object, failure);
+      projectionFailures.set(ctx.sessionManager as object, { sessionId, error: failure });
       shakeDiagnostic(ctx, SHAKE_CARRY_FORWARD_PERSIST_FAILED, "failed", operationId);
       ctx.ui.notify(failure.message, "error");
     }
@@ -570,9 +665,11 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
       }
       const before = estimateContext(beforeMessages);
       const after = estimateContext(projected.messages);
+      const priorLeaf = ctx.sessionManager.getLeafId();
       try {
         pi.appendEntry(MANUAL_SHAKE_ENTRY, plan.record);
       } catch {
+        restoreLeaf(ctx.sessionManager, priorLeaf);
         shakeDiagnostic(ctx, SHAKE_CHECKPOINT_PERSIST_FAILED, "failed", operationId);
         ctx.ui.notify(
           "Shake refused: the projection checkpoint could not be persisted; no context was changed.",

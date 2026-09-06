@@ -512,7 +512,8 @@ describe("manual shake diagnostic persistence guards", () => {
       {
         on: (name: string, fn: Function) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
         registerCommand: (_name: string, value: any) => (command = value),
-        appendEntry: () => {
+        appendEntry: (type: string, data: any) => {
+          manager.appendCustomEntry(type, data);
           throw new Error("sensitive storage detail");
         },
       } as any,
@@ -524,7 +525,9 @@ describe("manual shake diagnostic persistence guards", () => {
       hasPendingMessages: () => false,
       ui: { notify: (message: string) => notices.push(message) },
     };
+    const priorLeaf = manager.getLeafId();
     await command.handler("", ctx);
+    expect(manager.getLeafId()).toBe(priorLeaf);
     expect(invalidations).toBe(0);
     expect(latestShakeRecord(manager.buildContextEntries(), manager.getSessionId())).toBeUndefined();
     expect(notices.at(-1)).toContain("checkpoint could not be persisted");
@@ -548,18 +551,47 @@ describe("manual shake diagnostic persistence guards", () => {
     registerManualShake({
       on: (name: string, fn: Function) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
       registerCommand() {},
-      appendEntry: () => {
+      appendEntry: (type: string, data: any) => {
+        manager.appendCustomEntry(type, data);
         throw new Error("private disk path");
       },
     } as any);
     const ctx: any = { sessionManager: manager, ui: { notify: (message: string) => notices.push(message) } };
+    const priorLeaf = manager.getLeafId();
     handlers.get("session_compact")![0]!({}, ctx);
+    expect(manager.getLeafId()).toBe(priorLeaf);
     expect(notices.at(-1)).toContain("Refusing to expose context");
     expect(() => handlers.get("context")![0]!({ messages: manager.buildSessionContext().messages }, ctx)).toThrow(
       "Refusing to expose context",
     );
     expect(inspectDiagnostics(manager).records.at(-1)?.code).toBe(SHAKE_CARRY_FORWARD_PERSIST_FAILED);
     expect(JSON.stringify(inspectDiagnostics(manager))).not.toContain("private disk path");
+  });
+
+  test("carry failure is scoped to its session and cleared on session start", () => {
+    const manager = SessionManager.inMemory();
+    completed(manager, "old-session");
+    manager.appendCustomEntry(
+      MANUAL_SHAKE_ENTRY,
+      buildShakePlan(manager.buildContextEntries(), manager.getSessionId()).record,
+    );
+    const handlers = new Map<string, Function[]>();
+    registerManualShake({
+      on: (name: string, fn: Function) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
+      registerCommand() {},
+      appendEntry: () => {
+        throw new Error("disk");
+      },
+    } as any);
+    let aborts = 0;
+    const ctx: any = { sessionManager: manager, abort: () => aborts++, ui: { notify() {} } };
+    handlers.get("session_compact")![0]!({}, ctx);
+    expect(() => handlers.get("context")![0]!({ messages: manager.buildSessionContext().messages }, ctx)).toThrow();
+    expect(aborts).toBe(1);
+    manager.newSession();
+    handlers.get("session_start")![0]!({}, ctx);
+    expect(() => handlers.get("context")![0]!({ messages: [] }, ctx)).not.toThrow();
+    expect(aborts).toBe(1);
   });
 
   test("records static outcomes for opaque, ambiguous, stale, and successful decisions only", async () => {
