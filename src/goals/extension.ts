@@ -82,10 +82,15 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     const leaf = leafOf(ctx);
     if (!store || loadedManager !== manager || (leaf !== undefined && leaf !== loadedLeaf)) {
       const entries = ctx.sessionManager?.getBranch?.() ?? ctx.sessionManager?.getEntries() ?? [];
-      const candidate = new GoalStore((type, data) => {
-        pi.appendEntry(type, data);
-        loadedLeaf = leafOf(ctx);
-      }, entries);
+      const candidate = new GoalStore(
+        (type, data) => {
+          pi.appendEntry(type, data);
+          loadedLeaf = leafOf(ctx);
+        },
+        entries,
+        undefined,
+        manager,
+      );
       const branchChanged =
         !store || loadedManager !== manager || JSON.stringify(candidate.get()) !== JSON.stringify(store.get());
       loadedManager = manager;
@@ -139,7 +144,11 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
     jobsDirty = false;
     const statuses = goal.pendingJobIds!.map((id) => jobs.status(id));
     if (statuses.some((status) => status === "unavailable")) {
-      pause("Paused because waiting work is unavailable in this process");
+      const references = goal.pendingJobIds!.filter((id) => /^task_[A-Za-z0-9]{1,64}$/.test(id));
+      pause(
+        "Paused because waiting work is unavailable in this process" +
+          (references.length ? ". Job references: " + references.join(", ") : ""),
+      );
     } else if (statuses.some((status) => status === "finished")) {
       store!.update({ status: "active" });
       bumpGeneration();

@@ -1,3 +1,5 @@
+import { createTaskLifecycleRecorder } from "./task-lifecycle";
+import { attachDiagnosticSink, recordDiagnostic } from "../diagnostics";
 import { subagentGuidance, collaborationGuidance, productSystemPrompt } from "../prompts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { CompletionBatcher } from "./completion-batcher";
@@ -86,10 +88,19 @@ export default function asynchronousTasksExtension(
   let agentType = environmentType;
   let canSpawnSubagent = canDelegate(subagentDepth, agentType);
   const instructionMode = registerInstructionMode(pi, () => subagentDepth === 0);
+  let identityDiagnosticSession: object | undefined;
+  let identityDiagnosticId: string | undefined;
   const restoreAgentIdentity = (ctx: ExtensionContext) => {
     const sessionManager = ctx.sessionManager as { getBranch?: () => any[]; getEntries?: () => any[] } | undefined;
-    const entries = sessionManager?.getBranch?.() ?? sessionManager?.getEntries?.() ?? [];
-    const entry = entries.find((entry) => entry.type === "custom" && entry.customType === "die-agent");
+    let entries: any[];
+    try {
+      entries = sessionManager?.getBranch?.() ?? sessionManager?.getEntries?.() ?? [];
+      if (!Array.isArray(entries)) throw new Error("Invalid session entries");
+    } catch {
+      // Unreadable metadata cannot establish root privileges either.
+      entries = [{ type: "custom", customType: "die-agent" }];
+    }
+    const entry = [...entries].reverse().find((entry) => entry.type === "custom" && entry.customType === "die-agent");
     const data = entry?.type === "custom" ? (entry.data as { type?: string; depth?: number } | undefined) : undefined;
     const validChild =
       data &&
@@ -103,6 +114,22 @@ export default function asynchronousTasksExtension(
       // processes intentionally remain free to traverse session identities.
       agentType = environmentDepth > 0 && environmentType ? environmentType : data.type;
       subagentDepth = data.depth!;
+    } else if (entry) {
+      // A present but invalid identity is not evidence of a root session.
+      // Use a leaf capability floor even in an orchestrator process.
+      agentType = environmentType === "fast" ? "fast" : "normal";
+      subagentDepth = Math.max(1, environmentDepth);
+      const sessionId = ctx.sessionManager?.getSessionId?.();
+      if (identityDiagnosticSession !== ctx.sessionManager || identityDiagnosticId !== sessionId) {
+        identityDiagnosticSession = ctx.sessionManager;
+        identityDiagnosticId = sessionId;
+        recordDiagnostic(ctx.sessionManager as object, {
+          component: "resume",
+          code: "CHILD_IDENTITY_INVALID",
+          outcome: "blocked",
+          cancellation: "safety",
+        });
+      }
     } else {
       // No active-branch child metadata means root in a root process. Do not
       // retain identity from a previously resumed child session.
@@ -112,6 +139,9 @@ export default function asynchronousTasksExtension(
     canSpawnSubagent = canDelegate(subagentDepth, agentType);
   };
   let manager: TaskManager | undefined;
+  let owningContext: ExtensionContext | undefined;
+  let managerRecorder: ((input: Parameters<typeof recordDiagnostic>[1]) => void) | undefined;
+  let detachManagerDiagnostics: (() => void) | undefined;
   let attention: JobAttentionScheduler | undefined;
   let invalidateShakeSnapshots = () => {};
   registerManualShake(pi, () => invalidateShakeSnapshots());
@@ -195,11 +225,67 @@ export default function asynchronousTasksExtension(
   };
 
   let goals: GoalRuntime;
-  const getManager = () => {
+  const getManager = (ctx = owningContext) => {
     if (!manager) {
-      manager = new TaskManager((task) => {
-        completions.add(task);
-        goals.jobsChanged();
+      // Capture ownership at manager creation, never through a mutable active
+      // context. SessionManager objects may themselves be reused on /resume.
+      const owner = ctx?.sessionManager;
+      const sessionId = owner?.getSessionId?.();
+      const recordOwned = (input: Parameters<typeof recordDiagnostic>[1]) => {
+        if (owner && owner.getSessionId?.() === sessionId) recordDiagnostic(owner, input);
+      };
+      managerRecorder = recordOwned;
+      const lifecycle = createTaskLifecycleRecorder(owner?.getSessionFile?.(), () =>
+        recordOwned({
+          component: "jobs",
+          code: "JOBS_LIFECYCLE_WRITE_FAILED",
+          outcome: "failed",
+        }),
+      );
+      manager = new TaskManager(
+        (task) => {
+          completions.add(task);
+          goals.jobsChanged();
+        },
+        undefined,
+        {
+          recordDiagnostic: (input) => {
+            recordOwned(input);
+            if (input.code === "JOBS_SHUTDOWN_CLOSURE_TIMEOUT") {
+              for (const task of ownedManager.pending())
+                lifecycle({
+                  event: "closure-unobserved",
+                  at: new Date().toISOString(),
+                  taskId: task.id,
+                  kind: task.kind,
+                  status: task.status,
+                  termination: task.termination,
+                  sessionFile: task.agent?.sessionFile,
+                });
+            }
+          },
+        },
+      );
+      const ownedManager = manager;
+      detachManagerDiagnostics = attachDiagnosticSink(manager, (_type, data) =>
+        recordOwned(data as Parameters<typeof recordDiagnostic>[1]),
+      );
+      manager.subscribe((event) => {
+        if (event.type === "activity") return;
+        const task = event.task;
+        lifecycle({
+          event: event.type,
+          at: new Date().toISOString(),
+          taskId: task.id,
+          kind: task.kind,
+          status: task.status,
+          startedAt: task.startedAt,
+          completedAt: task.completedAt,
+          termination: task.termination,
+          exitCode: task.exitCode,
+          signal: task.signal,
+          sessionFile: task.agent?.sessionFile,
+        });
       });
       attention = new JobAttentionScheduler(
         manager,
@@ -235,13 +321,15 @@ export default function asynchronousTasksExtension(
     (ctx, method, params, signal) => {
       if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
       taskUi = ctx.ui;
-      const tasks = getManager();
+      owningContext = ctx;
+      const tasks = getManager(ctx);
       service ??= new JobService(
         tasks,
         () => ({ depth: subagentDepth, type: agentType }),
         updateTaskStatus,
         options.profilesPath,
         attention,
+        managerRecorder,
       );
       return service.handle(method, params, ctx, signal);
     },
@@ -356,6 +444,7 @@ export default function asynchronousTasksExtension(
   });
 
   pi.on("session_start", (_event, ctx) => {
+    owningContext = ctx;
     scopeInstructionContinuity(ctx.sessionManager as object);
     // A resumed child keeps identity and delegation restrictions even when
     // launched from /resume without the original process environment.
@@ -374,8 +463,12 @@ export default function asynchronousTasksExtension(
     attentions.dispose();
     attention?.dispose();
     await manager?.shutdown();
+    detachManagerDiagnostics?.();
+    detachManagerDiagnostics = undefined;
+    managerRecorder = undefined;
     manager = undefined;
     attention = undefined;
     service = undefined;
+    owningContext = undefined;
   });
 }

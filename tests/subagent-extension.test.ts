@@ -1,3 +1,7 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { taskLifecycleFile } from "../src/tasks/task-lifecycle";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import extension from "../src/tasks/extension";
@@ -383,5 +387,94 @@ test("mixed completion and attention reserve bounded evidence for both", async (
   } finally {
     mock.mockRestore();
     await e.fire("session_shutdown", {}, contextFixture());
+  }
+});
+
+for (const data of [
+  undefined,
+  null,
+  { type: "unknown", depth: 1 },
+  { type: "orchestrator", depth: 0 },
+  { type: "normal", depth: 1.5 },
+]) {
+  test("invalid child marker never restores root or delegation: " + JSON.stringify(data), async () => {
+    const e = load();
+    const ctx = contextFixture({
+      entries: [
+        { type: "custom", customType: "die-agent", data: { type: "orchestrator", depth: 1 } },
+        { type: "custom", customType: "die-agent", data },
+      ],
+    });
+    await e.fire("session_start", {}, ctx);
+    const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
+    expect(result.systemPrompt).toContain("You are a normal sub-agent");
+    expect(result.systemPrompt).toContain("Delegation is disabled");
+    expect(result.systemPrompt).not.toContain("main agent in");
+    await e.fire("session_shutdown", {}, ctx);
+  });
+}
+
+test("unreadable child metadata fails closed", async () => {
+  const e = load();
+  const ctx = contextFixture({
+    sessionManager: {
+      getBranch() {
+        throw new Error("unreadable");
+      },
+    },
+  });
+  const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
+  expect(result.systemPrompt).toContain("Delegation is disabled");
+  expect(result.systemPrompt).not.toContain("main agent in");
+});
+
+test("shutdown persists every shell ownership cause without duplicating inspect content", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "die-extension-lifecycle-"));
+  const sessionFile = join(dir, "root.jsonl");
+  const ctx = contextFixture({ sessionManager: { getSessionFile: () => sessionFile } });
+  const e = load();
+  let rpc: any;
+  const mock = spyOn(execution, "executeIsolated").mockImplementation(async (_c, _w, _s, _t, options) => {
+    rpc = options!.jobHandler;
+    return {
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      stdoutLost: false,
+      stderrLost: false,
+      timedOut: false,
+      cancelled: false,
+      images: [],
+    };
+  });
+  try {
+    await e.fire("session_start", {}, ctx);
+    await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, ctx);
+    mock.mockRestore();
+    const signal = new AbortController().signal;
+    const command = "printf sentinel-useful-output; read sentinel-useful-input";
+    const first = await rpc("shell", { command, waitSeconds: 0 }, signal);
+    const second = await rpc("shell", { command: "read other", waitSeconds: 0 }, signal);
+    const inspected = await rpc("jobs.inspect", { id: first.id }, signal);
+    expect(inspected.command).toBe(command);
+    await e.fire("session_shutdown", {}, ctx);
+    const raw = readFileSync(taskLifecycleFile(sessionFile), "utf8");
+    const records = raw
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    for (const id of [first.id, second.id]) {
+      expect(records.find((r) => r.taskId === id && r.event === "stopping").termination.cause).toBe("session-shutdown");
+      expect(records.find((r) => r.taskId === id && r.event === "completed").status).toBe("killed");
+    }
+    expect(raw).not.toContain("sentinel-useful");
+    const resumed = load();
+    await resumed.fire("session_start", {}, ctx);
+    expect(readFileSync(taskLifecycleFile(sessionFile), "utf8")).toBe(raw);
+    await resumed.fire("session_shutdown", {}, ctx);
+  } finally {
+    mock.mockRestore();
+    await e.fire("session_shutdown", {}, ctx);
+    rmSync(dir, { recursive: true, force: true });
   }
 });

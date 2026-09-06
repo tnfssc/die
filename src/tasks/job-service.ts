@@ -1,11 +1,12 @@
-import { sessionCostRoot } from "./session-cost-root";
+import { randomUUID } from "node:crypto";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as z from "zod/mini";
-import { TaskManager, type TaskSummary } from "./task-manager";
-import { SUBAGENT_TYPES, canDelegate, loadProfiles, resolveProfile } from "./subagent-profiles";
 import { prepareAgentSession } from "./agent-session";
+import { type JobAttentionScheduler, MAX_SNOOZE_MINUTES } from "./job-attention";
+import { sessionCostRoot } from "./session-cost-root";
+import { canDelegate, loadProfiles, resolveProfile, SUBAGENT_TYPES } from "./subagent-profiles";
+import type { TaskManager, TaskSummary } from "./task-manager";
 import { boundedMiddlePreview } from "./text-preview";
-import { JobAttentionScheduler, MAX_SNOOZE_MINUTES } from "./job-attention";
 
 const waitSeconds = z.optional(z.number().check(z.minimum(0), z.maximum(86400)));
 const timeoutSeconds = z.optional(z.number().check(z.minimum(0.1), z.maximum(86400)));
@@ -55,15 +56,77 @@ function preview<T extends TaskSummary>(job: T): T {
     ...(job.agent ? { quietForMs: Math.max(0, end - Date.parse(job.agent.lastActivityAt ?? job.startedAt)) } : {}),
   };
 }
+export interface JobDiagnosticInput {
+  component: "jobs";
+  code: "JOBS_OPERATION_DISPATCH";
+  outcome: "success" | "failed" | "cancelled";
+  operationId: string;
+  taskId?: string;
+  dispatch: "initiated" | "response";
+  cancellation?: "caller";
+  count?: number;
+}
+export type JobDiagnosticRecorder = (input: JobDiagnosticInput) => void;
+
 export class JobService {
+  #diagnosticFailureReported = false;
+  #inspectionFailureReported = false;
   constructor(
     readonly manager: TaskManager,
     private policy: () => { depth: number; type?: string },
     private changed: () => void,
     private profilesPath?: string,
     private attention?: JobAttentionScheduler,
+    private recordDiagnostic?: JobDiagnosticRecorder,
   ) {}
   async handle(method: string, value: unknown, ctx: ExtensionContext, signal: AbortSignal): Promise<unknown> {
+    const operationId = randomUUID();
+    const observational = method === "jobs.list" || method === "jobs.inspect";
+    if (!observational)
+      this.#record({
+        component: "jobs",
+        code: "JOBS_OPERATION_DISPATCH",
+        outcome: "success",
+        operationId,
+        dispatch: "initiated",
+      });
+    try {
+      const result = await this.#handle(method, value, ctx, signal);
+      const records = Array.isArray(result) ? result : [result];
+      const ids = records.flatMap((item) =>
+        item && typeof item === "object" && typeof (item as { id?: unknown }).id === "string"
+          ? [(item as { id: string }).id]
+          : [],
+      );
+      if (!observational)
+        this.#record({
+          component: "jobs",
+          code: "JOBS_OPERATION_DISPATCH",
+          outcome: "success",
+          operationId,
+          dispatch: "response",
+          ...(ids.length === 1 ? { taskId: ids[0] } : {}),
+          ...(records.length > 1 ? { count: records.length } : {}),
+        });
+      return result;
+    } catch (error) {
+      // Inspection is polling, not a stream of health events. Retain one
+      // failure per service lifetime without consuming the durable budget.
+      if (!observational || !this.#inspectionFailureReported)
+        this.#record({
+          component: "jobs",
+          code: "JOBS_OPERATION_DISPATCH",
+          outcome: signal.aborted ? "cancelled" : "failed",
+          operationId,
+          dispatch: "response",
+          ...(signal.aborted ? { cancellation: "caller" as const } : {}),
+        });
+      if (observational) this.#inspectionFailureReported = true;
+      throw error;
+    }
+  }
+
+  async #handle(method: string, value: unknown, ctx: ExtensionContext, signal: AbortSignal): Promise<unknown> {
     signal.throwIfAborted();
     const input = flatten(value ?? {});
     switch (method) {
@@ -204,6 +267,17 @@ export class JobService {
       }
       default:
         throw new Error("Unknown job method: " + method);
+    }
+  }
+
+  #record(input: JobDiagnosticInput): void {
+    try {
+      this.recordDiagnostic?.(input);
+    } catch {
+      if (!this.#diagnosticFailureReported) {
+        this.#diagnosticFailureReported = true;
+        console.error("Job diagnostic callback failed");
+      }
     }
   }
 }

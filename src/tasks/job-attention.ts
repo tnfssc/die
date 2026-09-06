@@ -1,3 +1,4 @@
+import { recordDiagnostic } from "../diagnostics";
 import type { TaskEvent, TaskInspection, TaskManager, TaskSummary } from "./task-manager";
 
 export const DEFAULT_QUIET_MS = 5 * 60_000;
@@ -70,6 +71,7 @@ export class JobAttentionScheduler {
   readonly #onNotice: (notices: AttentionNotice[]) => void;
   readonly #unsubscribe: () => void;
   readonly #waiters = new Set<() => void>();
+  readonly #inspectFailures = new Set<string>();
   #timer?: unknown;
   #scheduledAt = Infinity;
   #disposed = false;
@@ -165,6 +167,7 @@ export class JobAttentionScheduler {
     this.#timer = undefined;
     this.#scheduledAt = Infinity;
     this.#states.clear();
+    this.#inspectFailures.clear();
     for (const waiter of [...this.#waiters]) waiter();
   }
 
@@ -185,6 +188,7 @@ export class JobAttentionScheduler {
       }
     } else if (event.type === "completed") {
       this.#states.delete(event.task.id);
+      this.#inspectFailures.delete(event.task.id);
       if (!this.#states.size) this.#clearTimer();
     }
   }
@@ -258,14 +262,28 @@ export class JobAttentionScheduler {
       if (!reasons.length) continue;
       const summary = pending.get(id);
       if (!summary) {
+        // pending() is the authoritative terminal/missing check. Only then is
+        // it safe to stop monitoring this task.
         this.#states.delete(id);
+        this.#inspectFailures.delete(id);
         continue;
       }
       let task: TaskInspection;
       try {
         task = this.#manager.inspect(id, Math.max(summary.baseOffset, summary.outputEnd - 1000), 1000);
+        this.#inspectFailures.delete(id);
       } catch {
-        this.#states.delete(id);
+        // Inspection can fail transiently while the task is still confirmed
+        // pending. Retain scheduler state and report the episode only once.
+        if (!this.#inspectFailures.has(id)) {
+          this.#inspectFailures.add(id);
+          recordDiagnostic(this.#manager, {
+            component: "attention",
+            code: "inspection_failed",
+            outcome: "failed",
+            taskId: id,
+          });
+        }
         continue;
       }
       notices.push({

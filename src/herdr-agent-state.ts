@@ -1,6 +1,7 @@
-import type { ExtensionAPI, ExtensionContext, SessionShutdownEvent } from "@earendil-works/pi-coding-agent";
 import net, { type Socket } from "node:net";
 import { isAbsolute } from "node:path";
+import type { ExtensionAPI, ExtensionContext, SessionShutdownEvent } from "@earendil-works/pi-coding-agent";
+import { recordDiagnostic } from "./diagnostics";
 
 /** Built-in Herdr reporting derived from Herdr's managed Pi integration v6. */
 const SOURCE = "herdr:die";
@@ -104,6 +105,8 @@ class HerdrRuntime {
   private sockets = new Set<Socket>();
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private unsubscribeBlocked: (() => void) | undefined;
+  private diagnosticOwner: object | undefined;
+  private healthFailureReported = false;
 
   constructor(
     private readonly pi: ExtensionAPI,
@@ -158,6 +161,8 @@ class HerdrRuntime {
     authority = this;
     this.active = true;
     this.currentRef = sessionRef(ctx);
+    this.diagnosticOwner = ctx.sessionManager as object;
+    this.healthFailureReported = false;
     this.lastState = undefined;
     this.lastMessage = undefined;
     this.ensureBlockedListener();
@@ -249,9 +254,25 @@ class HerdrRuntime {
   }
 
   private async send(request: PendingRequest, epoch: number): Promise<void> {
-    if (await this.attempt(this.materialize(request), FIRST_TIMEOUT_MS)) return;
-    if (epoch === this.epoch && (this.active || (this.shuttingDown && authority === this))) {
-      await this.attempt(this.materialize(request), RETRY_TIMEOUT_MS);
+    let delivered = await this.attempt(this.materialize(request), FIRST_TIMEOUT_MS);
+    if (!delivered && epoch === this.epoch && (this.active || (this.shuttingDown && authority === this))) {
+      delivered = await this.attempt(this.materialize(request), RETRY_TIMEOUT_MS);
+    }
+    // A settled send from an old session must not alter the next owner's
+    // health state or emit a failure into its diagnostic sink.
+    if (epoch !== this.epoch) return;
+    if (delivered) {
+      this.healthFailureReported = false;
+    } else if (!this.healthFailureReported && this.diagnosticOwner) {
+      // Herdr is optional. Surface one bounded diagnostic per outage episode;
+      // transport failure must never affect the agent lifecycle.
+      this.healthFailureReported = true;
+      recordDiagnostic(this.diagnosticOwner, {
+        component: "herdr",
+        code: "delivery_failed",
+        outcome: "failed",
+        dispatch: "initiated",
+      });
     }
   }
 
@@ -310,6 +331,8 @@ class HerdrRuntime {
     this.blockedCount = 0;
     this.blockedMessage = undefined;
     this.currentRef = undefined;
+    this.diagnosticOwner = undefined;
+    this.healthFailureReported = false;
     this.epoch += 1;
     this.clearTransport();
     this.unsubscribeBlocked?.();

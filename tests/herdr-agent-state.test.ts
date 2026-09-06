@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { EventBus, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { mkdtemp, rm } from "node:fs/promises";
 import net, { type Server } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { EventBus, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { inspectDiagnostics } from "../src/diagnostics";
 import { registerHerdrAgentState } from "../src/herdr-agent-state";
 
 type Handler = (event: Record<string, unknown>, ctx: ExtensionContext) => unknown;
@@ -244,6 +245,13 @@ describe("built-in Herdr agent state", () => {
       throw new Error("synchronous socket failure");
     });
     expect(() => throwing.fire("session_start", { reason: "startup" })).not.toThrow();
+    await Bun.sleep(10);
+    expect(inspectDiagnostics(throwing.ctx.sessionManager as object).records).toContainEqual({
+      component: "herdr",
+      code: "delivery_failed",
+      outcome: "failed",
+      dispatch: "initiated",
+    });
     throwing.fire("session_shutdown", { reason: "quit" });
     await Bun.sleep(20);
   });

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { MAIN_AGENT_MODES, mainAgentGuidance, replaceMainAgentGuidance, type MainAgentMode } from "../prompts";
+import { recordDiagnostic } from "../diagnostics";
+import { MAIN_AGENT_MODES, type MainAgentMode, mainAgentGuidance, replaceMainAgentGuidance } from "../prompts";
 import { updateCurrentInstructionFrame } from "./instruction-continuity";
 
 export const INSTRUCTION_MODE_ENTRY = "die-instruction-mode";
@@ -33,6 +34,15 @@ function persistedMode(ctx: ExtensionContext): MainAgentMode {
     if (entry.type !== "custom" || entry.customType !== INSTRUCTION_MODE_ENTRY) continue;
     const mode = parsedMode((entry.data as { mode?: unknown } | undefined)?.mode);
     if (mode) return mode;
+
+    // The newest owned entry is an authority boundary. Falling through to an
+    // older mode would silently revive superseded state.
+    recordDiagnostic(ctx.sessionManager as object, {
+      component: "settings",
+      code: "settings_invalid",
+      outcome: "fallback",
+    });
+    return "orchestrator";
   }
   return "orchestrator";
 }
