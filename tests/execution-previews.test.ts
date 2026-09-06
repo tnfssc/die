@@ -1,6 +1,9 @@
 import { expect, test } from "bun:test";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { Component } from "@earendil-works/pi-tui";
 import { completionDiagnosticDetails } from "../src/tasks/extension";
+import { registerExecuteTool } from "../src/typescript/extension";
 import {
   completionPreview,
   executeInputPreview,
@@ -33,8 +36,66 @@ test("shared renderer state prevents Pi call/result composition from adding a se
   expect([...call.render(100), ...result.render(100)]).toHaveLength(1);
 });
 
+test("execute previews apply configurable horizontal padding and deduct it from content width", () => {
+  for (const padding of [0, 1, 2]) {
+    const call = executeInputPreview("x".repeat(80), false, theme, undefined, true, padding).render(12);
+    const result = executeOutputPreview(success, false, false, theme, "x".repeat(80), undefined, padding).render(12);
+    for (const row of [...call, ...result]) {
+      expect(row.startsWith(" ".repeat(padding))).toBe(true);
+      expect(visibleWidth(row)).toBeLessThanOrEqual(12);
+    }
+    expect(stripTerminalSequences(call[0]).slice(padding)).toStartWith("…");
+    expect(stripTerminalSequences(result[0]).slice(padding)).toStartWith("✓");
+  }
+});
+
+test("execute tool wiring supplies configured padding to call and result renderers", () => {
+  const context = {
+    args: { code },
+    cwd: "/fixture",
+    expanded: false,
+    executionStarted: true,
+    isError: false,
+    state: {},
+  };
+  type PreviewTool = {
+    renderCall(args: typeof context.args, renderTheme: typeof theme, renderContext: typeof context): Component;
+    renderResult(
+      result: typeof success,
+      options: { expanded: boolean },
+      renderTheme: typeof theme,
+      renderContext: typeof context,
+    ): Component;
+  };
+  let tool: PreviewTool | undefined;
+  registerExecuteTool(
+    {
+      on() {},
+      registerTool(definition: unknown) {
+        tool = definition as PreviewTool;
+      },
+    } as unknown as ExtensionAPI,
+    undefined,
+    undefined,
+    () => 2,
+  );
+  if (!tool) throw new Error("execute tool was not registered");
+  expect(tool.renderCall(context.args, theme, context).render(80)[0]).toStartWith("  … Execute");
+  expect(tool.renderResult(success, { expanded: false }, theme, context).render(80)[0]).toStartWith("  ✓ Execution");
+});
+
+test("expanded execute keeps source/result grouping inside configured padding", () => {
+  const rows = executeOutputPreview(success, true, false, theme, code, undefined, 2).render(32);
+  expect(rows.some((row) => row.trim().length === 0)).toBe(true);
+  for (const row of rows) expect(row.startsWith("  ")).toBe(true);
+  expect(rows.map((row) => row.slice(2)).join("\n")).toContain("stdout:");
+});
+
 test("expanded execute includes the full command and output", () => {
-  const rendered = executeOutputPreview(success, true, false, theme, code).render(100).join("\n");
+  const rendered = executeOutputPreview(success, true, false, theme, code)
+    .render(100)
+    .map((row) => row.trimEnd())
+    .join("\n");
   expect(rendered).toContain('console.log("first")');
   expect(rendered).toContain('console.log("last")');
   expect(rendered).toContain("stdout:");

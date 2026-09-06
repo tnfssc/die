@@ -35,6 +35,12 @@ export function foldedRows(text: string, width: number, head: number, tail: numb
 function component(render: (width: number) => string[]): Component {
   return { render, invalidate() {} };
 }
+function padded(component: Component, padding: number): Component {
+  if (padding <= 0) return component;
+  const box = new Box(padding, 0);
+  box.addChild(component);
+  return box;
+}
 
 export interface ExecutePreviewState {
   resultVisible?: boolean;
@@ -49,25 +55,29 @@ export function executeInputPreview(
   theme: Theme,
   state?: ExecutePreviewState,
   executionStarted = true,
+  padding = 0,
 ): Component {
   const source = typeof code === "string" ? code : "";
   const summary = commandSummary(source);
-  return component((width) => {
-    // Pi vertically composes call and result slots. Suppress the call slot once
-    // the result renderer runs, leaving one settled physical row.
-    if (state?.resultVisible || width < 1) return [];
-    if (expanded)
-      return [
-        truncateToWidth(theme.fg("toolTitle", "Execute · TypeScript"), width),
-        ...foldedRows(source, width, 0, 0, true).map((line) => theme.fg("muted", line)),
-      ];
-    const status = executionStarted ? "running" : "preparing";
-    const line =
-      theme.fg("warning", "…") +
-      theme.fg("toolTitle", " Execute " + status) +
-      (summary ? theme.fg("muted", " · " + summary) : "");
-    return [truncateToWidth(line, width)];
-  });
+  return padded(
+    component((width) => {
+      // Pi vertically composes call and result slots. Suppress the call slot once
+      // the result renderer runs, leaving one settled physical row.
+      if (state?.resultVisible || width < 1) return [];
+      if (expanded)
+        return [
+          truncateToWidth(theme.fg("toolTitle", "Execute · TypeScript"), width),
+          ...foldedRows(source, width, 0, 0, true).map((line) => theme.fg("muted", line)),
+        ];
+      const status = executionStarted ? "running" : "preparing";
+      const line =
+        theme.fg("warning", "…") +
+        theme.fg("toolTitle", " Execute " + status) +
+        (summary ? theme.fg("muted", " · " + summary) : "");
+      return [truncateToWidth(line, width)];
+    }),
+    padding,
+  );
 }
 
 type TextResult = { content: Array<{ type: string; text?: string }>; details?: unknown };
@@ -112,6 +122,7 @@ export function executeOutputPreview(
   theme: Theme,
   code?: unknown,
   state?: ExecutePreviewState,
+  padding = 0,
 ): Component {
   if (state) state.resultVisible = true;
   const full = result.content
@@ -134,26 +145,29 @@ export function executeOutputPreview(
   ]
     .filter(Boolean)
     .join(" — ");
-  return component((width) => {
-    if (width < 1) return [];
-    if (expanded) {
-      const lines = [
-        theme.fg("toolTitle", "Execute · TypeScript"),
-        ...foldedRows(source, width, 0, 0, true).map((line) => theme.fg("muted", line)),
-        "",
-        ...foldedRows(full, width, 0, 0, true),
-      ];
-      if (details?.stdoutLost || details?.stderrLost)
-        lines.push(theme.fg("warning", "… earlier output discarded by execute"));
-      return lines.map((line) => truncateToWidth(line, width));
-    }
-    const suffix = [diagnostic, summary].filter(Boolean).join(" — ");
-    const line =
-      theme.fg(status.color, status.icon) +
-      theme.fg("toolTitle", " " + status.text) +
-      (suffix ? theme.fg("muted", " · " + suffix) : "");
-    return [truncateToWidth(line, width)];
-  });
+  return padded(
+    component((width) => {
+      if (width < 1) return [];
+      if (expanded) {
+        const lines = [
+          theme.fg("toolTitle", "Execute · TypeScript"),
+          ...foldedRows(source, width, 0, 0, true).map((line) => theme.fg("muted", line)),
+          "",
+          ...foldedRows(full, width, 0, 0, true),
+        ];
+        if (details?.stdoutLost || details?.stderrLost)
+          lines.push(theme.fg("warning", "… earlier output discarded by execute"));
+        return lines.map((line) => truncateToWidth(line, width));
+      }
+      const suffix = [diagnostic, summary].filter(Boolean).join(" — ");
+      const line =
+        theme.fg(status.color, status.icon) +
+        theme.fg("toolTitle", " " + status.text) +
+        (suffix ? theme.fg("muted", " · " + suffix) : "");
+      return [truncateToWidth(line, width)];
+    }),
+    padding,
+  );
 }
 
 interface CompletionDetails {

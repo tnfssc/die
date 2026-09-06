@@ -1,6 +1,6 @@
 import executeDescription from "../prompts/execute-description.md" with { type: "text" };
 import { executeGuidance, backgroundHandoff } from "../prompts";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { SettingsManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import * as z from "zod/mini";
 import { toolParameters } from "../tool-schema";
 import { executeInputPreview, executeOutputPreview } from "../ui/execution-previews";
@@ -18,7 +18,22 @@ export function registerExecuteTool(
   pi: ExtensionAPI,
   jobHandler?: (ctx: ExtensionContext, method: string, params: unknown, signal: AbortSignal) => Promise<unknown>,
   executablePath?: string,
+  outputPad?: (cwd: string) => number,
 ): void {
+  // pi 0.85 exposes outputPad through its public SettingsManager but not in
+  // ToolRenderContext. Remove this narrow compatibility seam when the context
+  // carries the setting directly. Cache just as InteractiveMode does at startup.
+  const outputPads = new Map<string, number>();
+  const getOutputPad =
+    outputPad ??
+    ((cwd: string) => {
+      let padding = outputPads.get(cwd);
+      if (padding === undefined) {
+        padding = SettingsManager.create(cwd).getOutputPad();
+        outputPads.set(cwd, padding);
+      }
+      return padding;
+    });
   const shutdown = new AbortController();
   const active = new Set<Promise<unknown>>();
   pi.on("session_shutdown", async () => {
@@ -41,6 +56,7 @@ export function registerExecuteTool(
         theme,
         context.state,
         context.executionStarted,
+        getOutputPad(context.cwd),
       ),
     renderResult: (result, options, theme, context) =>
       executeOutputPreview(
@@ -50,6 +66,7 @@ export function registerExecuteTool(
         theme,
         (context.args as { code?: unknown } | undefined)?.code,
         context.state,
+        getOutputPad(context.cwd),
       ),
     async execute(_toolCallId, input, signal, _onUpdate, ctx) {
       const params = z.parse(ExecuteParameters, input);
