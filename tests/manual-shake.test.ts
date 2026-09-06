@@ -2,9 +2,10 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { convertToLlm, SessionManager, type SessionEntry } from "@earendil-works/pi-coding-agent";
+import { convertToLlm, type SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 import {
   buildShakePlan,
+  isShakeRecord,
   latestShakeRecord,
   MANUAL_SHAKE_ENTRY,
   projectShakenContext,
@@ -100,6 +101,63 @@ describe("manual shake projection", () => {
     ).toHaveLength(2);
   });
 
+  test("preserves an entire tool batch when either transformed side no longer matches", () => {
+    for (const changedSide of ["call", "result"] as const) {
+      const manager = SessionManager.inMemory();
+      completed(manager, "pair", "status");
+      const entries = manager.buildContextEntries();
+      const plan = buildShakePlan(entries, manager.getSessionId());
+      const incoming = manager.buildSessionContext().messages.map((message: any) => {
+        if (changedSide === "result" && message.role === "toolResult") {
+          return { ...message, content: [{ type: "text", text: "[REDACTED]" }] };
+        }
+        if (changedSide === "call" && message.role === "assistant") {
+          return {
+            ...message,
+            content: message.content.map((part: any) =>
+              part.type === "toolCall" ? { ...part, arguments: { code: "[REDACTED]" } } : part,
+            ),
+          };
+        }
+        return message;
+      });
+      const projected = projectShakenContext(incoming, entries, plan.record);
+      expect(projected.some((message: any) => message.role === "toolResult")).toBe(true);
+      expect(JSON.stringify(projected)).toContain("toolCall");
+      expect(JSON.stringify(projected)).not.toContain(changedSide === "result" ? '"text":"result"' : '"code":"pair"');
+    }
+  });
+
+  test("preserves chronology-ambiguous duplicate content after an upstream exclusion", () => {
+    const manager = SessionManager.inMemory();
+    const duplicate = assistant([{ type: "thinking", thinking: "same" }], "stop");
+    manager.appendMessage(duplicate);
+    manager.appendMessage(structuredClone(duplicate));
+    const entries = manager.buildContextEntries();
+    const plan = buildShakePlan(entries, manager.getSessionId());
+    const projected = projectShakenContext([structuredClone(duplicate)], entries, plan.record);
+    expect(projected).toHaveLength(1);
+    expect(JSON.stringify(projected)).toContain("same");
+  });
+
+  test("removes an exact group beside an ambiguous transformed group", () => {
+    const manager = SessionManager.inMemory();
+    completed(manager, "stable");
+    completed(manager, "target");
+    const entries = manager.buildContextEntries();
+    const plan = buildShakePlan(entries, manager.getSessionId());
+    const incoming = manager
+      .buildSessionContext()
+      .messages.map((message: any) =>
+        message.role === "toolResult" && message.toolCallId === "target"
+          ? { ...message, content: [{ type: "text", text: "[REDACTED]" }] }
+          : message,
+      );
+    const wire = JSON.stringify(projectShakenContext(incoming, entries, plan.record));
+    expect(wire).not.toContain('"id":"stable"');
+    expect(wire).toContain('"id":"target"');
+  });
+
   test("refuses unresolved, orphaned, and duplicate protocol IDs", () => {
     const unresolved = SessionManager.inMemory();
     unresolved.appendMessage(assistant([{ type: "toolCall", id: "active", name: "execute", arguments: {} }]));
@@ -138,6 +196,41 @@ describe("manual shake projection", () => {
   });
 });
 
+describe("manual shake marker validation and bounds", () => {
+  test("rejects malformed newest markers instead of falling back to an older valid record", () => {
+    const manager = SessionManager.inMemory();
+    completed(manager, "valid");
+    const valid = buildShakePlan(manager.buildContextEntries(), manager.getSessionId()).record;
+    manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, valid);
+    manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, { ...valid, version: 99 });
+    expect(() => latestShakeRecord(manager.buildContextEntries(), manager.getSessionId())).toThrow(
+      "unsupported version",
+    );
+    expect(isShakeRecord({ ...valid, assistantEntryIds: ["x", "x"] })).toBe(false);
+    expect(isShakeRecord({ ...valid, shakenAt: Number.POSITIVE_INFINITY })).toBe(false);
+    expect(isShakeRecord({ ...valid, extra: true })).toBe(false);
+  });
+
+  test("bounds an oversized active projection and trims IDs no longer in the active window", () => {
+    const manager = SessionManager.inMemory();
+    for (let index = 0; index < 2049; index++)
+      manager.appendMessage(assistant([{ type: "thinking", thinking: String(index) }], "stop"));
+    const oversized = buildShakePlan(manager.buildContextEntries(), manager.getSessionId());
+    expect(oversized.storageError).toContain("Compact or branch");
+    const one = SessionManager.inMemory();
+    completed(one, "old");
+    const old = buildShakePlan(one.buildContextEntries(), one.getSessionId()).record;
+    const user = one.appendMessage({ role: "user", content: "new window", timestamp: 3 });
+    const trimmed = buildShakePlan(
+      one.buildContextEntries().filter((entry) => entry.id === user),
+      one.getSessionId(),
+      old,
+    );
+    expect(trimmed.record.assistantEntryIds).toEqual([]);
+    expect(trimmed.record.toolResultEntryIds).toEqual([]);
+  });
+});
+
 describe("manual shake durability and SDK projection", () => {
   test("survives JSONL reload, is branch-scoped, and serializes through the real SDK converter", async () => {
     const dir = await mkdtemp(join(tmpdir(), "die-shake-"));
@@ -164,7 +257,9 @@ describe("manual shake durability and SDK projection", () => {
       expect(await readFile(file, "utf8")).toBe(original);
       const inheritedFile = reopened.createBranchedSession(reopened.getLeafId()!)!;
       const inherited = SessionManager.open(inheritedFile);
-      expect(latestShakeRecord(inherited.buildContextEntries(), inherited.getSessionId())).toBeDefined();
+      expect(latestShakeRecord(inherited.buildContextEntries(), inherited.getSessionId())?.sessionId).toBe(
+        inherited.getSessionId(),
+      );
       const inheritedRecord = latestShakeRecord(inherited.buildContextEntries(), inherited.getSessionId())!;
       expect(
         JSON.stringify(
@@ -182,24 +277,33 @@ describe("manual shake durability and SDK projection", () => {
     }
   });
 
-  test("plain compaction summary stays intact and a carried marker filters only its retained tail", () => {
-    const manager = SessionManager.inMemory();
-    const old = manager.appendMessage({ role: "user", content: "old", timestamp: 1 });
-    completed(manager, "tail", "tail prose");
-    const plan = buildShakePlan(manager.buildContextEntries(), manager.getSessionId());
-    manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, plan.record);
-    const tailStart = (
-      manager.getEntries().find((e: any) => e.type === "message" && e.message.role === "assistant") as SessionEntry
-    ).id;
-    manager.appendCompaction("PLAIN SUMMARY", tailStart, 100, { strategy: "cache-affine-plaintext" }, true);
-    manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, plan.record);
-    const entries = manager.buildContextEntries(),
-      record = latestShakeRecord(entries, manager.getSessionId())!;
-    const projected = projectShakenContext(manager.buildSessionContext().messages, entries, record);
-    expect((projected[0] as any).summary).toBe("PLAIN SUMMARY");
-    expect(JSON.stringify(projected)).toContain("tail prose");
-    expect(JSON.stringify(projected)).not.toContain("toolCall");
-    expect(old).toBeTruthy();
+  test("plain summary and shaken retained tail survive SDK JSONL reload", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "die-shake-compact-"));
+    try {
+      const manager = SessionManager.create(dir, dir);
+      manager.appendMessage({ role: "user", content: "old", timestamp: 1 });
+      completed(manager, "tail", "tail prose");
+      const plan = buildShakePlan(manager.buildContextEntries(), manager.getSessionId());
+      manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, plan.record);
+      const tailStart = (
+        manager.getEntries().find((e: any) => e.type === "message" && e.message.role === "assistant") as SessionEntry
+      ).id;
+      manager.appendCompaction("PLAIN SUMMARY", tailStart, 100, { strategy: "cache-affine-plaintext" }, true);
+      const carried = buildShakePlan(manager.buildContextEntries(), manager.getSessionId(), plan.record);
+      manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, carried.record);
+
+      const reopened = SessionManager.open(manager.getSessionFile()!);
+      const entries = reopened.buildContextEntries();
+      const record = latestShakeRecord(entries, reopened.getSessionId())!;
+      const projected = projectShakenContext(reopened.buildSessionContext().messages, entries, record);
+      expect((projected[0] as any).summary).toBe("PLAIN SUMMARY");
+      expect(JSON.stringify(projected)).toContain("tail prose");
+      expect(JSON.stringify(projected)).not.toContain("toolCall");
+      expect(record.assistantEntryIds).toHaveLength(1);
+      expect(record.toolResultEntryIds).toHaveLength(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -240,6 +344,35 @@ describe("manual command safeguards", () => {
     const beforeCarry = h.appended.length;
     h.handlers.get("session_compact")![0]!({}, h.ctx);
     expect(h.appended).toHaveLength(beforeCarry + 1);
+  });
+
+  test("repeated-shake estimates start from prior projection rather than original trace", async () => {
+    const manager = SessionManager.inMemory();
+    completed(manager, "huge", "");
+    const hugeResult = manager
+      .getEntries()
+      .find((entry: any) => entry.type === "message" && entry.message.role === "toolResult") as any;
+    hugeResult.message.content = [{ type: "text", text: "excluded ".repeat(4000) }];
+    const first = harness(manager);
+    await first.command.handler("", first.ctx);
+    completed(manager, "small");
+    const second = harness(manager);
+    await second.command.handler("", second.ctx);
+    const notice = second.notices.at(-1)?.[0] ?? "";
+    const before = Number(notice.match(/~(\d+) →/)?.[1]);
+    expect(before).toBeLessThan(100);
+  });
+
+  test("a malformed latest marker fails the context hook closed", () => {
+    const manager = SessionManager.inMemory();
+    completed(manager, "x");
+    const record = buildShakePlan(manager.buildContextEntries(), manager.getSessionId()).record;
+    manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, record);
+    manager.appendCustomEntry(MANUAL_SHAKE_ENTRY, { ...record, assistantEntryIds: ["duplicate", "duplicate"] });
+    const h = harness(manager);
+    expect(() => h.handlers.get("context")?.[0]?.({ messages: manager.buildSessionContext().messages }, h.ctx)).toThrow(
+      "Refusing to expose unprojected context",
+    );
   });
 
   test("refuses active batches and opaque native checkpoints without durable mutation", async () => {
