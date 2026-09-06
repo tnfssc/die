@@ -195,6 +195,12 @@ export function registerCacheCountdown(pi: ExtensionAPI, countdown: CacheCountdo
     startedAt: number;
   };
   const attempts = new Map<string, Attempt>();
+  // HTTP response hooks and assistant terminal hooks can both describe the same
+  // request, but expose no shared correlation token. Remember HTTP-observed
+  // models so a later terminal event can never be reassigned to an overlapping
+  // WebSocket attempt.
+  const httpTerminalDebt = new Map<string, number>();
+  const modelKey = (model: Pick<Model<any>, "provider" | "id">) => model.provider + "/" + model.id;
   const diagnostic = (input: Parameters<typeof recordDiagnostic>[1]) => {
     if (owner) recordDiagnostic(owner, input);
   };
@@ -223,43 +229,50 @@ export function registerCacheCountdown(pi: ExtensionAPI, countdown: CacheCountdo
       });
     }
   };
-  const candidates = (model?: Pick<Model<any>, "provider" | "id">): Attempt[] => {
-    const all = [...attempts.values()];
-    if (!model) return all;
-    return all.filter((attempt) => attempt.model.provider === model.provider && attempt.model.id === model.id);
+  const candidates = (model: Pick<Model<any>, "provider" | "id">): Attempt[] =>
+    [...attempts.values()].filter(
+      (attempt) => attempt.model.provider === model.provider && attempt.model.id === model.id,
+    );
+  const block = (blocked: Attempt[]) => {
+    for (const attempt of blocked) attempts.delete(attempt.operationId);
+    diagnostic({
+      component: "cache",
+      code: CACHE_CORRELATION_UNAVAILABLE,
+      outcome: "blocked",
+      dispatch: "unknown",
+      count: blocked.length,
+    });
   };
   const correlate = (model: Pick<Model<any>, "provider" | "id"> | undefined): Attempt | undefined => {
+    // Model identity is the only correlation information supplied by these
+    // hooks. An absent or mismatched identity must never fall back to whichever
+    // request happens to remain in the map.
+    if (!model) {
+      if (attempts.size > 0) block([...attempts.values()]);
+      return undefined;
+    }
     const matches = candidates(model);
     if (matches.length === 1) return matches[0];
-    if (model && matches.length === 0 && attempts.size === 1) return attempts.values().next().value;
-    if (matches.length > 1 || attempts.size > 1) {
-      // There is no SDK correlation token on response/terminal hooks. Never
-      // guess FIFO: discard every indistinguishable request conservatively.
-      const blocked = matches.length > 1 ? matches : [...attempts.values()];
-      for (const attempt of blocked) attempts.delete(attempt.operationId);
-      diagnostic({
-        component: "cache",
-        code: CACHE_CORRELATION_UNAVAILABLE,
-        outcome: "blocked",
-        dispatch: "unknown",
-        count: blocked.length,
-      });
-    }
+    if (matches.length > 1) block(matches);
     return undefined;
   };
   pi.on("session_start", async (_event, ctx) => {
     unsubscribe();
     countdown.restore(ctx);
     attempts.clear();
+    httpTerminalDebt.clear();
     owner = ctx.sessionManager && typeof ctx.sessionManager === "object" ? ctx.sessionManager : undefined;
     if (owner) {
       unsubscribe = subscribeProviderAttempts(owner, (event) => {
-        record(
-          { operationId: event.operationId, model: event.model, startedAt: event.timestamp },
-          event.model,
-          event.timestamp,
-          event.observedAt === "response" ? "response" : "initiated",
-        );
+        // Dispatch only proves that fetch was invoked. It does not prove that
+        // the provider accepted the request (a later HTTP 401 is one example).
+        if (event.observedAt === "response")
+          record(
+            { operationId: event.operationId, model: event.model, startedAt: event.timestamp },
+            event.model,
+            event.timestamp,
+            "response",
+          );
       });
     }
     await ready;
@@ -274,6 +287,7 @@ export function registerCacheCountdown(pi: ExtensionAPI, countdown: CacheCountdo
     unsubscribe = () => {};
     owner = undefined;
     attempts.clear();
+    httpTerminalDebt.clear();
   });
   pi.on("before_provider_request", (_event, ctx) => {
     const model = ctx.model;
@@ -287,6 +301,10 @@ export function registerCacheCountdown(pi: ExtensionAPI, countdown: CacheCountdo
   });
   pi.on("after_provider_response", (event) => {
     const response = event as typeof event & { model?: Pick<Model<any>, "provider" | "id"> };
+    if (response.model) {
+      const key = modelKey(response.model);
+      httpTerminalDebt.set(key, (httpTerminalDebt.get(key) ?? 0) + 1);
+    }
     const attempt = correlate(response.model);
     if (!attempt) return;
     attempts.delete(attempt.operationId);
@@ -312,6 +330,20 @@ export function registerCacheCountdown(pi: ExtensionAPI, countdown: CacheCountdo
       typeof message.provider === "string" && typeof message.model === "string"
         ? { provider: message.provider, id: message.model }
         : undefined;
+    if (model) {
+      const key = modelKey(model);
+      const debt = httpTerminalDebt.get(key) ?? 0;
+      if (debt > 0) {
+        if (debt === 1) httpTerminalDebt.delete(key);
+        else httpTerminalDebt.set(key, debt - 1);
+        // If another request for the same model started before this terminal
+        // hook arrived, the hook could belong to either request. Drop every
+        // matching candidate rather than falsely consuming the newer one.
+        const overlapping = candidates(model);
+        if (overlapping.length > 0) block(overlapping);
+        return;
+      }
+    }
     const attempt = correlate(model);
     if (!attempt) return;
     attempts.delete(attempt.operationId);
