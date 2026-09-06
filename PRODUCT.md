@@ -307,6 +307,16 @@ Status: user-approved direction, not implemented. Goal mode prevents accidental 
 - Keep the concept filesystem-based; a database, search service, or dedicated memory tools are not the requested direction.
 - This is shelved for later discussion. The structure and prompt guidance are not finalized; do not implement it yet.
 
+### Recorded direction — Conditional memory consolidation
+
+- At the end of a run, consolidate project-local agent memory only when there are new, unconsumed notes. No notes means no consolidation subagent or model call.
+- Delegate consolidation to a subagent; fast versus normal is an implementation choice, not a settled requirement.
+- Fold notes into the existing memory rather than creating a separate memory system or endlessly appending summaries. Permit rewriting and reorganizing memory to remove duplication and reconcile outdated information, decisions, and risk assessments.
+- Mark source notes consumed only after the consolidated memory has been saved successfully; failed consolidation must leave notes available for retry.
+- Memory maintenance does not grant new permissions or override user constraints.
+- This records the agreed direction only, not implementation authorization. The precise end-of-run trigger, note format, concurrency/retry handling, and worker profile remain to be designed.
+
+
 ## Post-baseline — Combined session cost
 
 - Show combined cost in the footer: the main session plus all spawned orchestrator and worker descendants.
