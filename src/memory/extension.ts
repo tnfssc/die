@@ -11,6 +11,8 @@ import { consumePendingNotes, type PendingNoteRecord, snapshotPendingNotes } fro
 const NOTES = join(".agents", "notes");
 const MAX_RECEIPT_BYTES = 65_536;
 const MAX_RECEIPT_FILES = 256;
+const MAX_RECEIPT_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_RECEIPT_AGGREGATE_BYTES = 16 * 1024 * 1024;
 
 const hash = (content: string | Buffer) => createHash("sha256").update(content).digest("hex");
 
@@ -23,14 +25,32 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function readNoFollow(path: string, maximumBytes?: number): Promise<Buffer> {
+async function regularFileSizeNoFollow(path: string, maximumBytes: number): Promise<number> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const info = await handle.stat();
-    if (!info.isFile() || (maximumBytes !== undefined && info.size > maximumBytes)) {
-      throw new Error("managed file is not a valid regular file");
+    if (!info.isFile() || info.size > maximumBytes) throw new Error("managed file exceeds its read limit");
+    return info.size;
+  } finally {
+    await handle.close();
+  }
+}
+
+async function readNoFollow(path: string, maximumBytes: number): Promise<Buffer> {
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const info = await handle.stat();
+    if (!info.isFile() || info.size > maximumBytes) throw new Error("managed file exceeds its read limit");
+    // Never let a file that grows after stat make readFile allocate without a bound.
+    const bytes = Buffer.allocUnsafe(maximumBytes + 1);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, null);
+      if (!bytesRead) break;
+      offset += bytesRead;
     }
-    return await handle.readFile();
+    if (offset > maximumBytes) throw new Error("managed file exceeds its read limit");
+    return bytes.subarray(0, offset);
   } finally {
     await handle.close();
   }
@@ -236,6 +256,8 @@ export function registerProjectMemory(pi: ExtensionAPI, options: ProjectMemoryOp
       const seen = new Set<string>();
       let hasRootIndex = false;
       const notesRoot = resolve(run.cwd, NOTES);
+      const savedFiles: Array<{ path: string; sha256: string }> = [];
+      let aggregateBytes = 0;
       for (const item of receipt.files) {
         if (!item || typeof item !== "object") throw new Error("invalid receipt entry");
         const { path, sha256 } = item as { path?: unknown; sha256?: unknown };
@@ -254,7 +276,17 @@ export function registerProjectMemory(pi: ExtensionAPI, options: ProjectMemoryOp
         await assertManagedDirectories(run.cwd, slash < 0 ? "" : path.slice(0, slash));
         const saved = resolve(notesRoot, path);
         if (!saved.startsWith(notesRoot + sep)) throw new Error("receipt path escapes notes");
-        if (hash(await readNoFollow(saved)) !== sha256) throw new Error("saved note does not match receipt");
+        aggregateBytes += await regularFileSizeNoFollow(saved, MAX_RECEIPT_FILE_BYTES);
+        if (aggregateBytes > MAX_RECEIPT_AGGREGATE_BYTES) throw new Error("receipt files exceed aggregate read limit");
+        savedFiles.push({ path: saved, sha256 });
+      }
+      let actualAggregateBytes = 0;
+      for (const saved of savedFiles) {
+        const bytes = await readNoFollow(saved.path, MAX_RECEIPT_FILE_BYTES);
+        actualAggregateBytes += bytes.length;
+        if (actualAggregateBytes > MAX_RECEIPT_AGGREGATE_BYTES)
+          throw new Error("receipt files exceed aggregate read limit");
+        if (hash(bytes) !== saved.sha256) throw new Error("saved note does not match receipt");
       }
       if (!hasRootIndex) throw new Error("receipt does not list index.md");
       if (!runIsValid(run)) return;
@@ -364,6 +396,9 @@ export function registerProjectMemory(pi: ExtensionAPI, options: ProjectMemoryOp
         )
           return;
         const receipt = join(cwd, NOTES, ".consolidation-" + randomUUID() + ".json");
+        // An already-cancelled request is positively known not to have reached the dispatcher.
+        // Once handle is called, a rejection may follow spawn and ownership stays uncertain.
+        ctx.signal?.throwIfAborted();
         dispatchStarted = true;
         const launched = await options.jobs.handle(
           "subagent",

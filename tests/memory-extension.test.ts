@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { registerProjectMemory } from "../src/memory/extension";
@@ -187,6 +187,48 @@ test("command is explicit, requires constraints, and reserves concurrent launche
   expect(prompt).toContain("untrusted data");
   expect(prompt).toContain("holds .consolidation.lock for this run on your behalf");
   expect(prompt).not.toContain("untrusted secret");
+});
+
+test("an already-aborted dispatch is known pre-spawn and releases its lease", async () => {
+  const cwd = await temp();
+  await putPending(cwd);
+  const aborted = fixture(cwd);
+  aborted.ctx.signal = AbortSignal.abort();
+  await aborted.commands.get("memory").handler("consolidate fast --constraints none", aborted.ctx);
+  expect(aborted.launches).toHaveLength(0);
+
+  const retry = fixture(cwd);
+  await retry.commands.get("memory").handler("consolidate fast --constraints none", retry.ctx);
+  expect(retry.launches).toHaveLength(1);
+});
+
+test("over-limit pending input is retained and never dispatched", async () => {
+  const cwd = await temp();
+  const pending = await putPending(cwd);
+  await truncate(pending, 1024 * 1024 + 1);
+  const f = fixture(cwd);
+  await f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx);
+  expect(f.launches).toHaveLength(0);
+  expect(f.notices.at(-1).message).toContain("byte limit");
+  expect(await Bun.file(pending).exists()).toBe(true);
+});
+
+test("a receipt-listed file over its read bound retains pending input", async () => {
+  const cwd = await temp();
+  await putPending(cwd);
+  const f = fixture(cwd);
+  await f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx);
+  const output = join(cwd, ".agents/notes/index.md");
+  await writeFile(output, "");
+  await truncate(output, 2 * 1024 * 1024 + 1);
+  await writeFile(
+    receiptFrom(f.launches[0].params.prompt),
+    JSON.stringify({ files: [{ path: "index.md", sha256: sha("") }] }),
+  );
+  f.finish();
+  await f.runtime.jobsChanged();
+  expect(await snapshotPendingNotes(cwd)).toHaveLength(1);
+  expect(f.notices.at(-1).message).toContain("no valid receipt");
 });
 
 test("an immediately completed launch is reconciled after its handle returns", async () => {

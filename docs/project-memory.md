@@ -57,12 +57,16 @@ consent, and a live owner capable of retaining the consolidation job.
 
 ## Save, consume, and retry protocol
 
-Only direct Markdown children of `.pending/` are source notes. A launch snapshots
-path, content, and SHA-256; notes added later are outside that run. A successful
+Only direct Markdown children of `.pending/` are source notes. A snapshot accepts at
+most 256 files, 1 MiB per file, and 8 MiB in aggregate (limits are UTF-8 file
+bytes). Exceeding any limit retains every source note and prevents worker launch.
+A launch snapshots path, content, and SHA-256; notes added later are outside that run. A successful
 process exit alone is insufficient: the worker must save durable Markdown and
 then write the per-run, nonce-named JSON receipt specified in its prompt. The
-controller validates saved file hashes and the root index before marking source
-snapshots consumed. A receipt verifies bytes, not the semantic quality of a merge.
+controller reads a receipt of at most 64 KiB and 256 entries, then validates
+saved file hashes and the root index before marking source snapshots consumed.
+Receipt-listed Markdown reads are bounded to 2 MiB per file and 16 MiB in
+aggregate. Over-limit or changing files invalidate the receipt and retain inputs. A receipt verifies bytes, not the semantic quality of a merge.
 
 Consumption publishes immutable, content-addressed markers in `.consumed/`.
 Source files are not deleted, avoiding a check-then-delete race with a newer
@@ -80,7 +84,10 @@ changing anything under `.agents/notes/`, hold the lease across the complete
 multi-file operation, and release it in `finally`. A consolidation worker does
 not reacquire the lock because the controller holds it on that worker's behalf.
 Never reclaim locks merely because they are old or their recorded owner appears
-inactive. After a crash or interrupted ownership, first verify that no worker is
+inactive. A failure before dispatch is positively reached (including an already
+aborted request) releases its lease. After dispatcher invocation, a thrown error
+does not prove that no writer spawned, so the lease is retained unless dispatch
+metadata positively establishes otherwise. After a crash or interrupted ownership, first verify that no worker is
 still writing; only then manually remove an abandoned lock and retry. Ordinary
 execute-based writers must also coordinate with consolidation. Filesystem checks
 reject existing symlinked managed paths, but this is not a sandbox against a

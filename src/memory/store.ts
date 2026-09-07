@@ -1,12 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { link, lstat, mkdir, open, readdir, rename, rm } from "node:fs/promises";
+import { link, lstat, mkdir, open, opendir, rename, rm } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { acquireMemoryLock, type MemoryLockLease } from "./lock";
 
 const NOTES_RELATIVE = join(".agents", "notes");
 const PENDING_RELATIVE = join(NOTES_RELATIVE, ".pending");
 const CONSUMED_DIRECTORY = ".consumed";
+
+/** Resource limits apply to UTF-8 file bytes, before decoding into strings. */
+export const MAX_PENDING_FILES = 256;
+export const MAX_PENDING_FILE_BYTES = 1024 * 1024;
+export const MAX_PENDING_TOTAL_BYTES = 8 * 1024 * 1024;
+const MAX_CONSUMPTION_RECEIPT_BYTES = 1024;
 
 export interface PendingNoteRecord {
   /** Path relative to cwd, using forward slashes. */
@@ -105,13 +111,26 @@ function pendingPathFromRecord(cwd: string, recordPath: string): string {
   return join(resolve(cwd), PENDING_RELATIVE, name);
 }
 
-async function readRegularFile(path: string): Promise<string> {
+async function readRegularFile(path: string, maximumBytes?: number): Promise<string> {
   const before = await lstat(path);
   if (before.isSymbolicLink()) throw new Error(`Refusing to read symlink: ${path}`);
   if (!before.isFile()) throw new Error(`Managed note is not a regular file: ${path}`);
+  if (maximumBytes !== undefined && before.size > maximumBytes) {
+    throw new Error(`Managed note exceeds the ${maximumBytes}-byte read limit: ${path}`);
+  }
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
-    return await handle.readFile({ encoding: "utf8" });
+    // Cap the actual read too: the file may grow after lstat.
+    if (maximumBytes === undefined) return await handle.readFile({ encoding: "utf8" });
+    const bytes = Buffer.allocUnsafe(maximumBytes + 1);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, null);
+      if (!bytesRead) break;
+      offset += bytesRead;
+    }
+    if (offset > maximumBytes) throw new Error(`Managed note exceeds the ${maximumBytes}-byte read limit: ${path}`);
+    return bytes.subarray(0, offset).toString("utf8");
   } finally {
     await handle.close();
   }
@@ -131,7 +150,7 @@ async function hasConsumptionReceipt(consumed: string | undefined, record: Pendi
   if (!consumed) return false;
   const receipt = consumptionReceipt(record);
   try {
-    return (await readRegularFile(join(consumed, receipt.name))) === receipt.payload;
+    return (await readRegularFile(join(consumed, receipt.name), MAX_CONSUMPTION_RECEIPT_BYTES)) === receipt.payload;
   } catch (error) {
     if (errorCode(error) === "ENOENT") return false;
     throw error;
@@ -180,18 +199,45 @@ export async function snapshotPendingNotes(cwd: string): Promise<PendingNoteReco
   const consumedPath = join(notes, CONSUMED_DIRECTORY);
   const consumed = (await checkedDirectory(consumedPath, false)) ? consumedPath : undefined;
 
-  const entries = await readdir(pending, { withFileTypes: true });
-  const records: PendingNoteRecord[] = [];
-  for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+  // Stream directory entries so an oversized directory is not first materialized
+  // wholesale. Only direct Markdown children count toward this protocol.
+  const names: string[] = [];
+  const directory = await opendir(pending);
+  for await (const entry of directory) {
     if (!entry.name.endsWith(".md")) continue;
-    const path = join(pending, entry.name);
-    // Dirent information is not trusted: lstat/open enforce the no-symlink rule.
-    const content = await readRegularFile(path);
-    const record = {
-      path: portableRelative(cwd, path),
-      content,
-      hash: digest(content),
-    };
+    if (names.length >= MAX_PENDING_FILES) {
+      throw new Error(`Pending memory exceeds the ${MAX_PENDING_FILES}-file limit`);
+    }
+    names.push(entry.name);
+  }
+
+  const candidates: Array<{ path: string; size: number }> = [];
+  let aggregateBytes = 0;
+  for (const name of names.sort((a, b) => a.localeCompare(b))) {
+    const path = join(pending, name);
+    const info = await lstat(path);
+    if (info.isSymbolicLink()) throw new Error(`Refusing to read symlink: ${path}`);
+    if (!info.isFile()) throw new Error(`Managed note is not a regular file: ${path}`);
+    if (info.size > MAX_PENDING_FILE_BYTES) {
+      throw new Error(`Pending memory file exceeds the ${MAX_PENDING_FILE_BYTES}-byte limit: ${path}`);
+    }
+    aggregateBytes += info.size;
+    if (aggregateBytes > MAX_PENDING_TOTAL_BYTES) {
+      throw new Error(`Pending memory exceeds the ${MAX_PENDING_TOTAL_BYTES}-byte aggregate limit`);
+    }
+    candidates.push({ path, size: info.size });
+  }
+
+  const records: PendingNoteRecord[] = [];
+  let actualAggregateBytes = 0;
+  for (const { path } of candidates) {
+    // The bounded read detects growth after the preflight size checks.
+    const content = await readRegularFile(path, MAX_PENDING_FILE_BYTES);
+    actualAggregateBytes += Buffer.byteLength(content, "utf8");
+    if (actualAggregateBytes > MAX_PENDING_TOTAL_BYTES) {
+      throw new Error(`Pending memory exceeds the ${MAX_PENDING_TOTAL_BYTES}-byte aggregate limit`);
+    }
+    const record = { path: portableRelative(cwd, path), content, hash: digest(content) };
     if (!(await hasConsumptionReceipt(consumed, record))) records.push(record);
   }
   return records;

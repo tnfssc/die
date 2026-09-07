@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  MAX_PENDING_FILES,
+  MAX_PENDING_FILE_BYTES,
   consumePendingNotes,
   readConsolidatedNote,
   saveConsolidatedNote,
@@ -31,6 +33,29 @@ afterEach(async () => {
 });
 
 describe("pending memory notes", () => {
+  test("rejects pending count, per-file, and aggregate byte limits", async () => {
+    const countCwd = await temporaryDirectory();
+    const countPending = await pendingDirectory(countCwd);
+    for (let index = 0; index <= MAX_PENDING_FILES; index++) {
+      await writeFile(join(countPending, `${index}.md`), "");
+    }
+    await expect(snapshotPendingNotes(countCwd)).rejects.toThrow("file limit");
+
+    const fileCwd = await temporaryDirectory();
+    const oversized = join(await pendingDirectory(fileCwd), "large.md");
+    await writeFile(oversized, "");
+    await truncate(oversized, MAX_PENDING_FILE_BYTES + 1);
+    await expect(snapshotPendingNotes(fileCwd)).rejects.toThrow("byte limit");
+
+    const aggregateCwd = await temporaryDirectory();
+    const aggregatePending = await pendingDirectory(aggregateCwd);
+    for (let index = 0; index < 9; index++) {
+      const path = join(aggregatePending, `${index}.md`);
+      await writeFile(path, "");
+      await truncate(path, MAX_PENDING_FILE_BYTES);
+    }
+    await expect(snapshotPendingNotes(aggregateCwd)).rejects.toThrow("aggregate limit");
+  });
   test("snapshots direct markdown notes in stable path order", async () => {
     const cwd = await temporaryDirectory();
     const pending = await pendingDirectory(cwd);
