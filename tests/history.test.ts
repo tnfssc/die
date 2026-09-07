@@ -281,6 +281,78 @@ describe("original history", () => {
     ).rejects.toThrow("history limit");
   });
 
+  test("rejects a FIFO promptly without opening it for blocking reads", async () => {
+    const current = SessionManager.inMemory("/project");
+    const dir = await mkdtemp(join(tmpdir(), "die-history-fifo-"));
+    dirs.push(dir);
+    const fifo = join(dir, "session.fifo");
+    const made = Bun.spawnSync(["mkfifo", fifo]);
+    expect(made.exitCode).toBe(0);
+
+    await expect(
+      new HistoryService().search(
+        { query: "x", sessionFile: fifo, allowCrossSession: true },
+        { sessionManager: current },
+      ),
+    ).rejects.toThrow("regular file");
+  });
+
+  test("reports Unicode-insensitive match offsets in original UTF-16 coordinates", async () => {
+    const manager = SessionManager.inMemory("/project");
+    manager.appendMessage(user("İx 😀 NEEDLE"));
+    const service = new HistoryService();
+
+    const expanded: any = await service.search({ query: "x" }, { sessionManager: manager });
+    expect(expanded.matches[0].matchOffset).toBe(1);
+    const astral: any = await service.search({ query: "needle" }, { sessionManager: manager });
+    expect(astral.matches[0].matchOffset).toBe("İx 😀 ".length);
+  });
+
+  test("fails closed when active-branch traversal exceeds its work bound", async () => {
+    const manager = SessionManager.inMemory("/project") as any;
+    manager.getBranch = () => new Array(100_001);
+    await expect(new HistoryService().search({ query: "x" }, { sessionManager: manager })).rejects.toThrow(
+      "100000-entry limit",
+    );
+  });
+
+  test("rejects excessive exclusion work rather than dropping exclusions", async () => {
+    const base = SessionManager.inMemory("/project");
+    const ids = Array.from({ length: 2_048 }, (_, index) => `excluded-${index}`);
+    const entries = Array.from({ length: 49 }, (_, index) => ({
+      id: `shake-${index}`,
+      parentId: index ? `shake-${index - 1}` : null,
+      type: "custom",
+      customType: MANUAL_SHAKE_ENTRY,
+      timestamp: new Date(index).toISOString(),
+      data: {
+        version: MANUAL_SHAKE_VERSION,
+        sessionId: base.getSessionId(),
+        assistantEntryIds: [],
+        toolResultEntryIds: ids,
+        shakenAt: index,
+      },
+    }));
+    const manager = {
+      getSessionId: () => base.getSessionId(),
+      getSessionFile: () => undefined,
+      getCwd: () => "/project",
+      getLeafId: () => entries.at(-1)!.id,
+      getBranch: () => entries,
+    } as any;
+    await expect(new HistoryService().search({ query: "x" }, { sessionManager: manager })).rejects.toThrow(
+      "exclusions exceed",
+    );
+  });
+
+  test("rejects an oversized text part instead of scanning unbounded bytes", async () => {
+    const manager = SessionManager.inMemory("/project");
+    manager.appendMessage(user("x".repeat(4 * 1024 * 1024 + 1)));
+    await expect(new HistoryService().search({ query: "x" }, { sessionManager: manager })).rejects.toThrow(
+      "text part exceeds",
+    );
+  });
+
   test("bounds and pages search and reads, and rejects cursors after branch changes", async () => {
     const manager = SessionManager.inMemory("/project");
     const first = manager.appendMessage(user("paged " + "x".repeat(40)));

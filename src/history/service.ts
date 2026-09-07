@@ -1,4 +1,5 @@
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
+import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import { InvalidShakeRecordError, isShakeRecord, MANUAL_SHAKE_ENTRY } from "../tasks/manual-shake";
@@ -17,6 +18,11 @@ const MAX_CURSOR_CHARS = 16_000;
 const MAX_SESSION_FILE_BYTES = 64 * 1024 * 1024;
 const MAX_SESSION_ENTRIES = 100_000;
 const MAX_SESSION_ENTRY_BYTES = 4 * 1024 * 1024;
+const MAX_ACTIVE_BRANCH_ENTRIES = 100_000;
+const MAX_EXCLUDED_ENTRY_IDS = 100_000;
+const MAX_INDEXED_PARTS = 100_000;
+const MAX_INDEXED_TEXT_BYTES = 64 * 1024 * 1024;
+const MAX_TEXT_PART_BYTES = 4 * 1024 * 1024;
 const REF_PREFIX = "die-history-v1";
 const CURSOR_PREFIX = "dhc1.";
 
@@ -63,7 +69,9 @@ function cursorDecode(value: unknown, kind: Cursor["kind"]): Cursor | undefined 
 /** Read a session without the SDK's persistent open path, which may repair or migrate files. */
 async function openReadonlySession(path: string): Promise<Manager> {
   const sessionFile = resolve(path);
-  const handle = await open(sessionFile, "r");
+  // O_NONBLOCK prevents a special file such as a FIFO from hanging before fstat.
+  // The descriptor remains strictly read-only; only regular files proceed to reads.
+  const handle = await open(sessionFile, constants.O_RDONLY | constants.O_NONBLOCK);
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.size <= 0) throw new Error("Cross-session history requires a non-empty regular file");
@@ -150,13 +158,24 @@ async function openReadonlySession(path: string): Promise<Manager> {
   }
 }
 
+function boundedBranch(manager: Manager, fromId?: string): SessionEntry[] {
+  const branch = manager.getBranch(fromId);
+  if (branch.length > MAX_ACTIVE_BRANCH_ENTRIES)
+    throw new Error(`Active history branch exceeds the ${MAX_ACTIVE_BRANCH_ENTRIES}-entry limit`);
+  return branch;
+}
+
 function retrievalExcludedResults(entries: readonly SessionEntry[]): Set<string> {
   const excluded = new Set<string>();
+  let work = 0;
   for (const entry of entries) {
     if (entry.type !== "custom" || entry.customType !== MANUAL_SHAKE_ENTRY) continue;
-    // A compaction carry can trim IDs from provider context; it must not make
-    // an earlier, explicitly excluded result recoverable through history.
+    // Validate before using any subset: truncating exclusion data could leak a
+    // result the transcript explicitly removed.
     if (!isShakeRecord(entry.data)) throw new InvalidShakeRecordError();
+    work += entry.data.toolResultEntryIds.length;
+    if (work > MAX_EXCLUDED_ENTRY_IDS)
+      throw new Error(`History exclusions exceed the ${MAX_EXCLUDED_ENTRY_IDS}-id limit`);
     for (const id of entry.data.toolResultEntryIds) excluded.add(id);
   }
   return excluded;
@@ -165,9 +184,30 @@ function retrievalExcludedResults(entries: readonly SessionEntry[]): Set<string>
 function textParts(content: unknown): Array<{ part: number; text: string }> {
   if (typeof content === "string") return [{ part: 0, text: content }];
   if (!Array.isArray(content)) return [];
-  return content.flatMap((part, index) =>
-    record(part) && part.type === "text" && typeof part.text === "string" ? [{ part: index, text: part.text }] : [],
-  );
+  if (content.length > MAX_INDEXED_PARTS)
+    throw new Error(`History message exceeds the ${MAX_INDEXED_PARTS}-part limit`);
+  const result: Array<{ part: number; text: string }> = [];
+  for (let index = 0; index < content.length; index++) {
+    const part = content[index];
+    if (record(part) && part.type === "text" && typeof part.text === "string") result.push({ part: index, text: part.text });
+  }
+  return result;
+}
+
+/** Lowercase while retaining the source UTF-16 offset for each folded code unit. */
+function foldWithOffsets(text: string): { text: string; offsets: number[] } {
+  // Fold the complete string to retain context-sensitive mappings (for
+  // example, Greek final sigma), while scalar lengths map expansion back to
+  // the corresponding original UTF-16 coordinate.
+  const folded = text.toLowerCase();
+  const offsets: number[] = [];
+  let sourceOffset = 0;
+  for (const scalar of text) {
+    const foldedLength = scalar.toLowerCase().length;
+    for (let index = 0; index < foldedLength; index++) offsets.push(sourceOffset);
+    sourceOffset += scalar.length;
+  }
+  return { text: folded, offsets };
 }
 function ref(sessionId: string, entryId: string, part: number): string {
   return `${REF_PREFIX}:${sessionId}:${entryId}:${part}`;
@@ -210,7 +250,9 @@ export class HistoryService {
     const needle = query.toLowerCase();
     const matches: HistorySearchMatch[] = [];
     for (const item of items.values) {
-      const at = item.text.toLowerCase().indexOf(needle);
+      const folded = foldWithOffsets(item.text);
+      const foldedAt = folded.text.indexOf(needle);
+      const at = foldedAt < 0 ? -1 : folded.offsets[foldedAt];
       if (at >= 0)
         matches.push({
           ref: ref(item.provenance.sessionId, item.provenance.entryId, item.provenance.part),
@@ -303,7 +345,7 @@ export class HistoryService {
     if (!cursor) return;
     if (cursor.sessionId !== manager.getSessionId() || cursor.key !== key)
       throw new Error("History cursor does not match this query, reference, session, or active branch");
-    const activeIds = new Set(manager.getBranch().map((entry) => entry.id));
+    const activeIds = new Set(boundedBranch(manager).map((entry) => entry.id));
     if (cursor.leafId !== null && !activeIds.has(cursor.leafId))
       throw new Error("History cursor does not match this query, reference, session, or active branch");
   }
@@ -313,12 +355,14 @@ export class HistoryService {
     scope: HistoryProvenance["scope"],
     leafId: string | null = manager.getLeafId(),
   ): { values: TextItem[]; rankByRef: Map<string, number>; scannedEntries: number; scanLimited: boolean } {
-    const branch = leafId === null ? [] : manager.getBranch(leafId);
+    const branch = leafId === null ? [] : boundedBranch(manager, leafId);
     const scanLimited = branch.length > MAX_SCAN_ENTRIES;
     const selected = scanLimited ? branch.slice(-MAX_SCAN_ENTRIES) : branch;
     // Cursor data remains pinned to its snapshot, but exclusion policy is live.
-    const excludedResults = retrievalExcludedResults(manager.getBranch() as SessionEntry[]);
+    const excludedResults = retrievalExcludedResults(boundedBranch(manager));
     const values: TextItem[] = [];
+    let indexedParts = 0;
+    let indexedBytes = 0;
     for (const entry of selected) {
       if (entry.type !== "message" || excludedResults.has(entry.id)) continue;
       const message = entry.message as unknown;
@@ -341,7 +385,16 @@ export class HistoryService {
         ].filter((part): part is { part: number; text: string } => !!part);
         rank = 2;
       } else continue;
+      indexedParts += Array.isArray(message.content) ? message.content.length : parts.length;
+      if (indexedParts > MAX_INDEXED_PARTS)
+        throw new Error(`History scan exceeds the ${MAX_INDEXED_PARTS}-part limit`);
       for (const part of parts) {
+        const bytes = Buffer.byteLength(part.text);
+        if (bytes > MAX_TEXT_PART_BYTES)
+          throw new Error(`History text part exceeds the ${MAX_TEXT_PART_BYTES}-byte limit`);
+        indexedBytes += bytes;
+        if (indexedBytes > MAX_INDEXED_TEXT_BYTES)
+          throw new Error(`History scan exceeds the ${MAX_INDEXED_TEXT_BYTES}-byte text limit`);
         const provenance: HistoryProvenance = {
           source: "original-transcript",
           scope,
