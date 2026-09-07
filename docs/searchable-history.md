@@ -26,14 +26,6 @@ Returns at most 8,000 characters by default (maximum 16,000), an exact range and
 
 Only returned search excerpts/read pages enter the model through the ordinary execute tool result; the service does not inject history into context automatically.
 
-## Integration seam
+## Runtime integration
 
-`HistoryService` in `src/history/service.ts` owns validation, scoping, search, reads and provenance. Execute's worker bridge already exposes `history.search` and `history.read`. The central extension dispatcher must create one service and route `history.*` requests before the job service:
-
-```ts
-const history = new HistoryService();
-// inside registerExecuteTool's request handler
-if (method.startsWith("history.")) return history.handle(method, params, ctx);
-```
-
-This branch intentionally does not alter the central task-extension composition; that one import, service instance and routing clause are required for runtime availability.
+`HistoryService` in `src/history/service.ts` owns validation, scoping, search, reads and provenance. The central task extension now creates that service and routes `history.search` and `history.read` from execute before job dispatch, so both helpers are available in current source. This integration is newer than the installed v0.2.3 binary and is not claimed as released or installed.

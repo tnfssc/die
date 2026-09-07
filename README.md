@@ -10,6 +10,8 @@ executable, and place it in a directory on your `PATH`. Release source links, th
 license, and third-party notices are published alongside each binary. Other platforms
 have not been validated as release targets.
 
+This README describes the current source tree. The locally installed executable remains the older v0.2.3 release; features added afterward are not claimed as released or installed.
+
 To build from source, install Bun 1.4.1 (the version pinned in `mise.toml`), clone the
 repository, and enter the checkout.
 
@@ -96,12 +98,17 @@ console.log(await shell("bun run dev", { waitSeconds: 0 }));
 console.log(await subagent({ type: "fast", prompt: "Research this module" }));
 console.log(await jobs.list({ count: 20 }));
 console.log(await jobs.inspect("task_id", { offset: 0, limit: 5000 }));
+console.log(await history.search({ query: "exact phrase" }));
+console.log(await history.read({ ref: "die-history-v1:…" }));
+console.log(await goal.get());
+await jobs.snooze("task_id", { minutes: 10 });
+await jobs.setWatch("task_id", { enabled: false });
 await jobs.input("task_id", "hello\n", { closeInput: true });
 await jobs.closeInput("task_id");
 await jobs.stop("task_id");
 ~~~
 
-- Helpers do not print automatically: console.log the result fields you need.
+- Available globals are `shell`, `subagent`, `handoff`, `jobs`, `history`, and `goal`; helpers do not print automatically, so console.log the result fields you need. `history.search`/`history.read` retrieve [bounded original transcript evidence](docs/searchable-history.md), while `goal.get`/`set`/`update`/`clear` manage opt-in durable goal state.
 - shell(command, options?) accepts waitSeconds, timeoutSeconds, and closeInput.
 - subagent({type?, prompt, waitSeconds?, timeoutSeconds?}) selects a configured profile.
   prompts: string[] is supported instead of prompt and returns an array of jobs.
@@ -242,7 +249,7 @@ Progress keeps the last 1 MB per job; inspections return at most 5 KB of log out
 
 ### Compact tool and completion views
 
-The collapsed `execute` TUI view shows the first three rendered rows of TypeScript input and the last five rows of output, with ellipses for hidden content. Execution status remains visible. Large task-complete notifications show a three-row head and three-row tail around an ellipsis. Limits apply after wrapping, so long single-line output stays compact even in narrow terminals.
+A collapsed `execute` call and its settled result share one physical summary row, including status and bounded diagnostics. Expanding it reveals retained input and output. Collapsed task-complete and task-attention notifications are likewise one summary row. Their expanded views use bounded head/tail detail and an ellipsis for hidden content. Limits apply after wrapping, so long single-line content stays compact even in narrow terminals.
 
 Use the tool-output expansion shortcut (normally **Ctrl+O**) to reveal retained content. This changes only the terminal presentation, not what is sent to the model or retained in the session. Output already discarded by execute cannot be recovered by expanding. Images continue to use Pi's normal image display.
 
@@ -311,4 +318,4 @@ cost. See [compaction implementation and evidence](docs/compaction-research.md).
 
 ## Project-local memory extension
 
-An opt-in [project-memory registration module](docs/project-memory.md) supports filesystem topic notes and explicitly requested managed consolidation. It is not wired into the default extension; automatic turn/shutdown consolidation is not enabled.
+The integrated opt-in [project-memory extension](docs/project-memory.md) supports filesystem topic notes and explicitly requested managed consolidation through `/memory consolidate fast|normal --constraints <text>`. Consolidation is manual only: automatic assignment-completion, turn, settled-event, job-completion, and shutdown triggers remain undecided and disabled.

@@ -1,7 +1,6 @@
 # Compaction and cache reuse — investigation
 
-Status: Phase 1 implemented and validated; Phase 2 remains deferred.
-Not installed. Pi version investigated: 0.85.0.
+Status: Phase 1 and Phase 2 were implemented and validated; the later current-conversation plaintext revision supersedes Phase 1's old snapshot-eligibility rules. These source revisions were built, not installed; the currently installed release is the older v0.2.3. Pi version investigated: 0.85.0.
 Investigated 2026-09-05. Comparison verified against official documentation and Codex source at commit
 588b781ab4924ce7352488394028e63d74cf807f. Public docs and defaults may evolve.
 
@@ -120,7 +119,7 @@ It also does not receive the normal Agent-level payload/response callbacks;
 header hooks still run through the SDK stream wrapper. Therefore ordinary-request
 telemetry alone will miss important compaction details. session_before_compact can
 supply a replacement checkpoint for both manual and automatic paths without
-patching node_modules. This is the likely integration seam, not yet implemented.
+patching node_modules. At the investigation outset this was the likely, not-yet-implemented integration seam; the implementation sections below record how it was subsequently used and revised.
 
 The installed session-format documentation also describes a different harness
 retainedTail representation. That is not the checkpoint format currently used by
@@ -284,7 +283,7 @@ At investigation time the guide and API reference disagreed about the maximum
 read-breakpoint count (50 versus 80). We should not depend on either number without
 confirmation. This does not affect the core prefix-preservation conclusion.
 
-## Agreed implementation sequence
+## Historical agreed implementation sequence
 
 User decision: implement Claude-style compaction first. Implement Codex-native
 compaction afterward as the intended Codex-provider strategy, not an optional
@@ -317,7 +316,7 @@ rewriting the shared machinery.
 5. Compare warm and cold A/B runs and the first resumed call, measuring cached
    reads, writes, uncached input, output/reasoning, latency and task-state quality.
    Quality gains from retaining full tool outputs are plausible, not proven.
-### Phase 2 — Codex-native compaction (required, deferred)
+### Phase 2 — Codex-native compaction (historical plan; now implemented)
 
 Implement provider-native compaction for the Codex provider, using the supported
 Codex-style request/response flow for the actual backend. Preserve native opaque
@@ -331,8 +330,7 @@ cost on the actual provider rather than assuming source/API parity. Any interim
 plaintext behavior or unsupported-backend fallback must remain distinguishable
 from successful native compaction.
 
-Phase 2 is deliberately deferred until after Phase 1, but is part of the agreed
-product direction. Phase 1 is implemented below; Phase 2 is not implemented.
+At this planning milestone, Phase 2 was deliberately deferred until after Phase 1 but remained required. The later “Phase 2 implemented” section preserves the completed implementation and evidence; this paragraph is not a current status claim.
 
 No production code, provider behavior or installation was changed in this
 investigation. External sources were fetched publicly; the serializer experiment
@@ -381,7 +379,7 @@ API. New raw user/tool/image entries therefore require fallback rather than
 bypassing redaction or image-blocking policy. An unmodified captured prefix may
 be extended with a safe text/thinking-only assistant response. This means some
 between-tool automatic compactions still use the standard path. Branch summaries
-are unchanged. Native Codex compaction remains required Phase 2 work.
+are unchanged. At this Phase 1 milestone, native Codex compaction remained required Phase 2 work; it is implemented in the later section.
 
 ### Validation and retained failures
 

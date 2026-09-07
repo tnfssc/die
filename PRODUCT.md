@@ -6,7 +6,7 @@
 
 This section describes the current product; the phase/milestone sections below retain historical decisions and evidence, not competing current interfaces.
 
-- One model-facing tool: `execute`. Shell, delegation, jobs, goals, images and cooperative handoff are helpers. Workers are isolated; managed jobs belong to the session. Default launch wait is one second, independently of job lifetime.
+- One model-facing tool: `execute`. Shell, delegation, jobs, history, goals, images and cooperative handoff are helpers. Workers are isolated; managed jobs belong to the session. Shell launches wait three seconds by default and sub-agent launches one second, independently of job lifetime.
 - Root can delegate to orchestrators and leaves; orchestrators can delegate to fast/normal leaves. No deeper delegation. Result delivery must have one owner: foreground or background notification.
 - Durable history, bounded output/diagnostics, descendant own-usage costs and quiet startup remain required. Markdown is the editable source for model-facing prose; explicit custom prompts and project/skill context remain supported.
 - Codex uses opaque native compaction with documented provider/model and capture restrictions. Other providers summarize the current transformed conversation through normal provider hooks. Failures preserve history; no hidden paid fallback. Cache availability, savings and quality are separate validation claims.
@@ -14,7 +14,7 @@ This section describes the current product; the phase/milestone sections below r
 - Attention uses one session scheduler: five-minute quiet and ten-minute review checkpoints, snooze up to 55 minutes, and explicit watcher suppression. It reports observations, never automatically kills work. Per-agent/model cache countdowns are configurable informational estimates, nominally one hour, not cache guarantees.
 - Goal mode is opt-in, durable and branch-scoped, with active/waiting/blocked/completed/paused states. Goal context follows the normal filtering lifecycle. Successful handoff can record owned waiting work; automatic run boundaries enforce a no-progress guard based on explicit milestone evidence, not job/revision churn. Model-authored completion evidence still requires independent verification.
 - Formatting and recommended lint checks, CI/tag-release workflows, contributor documentation and MIT licensing are implemented. Persistent execute remains exploratory; this does not claim Codex client parity.
-- Current changes are built and tested, not locally installed. Installation still requires explicit authorization; no release tag or release publication has been created.
+- Source changes after the installed v0.2.3 artifact are built and tested but are not locally installed or released. Installation and release still require explicit authorization; do not infer the latest source features from the installed binary.
 
 ### Active review fixes
 
@@ -29,9 +29,9 @@ Root integration review rejected two incomplete first passes: graph bundling cha
 
 - [x] Integrate regressions, typecheck/build/smoke and real-terminal/model validation. Prior medium successes do not establish minimal-reasoning reliability, and previous passing tests missed real integration bugs.
 
-## Planned — Job attention checkpoints and cache countdown
+## Historical plan — Job attention checkpoints and cache countdown (implemented)
 
-Status: agreed product direction, not implemented. These requirements supplement the current hardening work; they do not change job lifetimes or authorize installation.
+Status: this section preserves the agreed pre-implementation requirements. Job attention and the footer cache countdown are now implemented in source; they do not change job lifetimes, guarantee cache retention, or imply release/installation.
 
 ### Attention for long-running jobs
 
@@ -65,9 +65,9 @@ Status: agreed product direction, not implemented. These requirements supplement
 - Before implementation, define the precise request timestamp/reset semantics (start versus completion; failures, retries and compaction), session-resume behavior, and provider/model-switch behavior. The UI must not imply that a call refreshed a compatible cache when that is not known. Configuration surface and persistence also remain implementation decisions.
 - The countdown is informational: it must not itself make provider requests, cancel jobs or end sessions. Test per-agent isolation, configurable TTL, warning/expiry states, clock progression and idle rendering cost.
 
-## Planned — Goal mode
+## Historical plan — Goal mode (implemented)
 
-Status: user-approved direction, not implemented. Goal mode prevents accidental abandonment of an assignment without preventing responsive yielding.
+Status: this section preserves the user-approved pre-implementation requirements. Opt-in goal mode is now implemented in source; it prevents accidental abandonment without preventing responsive yielding.
 
 ### Persistent objective and explicit state
 
@@ -183,7 +183,7 @@ Status: user-approved direction, not implemented. Goal mode prevents accidental 
 - Second-level sub-agents are leaves: they do not receive the model-facing `subagent` capability and cannot delegate further.
 - The two-level rule is functional behavior, not a security boundary against a process deliberately modifying its environment and invoking executables itself.
 
-### Lightweight role instructions (planned)
+### Lightweight role instructions (implemented)
 
 - Give each sub-agent type a short role-specific system instruction. These instructions steer behavior without large prompts or excessive procedural rules.
 - Orchestrator: primarily decompose goals, delegate, coordinate, review, and synthesize. Prefer assigning implementation to normal agents instead of doing it all directly. Accept higher-level objectives and decide how to break them down.
@@ -192,7 +192,7 @@ Status: user-approved direction, not implemented. Goal mode prevents accidental 
 - Calling agents should give fast agents precise objectives, scope, and expected results; normal agents can receive implementation goals with room for judgment; orchestrators can receive broad coordination objectives.
 - These role instructions are behavioral guidance, not a new security sandbox or additional tool permission boundary. The existing orchestrator-only delegation and two-level depth limits remain in force.
 
-### Main-agent instruction switching (planned)
+### Main-agent instruction switching (implemented)
 
 - Allow the user to switch the main agent between the same fast, normal, and orchestrator instruction sets through a TUI slash command.
 - This changes behavioral instructions, not necessarily the model or thinking settings. Automatic model/profile switching is not requested by this requirement.
@@ -201,17 +201,17 @@ Status: user-approved direction, not implemented. Goal mode prevents accidental 
 - This default applies to the main agent instruction mode, not to the type of every spawned agent; delegation should still select the appropriate type.
 - Decide separately whether choosing fast/normal instructions on the main agent changes its delegation permissions; the existing sub-agent permission rules do not implicitly settle main-agent behavior.
 
-### Tool selection
+### Historical Phase 2 tool selection (superseded)
 
-- `task` is a core capability, and `subagent` is a core capability for root agents.
-- Pi's model-facing `bash` and `powershell` tools are disabled in favor of `task`.
+- At this phase, `task` was a core capability and `subagent` was a core capability for root agents. The later unified execute API superseded both model-facing tools.
+- Pi's model-facing `bash` and `powershell` tools were disabled in favor of `task`; current source exposes managed shell execution through `shell()` inside `execute`.
 - Generic Pi options intended to disable or select model-facing tools are removed from `die`; they must not override the core `die` tool model.
-- Other file tools remain until Phase 3.
+- Other file tools remained until Phase 3. Current source registers only `execute` as model-facing.
 
 ## Phase 3 — One TypeScript execution tool
 
 - Remove the model-facing `read`, `edit`, `write`, and shell tools.
-- Replace them with exactly one general-purpose model-facing tool named `execute`. It accepts and executes TypeScript, but is not named `typescript`. The specialized asynchronous `task` and `subagent` capabilities remain alongside it.
+- Replace them with exactly one general-purpose model-facing tool named `execute`. It accepts and executes TypeScript, but is not named `typescript`. The original plan kept specialized `task` and `subagent` capabilities alongside it; the later unified execute migration superseded that detail and moved both behind helpers.
 - The model performs reads, writes, edits, and synchronous command execution by writing TypeScript for this tool.
 - The tool executes the submitted TypeScript and returns its output or result.
 - TypeScript is the initial language.
@@ -232,14 +232,14 @@ Status: user-approved direction, not implemented. Goal mode prevents accidental 
 ## Post-baseline — Image results
 
 - The existing `execute` tool can return images to the model for screenshot inspection and visual debugging.
-- Keep the three-tool model; do not restore a separate model-facing image/read tool.
+- This originally required keeping the then-current three-tool model and avoiding a separate model-facing image/read tool. The later unified execute migration superseded the tool count while preserving image delivery through `emitImage()` inside `execute`.
 - See [`docs/execute-images.md`](./docs/execute-images.md) for the helper API, implementation limits, and validation.
 
-## Post-baseline — Interactive task monitor (planned)
+## Post-baseline — Interactive task monitor (phase 1 implemented)
 
 ### Monitor phase 1 — View and stop
 
-- Add a user-facing TUI slash command named `/ps` for tasks and sub-agents. This is separate from the model-facing `task` tool.
+- Add a user-facing TUI slash command named `/ps` for tasks and sub-agents. It now uses the same job registry as execute helpers; there is no separate model-facing `task` tool.
 - Show all running tasks and sub-agents in the current session.
 - Up and Down arrow keys move the selection between entries.
 - Allow the user to preview the selected task's current available output and see what is happening inside it without asking the agent to inspect it.
@@ -305,7 +305,7 @@ Status: user-approved direction, not implemented. Goal mode prevents accidental 
 - Revisit a simple, lightly structured filesystem for project-local agent notes under .agents/notes/.
 - Candidate structure: nested topic directories with small index.md files describing immediate children; focused Markdown notes, read selectively by following relevant branches.
 - Keep the concept filesystem-based; a database, search service, or dedicated memory tools are not the requested direction.
-- Implementation is authorized as an opt-in filesystem extension; see `docs/project-memory.md`. Central registration and automatic trigger/cost policy remain explicit integration choices.
+- The opt-in filesystem extension is implemented and centrally registered; see `docs/project-memory.md`. Consolidation remains explicit/manual only. Automatic triggering and persistent profile/cost consent remain undecided and disabled.
 
 ### Recorded direction — Conditional memory consolidation
 
@@ -350,11 +350,11 @@ Status: user-approved direction, not implemented. Goal mode prevents accidental 
 
 ## Pending post-baseline work
 
-- Sub-agent types and independent profile settings: implemented with /subagents TUI editing and ~/.die/subagents.json. Typecheck, compiled build, deterministic suite (122 passed; 7 opt-in LLM tests skipped), and standalone smoke validation passed. The ergonomic /subagents panel now provides fuzzy model/provider search, exact-match prioritization, inheritance, direct thinking selection, and preserved settings-row selection. Its real-TUI search/edit/save flow is validated. The latest full suite passed 134 tests (8 opt-in LLM tests skipped), with typecheck/build and diff checks passing. Lightweight role-specific system instructions and subsequent hierarchy refinements specified above remain to be integrated and validated.
-- Interactive task monitor (`/ps`): not yet implemented. The session-owned live-progress feed and task inspection diagnostics are implemented as its foundation.
+- Sub-agent types and independent profile settings: implemented with /subagents TUI editing and ~/.die/subagents.json. Typecheck, compiled build, deterministic suite (122 passed; 7 opt-in LLM tests skipped), and standalone smoke validation passed. The ergonomic /subagents panel now provides fuzzy model/provider search, exact-match prioritization, inheritance, direct thinking selection, and preserved settings-row selection. Its real-TUI search/edit/save flow is validated. The latest full suite passed 134 tests (8 opt-in LLM tests skipped), with typecheck/build and diff checks passing. At that milestone, lightweight role-specific instructions and later hierarchy refinements still remained to be integrated; both are now implemented in source.
+- Interactive task monitor phase 1 (`/ps`) is implemented with bounded live inspection and confirmed stopping. Monitor phase 2 interactivity remains deferred.
 - Monitor interactivity: deferred to monitor phase 2.
 - Persistent sub-agent JSONL sessions, identifying session names in /resume, parent/job/model metadata, and bounded live diagnostics through task inspection: implemented. Typecheck/build, 129 deterministic tests, standalone smoke, and a real GPT-5.6 Luna delegation/persistence test passed. Dedicated picker styling/selection safeguards remain open.
-- Unified execute helpers and session-owned jobs, including the one-second foreground wait: implemented. Validation passed: 119 deterministic tests, typecheck/build, standalone smoke, and three real GPT-5.6 Luna tests covering inline shell results, background completion, and sub-agent persistence.
+- Unified execute helpers and session-owned jobs are implemented. The original one-second wait evidence is historical; current defaults are three seconds for shell and one second for sub-agents. Validation passed: 119 deterministic tests, typecheck/build, standalone smoke, and three real GPT-5.6 Luna tests covering inline shell results, background completion, and sub-agent persistence.
 - Combined parent/descendant footer cost: implemented and validated. 130 tests passed (7 opt-in LLM tests skipped), including real-terminal live-update/resume coverage; typecheck/build, smoke and diff checks passed. Independent aggregation of this session’s 10 saved descendants matched exactly ($1.49327548 at validation time).
 - Three-tier hierarchy with no nested spawned orchestrators and distinct orchestrator identity in /resume: implemented.
 
@@ -431,7 +431,7 @@ Phases 1, 2, and 3 are established for the current Linux/Bun baseline as of 2026
 ### Phase 1 compaction implementation in progress
 
 - User authorized implementation of the Claude-style cache-affine plaintext path. Production implementation/focused tests are delegated to a normal worker; independent API/prefix-risk reconnaissance is delegated to fast.
-- Root owns integration review, final validation and documentation. Codex-native Phase 2 remains deferred. No installation authorized.
+- At this milestone, root owned integration review, final validation and documentation; Codex-native Phase 2 remained deferred. No installation was authorized.
 
 - Initial Phase 1 review: seven isolated unit tests passed, but new root-owned actual SDK/provider-serializer tests exposed fallback on both Codex and Anthropic; these failures are retained as evidence rather than accepted as cache-affine success. Provider mapping/cache-marker handling is being corrected.
 - Existing SIGTERM escalation test failed because its fixed 25ms delay could signal before the login shell installed the trap. Replaced that delay with a bounded readiness handshake; the original SIGKILL assertion remains. Focused task-manager suite now passes 18 tests.
@@ -441,7 +441,7 @@ Phases 1, 2, and 3 are established for the current Linux/Bun baseline as of 2026
 - Added native-prefix plaintext summarization through the compaction hook, imported Markdown prompts, provider-prefix/cache-policy checks, visible standard fallback, and safe cancellation after billable unusable responses. Runtime-owned running jobs are appended to the checkpoint; failed-response usage is retained in cost totals.
 - Actual SDK/serializer tests cover Codex and Anthropic (including thinking mapping and routing headers); unit tests cover boundaries, transforms, overflow, failures, accounting and template safety. Final validation: 186 passed, 11 opt-in skips, 1,024 assertions across 42 files; typecheck/build/smoke/diff checks passed.
 - Two single-run live probes demonstrated cache reuse and preservation of a value lost by the truncated baseline. The strengthened probe also verifies tail exclusion and correct resumed recall: 9,728 cached / 1,259 uncached summary input tokens (~88.5% cached). It cost ~30% more than its much shorter baseline; no universal savings claim. Evidence and limitations: `docs/compaction-research.md`.
-- Some automatic between-tool compactions and unsupported/stale contexts still use the standard path rather than bypassing context transforms. Native Codex Phase 2 remains deferred and required. Built, not installed.
+- At this Phase 1 milestone, some automatic between-tool compactions and unsupported/stale contexts still used the standard path rather than bypassing context transforms. Native Codex Phase 2 remained deferred and required; the later Phase 2 milestone supersedes that status. Built, not installed.
 
 ### Phase 2 native Codex compaction in progress
 
@@ -494,7 +494,7 @@ Final integrated gate passed: **247 tests, 13 opt-in skips, zero failures, 1,377
 
 ## Repository publication (2026-09-05)
 
-User authorized committing and publishing the accumulated implementation, tests, prompts and product documentation to `git@github.com:tnfssc/die.git`. Publish the existing `develop` branch without rewriting history. Generated binaries, dependencies, local runtime/session data and ignored test artifacts remain excluded; their validation results and paths are documented above. Goal mode, attention checkpoints and the footer cache countdown remain planned, not implemented. Publication does not authorize a local installation.
+User authorized committing and publishing the accumulated implementation, tests, prompts and product documentation to `git@github.com:tnfssc/die.git`. Publish the existing `develop` branch without rewriting history. Generated binaries, dependencies, local runtime/session data and ignored test artifacts remain excluded; their validation results and paths are documented above. At that publication milestone, goal mode, attention checkpoints and the footer cache countdown remained planned and unimplemented; later source milestones supersede that status. Publication did not authorize a local installation.
 
 ## Delegated feature rollout (2026-09-05)
 
@@ -577,7 +577,7 @@ User authorized v0.2.3 release and installation for the shell-only default foreg
 
 Published and installed v0.2.3 from immutable commit 22fb0c8fb176c1940bd58850dd58eae5ac7649d2. Release run 34065824323 passed; published Linux x64 checksum, SOURCE commit and version verified. Installed atomically at /home/tnfssc/.local/bin/die with rollback at /home/tnfssc/.local/state/die/backups/pre-v0.2.3-1788736010727/die. Final local suite: 478 pass, 14 skip, 0 fail, 3032 assertions. Restart required for existing processes to adopt the new default.
 
-Project-memory implementation is isolated behind `registerProjectMemory` in `src/memory/extension.ts`; central registration remains pending. Explicit profile/constraint consent, managed job reconciliation, project-wide cooperative exclusion, saved-file hash receipts and content-addressed source consumption are covered by 26 focused tests. Final deterministic gate: 504 pass, 14 skip, 0 fail (`/tmp/die-memory-tests-trusted.log`); build, typecheck, format, lint and smoke passed. Initial full-suite log `/tmp/die-memory-tests.log` retains six unrelated exact-output failures from worktree-local mise trust warnings; rerun used scoped `MISE_TRUSTED_CONFIG_PATHS` without global trust changes. No live consolidation/model probes, release, dependency changes or central task-extension edits. Automatic assignment-completion triggering and persistent cost consent remain unenabled user choices.
+At this implementation milestone, project memory was isolated behind `registerProjectMemory` in `src/memory/extension.ts` and central registration was still pending; the later integration milestone below supersedes that status. Explicit profile/constraint consent, managed job reconciliation, project-wide cooperative exclusion, saved-file hash receipts and content-addressed source consumption are covered by 26 focused tests. Final deterministic gate: 504 pass, 14 skip, 0 fail (`/tmp/die-memory-tests-trusted.log`); build, typecheck, format, lint and smoke passed. Initial full-suite log `/tmp/die-memory-tests.log` retains six unrelated exact-output failures from worktree-local mise trust warnings; rerun used scoped `MISE_TRUSTED_CONFIG_PATHS` without global trust changes. No live consolidation/model probes, release, dependency changes or central task-extension edits. Automatic assignment-completion triggering and persistent cost consent remain unenabled user choices.
 
 ## Recorded idea — Ask-user form
 
