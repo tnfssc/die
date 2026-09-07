@@ -76,6 +76,46 @@ test("empty registry and no-output state are explicit", async () => {
   expect(panel.render(80).join("\n")).toContain("No jobs are running");
 });
 
+test("short terminals bound running and empty frames while retaining controls and stop identity", async () => {
+  const manager = new TaskManager(() => {}, 20);
+  let rows = 3;
+  const panel = new TaskMonitorPanel(
+    manager,
+    theme as any,
+    getKeybindings(),
+    () => {},
+    () => {},
+    () => rows,
+  );
+  try {
+    let lines = panel.render(80);
+    expect(lines).toHaveLength(3);
+    expect(lines.join("\n")).toContain("Running jobs");
+    expect(lines.join("\n")).toContain("Esc close");
+
+    const task = launch(manager, "sleep 10", "recognizable-command");
+    rows = 5;
+    lines = panel.render(80);
+    expect(lines.length).toBeLessThanOrEqual(5);
+    expect(lines.join("\n")).toContain(task.id);
+    expect(lines.join("\n")).toContain("stop");
+
+    panel.handleInput("s");
+    rows = 1;
+    lines = panel.render(80);
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("Stop " + task.id);
+    expect(lines[0]).toContain("recognizable-command");
+    expect(lines[0]).toContain("confirm");
+
+    rows = 0;
+    expect(panel.render(80)).toEqual([]);
+  } finally {
+    panel.dispose();
+    await manager.shutdown();
+  }
+});
+
 test("/ps uses the supplied shared registry and refuses non-TUI", async () => {
   let handler: any;
   const notes: any[] = [];

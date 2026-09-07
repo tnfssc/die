@@ -16,7 +16,10 @@ another die process.
 The list includes the job kind or available sub-agent role. Inspection includes
 available PID, working directory, activity status, and recent output. The
 preview is capped at 2,400 bytes and 12 lines; inspection requests at most the
-job manager's 5,000-byte API limit and only renders lines that fit the terminal.
+job manager's 5,000-byte API limit and only renders lines that fit the terminal,
+including terminals shorter than ten rows and the empty-job view. On severely
+short frames, the title and controls (including the frozen stop identity during
+confirmation) take priority over spacer and detail rows.
 Terminal escape/control sequences are removed before display.
 
 Updates are event-driven and coalesced to at most one render request per 100 ms,

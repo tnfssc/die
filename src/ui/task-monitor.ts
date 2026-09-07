@@ -28,6 +28,23 @@ function cleanTerminalText(value: string, preserveNewlines = false): string {
 function cleanCommand(value: string): string {
   return cleanTerminalText(value).slice(0, COMMAND_CHARS);
 }
+function terminalRows(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 24;
+}
+function fitRows(lines: string[], height: number): string[] {
+  if (height <= 0) return [];
+  if (lines.length <= height) return lines;
+  const controls = lines.at(-2) ?? lines.at(-1) ?? "";
+  if (height === 1) return [controls];
+  if (height === 2) return [lines[1] ?? lines[0] ?? "", controls];
+  if (height === 3) return [lines[0] ?? "", lines[1] ?? "", controls];
+
+  // Keep the frame title and controls. Blank spacer rows are the first thing
+  // dropped on a short terminal so selected/inspection information remains useful.
+  const body = lines.slice(2, -2);
+  const usefulBody = [...body.filter((line) => line !== ""), ...body.filter((line) => line === "")];
+  return [lines[0]!, lines[1]!, ...usefulBody.slice(0, height - 4), controls, lines.at(-1)!];
+}
 function cleanOutput(value: string): string[] {
   const lines = cleanTerminalText(value, true).replace(/\r/g, "").split("\n");
   if (lines.at(-1) === "") lines.pop();
@@ -148,6 +165,7 @@ export class TaskMonitorPanel implements Component, Focusable {
   }
   render(width: number): string[] {
     if (width < 1) return [];
+    const height = terminalRows(this.maxRows());
     const tasks = this.running();
     this.syncSelection(tasks);
     const lines: string[] = [this.theme.fg("accent", "─".repeat(width)), this.theme.bold("Running jobs")];
@@ -162,14 +180,13 @@ export class TaskMonitorPanel implements Component, Focusable {
         this.theme.fg("dim", "Esc close"),
         this.theme.fg("accent", "─".repeat(width)),
       );
-      return lines.map((line) => truncateToWidth(line, width));
+      return fitRows(lines, height).map((line) => truncateToWidth(line, width));
     }
     lines.push("");
     const task = tasks[this.selected];
     // syncSelection above guarantees a selected task whenever the running list is non-empty.
     if (!task) return lines.map((line) => truncateToWidth(line, width));
     if (this.inspecting) {
-      const height = Math.max(10, this.maxRows());
       const metadataRows = 9 + (task.agent?.lastActivityAt ? 1 : 0);
       const outputRows = Math.max(1, Math.min(OUTPUT_LINES, height - metadataRows));
       const inspection = this.manager.inspect(
@@ -209,7 +226,6 @@ export class TaskMonitorPanel implements Component, Focusable {
       }
     } else {
       const hasActivity = !!task.agent?.lastActivityAt;
-      const height = Math.max(10, this.maxRows());
       const fixedRows = 8 + (hasActivity ? 1 : 0);
       const available = Math.max(2, height - fixedRows);
       const previewRows = Math.min(OUTPUT_LINES, Math.max(1, Math.floor(available / 2)));
@@ -278,7 +294,7 @@ export class TaskMonitorPanel implements Component, Focusable {
           ),
       this.theme.fg("accent", "─".repeat(width)),
     );
-    return lines.map((line) => truncateToWidth(line, width));
+    return fitRows(lines, height).map((line) => truncateToWidth(line, width));
   }
   invalidate() {}
   dispose() {

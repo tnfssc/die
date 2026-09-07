@@ -26,9 +26,9 @@ function entries(manager: SessionLike | undefined): readonly unknown[] {
   }
 }
 
-/** Prepare a public-API restoration before writing. Diagnostics are refused when
- * the active leaf cannot be read and restored; persistence must not move the
- * runtime conversation onto a diagnostic-only child. */
+/** Prepare and preflight a public-API restoration before writing. Diagnostics
+ * are refused when the active leaf cannot be read or restoration already fails.
+ * The later append/restore pair cannot be transactional through this API. */
 function leafRestorer(manager: SessionLike): (() => void) | undefined {
   try {
     if (typeof manager.getLeafId !== "function") return;
@@ -36,10 +36,18 @@ function leafRestorer(manager: SessionLike): (() => void) | undefined {
     if (leafId === null) {
       if (typeof manager.resetLeaf !== "function") return;
       const resetLeaf = manager.resetLeaf.bind(manager);
+      // As with branch(), reject a restoration that is already known to fail.
+      resetLeaf();
       return () => resetLeaf();
     }
     if (typeof leafId !== "string" || typeof manager.branch !== "function") return;
     const branch = manager.branch.bind(manager);
+    // The pinned SDK's branch() validates before changing its leaf. Probe the
+    // saved leaf now so an already-impossible restoration refuses the optional
+    // write instead of discovering that only after appendEntry has mutated the
+    // session. This is only a preflight: custom implementations can still fail
+    // on the later restoration call.
+    branch(leafId);
     return () => branch(leafId);
   } catch {
     return;

@@ -242,6 +242,51 @@ test("extension refuses persistence when the active leaf cannot be restored", ()
   expect(inspectDiagnostics(manager)).toMatchObject({ writeFailures: 1, dropped: 1, accepted: 1 });
 });
 
+test("extension preflights restoration and reports unavoidable post-append restoration failure", () => {
+  const handlers: Record<string, Function> = {};
+  let leaf = "active-leaf";
+  let appends = 0;
+  let branchCalls = 0;
+  const manager = {
+    getSessionId: () => "session",
+    getEntries: () => [],
+    getLeafId: () => leaf,
+    branch: (_id: string): void => {
+      branchCalls++;
+      throw new Error("restoration unavailable");
+    },
+  };
+  const pi: any = {
+    on: (name: string, handler: Function) => (handlers[name] = handler),
+    appendEntry: () => {
+      appends++;
+      leaf = "diagnostic-leaf";
+    },
+    registerCommand() {},
+  };
+  registerOperationDiagnostics(pi);
+  handlers.session_start({}, { sessionManager: manager });
+  recordDiagnostic(manager, valid);
+  expect(branchCalls).toBe(1);
+  expect(appends).toBe(0);
+  expect(leaf).toBe("active-leaf");
+  expect(inspectDiagnostics(manager)).toMatchObject({ accepted: 1, writeFailures: 1, dropped: 1 });
+
+  branchCalls = 0;
+  manager.branch = (id: string) => {
+    branchCalls++;
+    if (branchCalls === 2) throw new Error("late restoration failure");
+    leaf = id;
+  };
+  recordDiagnostic(manager, { ...valid, outcome: "fallback" });
+  expect(appends).toBe(1);
+  expect(branchCalls).toBe(2);
+  // An extension implementation may fail only after append; there is no public
+  // API transaction with which diagnostics can roll that durable child back.
+  expect(leaf).toBe("diagnostic-leaf");
+  expect(inspectDiagnostics(manager)).toMatchObject({ accepted: 2, writeFailures: 2, dropped: 2 });
+});
+
 test("actual SDK keeps the runtime leaf stable and reopened diagnostics context-transparent", async () => {
   const root = await mkdtemp(join(tmpdir(), "die-diagnostics-sdk-"));
   let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
@@ -314,6 +359,10 @@ test("actual SDK keeps the runtime leaf stable and reopened diagnostics context-
     await session.bindExtensions({ mode: "print" });
 
     const leaf = manager.getLeafId();
+    // The pinned SDK validates branch targets before assigning its leaf. A
+    // failed branch therefore leaves the current runtime leaf unchanged.
+    expect(() => manager.branch("missing-diagnostic-restoration-leaf")).toThrow("not found");
+    expect(manager.getLeafId()).toBe(leaf);
     const context = manager.buildSessionContext();
     const branch = manager.getBranch();
     expect(latestShakeRecord(branch, manager.getSessionId())).toEqual(shake);
