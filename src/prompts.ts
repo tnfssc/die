@@ -1,15 +1,16 @@
-import identity from "./prompts/identity.md" with { type: "text" };
-import system from "./prompts/system.md" with { type: "text" };
-import reference from "./prompts/execute.md" with { type: "text" };
+import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 import handoff from "./prompts/background-handoff.md" with { type: "text" };
-import fast from "./prompts/fast.md" with { type: "text" };
-import normal from "./prompts/normal.md" with { type: "text" };
-import orchestrator from "./prompts/orchestrator.md" with { type: "text" };
-import delegationEnabled from "./prompts/delegation-enabled.md" with { type: "text" };
 import delegationDisabled from "./prompts/delegation-disabled.md" with { type: "text" };
+import delegationEnabled from "./prompts/delegation-enabled.md" with { type: "text" };
+import reference from "./prompts/execute.md" with { type: "text" };
+import fast from "./prompts/fast.md" with { type: "text" };
+import identity from "./prompts/identity.md" with { type: "text" };
 import mainFast from "./prompts/main-fast.md" with { type: "text" };
 import mainNormal from "./prompts/main-normal.md" with { type: "text" };
 import mainOrchestrator from "./prompts/main-orchestrator.md" with { type: "text" };
+import normal from "./prompts/normal.md" with { type: "text" };
+import orchestrator from "./prompts/orchestrator.md" with { type: "text" };
+import system from "./prompts/system.md" with { type: "text" };
 
 // Text imports embed the Markdown in the standalone executable.
 const bullets = (text: string): string[] =>
@@ -24,7 +25,8 @@ export const executeReference = reference
   .split(/\n(?=- )/)
   .map((item) => item.replace(/^- /, ""));
 export const executeGuidance = executeReference;
-export const backgroundWorkflowExample = system.trimEnd().split("\n\n").at(-1)!;
+export const backgroundWorkflowExample =
+  reference.match(/  A typical decision point:.*$/m)?.[0].trim() ?? "";
 
 export function collaborationGuidance(): string {
   return system.trimEnd();
@@ -67,15 +69,28 @@ export function replaceMainAgentGuidance(prompt: string, mode: MainAgentMode, ow
   return prompt.slice(0, start) + mainAgentGuidance(mode, owner) + prompt.slice(end + endMarker.length);
 }
 
-/** Adapt only the upstream default block; callers leave user system prompts alone. */
-export function productSystemPrompt(prompt: string): string {
-  if (!prompt.startsWith("You are an expert coding assistant operating inside pi,")) return prompt;
-  const start = prompt.indexOf("\n\nPi documentation (read only when the user asks about pi itself,");
-  const last =
-    start < 0 ? -1 : prompt.indexOf("\n- Always read pi .md files completely and follow links to related docs", start);
-  if (last >= 0) {
-    const end = prompt.indexOf("\n", last + 1);
-    prompt = prompt.slice(0, start) + (end < 0 ? "" : prompt.slice(end));
-  }
-  return prompt.replace(/^You are an expert coding assistant operating inside pi,[^\n]*/, () => identity.trimEnd());
+export const executeToolSnippet = "Execute code for filesystem, process, and general coding operations";
+
+/**
+ * Die's base prompt, supplied to Pi as its structured custom prompt. Pi remains
+ * responsible for appending user additions, project context, skills, and cwd.
+ */
+export function dieSystemPrompt(): string {
+  const guidelines = [
+    ...executeGuidance,
+    "Be concise in your responses",
+    "Show file paths clearly when working with files",
+  ];
+  return (
+    identity.trimEnd() +
+    "\n\nAvailable tools:\n- execute: " +
+    executeToolSnippet +
+    "\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n\nGuidelines:\n" +
+    guidelines.map((line) => "- " + line).join("\n")
+  );
+}
+
+/** True only for Die's injected base; all other custom prompts are user-owned. */
+export function isDieSystemPrompt(options: Pick<BuildSystemPromptOptions, "customPrompt"> | undefined): boolean {
+  return options?.customPrompt === dieSystemPrompt();
 }

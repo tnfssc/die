@@ -13,6 +13,7 @@ import {
   SettingsManager,
   convertToLlm,
 } from "@earendil-works/pi-coding-agent";
+import { dieSystemPrompt } from "../src/prompts";
 import tasks from "../src/tasks/extension";
 import phase1Fixture from "./phase1-compaction-fixture";
 
@@ -161,6 +162,7 @@ for (const scenario of [
         noSkills: true,
         noThemes: true,
         noPromptTemplates: true,
+        systemPrompt: dieSystemPrompt(),
         extensionFactories: [
           {
             name: "observe",

@@ -1,38 +1,44 @@
-import { HistoryService } from "../history/service";
-import { registerOperationDiagnostics } from "../diagnostics-extension";
-import { createTaskLifecycleRecorder } from "./task-lifecycle";
-import { attachDiagnosticSink, diagnosticRecorder, recordDiagnostic } from "../diagnostics";
-import { subagentGuidance, collaborationGuidance, productSystemPrompt } from "../prompts";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { CompletionBatcher } from "./completion-batcher";
-import { formatCompletionNotification } from "./completion-notification";
-import { TaskManager, type TaskInspection } from "./task-manager";
+import { attachDiagnosticSink, diagnosticRecorder, recordDiagnostic } from "../diagnostics";
+import { registerOperationDiagnostics } from "../diagnostics-extension";
+import { type GoalRuntime, registerGoalMode } from "../goals/extension";
+import { HistoryService } from "../history/service";
+import { type ProjectMemoryRuntime, registerProjectMemory } from "../memory/extension";
+import { collaborationGuidance, isDieSystemPrompt, subagentGuidance } from "../prompts";
 import { registerExecuteTool } from "../typescript/extension";
-import { SUBAGENT_TYPES, canDelegate } from "./subagent-profiles";
-import { registerSubagentSettings } from "./subagent-settings-ui";
 import { completionPreview } from "../ui/execution-previews";
 import { createCompactUI } from "../ui/footer";
-import { JobService } from "./job-service";
 import { registerCacheAffineCompaction } from "./cache-affine-compaction";
-import { clearInstructionContinuity, scopeInstructionContinuity } from "./instruction-continuity";
-import { registerNativeCodexCompaction } from "./native-compaction";
-import { registerTaskMonitor } from "./task-monitor";
-import { registerResumeSafeguards } from "./resume-safeguards";
-import { registerInstructionMode } from "./instruction-mode";
 import { CacheCountdown, registerCacheCountdown } from "./cache-countdown";
+import { CompletionBatcher } from "./completion-batcher";
+import { formatCompletionNotification } from "./completion-notification";
+import { clearInstructionContinuity, scopeInstructionContinuity } from "./instruction-continuity";
+import { registerInstructionMode } from "./instruction-mode";
 import {
-  JobAttentionScheduler,
-  formatAttentionNotification,
   type AttentionNotice,
   type AttentionOptions,
+  formatAttentionNotification,
+  JobAttentionScheduler,
 } from "./job-attention";
-import { registerGoalMode, type GoalRuntime } from "../goals/extension";
-import { registerProjectMemory, type ProjectMemoryRuntime } from "../memory/extension";
-import { registerNativeFastMode } from "./native-fast-mode";
+import { JobService } from "./job-service";
 import { registerManualShake } from "./manual-shake";
+import { registerNativeCodexCompaction } from "./native-compaction";
+import { registerNativeFastMode } from "./native-fast-mode";
+import { registerResumeSafeguards } from "./resume-safeguards";
+import { canDelegate, SUBAGENT_TYPES } from "./subagent-profiles";
+import { registerSubagentSettings } from "./subagent-settings-ui";
+import { createTaskLifecycleRecorder } from "./task-lifecycle";
+import { type TaskInspection, TaskManager } from "./task-manager";
+import { registerTaskMonitor } from "./task-monitor";
 
 export function completionDiagnosticDetails(tasks: TaskInspection[], notices: AttentionNotice[]) {
-  const taskStatusCounts = { completed: 0, failed: 0, killed: 0, running: 0, unknown: 0 };
+  const taskStatusCounts = {
+    completed: 0,
+    failed: 0,
+    killed: 0,
+    running: 0,
+    unknown: 0,
+  };
   for (const task of tasks) {
     switch (task.status) {
       case "completed":
@@ -46,9 +52,10 @@ export function completionDiagnosticDetails(tasks: TaskInspection[], notices: At
     }
   }
   return {
-    tasks: tasks
-      .slice(0, 50)
-      .map(({ output: _output, command, ...summary }) => ({ ...summary, command: command.slice(0, 400) })),
+    tasks: tasks.slice(0, 50).map(({ output: _output, command, ...summary }) => ({
+      ...summary,
+      command: command.slice(0, 400),
+    })),
     attention: notices.slice(0, 50).map(({ task: _task, ...notice }) => notice),
     taskStatusCounts,
     taskCount: tasks.length,
@@ -138,7 +145,11 @@ export default function asynchronousTasksExtension(
           (depth as number) < 1
         )
           throw new Error("Invalid child identity");
-        identity = { kind: "child", type: type as (typeof SUBAGENT_TYPES)[number], depth: depth as number };
+        identity = {
+          kind: "child",
+          type: type as (typeof SUBAGENT_TYPES)[number],
+          depth: depth as number,
+        };
       }
     } catch {
       identity = { kind: "invalid" };
@@ -524,14 +535,17 @@ export default function asynchronousTasksExtension(
     scopeInstructionContinuity(ctx.sessionManager as object);
     // Explicit user system prompts retain their existing override semantics.
     const custom = !!event.systemPromptOptions?.customPrompt;
-    const base = custom ? event.systemPrompt : productSystemPrompt(event.systemPrompt);
-    const values = custom ? "" : collaborationGuidance();
+    // Pi assembled Die's base with dynamic append/context/skill/cwd sections.
+    // A user-owned custom base remains untouched at root, but children must
+    // retain their role identity and delegation boundary on every base.
+    const userCustom = custom && !isDieSystemPrompt(event.systemPromptOptions);
+    if (userCustom && subagentDepth === 0) return;
     const role =
       subagentDepth > 0
         ? subagentGuidance(agentType ?? "normal", canSpawnSubagent)
-        : instructionMode.guidance(ctx, custom);
-    const additions = [values, role].filter(Boolean).join("\n\n");
-    if (additions) return { systemPrompt: base + "\n\n" + additions };
+        : instructionMode.guidance(ctx, false);
+    const additions = [userCustom ? "" : collaborationGuidance(), role].filter(Boolean).join("\n\n");
+    if (additions) return { systemPrompt: event.systemPrompt + "\n\n" + additions };
   });
 
   pi.on("session_start", (_event, ctx) => {

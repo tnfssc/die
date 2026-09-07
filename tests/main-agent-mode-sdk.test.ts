@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createAssistantMessageEventStream, getModel, type AssistantMessage } from "@earendil-works/pi-ai/compat";
+import { join } from "node:path";
+import { type AssistantMessage, createAssistantMessageEventStream, getModel } from "@earendil-works/pi-ai/compat";
 import {
   createAgentSession,
   DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
+import { dieSystemPrompt } from "../src/prompts";
 import tasks from "../src/tasks/extension";
 
 const COLLISION = "<!-- die:main-agent-mode:start -->\nMARKER_EXAMPLE\n<!-- die:main-agent-mode:end -->";
@@ -58,7 +59,7 @@ async function sdk(
     noSkills: true,
     noThemes: true,
     noPromptTemplates: true,
-    systemPrompt: options.customPrompt,
+    systemPrompt: options.customPrompt ?? dieSystemPrompt(),
     extensionFactories: [
       {
         name: "frame-before",
@@ -121,6 +122,11 @@ test("real SDK defaults main frame to orchestrator and switches behavior without
   const f = await sdk();
   await f.session.prompt("first");
   expect(f.requests[0]).toContain("main agent in orchestrator instruction mode");
+  expect(f.requests[0]).toContain("Available tools:\n- execute:");
+  expect(f.requests[0]).toContain("shell defaults to 3 seconds");
+  expect(f.requests[0]).toContain("Current working directory: " + f.manager.getCwd());
+  expect(f.requests[0]).toContain("Project memory is indexed at .agents/notes/index.md");
+  expect(f.requests[0]).not.toContain("Pi documentation (read only");
   expect(f.requests[0]).toContain("FRAME_BEFORE");
   expect(f.requests[0]).toContain("FRAME_AFTER");
   const model = f.session.model,

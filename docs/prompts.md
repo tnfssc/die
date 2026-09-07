@@ -6,16 +6,19 @@ The prior medium-configuration behavioral successes below are historical evidenc
 
 ## Source files
 
-Edit `src/prompts/system.md` for the die-owned system prompt. It is imported as
-text verbatim (apart from its trailing newline) by `src/prompts.ts`. Supporting
-tool description (`src/prompts/execute-description.md`), tool guidance, role templates, delegation facts, and background feedback live in
-the other Markdown files under `src/prompts/`. `{{role}}`, `{{delegation}}`, and
-`{{jobs}}` are runtime template substitutions, not instructions to the model.
+All 19 static prompt sources live under `src/prompts/` and are imported as text (apart from use-site trailing-newline removal) by their consumers. Bun embeds them in the standalone binary; deployment does not need the Markdown files beside the executable.
 
-Bun embeds these text imports in the standalone binary; deployment does not need
-the Markdown files beside the executable. This is the actual source, not a copied
-prompt dump. Pi still composes its base instructions and dynamic session/project
-context around it. The Markdown extraction preserves the existing prompt text.
+[System instructions source review](system-instructions.md) is the canonical inventory: it reproduces every Markdown source in full exactly once, then documents TypeScript-built text, substitutions, conditions, and assembly. It deliberately does not repeat the generated base dump: `identity.md`, `execute.md`, the small TypeScript scaffold/literals, and the assembly recipe expose every die-owned line without a second copy to synchronize.
+
+The main divisions are:
+
+- `identity.md` and `execute.md` contribute to the CLI-injected base;
+- `system.md` is the concise collaboration frame appended by die's hook;
+- `execute-description.md` is the provider tool description;
+- `execute.md` carries tool/API mechanics and the worked decision-point example;
+- role, mode, delegation, handoff, goal-continuation, and compaction files are conditional sources.
+
+Template tokens such as `{{role}}`, `{{delegation}}`, and `{{jobs}}` are runtime substitutions described in the inventory. Pi may append dynamic session/project context, but die's custom base does not include Pi's default prose.
 
 ## Main-agent instruction modes
 
@@ -26,26 +29,9 @@ Mode selection intentionally does **not** select a model or thinking level. Sub-
 ## Values before procedures
 
 The agent needs a model of good work, not a growing checklist of forbidden moves.
-Die’s working values are:
+The collaboration frame keeps five concerns concise: responsive decision points, purposeful attention, evidence-led reporting, proportionate effort, and clear ownership. It avoids restating tool mechanics.
 
-- **Responsive collaboration:** give the user control between meaningful pieces
-  of work. Yielding with session-owned jobs is responsible handoff, not abandonment.
-- **Purposeful attention:** spend actions on progress, diagnosis, or decisions.
-  Automatic completion removes the need to occupy a turn checking for it.
-- **Evidence-led communication:** distinguish launched, pending, and verified work;
-  preserve uncertainty instead of turning intent into a claim of completion.
-- **Proportionate effort:** choose the simplest reliable path, preserve the user’s
-  work and resources, and distinguish execution budgets from conversational waits.
-- **Clear ownership:** delegate bounded outcomes with room for judgment; the parent
-  retains responsibility for integration and respects user-selected profiles.
-
-These values should explain unfamiliar situations as well as known failure cases.
-For example, responsiveness and runtime-owned completion together explain why a
-short launch followed by ending the turn is preferable to a process-wait loop.
-That conclusion does not need a separate prohibition for every possible wait API.
-A short positive example makes the distinction operational: launch a check, read
-independent evidence, send a progress update, then evaluate the automatic result
-on the next turn. Completing that turn is not claiming the assignment is finished.
+Concrete lifecycle and API facts belong in `execute.md` and the handoff source. In particular, the worked `shell("bun test")` decision-point example now lives only in `execute.md`, not in `system.md`. This keeps the behavioral frame readable while the tool reference explains foreground waits, session-owned completion, and explicit handoff.
 
 ## Separate values from facts
 
@@ -148,14 +134,11 @@ supplied instructions, automatic tool choice, and no network request during the
 probe. This rules out stripping at that serialization boundary; it is not a live
 wire capture.
 
-Values and the worked example now frame the agent in before_agent_start, rather
-than being buried among tool-use reference bullets. The tool carries only API
-mechanics. Explicit user system prompts retain their existing override behavior;
-child identity/capability facts are preserved. Natural validation is in progress.
+The concise values in `system.md` frame the agent in `before_agent_start`. The worked decision-point example and API mechanics are colocated in `execute.md`. Explicit user system prompts retain their existing override behavior; child identity/capability facts are preserved. Natural validation is in progress.
 
 ### Turn protocol, not a prohibition
 
-The agent frame now explains a concrete interface fact: an assistant response
+The execute reference explains a concrete interface fact: an assistant response
 without tool calls returns control; a progress sentence accompanied by another
 tool call does not. A final text response can close one turn without declaring
 the assignment finished. The terminal workflow passed with this clarification.
@@ -229,11 +212,10 @@ Medium nested evidence: `artifacts/ux/nested-1788588957631.json` and
 
 ## Product-facing default prompt
 
-The default prompt now uses the identity in `src/prompts/identity.md` and omits
-Pi’s injected internal-documentation lookup block. This adaptation applies only
-to the upstream default prompt: explicit custom system prompts, appended
-instructions, project context, and tool guidance are preserved. SDK stream-context
-tests assert that the model receives the cleaned prompt.
+The CLI-injected die base uses `src/prompts/identity.md` and omits Pi’s default
+identity/internal-documentation prose. Explicit custom system prompts and eligible
+project/global SYSTEM.md bases retain precedence; Pi-owned appended context and
+tool guidance are preserved. SDK stream-context tests assert that the model receives the cleaned prompt.
 
 ## Compaction prompt sources
 

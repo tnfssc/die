@@ -29,19 +29,10 @@ function formatGoal(goal?: GoalState): string {
 }
 
 function continuation(goal: GoalState, generation: number): string {
-  const placeholders: Record<"objective" | "criteria" | "constraints", string> = {
-    objective: goal.objective,
-    criteria: goal.criteria.map((item) => `- ${item}`).join("\n"),
-    constraints: goal.constraints.length ? goal.constraints.map((item) => `- ${item}`).join("\n") : "- None",
-  };
-  return (
-    goalContinuation
-      .trimEnd()
-      .replace(
-        /\{\{(objective|criteria|constraints)\}\}/g,
-        (_match, key: keyof typeof placeholders) => placeholders[key],
-      ) + `\n\n<!-- die-goal-generation:${generation} -->`
-  );
+  // The context hook injects the complete authoritative state on every request.
+  // The follow-up only signals why a new turn exists, avoiding duplicate mutable state.
+  if (goal.status !== "active") throw new Error("Only active goals can continue automatically");
+  return goalContinuation.trimEnd() + `\n\n<!-- die-goal-generation:${generation} -->`;
 }
 
 function parseSet(args: string): { objective: string; criteria: string[]; constraints: string[] } {

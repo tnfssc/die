@@ -351,13 +351,22 @@ test("resumed waiting work that is no longer owned pauses visibly", () => {
   });
 });
 
-test("continuation preserves literal replacement syntax", async () => {
+test("continuation relies on the assembled authoritative state without duplicating it", async () => {
   const h = harness();
   const objective = "Keep {{criteria}}, " + "$&" + " and " + "$$" + " literal";
   const criterion = "preserve {{constraints}} and " + "$'" + " exactly";
   await h.commands.goal.handler("set " + objective + " --criteria " + criterion + " --constraints no rewrite", h.ctx);
-  expect(h.sent.at(-1)).toContain(objective);
-  expect(h.sent.at(-1)).toContain(criterion);
+  const reminder = h.sent.at(-1)!;
+  expect(reminder).toContain("new automatic turn");
+  expect(reminder).not.toContain(objective);
+  expect(reminder).not.toContain(criterion);
+  expect(reminder).not.toContain("Progress discipline");
+
+  const assembled = h.handlers.context[0]({ messages: [{ role: "user", content: reminder }] }, h.ctx);
+  const state = assembled.messages.at(-1).content;
+  expect(state).toContain(objective);
+  expect(state).toContain(criterion);
+  expect(state).toContain("Constraints: no rewrite");
 });
 
 test("slash command initializes before session_start and invalidates reminders", async () => {

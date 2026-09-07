@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { stream } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { getModel } from "@earendil-works/pi-ai/compat";
-import { backgroundWorkflowExample, executeReference, workingValues } from "../src/prompts";
+import { executeReference, workingValues } from "../src/prompts";
 
 const sentinel = "provider-prompt-serialization-sentinel";
 
@@ -26,7 +26,6 @@ test("Codex serializes the complete system prompt as instructions without a netw
     "provider-prompt-serialization-marker",
     ...workingValues,
     ...executeReference,
-    backgroundWorkflowExample,
   ].join("\n\n");
   let captured: { instructions?: unknown; tool_choice?: unknown } | undefined;
   let networkCalls = 0;

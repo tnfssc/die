@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createAssistantMessageEventStream, getModel, type AssistantMessage } from "@earendil-works/pi-ai/compat";
+import { join } from "node:path";
+import { type AssistantMessage, createAssistantMessageEventStream, getModel } from "@earendil-works/pi-ai/compat";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -10,6 +10,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
+import { dieSystemPrompt } from "../src/prompts";
 import tasks from "../src/tasks/extension";
 
 const usage = {
@@ -38,7 +39,7 @@ for (const { customPrompt, emptyFrame } of [
         noSkills: true,
         noThemes: true,
         noPromptTemplates: true,
-        systemPrompt: customPrompt,
+        systemPrompt: customPrompt ?? dieSystemPrompt(),
         appendSystemPrompt: ["APPENDED_PROJECT_CONTEXT"],
         extensionFactories: [
           {

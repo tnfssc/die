@@ -61,7 +61,10 @@ function contextFixture(
     hasUI: false,
     cwd: process.cwd(),
     sessionManager,
-    modelRegistry: { runtime, isUsingOAuth: () => false } as unknown as ExtensionContext["modelRegistry"],
+    modelRegistry: {
+      runtime,
+      isUsingOAuth: () => false,
+    } as unknown as ExtensionContext["modelRegistry"],
     model: undefined,
     scopedModels: [],
     isIdle: () => true,
@@ -138,7 +141,13 @@ test("unconfigured native fast startup adds no UI output", async () => {
 test("resumed leaf identity is retained in instructions", async () => {
   const e = load();
   const ctx = contextFixture({
-    entries: [{ type: "custom", customType: "die-agent", data: { type: "fast", depth: 1 } }],
+    entries: [
+      {
+        type: "custom",
+        customType: "die-agent",
+        data: { type: "fast", depth: 1 },
+      },
+    ],
   });
   await e.fire("session_start", {}, ctx);
   const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
@@ -164,7 +173,9 @@ for (const mode of ["print", "json"] as const)
       };
     });
     try {
-      await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, { cwd: process.cwd() });
+      await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, {
+        cwd: process.cwd(),
+      });
       mock.mockRestore();
       const signal = new AbortController().signal;
       const ctx = contextFixture({ mode, signal });
@@ -200,7 +211,9 @@ test("print agent_end wakes on attention while a job is still running", async ()
     };
   });
   try {
-    await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, { cwd: process.cwd() });
+    await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, {
+      cwd: process.cwd(),
+    });
     mock.mockRestore();
     const signal = new AbortController().signal,
       ctx = contextFixture({ mode: "print", signal }),
@@ -235,7 +248,9 @@ test("attention and a racing completion produce one deduplicated parent wakeup",
     };
   });
   try {
-    await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, { cwd: process.cwd() });
+    await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, {
+      cwd: process.cwd(),
+    });
     mock.mockRestore();
     const signal = new AbortController().signal;
     const ctx = contextFixture({ mode: "print", signal });
@@ -264,13 +279,34 @@ test("root values are part of the agent frame and explicit user prompts retain p
   expect(framed.systemPrompt).toContain("Working together");
   expect(framed.systemPrompt).toContain("Responsive collaboration");
   expect(framed.systemPrompt).toContain("main agent in orchestrator instruction mode");
-  expect(framed.systemPrompt).toContain("delegation permissions remain available");
+  expect(framed.systemPrompt).toContain("synthesize their evidence");
+  expect(framed.systemPrompt).not.toContain("behavioral instructions only");
   const custom = await e.fire(
     "before_agent_start",
-    { systemPrompt: "user custom", systemPromptOptions: { customPrompt: "user custom" } },
+    {
+      systemPrompt: "user custom",
+      systemPromptOptions: { customPrompt: "user custom" },
+    },
     ctx,
   );
   expect(custom).toBeUndefined();
+});
+
+test("user custom prompt keeps child role and delegation guidance", async () => {
+  const e = load(1, "normal");
+  const ctx = contextFixture();
+  const custom = await e.fire(
+    "before_agent_start",
+    {
+      systemPrompt: "user custom",
+      systemPromptOptions: { customPrompt: "user custom" },
+    },
+    ctx,
+  );
+  expect(custom.systemPrompt).toStartWith("user custom\n\n");
+  expect(custom.systemPrompt).toContain("You are a normal sub-agent");
+  expect(custom.systemPrompt).toContain("Delegation is disabled");
+  expect(custom.systemPrompt).not.toContain("Working together");
 });
 
 test("session lifecycle resets resumed child identity when returning to root", async () => {
@@ -278,7 +314,13 @@ test("session lifecycle resets resumed child identity when returning to root", a
   const root = contextFixture({ sessionId: "root" });
   const child = contextFixture({
     sessionId: "child",
-    entries: [{ type: "custom", customType: "die-agent", data: { type: "normal", depth: 1 } }],
+    entries: [
+      {
+        type: "custom",
+        customType: "die-agent",
+        data: { type: "normal", depth: 1 },
+      },
+    ],
   });
   let framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, root);
   expect(framed.systemPrompt).toContain("main agent in orchestrator instruction mode");
@@ -306,13 +348,30 @@ test("spawned child environment remains the identity floor before metadata is at
 
 test("spawned environment roles cannot be changed by resumed metadata", async () => {
   const cases = [
-    { environment: "normal", metadata: "orchestrator", delegation: "Delegation is disabled" },
-    { environment: "orchestrator", metadata: "normal", delegation: "Fast/normal workers are available" },
+    {
+      environment: "normal",
+      metadata: "orchestrator",
+      delegation: "Delegation is disabled",
+    },
+    {
+      environment: "orchestrator",
+      metadata: "normal",
+      delegation: "Fast/normal workers are available",
+    },
   ] as const;
   for (const item of cases) {
     const e = load(1, item.environment);
-    const entries = [{ type: "custom", customType: "die-agent", data: { type: item.metadata, depth: 1 } }];
-    const ctx = contextFixture({ sessionId: "role-cap-" + item.environment, entries });
+    const entries = [
+      {
+        type: "custom",
+        customType: "die-agent",
+        data: { type: item.metadata, depth: 1 },
+      },
+    ];
+    const ctx = contextFixture({
+      sessionId: "role-cap-" + item.environment,
+      entries,
+    });
     await e.fire("session_start", {}, ctx);
     const framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, ctx);
     expect(framed.systemPrompt).toContain("You are a " + item.environment + " sub-agent");
@@ -344,7 +403,9 @@ test("mixed completion and attention reserve bounded evidence for both", async (
       due[1].callback();
     }
   };
-  const e = load(0, undefined, { attention: { quietMs: 15, reviewMs: 1000, clock } });
+  const e = load(0, undefined, {
+    attention: { quietMs: 15, reviewMs: 1000, clock },
+  });
   let rpc: any;
   const mock = spyOn(execution, "executeIsolated").mockImplementation(async (_c, _w, _s, _t, options) => {
     rpc = options!.jobHandler;
@@ -360,14 +421,19 @@ test("mixed completion and attention reserve bounded evidence for both", async (
     };
   });
   try {
-    await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, { cwd: process.cwd() });
+    await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, {
+      cwd: process.cwd(),
+    });
     mock.mockRestore();
     const signal = new AbortController().signal;
     const ctx = contextFixture({ mode: "print", signal });
     const idle = await rpc("shell", { command: "read value", waitSeconds: 0 }, signal);
     const finishing = await rpc(
       "shell",
-      { command: "read value; head -c 20000 /dev/zero | tr '\\0' x", waitSeconds: 0 },
+      {
+        command: "read value; head -c 20000 /dev/zero | tr '\\0' x",
+        waitSeconds: 0,
+      },
       signal,
     );
     const boundary = e.fire("agent_end", { messages: [] }, ctx);
@@ -401,7 +467,11 @@ for (const data of [
     const e = load();
     const ctx = contextFixture({
       entries: [
-        { type: "custom", customType: "die-agent", data: { type: "orchestrator", depth: 1 } },
+        {
+          type: "custom",
+          customType: "die-agent",
+          data: { type: "orchestrator", depth: 1 },
+        },
         { type: "custom", customType: "die-agent", data },
       ],
     });
@@ -430,7 +500,13 @@ test("unreadable child metadata fails closed", async () => {
 
 test("malformed trailing branch entry fails closed instead of retaining root privileges", async () => {
   const e = load();
-  const entries: any[] = [{ type: "custom", customType: "die-agent", data: { type: "orchestrator", depth: 1 } }];
+  const entries: any[] = [
+    {
+      type: "custom",
+      customType: "die-agent",
+      data: { type: "orchestrator", depth: 1 },
+    },
+  ];
   const ctx = contextFixture({ entries });
   await e.fire("session_start", {}, ctx);
   entries.push(null);
@@ -459,7 +535,9 @@ test("throwing identity data getter fails closed", async () => {
 test("shutdown persists every shell ownership cause without duplicating inspect content", async () => {
   const dir = mkdtempSync(join(tmpdir(), "die-extension-lifecycle-"));
   const sessionFile = join(dir, "root.jsonl");
-  const ctx = contextFixture({ sessionManager: { getSessionFile: () => sessionFile } });
+  const ctx = contextFixture({
+    sessionManager: { getSessionFile: () => sessionFile },
+  });
   const e = load();
   let rpc: any;
   const mock = spyOn(execution, "executeIsolated").mockImplementation(async (_c, _w, _s, _t, options) => {

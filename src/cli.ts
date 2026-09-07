@@ -1,18 +1,19 @@
 #!/usr/bin/env bun
 
-import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { registerBunOAuthFlows } from "@earendil-works/pi-ai/bun-oauth";
 import diePackage from "../package.json";
 import assetImage from "../runtime-assets/assets/clankolas.png" with { type: "file" };
+import exportTemplate from "../runtime-assets/export-html/template.html" with { type: "file" };
+import highlight from "../runtime-assets/export-html/vendor/highlight.min.js" with { type: "file" };
+import marked from "../runtime-assets/export-html/vendor/marked.min.js" with { type: "file" };
 import metadata from "../runtime-assets/package.json" with { type: "file" };
 import themeDark from "../runtime-assets/theme/dark.json" with { type: "file" };
 import themeLight from "../runtime-assets/theme/light.json" with { type: "file" };
 import themeSchema from "../runtime-assets/theme/theme-schema.json" with { type: "file" };
-import exportTemplate from "../runtime-assets/export-html/template.html" with { type: "file" };
-import highlight from "../runtime-assets/export-html/vendor/highlight.min.js" with { type: "file" };
-import marked from "../runtime-assets/export-html/vendor/marked.min.js" with { type: "file" };
+import { withDieSystemPrompt } from "./system-prompt";
 import { formatThrownValue } from "./typescript/error-diagnostic";
 import { INTERNAL_TYPESCRIPT_RUNNER_ARG, runTypeScriptFromStdin } from "./typescript/runner";
 
@@ -146,7 +147,7 @@ if (topLevelHelp) {
     originalLog(...values.map((value) => (typeof value === "string" ? filterHelp(value) : value)));
 }
 try {
-  await main(cliArgs, {
+  await main(withDieSystemPrompt(cliArgs), {
     extensionFactories: [
       { name: "die-tools", factory: asynchronousTasksExtension, hidden: true },
       { name: "die-herdr-agent-state", factory: herdrAgentStateExtension, hidden: true },

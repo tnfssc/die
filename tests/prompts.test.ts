@@ -1,19 +1,22 @@
-import { test, expect } from "bun:test";
+import { expect, test } from "bun:test";
 import {
-  workingValues,
-  executeReference,
-  executeGuidance,
+  backgroundHandoff,
   backgroundWorkflowExample,
   collaborationGuidance,
-  backgroundHandoff,
+  dieSystemPrompt,
+  executeGuidance,
+  executeReference,
+  isDieSystemPrompt,
   subagentGuidance,
-  productSystemPrompt,
+  workingValues,
 } from "../src/prompts";
 
 test("working values frame the agent separately from tool reference", () => {
   expect(executeGuidance).toEqual(executeReference);
   for (const value of workingValues) expect(collaborationGuidance()).toContain(value);
-  expect(collaborationGuidance()).toContain(backgroundWorkflowExample);
+  expect(backgroundWorkflowExample).toStartWith("A typical decision point:");
+  expect(executeReference.join("\n")).toContain(backgroundWorkflowExample);
+  expect(collaborationGuidance()).not.toContain(backgroundWorkflowExample);
   for (const value of [
     "Responsive collaboration",
     "Purposeful attention",
@@ -65,23 +68,15 @@ test("Markdown is the complete source of the system and tool guidance", async ()
     for (const delegate of [false, true]) expect(subagentGuidance(role, delegate)).not.toContain("{{");
 });
 
-test("default documentation removal preserves appended and project instructions", () => {
-  const docs =
-    "Pi documentation (read only when the user asks about pi itself, its SDK):\n- Main documentation: /runtime/README.md\n- Always read pi .md files completely and follow links to related docs (e.g., tui.md for TUI API details)";
-  const context =
-    "\n\nUser append instructions.\n<project_context>\n" +
-    docs +
-    "\nProject instructions remain.\n</project_context>\nCurrent working directory: /project";
-  const base =
-    "You are an expert coding assistant operating inside pi, a coding agent harness.\n\nAvailable tools:\n- execute: code\n\n" +
-    docs;
-  const cleaned = productSystemPrompt(base + context);
-  expect(cleaned).toContain("operating inside die,");
-  expect(cleaned).toContain("Available tools:\n- execute: code");
-  expect(cleaned).toEndWith(context);
-  expect(cleaned.split("Main documentation:")).toHaveLength(2);
-  expect(productSystemPrompt(cleaned)).toBe(cleaned);
-  expect(productSystemPrompt("User-owned system prompt\n\n" + docs)).toBe("User-owned system prompt\n\n" + docs);
+test("Die base is a Pi custom prompt with execute guidance", () => {
+  const prompt = dieSystemPrompt();
+  expect(prompt).toStartWith("You are an expert coding assistant operating inside die,");
+  expect(prompt).toContain("Available tools:\n- execute:");
+  for (const item of executeGuidance) expect(prompt).toContain("- " + item);
+  expect(prompt).not.toContain("Current working directory:");
+  expect(isDieSystemPrompt({ customPrompt: prompt })).toBe(true);
+  expect(isDieSystemPrompt({ customPrompt: "user-owned" })).toBe(false);
+  expect(isDieSystemPrompt(undefined)).toBe(false);
 });
 
 test("execute tool description uses the embedded Markdown source", async () => {
@@ -96,5 +91,8 @@ test("execute tool description uses the embedded Markdown source", async () => {
   const source = await Bun.file(new URL("../src/prompts/execute-description.md", import.meta.url)).text();
   expect(tool.description).toBe(source.trimEnd());
   expect(tool.description).toContain("24,000 bytes");
-  expect(tool.description).toContain("session-owned");
+  expect(tool.description).toContain("Input is a single `code` string");
+  expect(tool.description).not.toContain("shell(");
+  expect(tool.description).not.toContain("handoff");
+  expect(executeReference.join("\n")).toContain("process group");
 });

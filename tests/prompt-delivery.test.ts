@@ -14,7 +14,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { registerExecuteTool } from "../src/typescript/extension";
 import asynchronousTasksExtension from "../src/tasks/extension";
-import { executeGuidance, executeReference, workingValues } from "../src/prompts";
+import { dieSystemPrompt, executeGuidance, executeReference, workingValues } from "../src/prompts";
 
 test("Pi session assembles the registered execute guidance into its system prompt", async () => {
   const dir = await mkdtemp(join(tmpdir(), "die-prompt-delivery-"));
@@ -74,6 +74,7 @@ test("production tasks extension guidance reaches the actual stream context", as
       noSkills: true,
       noPromptTemplates: true,
       noThemes: true,
+      systemPrompt: dieSystemPrompt(),
       extensionFactories: [{ name: "die-tasks", factory: asynchronousTasksExtension }],
       appendSystemPromptOverride: () => ["KEEP_APPEND_GUIDANCE"],
       agentsFilesOverride: () => ({
