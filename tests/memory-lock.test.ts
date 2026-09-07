@@ -6,9 +6,7 @@ import { acquireMemoryLock } from "../src/memory/lock";
 
 const dirs: string[] = [];
 afterEach(async () => {
-  await Promise.all(
-    dirs.splice(0).map((path) => rm(path, { recursive: true, force: true })),
-  );
+  await Promise.all(dirs.splice(0).map((path) => rm(path, { recursive: true, force: true })));
 });
 async function project() {
   const cwd = await mkdtemp(join(tmpdir(), "die-memory-lock-"));
@@ -22,17 +20,12 @@ test("project exclusion, explicit release and reacquisition", async () => {
   await expect(acquireMemoryLock(cwd)).rejects.toThrow("locked");
   await release();
   await release();
-  await (
-    await acquireMemoryLock(cwd)
-  )();
+  await (await acquireMemoryLock(cwd))();
 });
 test("never reclaims abandoned or replaced owners", async () => {
   const cwd = await project();
   const release = await acquireMemoryLock(cwd);
-  await writeFile(
-    join(cwd, ".agents/notes/.consolidation.lock/owner"),
-    "another owner",
-  );
+  await writeFile(join(cwd, ".agents/notes/.consolidation.lock/owner"), "another owner");
   await expect(release()).rejects.toThrow("ownership");
   await expect(acquireMemoryLock(cwd)).rejects.toThrow("locked");
 });
@@ -47,10 +40,6 @@ test("creates safe managed directories for an ordinary writer", async () => {
   const cwd = await mkdtemp(join(tmpdir(), "die-memory-lock-empty-"));
   dirs.push(cwd);
   const lease = await acquireMemoryLock(cwd);
-  expect(
-    await Bun.file(
-      join(cwd, ".agents/notes/.consolidation.lock/owner"),
-    ).exists(),
-  ).toBe(true);
+  expect(await Bun.file(join(cwd, ".agents/notes/.consolidation.lock/owner")).exists()).toBe(true);
   await lease();
 });

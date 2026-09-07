@@ -20,8 +20,7 @@ async function directory(path: string): Promise<void> {
     if (code(error) !== "EEXIST") throw error;
   }
   const stat = await lstat(path);
-  if (!stat.isDirectory() || stat.isSymbolicLink())
-    throw new Error("Unsafe memory directory or symlink");
+  if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Unsafe memory directory or symlink");
 }
 
 /**
@@ -63,10 +62,8 @@ export async function acquireMemoryLock(cwd: string): Promise<MemoryLockLease> {
   const assertOwned = async () => {
     if (released) throw new Error("Memory lock was already released");
     const stat = await lstat(path);
-    if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new Error("Memory lock changed ownership");
-    if ((await readFile(join(path, "owner"), "utf8")) !== token)
-      throw new Error("Memory lock changed ownership");
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error("Memory lock changed ownership");
+    if ((await readFile(join(path, "owner"), "utf8")) !== token) throw new Error("Memory lock changed ownership");
   };
   const release = (async () => {
     if (released) return;

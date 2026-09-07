@@ -1,13 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  rm,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { registerProjectMemory } from "../src/memory/extension";
@@ -15,9 +8,7 @@ import { consumePendingNotes, snapshotPendingNotes } from "../src/memory/store";
 
 const dirs: string[] = [];
 afterEach(async () => {
-  await Promise.all(
-    dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })),
-  );
+  await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 async function temp() {
   const dir = await mkdtemp(join(tmpdir(), "die-memory-"));
@@ -26,9 +17,7 @@ async function temp() {
 }
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 const receiptFrom = (prompt: string) =>
-  prompt.match(
-    /nonce receipt file (.+\.consolidation-[a-f0-9-]+\.json) containing/,
-  )![1]!;
+  prompt.match(/nonce receipt file (.+\.consolidation-[a-f0-9-]+\.json) containing/)![1]!;
 
 function fixture(
   cwd: string,
@@ -55,8 +44,7 @@ function fixture(
     cwd,
     sessionManager,
     ui: {
-      notify: (message: string, kind?: string) =>
-        notices.push({ message, kind }),
+      notify: (message: string, kind?: string) => notices.push({ message, kind }),
     },
   };
   const pi: any = {
@@ -101,8 +89,7 @@ function fixture(
   });
   const fire = async (name: string, ...args: any[]) => {
     let out;
-    for (const handler of handlers.get(name) ?? [])
-      out = await handler(...args);
+    for (const handler of handlers.get(name) ?? []) out = await handler(...args);
     return out;
   };
   return {
@@ -132,11 +119,7 @@ async function putPending(cwd: string, name = "a.md", content = "pending") {
   return path;
 }
 
-async function writeReceipt(
-  cwd: string,
-  prompt: string,
-  files: Array<{ path: string; content: string }>,
-) {
+async function writeReceipt(cwd: string, prompt: string, files: Array<{ path: string; content: string }>) {
   for (const file of files) {
     const path = join(cwd, ".agents/notes", file.path);
     await mkdir(dirname(path), { recursive: true });
@@ -192,25 +175,17 @@ test("command is explicit, requires constraints, and reserves concurrent launche
   expect(f.notices.at(-1).message).toContain("--constraints");
 
   await Promise.all([
-    f.commands
-      .get("memory")
-      .handler("consolidate fast --constraints none", f.ctx),
-    f.commands
-      .get("memory")
-      .handler("consolidate normal --constraints concise", f.ctx),
+    f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx),
+    f.commands.get("memory").handler("consolidate normal --constraints concise", f.ctx),
   ]);
   expect(f.launches).toHaveLength(1);
   expect(f.launches[0].params).toMatchObject({ type: "fast", waitSeconds: 0 });
   const prompt = f.launches[0].params.prompt as string;
-  expect(prompt).toContain(
-    "constraints (authoritative; preserve exactly):\nnone",
-  );
+  expect(prompt).toContain("constraints (authoritative; preserve exactly):\nnone");
   expect(prompt).toContain("Merge, reorganize, and deduplicate");
   expect(prompt).toContain("short nested topic index.md");
   expect(prompt).toContain("untrusted data");
-  expect(prompt).toContain(
-    "holds .consolidation.lock for this run on your behalf",
-  );
+  expect(prompt).toContain("holds .consolidation.lock for this run on your behalf");
   expect(prompt).not.toContain("untrusted secret");
 });
 
@@ -220,14 +195,10 @@ test("an immediately completed launch is reconciled after its handle returns", a
   const f = fixture(cwd, {
     initialStatus: "completed",
     async onLaunch(params) {
-      await writeReceipt(cwd, params.prompt, [
-        { path: "index.md", content: "# Memory\n" },
-      ]);
+      await writeReceipt(cwd, params.prompt, [{ path: "index.md", content: "# Memory\n" }]);
     },
   });
-  await f.commands
-    .get("memory")
-    .handler("consolidate normal --constraints keep concise", f.ctx);
+  await f.commands.get("memory").handler("consolidate normal --constraints keep concise", f.ctx);
   expect(await snapshotPendingNotes(cwd)).toEqual([]);
   expect(f.notices.at(-1).message).toContain("consumed 1");
 });
@@ -236,20 +207,14 @@ test("successful receipt marks the launched snapshot consumed but preserves a mo
   const cwd = await temp();
   const pending = await putPending(cwd);
   const f = fixture(cwd);
-  await f.commands
-    .get("memory")
-    .handler("consolidate normal --constraints keep concise", f.ctx);
+  await f.commands.get("memory").handler("consolidate normal --constraints keep concise", f.ctx);
   await writeFile(pending, "modified after launch");
-  const receipt = await writeReceipt(cwd, f.launches[0].params.prompt, [
-    { path: "index.md", content: "# Memory\n" },
-  ]);
+  const receipt = await writeReceipt(cwd, f.launches[0].params.prompt, [{ path: "index.md", content: "# Memory\n" }]);
   f.finish();
   await f.runtime.jobsChanged();
 
   expect(await readFile(pending, "utf8")).toBe("modified after launch");
-  expect((await snapshotPendingNotes(cwd)).map((note) => note.content)).toEqual(
-    ["modified after launch"],
-  );
+  expect((await snapshotPendingNotes(cwd)).map((note) => note.content)).toEqual(["modified after launch"]);
   expect(await Bun.file(receipt).exists()).toBe(false);
 });
 
@@ -258,9 +223,7 @@ test("wrong hashes and receipts that omit index.md retain pending snapshots", as
     const cwd = await temp();
     await putPending(cwd);
     const f = fixture(cwd);
-    await f.commands
-      .get("memory")
-      .handler("consolidate fast --constraints none", f.ctx);
+    await f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx);
     const prompt = f.launches[0].params.prompt as string;
     await mkdir(join(cwd, ".agents/notes/topic"), { recursive: true });
     await writeFile(join(cwd, ".agents/notes/index.md"), "# Memory\n");
@@ -281,9 +244,7 @@ test("receipt validation rejects symlinked managed topic ancestors", async () =>
   const outside = await temp();
   await putPending(cwd);
   const f = fixture(cwd);
-  await f.commands
-    .get("memory")
-    .handler("consolidate fast --constraints none", f.ctx);
+  await f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx);
   await writeFile(join(cwd, ".agents/notes/index.md"), "# Memory\n");
   await writeFile(join(outside, "index.md"), "outside");
   await symlink(outside, join(cwd, ".agents/notes/topic"));
@@ -306,12 +267,8 @@ test("session-id reuse and changed root policy invalidate completion", async () 
     const cwd = await temp();
     await putPending(cwd);
     const f = fixture(cwd);
-    await f.commands
-      .get("memory")
-      .handler("consolidate fast --constraints none", f.ctx);
-    await writeReceipt(cwd, f.launches[0].params.prompt, [
-      { path: "index.md", content: "# Memory\n" },
-    ]);
+    await f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx);
+    await writeReceipt(cwd, f.launches[0].params.prompt, [{ path: "index.md", content: "# Memory\n" }]);
     if (invalidate === "session") f.setSession("session-2");
     else f.setRoot(false);
     f.finish();
@@ -328,11 +285,8 @@ test("session switch while launch handle is pending kills the returned job", asy
     release = resolve;
   });
   const f = fixture(cwd, { onLaunch: () => blocked });
-  const command = f.commands
-    .get("memory")
-    .handler("consolidate fast --constraints none", f.ctx);
-  while (!f.launches.length)
-    await new Promise((resolve) => setTimeout(resolve, 0));
+  const command = f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx);
+  while (!f.launches.length) await new Promise((resolve) => setTimeout(resolve, 0));
   f.setSession("session-2");
   release();
   await command;
@@ -343,42 +297,24 @@ test("shutdown cancels and the root system prompt only advertises the memory loc
   const cwd = await temp();
   await putPending(cwd, "a.md", "secret corpus");
   const f = fixture(cwd);
-  await f.commands
-    .get("memory")
-    .handler("consolidate fast --constraints none", f.ctx);
+  await f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx);
   await f.fire("session_shutdown", {}, f.ctx);
   expect(f.killed).toEqual([{ id: "task_mem", cause: "session-shutdown" }]);
   const root = fixture(cwd);
-  const result = await root.fire(
-    "before_agent_start",
-    { systemPrompt: "base" },
-    root.ctx,
-  );
+  const result = await root.fire("before_agent_start", { systemPrompt: "base" }, root.ctx);
   expect(result.systemPrompt).toContain("index.md");
   expect(result.systemPrompt).toContain("cooperative memory lock");
-  expect(result.systemPrompt).toContain(
-    "ignore it remain outside this guarantee",
-  );
+  expect(result.systemPrompt).toContain("ignore it remain outside this guarantee");
   expect(result.systemPrompt).not.toContain("secret corpus");
-  expect(
-    await root.fire("context", { messages: [] }, root.ctx),
-  ).toBeUndefined();
+  expect(await root.fire("context", { messages: [] }, root.ctx)).toBeUndefined();
   root.setRoot(false);
-  expect(
-    await root.fire(
-      "before_agent_start",
-      { systemPrompt: "child base" },
-      root.ctx,
-    ),
-  ).toBeUndefined();
+  expect(await root.fire("before_agent_start", { systemPrompt: "child base" }, root.ctx)).toBeUndefined();
 });
 
 test("empty notes, ordinary turns, and child sessions never dispatch consolidation", async () => {
   const cwd = await temp();
   const f = fixture(cwd);
-  await f.commands
-    .get("memory")
-    .handler("consolidate fast --constraints none", f.ctx);
+  await f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx);
   expect(f.launches).toHaveLength(0);
   await putPending(cwd);
   await f.fire("agent_end", { messages: [] }, f.ctx);
@@ -386,9 +322,7 @@ test("empty notes, ordinary turns, and child sessions never dispatch consolidati
   await f.runtime.jobsChanged();
   expect(f.launches).toHaveLength(0);
   f.setRoot(false);
-  await f.commands
-    .get("memory")
-    .handler("consolidate normal --constraints none", f.ctx);
+  await f.commands.get("memory").handler("consolidate normal --constraints none", f.ctx);
   expect(f.launches).toHaveLength(0);
   await f.fire("session_shutdown", {}, f.ctx);
   expect(f.launches).toHaveLength(0);
@@ -399,24 +333,16 @@ test("project lease excludes other sessions and is released only after terminal 
   await putPending(cwd);
   const first = fixture(cwd),
     second = fixture(cwd);
-  await first.commands
-    .get("memory")
-    .handler("consolidate fast --constraints none", first.ctx);
-  await second.commands
-    .get("memory")
-    .handler("consolidate fast --constraints none", second.ctx);
+  await first.commands.get("memory").handler("consolidate fast --constraints none", first.ctx);
+  await second.commands.get("memory").handler("consolidate fast --constraints none", second.ctx);
   expect(second.launches).toHaveLength(0);
   expect(second.notices.at(-1).message).toContain("locked");
   await first.fire("session_shutdown", {}, first.ctx);
-  await second.commands
-    .get("memory")
-    .handler("consolidate fast --constraints none", second.ctx);
+  await second.commands.get("memory").handler("consolidate fast --constraints none", second.ctx);
   expect(second.launches).toHaveLength(0);
   first.finish();
   await first.runtime.jobsChanged();
-  await second.commands
-    .get("memory")
-    .handler("consolidate fast --constraints none", second.ctx);
+  await second.commands.get("memory").handler("consolidate fast --constraints none", second.ctx);
   expect(second.launches).toHaveLength(1);
   expect(await snapshotPendingNotes(cwd)).toHaveLength(1);
 });
@@ -425,14 +351,10 @@ test("missing save receipt retains notes and releases lease for explicit retry",
   const cwd = await temp();
   await putPending(cwd);
   const f = fixture(cwd, { initialStatus: "completed" });
-  await f.commands
-    .get("memory")
-    .handler("consolidate normal --constraints none", f.ctx);
+  await f.commands.get("memory").handler("consolidate normal --constraints none", f.ctx);
   expect(await snapshotPendingNotes(cwd)).toHaveLength(1);
   expect(f.notices.at(-1).message).toContain("no valid receipt");
-  await f.commands
-    .get("memory")
-    .handler("consolidate fast --constraints none", f.ctx);
+  await f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx);
   expect(f.launches).toHaveLength(2);
 });
 
@@ -442,16 +364,10 @@ test("failed worker never consumes even a valid save receipt", async () => {
   const f = fixture(cwd, {
     initialStatus: "failed",
     async onLaunch(params) {
-      await writeReceipt(cwd, params.prompt, [
-        { path: "index.md", content: "saved partial work" },
-      ]);
+      await writeReceipt(cwd, params.prompt, [{ path: "index.md", content: "saved partial work" }]);
     },
   });
-  await f.commands
-    .get("memory")
-    .handler("consolidate fast --constraints none", f.ctx);
+  await f.commands.get("memory").handler("consolidate fast --constraints none", f.ctx);
   expect(await snapshotPendingNotes(cwd)).toHaveLength(1);
-  expect(f.notices.at(-1).message).toContain(
-    "failed; pending notes were retained",
-  );
+  expect(f.notices.at(-1).message).toContain("failed; pending notes were retained");
 });

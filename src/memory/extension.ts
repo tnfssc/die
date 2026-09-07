@@ -2,50 +2,32 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, open, rm } from "node:fs/promises";
 import { isAbsolute, join, resolve, sep } from "node:path";
-import type {
-  ExtensionAPI,
-  ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { JobService } from "../tasks/job-service";
 import type { TaskInspection, TaskManager } from "../tasks/task-manager";
 import { acquireMemoryLock, type MemoryLockLease } from "./lock";
-import {
-  consumePendingNotes,
-  type PendingNoteRecord,
-  snapshotPendingNotes,
-} from "./store";
+import { consumePendingNotes, type PendingNoteRecord, snapshotPendingNotes } from "./store";
 
 const NOTES = join(".agents", "notes");
 const MAX_RECEIPT_BYTES = 65_536;
 const MAX_RECEIPT_FILES = 256;
 
-const hash = (content: string | Buffer) =>
-  createHash("sha256").update(content).digest("hex");
+const hash = (content: string | Buffer) => createHash("sha256").update(content).digest("hex");
 
 function safeRelative(path: string): boolean {
   if (!path || isAbsolute(path)) return false;
-  return !path
-    .split(/[\\/]+/)
-    .some(
-      (part) => !part || part === "." || part === ".." || part.startsWith("."),
-    );
+  return !path.split(/[\\/]+/).some((part) => !part || part === "." || part === ".." || part.startsWith("."));
 }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function readNoFollow(
-  path: string,
-  maximumBytes?: number,
-): Promise<Buffer> {
+async function readNoFollow(path: string, maximumBytes?: number): Promise<Buffer> {
   const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const info = await handle.stat();
-    if (
-      !info.isFile() ||
-      (maximumBytes !== undefined && info.size > maximumBytes)
-    ) {
+    if (!info.isFile() || (maximumBytes !== undefined && info.size > maximumBytes)) {
       throw new Error("managed file is not a valid regular file");
     }
     return await handle.readFile();
@@ -54,20 +36,12 @@ async function readNoFollow(
   }
 }
 
-async function assertManagedDirectories(
-  cwd: string,
-  relativeDirectory: string,
-): Promise<void> {
+async function assertManagedDirectories(cwd: string, relativeDirectory: string): Promise<void> {
   let current = resolve(cwd);
-  for (const segment of [
-    ".agents",
-    "notes",
-    ...relativeDirectory.split("/").filter(Boolean),
-  ]) {
+  for (const segment of [".agents", "notes", ...relativeDirectory.split("/").filter(Boolean)]) {
     current = join(current, segment);
     const info = await lstat(current);
-    if (info.isSymbolicLink() || !info.isDirectory())
-      throw new Error("managed path has an unsafe ancestor");
+    if (info.isSymbolicLink() || !info.isDirectory()) throw new Error("managed path has an unsafe ancestor");
   }
 }
 
@@ -110,9 +84,7 @@ function rootAllowed(callback: () => boolean): boolean {
 }
 
 function launchedId(value: unknown): string | undefined {
-  return value &&
-    typeof value === "object" &&
-    typeof (value as { id?: unknown }).id === "string"
+  return value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string"
     ? (value as { id: string }).id
     : undefined;
 }
@@ -121,10 +93,7 @@ function commandArgs(args: string): {
   profile: "fast" | "normal";
   constraints: string;
 } {
-  const match =
-    /^consolidate\s+(fast|normal)\s+--constraints\s+([\s\S]+)$/.exec(
-      args.trim(),
-    );
+  const match = /^consolidate\s+(fast|normal)\s+--constraints\s+([\s\S]+)$/.exec(args.trim());
   if (!match || !match[2]!.trim()) {
     throw new Error(
       "Usage: /memory consolidate fast|normal --constraints <text> (use 'none' explicitly if applicable)",
@@ -142,8 +111,7 @@ function workerPrompt(
   receipt: string,
   constraints: string,
 ): string {
-  const paths =
-    snapshot.map((file) => "- " + file.path).join("\n") || "- (none)";
+  const paths = snapshot.map((file) => "- " + file.path).join("\n") || "- (none)";
   return (
     "Consolidate this project's pending memory notes into durable project memory.\n\n" +
     "User constraints (authoritative; preserve exactly):\n" +
@@ -168,10 +136,7 @@ function workerPrompt(
   );
 }
 
-export function registerProjectMemory(
-  pi: ExtensionAPI,
-  options: ProjectMemoryOptions,
-): ProjectMemoryRuntime {
+export function registerProjectMemory(pi: ExtensionAPI, options: ProjectMemoryOptions): ProjectMemoryRuntime {
   let currentContext: ExtensionContext | undefined;
   let currentSessionId: unknown;
   let generation = 0;
@@ -183,15 +148,11 @@ export function registerProjectMemory(
     try {
       await unlock();
     } catch {
-      notify(
-        "Memory lock could not be released; verify its owner before manual recovery.",
-        "warning",
-      );
+      notify("Memory lock could not be released; verify its owner before manual recovery.", "warning");
     }
   };
 
-  const notify = (text: string, level: "info" | "warning" = "info") =>
-    currentContext?.ui.notify(text, level);
+  const notify = (text: string, level: "info" | "warning" = "info") => currentContext?.ui.notify(text, level);
   const invalidate = () => {
     generation++;
     launching = undefined;
@@ -206,11 +167,7 @@ export function registerProjectMemory(
   };
   const adopt = (ctx: ExtensionContext) => {
     const nextSessionId = sessionIdOf(ctx);
-    if (
-      currentContext &&
-      (currentSessionId !== nextSessionId ||
-        resolve(currentContext.cwd) !== resolve(ctx.cwd))
-    ) {
+    if (currentContext && (currentSessionId !== nextSessionId || resolve(currentContext.cwd) !== resolve(ctx.cwd))) {
       invalidate();
     }
     currentContext = ctx;
@@ -263,12 +220,7 @@ export function registerProjectMemory(
       if (inspection.status !== "completed" || inspection.exitCode !== 0) {
         await rm(run.receipt, { force: true }).catch(() => {});
         if (runIsValid(run))
-          notify(
-            "Memory consolidation " +
-              run.id +
-              " failed; pending notes were retained.",
-            "warning",
-          );
+          notify("Memory consolidation " + run.id + " failed; pending notes were retained.", "warning");
         return;
       }
 
@@ -277,11 +229,7 @@ export function registerProjectMemory(
       const receipt = JSON.parse(receiptBytes.toString("utf8")) as {
         files?: unknown;
       };
-      if (
-        !Array.isArray(receipt.files) ||
-        receipt.files.length < 1 ||
-        receipt.files.length > MAX_RECEIPT_FILES
-      ) {
+      if (!Array.isArray(receipt.files) || receipt.files.length < 1 || receipt.files.length > MAX_RECEIPT_FILES) {
         throw new Error("invalid receipt list");
       }
 
@@ -289,8 +237,7 @@ export function registerProjectMemory(
       let hasRootIndex = false;
       const notesRoot = resolve(run.cwd, NOTES);
       for (const item of receipt.files) {
-        if (!item || typeof item !== "object")
-          throw new Error("invalid receipt entry");
+        if (!item || typeof item !== "object") throw new Error("invalid receipt entry");
         const { path, sha256 } = item as { path?: unknown; sha256?: unknown };
         if (
           typeof path !== "string" ||
@@ -304,25 +251,15 @@ export function registerProjectMemory(
         seen.add(path);
         if (path === "index.md") hasRootIndex = true;
         const slash = path.lastIndexOf("/");
-        await assertManagedDirectories(
-          run.cwd,
-          slash < 0 ? "" : path.slice(0, slash),
-        );
+        await assertManagedDirectories(run.cwd, slash < 0 ? "" : path.slice(0, slash));
         const saved = resolve(notesRoot, path);
-        if (!saved.startsWith(notesRoot + sep))
-          throw new Error("receipt path escapes notes");
-        if (hash(await readNoFollow(saved)) !== sha256)
-          throw new Error("saved note does not match receipt");
+        if (!saved.startsWith(notesRoot + sep)) throw new Error("receipt path escapes notes");
+        if (hash(await readNoFollow(saved)) !== sha256) throw new Error("saved note does not match receipt");
       }
       if (!hasRootIndex) throw new Error("receipt does not list index.md");
       if (!runIsValid(run)) return;
 
-      const consumed = await consumePendingNotes(
-        run.cwd,
-        run.snapshot,
-        () => runIsValid(run),
-        run.releaseLock,
-      );
+      const consumed = await consumePendingNotes(run.cwd, run.snapshot, () => runIsValid(run), run.releaseLock);
       if (!runIsValid(run)) return;
       notify(
         "Memory consolidation " +
@@ -336,9 +273,7 @@ export function registerProjectMemory(
     } catch {
       if (runIsValid(run)) {
         notify(
-          "Memory consolidation " +
-            run.id +
-            " produced no valid receipt; pending notes were retained.",
+          "Memory consolidation " + run.id + " produced no valid receipt; pending notes were retained.",
           "warning",
         );
       }
@@ -361,10 +296,7 @@ export function registerProjectMemory(
       const input = args.trim() || "status";
       if (input === "status") {
         if (!rootAllowed(options.isRoot))
-          return notify(
-            "Project memory is unavailable outside the root agent.",
-            "warning",
-          );
+          return notify("Project memory is unavailable outside the root agent.", "warning");
         return notify(
           pending
             ? "Memory consolidation " + pending.id + " is pending."
@@ -381,13 +313,8 @@ export function registerProjectMemory(
         notify(errorMessage(error), "warning");
         return;
       }
-      if (!rootAllowed(options.isRoot))
-        return notify("Memory consolidation is root-only.", "warning");
-      if (launching || pending)
-        return notify(
-          "Memory consolidation is already launching or pending.",
-          "warning",
-        );
+      if (!rootAllowed(options.isRoot)) return notify("Memory consolidation is root-only.", "warning");
+      if (launching || pending) return notify("Memory consolidation is already launching or pending.", "warning");
 
       // Reserve before the first await so concurrent command handlers cannot both snapshot and launch.
       const reservation = {};
@@ -409,10 +336,7 @@ export function registerProjectMemory(
         )
           return;
         if (!snapshot.length) {
-          notify(
-            "No pending Markdown notes found in .agents/notes/.pending.",
-            "warning",
-          );
+          notify("No pending Markdown notes found in .agents/notes/.pending.", "warning");
           return;
         }
 
@@ -439,22 +363,13 @@ export function registerProjectMemory(
           sessionIdOf(currentContext) !== launchSessionId
         )
           return;
-        const receipt = join(
-          cwd,
-          NOTES,
-          ".consolidation-" + randomUUID() + ".json",
-        );
+        const receipt = join(cwd, NOTES, ".consolidation-" + randomUUID() + ".json");
         dispatchStarted = true;
         const launched = await options.jobs.handle(
           "subagent",
           {
             type: parsed.profile,
-            prompt: workerPrompt(
-              cwd,
-              lockedSnapshot,
-              receipt,
-              parsed.constraints,
-            ),
+            prompt: workerPrompt(cwd, lockedSnapshot, receipt, parsed.constraints),
             waitSeconds: 0,
           },
           ctx,
@@ -488,15 +403,10 @@ export function registerProjectMemory(
           releaseLock: unlock,
         };
         unlock = undefined;
-        notify(
-          "Memory consolidation " + id + " launched (" + parsed.profile + ").",
-        );
+        notify("Memory consolidation " + id + " launched (" + parsed.profile + ").");
         await requestReconcile();
       } catch (error) {
-        notify(
-          "Memory consolidation was not launched: " + errorMessage(error),
-          "warning",
-        );
+        notify("Memory consolidation was not launched: " + errorMessage(error), "warning");
       } finally {
         if (unlock && !dispatchStarted) await release(unlock);
         // A throwing dispatcher may already have spawned work; fail closed and leave
