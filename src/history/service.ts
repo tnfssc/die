@@ -189,7 +189,8 @@ function textParts(content: unknown): Array<{ part: number; text: string }> {
   const result: Array<{ part: number; text: string }> = [];
   for (let index = 0; index < content.length; index++) {
     const part = content[index];
-    if (record(part) && part.type === "text" && typeof part.text === "string") result.push({ part: index, text: part.text });
+    if (record(part) && part.type === "text" && typeof part.text === "string")
+      result.push({ part: index, text: part.text });
   }
   return result;
 }
@@ -386,8 +387,7 @@ export class HistoryService {
         rank = 2;
       } else continue;
       indexedParts += Array.isArray(message.content) ? message.content.length : parts.length;
-      if (indexedParts > MAX_INDEXED_PARTS)
-        throw new Error(`History scan exceeds the ${MAX_INDEXED_PARTS}-part limit`);
+      if (indexedParts > MAX_INDEXED_PARTS) throw new Error(`History scan exceeds the ${MAX_INDEXED_PARTS}-part limit`);
       for (const part of parts) {
         const bytes = Buffer.byteLength(part.text);
         if (bytes > MAX_TEXT_PART_BYTES)
