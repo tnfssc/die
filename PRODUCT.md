@@ -618,3 +618,5 @@ User authorized v0.2.4 release and installation after the second audit fixes. Ve
 - User reports that Herdr integration does not account for subagents and repeatedly starts/stops while delegated work is ongoing.
 - Investigate root activity/idle reporting across delegation, handoffs, child activity, and completion; ensure the displayed state reflects session-owned work without start/stop churn.
 - This is a reported symptom, not a confirmed root cause. Add lifecycle regression coverage when fixing it. Recorded as a TODO only; not implemented or included in the immutable v0.2.4 release tag.
+
+v0.2.4 release run 34070587555 failed before publication: test depended on local subagent profiles (533 pass/14 skip/1 fail); retained /tmp/die-v024-release-failed.log. Fixed with isolated profile/model fixture in 847de77, verified under empty HOME. Existing v0.2.4 tag remains immutable. Corrected v0.2.5 full local format/lint/check/build/tests/smoke/tag gate passed (/tmp/die-v025-tests.log); publication/install pending. Herdr subagent activity follow-up remains TODO only.
