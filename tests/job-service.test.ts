@@ -139,6 +139,48 @@ test("profile settings, child identity, and three-tier limits survive helper mig
   }
 });
 
+test("partial subagent spawn failure stops and notifies already-launched workers", async () => {
+  const notifications: any[] = [],
+    manager = new TaskManager((task) => notifications.push(task)),
+    originalSpawn = manager.spawn.bind(manager),
+    launchFailure = new Error("second spawn failed");
+  const spawn = spyOn(manager, "spawn")
+    .mockImplementationOnce((launch) =>
+      originalSpawn({
+        ...launch,
+        command: process.execPath,
+        args: ["-e", "setInterval(() => {}, 1000)"],
+      }),
+    )
+    .mockImplementationOnce(() => {
+      throw launchFailure;
+    });
+  let changes = 0;
+  const service = new JobService(
+    manager,
+    () => ({ depth: 0 }),
+    () => changes++,
+  );
+  try {
+    const error = await service
+      .handle("subagent", { type: "fast", prompts: ["started", "fails"] }, { cwd: process.cwd() } as any, signal)
+      .catch((error) => error);
+    expect(error).toBe(launchFailure);
+
+    const [task] = manager.list();
+    expect(task).toBeDefined();
+    expect(task!.termination?.cause).toBe("execute-cancellation");
+    await manager.wait(task!.id);
+    expect(manager.inspect(task!.id).status).toBe("killed");
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({ id: task!.id, status: "killed" });
+    expect(changes).toBe(1);
+  } finally {
+    spawn.mockRestore();
+    await manager.shutdown();
+  }
+});
+
 test("healthy inspection polling does not produce per-poll diagnostics", async () => {
   const manager = new TaskManager(() => {}),
     records: JobDiagnosticInput[] = [];

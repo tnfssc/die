@@ -205,7 +205,25 @@ export class JobService {
             );
           }
         } catch (error) {
-          await Promise.all(spawned.map((task) => this.manager.foreground(task.id, 0, AbortSignal.abort())));
+          // A failed batch has no response in which to return already-spawned
+          // identities. Stop those agents and transfer completion ownership to
+          // session notifications so neither the jobs nor their IDs are lost.
+          for (const task of spawned) {
+            try {
+              this.manager.kill(task.id, "execute-cancellation");
+            } catch {
+              // Cleanup must never replace the launch failure reported to the caller.
+            }
+          }
+          await Promise.all(
+            spawned.map(async (task) => {
+              try {
+                await this.manager.foreground(task.id, 0, AbortSignal.abort());
+              } catch {
+                // Preserve the original launch failure even if ownership transfer fails.
+              }
+            }),
+          );
           this.changed();
           throw error;
         }
