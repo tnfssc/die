@@ -42,15 +42,17 @@ async function readNoFollow(path: string, maximumBytes: number): Promise<Buffer>
     const info = await handle.stat();
     if (!info.isFile() || info.size > maximumBytes) throw new Error("managed file exceeds its read limit");
     // Never let a file that grows after stat make readFile allocate without a bound.
-    const bytes = Buffer.allocUnsafe(maximumBytes + 1);
-    let offset = 0;
-    while (offset < bytes.length) {
-      const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, null);
+    const chunks: Buffer[] = [];
+    let total = 0;
+    while (total <= maximumBytes) {
+      const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maximumBytes + 1 - total));
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
       if (!bytesRead) break;
-      offset += bytesRead;
+      total += bytesRead;
+      if (total > maximumBytes) throw new Error("managed file exceeds its read limit");
+      chunks.push(bytesRead === chunk.length ? chunk : chunk.subarray(0, bytesRead));
     }
-    if (offset > maximumBytes) throw new Error("managed file exceeds its read limit");
-    return bytes.subarray(0, offset);
+    return Buffer.concat(chunks, total);
   } finally {
     await handle.close();
   }

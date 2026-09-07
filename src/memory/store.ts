@@ -122,15 +122,17 @@ async function readRegularFile(path: string, maximumBytes?: number): Promise<str
   try {
     // Cap the actual read too: the file may grow after lstat.
     if (maximumBytes === undefined) return await handle.readFile({ encoding: "utf8" });
-    const bytes = Buffer.allocUnsafe(maximumBytes + 1);
-    let offset = 0;
-    while (offset < bytes.length) {
-      const { bytesRead } = await handle.read(bytes, offset, bytes.length - offset, null);
+    const chunks: Buffer[] = [];
+    let total = 0;
+    while (total <= maximumBytes) {
+      const chunk = Buffer.allocUnsafe(Math.min(64 * 1024, maximumBytes + 1 - total));
+      const { bytesRead } = await handle.read(chunk, 0, chunk.length, null);
       if (!bytesRead) break;
-      offset += bytesRead;
+      total += bytesRead;
+      if (total > maximumBytes) throw new Error(`Managed note exceeds the ${maximumBytes}-byte read limit: ${path}`);
+      chunks.push(bytesRead === chunk.length ? chunk : chunk.subarray(0, bytesRead));
     }
-    if (offset > maximumBytes) throw new Error(`Managed note exceeds the ${maximumBytes}-byte read limit: ${path}`);
-    return bytes.subarray(0, offset).toString("utf8");
+    return Buffer.concat(chunks, total).toString("utf8");
   } finally {
     await handle.close();
   }
