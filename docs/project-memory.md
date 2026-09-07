@@ -71,7 +71,14 @@ and remains available for retry. Failed launches, failed jobs, missing or invali
 receipts do not mark notes consumed. Saved partial work may remain after failure;
 the retry should reconcile it rather than duplicate it.
 
-The project-wide `.consolidation.lock/` excludes cooperating consolidators.
+The project-wide `.consolidation.lock/` excludes all cooperating memory
+writers, not only consolidators. Built-in `saveConsolidatedNote` and
+`consumePendingNotes` operations acquire it automatically; callers already
+operating under a lease pass that lease through so ownership is verified without
+reacquiring. Execute-based writers must acquire `acquireMemoryLock(cwd)` before
+changing anything under `.agents/notes/`, hold the lease across the complete
+multi-file operation, and release it in `finally`. A consolidation worker does
+not reacquire the lock because the controller holds it on that worker's behalf.
 Never reclaim locks merely because they are old or their recorded owner appears
 inactive. After a crash or interrupted ownership, first verify that no worker is
 still writing; only then manually remove an abandoned lock and retry. Ordinary
@@ -101,7 +108,7 @@ on invalid or unavailable identity. Completion reconciliation must run before
 job ownership is discarded. The runtime does not create its own polling timers,
 job manager, process runner, model tool, or automatic continuation.
 
-This feature branch intentionally does not edit `src/tasks/extension.ts`.
-Until the owner explicitly registers this function and forwards lifecycle
-changes, these commands and the short selective-reading context hint are inert.
-No application behavior or paid-call default silently changes.
+`src/tasks/extension.ts` registers project memory after creating its job service
+and forwards task lifecycle changes for reconciliation. The command remains
+manual-only: registration does not trigger consolidation on turns, job completion,
+or shutdown, and no paid-call default is enabled.
