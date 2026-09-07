@@ -155,11 +155,12 @@ test("partial subagent spawn failure stops and notifies already-launched workers
     .mockImplementationOnce(() => {
       throw launchFailure;
     });
-  let changes = 0;
   const service = new JobService(
     manager,
     () => ({ depth: 0 }),
-    () => changes++,
+    () => {
+      throw new Error("refresh failed");
+    },
   );
   try {
     const error = await service
@@ -174,10 +175,36 @@ test("partial subagent spawn failure stops and notifies already-launched workers
     expect(manager.inspect(task!.id).status).toBe("killed");
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toMatchObject({ id: task!.id, status: "killed" });
-    expect(changes).toBe(1);
   } finally {
     spawn.mockRestore();
     await manager.shutdown();
+  }
+});
+
+test("optional and failing refresh callbacks cannot strand successful launches", async () => {
+  for (const changed of [
+    undefined,
+    () => {
+      throw new Error("refresh failed");
+    },
+  ]) {
+    const manager = new TaskManager(() => {});
+    const foreground = spyOn(manager, "foreground");
+    const service = new JobService(manager, () => ({ depth: 0 }), changed);
+    try {
+      const result = (await service.handle(
+        "shell",
+        { command: "printf ok", waitSeconds: 1 },
+        { cwd: process.cwd() } as any,
+        signal,
+      )) as { status: string; output: string };
+      expect(foreground).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe("completed");
+      expect(result.output).toBe("ok");
+    } finally {
+      foreground.mockRestore();
+      await manager.shutdown();
+    }
   }
 });
 

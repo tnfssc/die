@@ -74,7 +74,7 @@ export class JobService {
   constructor(
     readonly manager: TaskManager,
     private policy: () => { depth: number; type?: string },
-    private changed: () => void,
+    private changed?: () => void,
     private profilesPath?: string,
     private attention?: JobAttentionScheduler,
     private recordDiagnostic?: JobDiagnosticRecorder,
@@ -145,9 +145,9 @@ export class JobService {
           timeoutMs: params.timeoutSeconds ? params.timeoutSeconds * 1000 : undefined,
           notifyOnComplete: false,
         });
-        this.changed();
+        this.#refresh();
         const result = await this.manager.foreground(task.id, (params.waitSeconds ?? 3) * 1000, signal);
-        this.changed();
+        this.#refresh();
         return preview(result);
       }
       case "subagent": {
@@ -224,16 +224,16 @@ export class JobService {
               }
             }),
           );
-          this.changed();
+          this.#refresh();
           throw error;
         }
-        this.changed();
+        this.#refresh();
         const results = await Promise.all(
           spawned.map(async (task) =>
             preview(await this.manager.foreground(task.id, (params.waitSeconds ?? 1) * 1000, signal)),
           ),
         );
-        this.changed();
+        this.#refresh();
         return params.prompts ? results : results[0];
       }
       case "jobs.list": {
@@ -264,7 +264,7 @@ export class JobService {
         return preview(this.manager.closeInput(z.parse(Id, input).id));
       case "jobs.stop": {
         const result = this.manager.kill(z.parse(Id, input).id);
-        this.changed();
+        this.#refresh();
         return preview(result);
       }
       case "jobs.snooze": {
@@ -285,6 +285,14 @@ export class JobService {
       }
       default:
         throw new Error("Unknown job method: " + method);
+    }
+  }
+
+  #refresh(): void {
+    try {
+      this.changed?.();
+    } catch {
+      // UI refresh is advisory and must not affect task launch or ownership.
     }
   }
 

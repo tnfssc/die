@@ -172,10 +172,40 @@ function combine(options: Options | undefined, required: Options): Options {
   return { ...(options ?? {}), ...required };
 }
 
+/** Consume newline-delimited frames while retaining at most one bounded partial frame. */
+function consumeFrames(
+  input: Buffer,
+  chunk: Buffer,
+  onFrame: (frame: Buffer) => boolean,
+  onOversize: () => void,
+): Buffer {
+  let offset = 0;
+  while (offset < chunk.length) {
+    const newline = chunk.indexOf(10, offset);
+    const end = newline < 0 ? chunk.length : newline;
+    const combinedLength = input.length + end - offset;
+    if (combinedLength > MAX_JOB_BRIDGE_FRAME_BYTES) {
+      onOversize();
+      return Buffer.alloc(0);
+    }
+    if (newline < 0) {
+      const tail = chunk.subarray(offset);
+      if (!input.length) return offset === 0 ? chunk : Buffer.from(tail);
+      return Buffer.concat([input, tail], combinedLength);
+    }
+    const part = chunk.subarray(offset, newline);
+    const frame = input.length ? Buffer.concat([input, part], combinedLength) : part;
+    input = Buffer.alloc(0);
+    if (!onFrame(frame)) return input;
+    offset = newline + 1;
+  }
+  return input;
+}
+
 /** Install execute's job helpers. With no bridge, calls reject with a useful error. */
 export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } {
   let nextId = 1;
-  let input = Buffer.alloc(0);
+  let input: Buffer = Buffer.alloc(0);
   let closed = !socket;
   let finishing = false;
   const pending = new Map<
@@ -218,59 +248,48 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
     };
     socket.on("data", (chunk: Buffer) => {
       if (closed) return;
-      if (input.length + chunk.length > MAX_JOB_BRIDGE_FRAME_BYTES && !chunk.includes(10)) {
-        failProtocol("Job bridge response exceeded 1 MB", "frame_oversize");
-        return;
-      }
-      input = Buffer.concat([input, chunk]);
-      for (;;) {
-        const newline = input.indexOf(10);
-        if (newline < 0) {
-          if (input.length > MAX_JOB_BRIDGE_FRAME_BYTES)
-            failProtocol("Job bridge response exceeded 1 MB", "frame_oversize");
-          return;
-        }
-        const frame = input.subarray(0, newline);
-        input = input.subarray(newline + 1);
-        if (frame.length > MAX_JOB_BRIDGE_FRAME_BYTES) {
-          failProtocol("Job bridge response exceeded 1 MB", "frame_oversize");
-          return;
-        }
-        let value: unknown;
-        try {
-          value = JSON.parse(frame.toString("utf8"));
-        } catch {
-          failProtocol("Invalid job bridge response JSON", "protocol_invalid");
-          return;
-        }
-        if (!value || typeof value !== "object") {
-          failProtocol("Invalid job bridge response envelope", "protocol_invalid");
-          return;
-        }
-        const response = value as Response;
-        if (
-          !Number.isSafeInteger(response.id) ||
-          !("result" in response || typeof response.error === "string") ||
-          ("result" in response && "error" in response)
-        ) {
-          failProtocol("Invalid job bridge response envelope", "protocol_invalid");
-          return;
-        }
-        const item = pending.get(response.id);
-        if (!item) {
-          failProtocol("Unknown job bridge response id", "protocol_invalid");
-          return;
-        }
-        if (typeof response.error === "string") {
-          // Error results own no task completion, but acknowledge them to release
-          // the server-side request signal consistently.
-          const error = bridgeError(response.error, "delivery_failed", "response", socket);
-          acknowledge(response.id, { resolve: () => item.reject(error), reject: item.reject });
-        } else {
-          const result = response.result;
-          acknowledge(response.id, { resolve: () => item.resolve(result), reject: item.reject });
-        }
-      }
+      input = consumeFrames(
+        input,
+        chunk,
+        (frame) => {
+          let value: unknown;
+          try {
+            value = JSON.parse(frame.toString("utf8"));
+          } catch {
+            failProtocol("Invalid job bridge response JSON", "protocol_invalid");
+            return false;
+          }
+          if (!value || typeof value !== "object") {
+            failProtocol("Invalid job bridge response envelope", "protocol_invalid");
+            return false;
+          }
+          const response = value as Response;
+          if (
+            !Number.isSafeInteger(response.id) ||
+            !("result" in response || typeof response.error === "string") ||
+            ("result" in response && "error" in response)
+          ) {
+            failProtocol("Invalid job bridge response envelope", "protocol_invalid");
+            return false;
+          }
+          const item = pending.get(response.id);
+          if (!item) {
+            failProtocol("Unknown job bridge response id", "protocol_invalid");
+            return false;
+          }
+          if (typeof response.error === "string") {
+            // Error results own no task completion, but acknowledge them to release
+            // the server-side request signal consistently.
+            const error = bridgeError(response.error, "delivery_failed", "response", socket);
+            acknowledge(response.id, { resolve: () => item.reject(error), reject: item.reject });
+          } else {
+            const result = response.result;
+            acknowledge(response.id, { resolve: () => item.resolve(result), reject: item.reject });
+          }
+          return true;
+        },
+        () => failProtocol("Job bridge response exceeded 1 MB", "frame_oversize"),
+      );
     });
     socket.on("end", () => rejectAll("Job bridge disconnected"));
     socket.on("close", () => rejectAll("Job bridge disconnected"));
@@ -415,7 +434,7 @@ export function serveJobBridge(
   executionSignal: AbortSignal,
   diagnosticOwner: object = socket,
 ): { close(commitAcknowledgements?: boolean): void } {
-  let input = Buffer.alloc(0);
+  let input: Buffer = Buffer.alloc(0);
   let lastId = 0;
   let closed = false;
   const controller = new AbortController();
@@ -542,79 +561,72 @@ export function serveJobBridge(
 
   socket.on("data", (chunk: Buffer) => {
     if (closed) return;
-    input = Buffer.concat([input, chunk]);
-    for (;;) {
-      const newline = input.indexOf(10);
-      if (newline < 0) {
-        if (input.length > MAX_JOB_BRIDGE_FRAME_BYTES)
-          fail("Job bridge request exceeded 1 MB", "frame_oversize", "initiated");
-        return;
-      }
-      const frame = input.subarray(0, newline);
-      input = input.subarray(newline + 1);
-      if (frame.length > MAX_JOB_BRIDGE_FRAME_BYTES) {
-        fail("Job bridge request exceeded 1 MB", "frame_oversize", "initiated");
-        return;
-      }
-      let value: unknown;
-      try {
-        value = JSON.parse(frame.toString("utf8"));
-      } catch {
-        fail("Invalid job bridge request JSON", "protocol_invalid", "initiated");
-        return;
-      }
-      if (!value || typeof value !== "object") {
-        fail("Invalid job bridge request envelope", "protocol_invalid", "initiated");
-        return;
-      }
-      if ("ack" in value) {
-        const acknowledgement = value as Acknowledgement;
-        if (!Number.isSafeInteger(acknowledgement.ack)) {
-          fail("Invalid job bridge acknowledgement", "protocol_invalid", "response");
-          return;
+    input = consumeFrames(
+      input,
+      chunk,
+      (frame) => {
+        let value: unknown;
+        try {
+          value = JSON.parse(frame.toString("utf8"));
+        } catch {
+          fail("Invalid job bridge request JSON", "protocol_invalid", "initiated");
+          return false;
         }
-        const request = requests.get(acknowledgement.ack);
-        // ACK before a normal reply, replayed ACK, and unknown ACK are protocol
-        // failures. abortRequests() also releases every TaskManager listener.
-        if (!request) {
-          fail("Unknown or duplicate job bridge acknowledgement id", "protocol_invalid", "response");
-          return;
+        if (!value || typeof value !== "object") {
+          fail("Invalid job bridge request envelope", "protocol_invalid", "initiated");
+          return false;
         }
-        if (request.reply === "failed") {
-          // The worker received the bounded error fallback. There is no task
-          // result to commit, and abort above already released its listeners.
-          requests.delete(acknowledgement.ack);
-          continue;
+        if ("ack" in value) {
+          const acknowledgement = value as Acknowledgement;
+          if (!Number.isSafeInteger(acknowledgement.ack)) {
+            fail("Invalid job bridge acknowledgement", "protocol_invalid", "response");
+            return false;
+          }
+          const request = requests.get(acknowledgement.ack);
+          // ACK before a normal reply, replayed ACK, and unknown ACK are protocol
+          // failures. abortRequests() also releases every TaskManager listener.
+          if (!request) {
+            fail("Unknown or duplicate job bridge acknowledgement id", "protocol_invalid", "response");
+            return false;
+          }
+          if (request.reply === "failed") {
+            // The worker received the bounded error fallback. There is no task
+            // result to commit, and abort above already released its listeners.
+            requests.delete(acknowledgement.ack);
+            return true;
+          }
+          if (request.reply !== "sent") {
+            fail("Unknown or duplicate job bridge acknowledgement id", "protocol_invalid", "response");
+            return false;
+          }
+          request.reply = "acked";
+          return true;
         }
-        if (request.reply !== "sent") {
-          fail("Unknown or duplicate job bridge acknowledgement id", "protocol_invalid", "response");
-          return;
+        const request = value as Request;
+        if (
+          !Number.isSafeInteger(request.id) ||
+          request.id <= lastId ||
+          typeof request.method !== "string" ||
+          !("params" in request)
+        ) {
+          fail("Invalid job bridge request envelope", "protocol_invalid", "initiated");
+          return false;
         }
-        request.reply = "acked";
-        continue;
-      }
-      const request = value as Request;
-      if (
-        !Number.isSafeInteger(request.id) ||
-        request.id <= lastId ||
-        typeof request.method !== "string" ||
-        !("params" in request)
-      ) {
-        fail("Invalid job bridge request envelope", "protocol_invalid", "initiated");
-        return;
-      }
-      lastId = request.id;
-      const requestController = new AbortController();
-      Object.defineProperty(requestController.signal, ACK_CAPABLE, { value: true });
-      requests.set(request.id, { controller: requestController, reply: "pending" });
-      if (controller.signal.aborted) requestController.abort();
-      void Promise.resolve()
-        .then(() => handler(request.method, request.params, requestController.signal))
-        .then(
-          (result) => send(request.id, { id: request.id, result: result === undefined ? null : result }),
-          (error) => send(request.id, { id: request.id, error: message(error) }, false),
-        );
-    }
+        lastId = request.id;
+        const requestController = new AbortController();
+        Object.defineProperty(requestController.signal, ACK_CAPABLE, { value: true });
+        requests.set(request.id, { controller: requestController, reply: "pending" });
+        if (controller.signal.aborted) requestController.abort();
+        void Promise.resolve()
+          .then(() => handler(request.method, request.params, requestController.signal))
+          .then(
+            (result) => send(request.id, { id: request.id, result: result === undefined ? null : result }),
+            (error) => send(request.id, { id: request.id, error: message(error) }, false),
+          );
+        return true;
+      },
+      () => fail("Job bridge request exceeded 1 MB", "frame_oversize", "initiated"),
+    );
   });
   return { close };
 }
