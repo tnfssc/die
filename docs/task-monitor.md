@@ -18,8 +18,10 @@ available PID, working directory, activity status, and recent output. The
 preview is capped at 2,400 bytes and 12 lines; inspection requests at most the
 job manager's 5,000-byte API limit and only renders lines that fit the terminal,
 including terminals shorter than ten rows and the empty-job view. On severely
-short frames, the title and controls (including the frozen stop identity during
-confirmation) take priority over spacer and detail rows.
+short frames, the selected job identity and controls take priority over borders,
+spacers, and detail rows. A one-row frame shows the actionable identity alone;
+a stop confirmation always shows its frozen job ID and command. At zero rows,
+all target-changing and confirmation actions are disabled (Escape still works).
 Terminal escape/control sequences are removed before display.
 
 Updates are event-driven and coalesced to at most one render request per 100 ms,

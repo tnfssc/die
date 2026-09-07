@@ -1,8 +1,9 @@
 import { expect, test } from "bun:test";
 import { getKeybindings, visibleWidth } from "@earendil-works/pi-tui";
 import { TaskManager } from "../src/tasks/task-manager";
-import { TaskMonitorPanel } from "../src/ui/task-monitor";
 import { registerTaskMonitor } from "../src/tasks/task-monitor";
+import { TaskMonitorPanel } from "../src/ui/task-monitor";
+
 const theme = { fg: (_c: string, t: string) => t, bold: (t: string) => t };
 const shell = process.platform === "win32" ? (process.env.ComSpec ?? "cmd.exe") : "/bin/sh";
 function launch(manager: TaskManager, script: string, displayCommand = script) {
@@ -76,7 +77,7 @@ test("empty registry and no-output state are explicit", async () => {
   expect(panel.render(80).join("\n")).toContain("No jobs are running");
 });
 
-test("short terminals bound running and empty frames while retaining controls and stop identity", async () => {
+test("rows 0-9 stay bounded and tiny frames retain the actionable identity", async () => {
   const manager = new TaskManager(() => {}, 20);
   let rows = 3;
   const panel = new TaskMonitorPanel(
@@ -93,21 +94,34 @@ test("short terminals bound running and empty frames while retaining controls an
     expect(lines.join("\n")).toContain("Running jobs");
     expect(lines.join("\n")).toContain("Esc close");
 
-    const task = launch(manager, "sleep 10", "recognizable-command");
-    rows = 5;
-    lines = panel.render(80);
-    expect(lines.length).toBeLessThanOrEqual(5);
-    expect(lines.join("\n")).toContain(task.id);
-    expect(lines.join("\n")).toContain("stop");
-
+    const a = launch(manager, "sleep 10", "recognizable-command-a");
+    const b = launch(manager, "sleep 10", "recognizable-command-b");
+    panel.handleInput("\x1b[B");
+    rows = 0;
+    panel.handleInput("\x1b[A");
     panel.handleInput("s");
-    rows = 1;
-    lines = panel.render(80);
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain("Stop " + task.id);
-    expect(lines[0]).toContain("recognizable-command");
-    expect(lines[0]).toContain("confirm");
 
+    for (rows = 0; rows <= 9; rows++) {
+      lines = panel.render(80);
+      expect(lines.length).toBeLessThanOrEqual(rows);
+      if (rows > 0) expect(lines.join("\n")).toContain(b.id);
+      if (rows === 2 || rows === 3) expect(lines.join("\n")).toContain("s/x stop");
+    }
+
+    rows = 3;
+    panel.handleInput("s");
+    rows = 0;
+    panel.handleInput("y");
+    expect(manager.list().find((task) => task.id === b.id)?.status).toBe("running");
+    await manager.kill(b.id);
+    await manager.wait(b.id);
+    for (rows = 1; rows <= 3; rows++) {
+      lines = panel.render(80);
+      expect(lines).toHaveLength(rows);
+      expect(lines.join("\n")).toContain("Stop " + b.id);
+      expect(lines.join("\n")).toContain("recognizable-command-b");
+      expect(lines.join("\n")).not.toContain("Stop " + a.id);
+    }
     rows = 0;
     expect(panel.render(80)).toEqual([]);
   } finally {

@@ -1,10 +1,10 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import {
-  stripTerminalSequences,
-  truncateToWidth,
   type Component,
   type Focusable,
   type KeybindingsManager,
+  stripTerminalSequences,
+  truncateToWidth,
 } from "@earendil-works/pi-tui";
 import type { TaskManager, TaskSummary } from "../tasks/task-manager";
 
@@ -31,13 +31,22 @@ function cleanCommand(value: string): string {
 function terminalRows(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 24;
 }
-function fitRows(lines: string[], height: number): string[] {
+function fitRows(lines: string[], height: number, identity?: string): string[] {
   if (height <= 0) return [];
   if (lines.length <= height) return lines;
   const controls = lines.at(-2) ?? lines.at(-1) ?? "";
-  if (height === 1) return [controls];
-  if (height === 2) return [lines[1] ?? lines[0] ?? "", controls];
-  if (height === 3) return [lines[0] ?? "", lines[1] ?? "", controls];
+  // A usable action must never outlive the line identifying its target. At one
+  // row show only that identity; at two and three rows pair it with controls.
+  // Stop prompts are both the frozen identity and the controls, so avoid
+  // duplicating them.
+  const target = identity ?? controls;
+  if (height === 1) return [target];
+  if (height === 2) return target === controls ? [lines[1] ?? lines[0] ?? "", controls] : [target, controls];
+  if (height === 3)
+    return target === controls
+      ? [lines[0] ?? "", lines[1] ?? "", controls]
+      : [lines[1] ?? lines[0] ?? "", target, controls];
+  if (height === 4 && target !== controls) return [lines[1] ?? lines[0] ?? "", target, controls, lines.at(-1) ?? ""];
 
   // Keep the frame title and controls. Blank spacer rows are the first thing
   // dropped on a short terminal so selected/inspection information remains useful.
@@ -98,6 +107,13 @@ export class TaskMonitorPanel implements Component, Focusable {
     else this.selected = Math.max(0, Math.min(this.selected, tasks.length - 1));
     this.selectedId = tasks[this.selected]?.id;
   }
+  private stopPrompt(): string | undefined {
+    if (!this.confirming) return undefined;
+    return this.theme.fg(
+      "error",
+      "Stop " + this.confirming.id + " (" + this.confirming.identity + ")? Enter/y confirm · Esc/n cancel",
+    );
+  }
   private move(delta: number) {
     const tasks = this.running();
     this.syncSelection(tasks);
@@ -119,6 +135,7 @@ export class TaskMonitorPanel implements Component, Focusable {
         this.changed();
         return;
       }
+      if (terminalRows(this.maxRows()) === 0) return;
       if (confirm || data.toLowerCase() === "y") {
         const target = this.confirming;
         const task = this.manager.list().find((task) => task.id === target.id && task.status === "running");
@@ -136,6 +153,9 @@ export class TaskMonitorPanel implements Component, Focusable {
       } else this.done();
       return;
     }
+    // With no display rows there is no way to verify a target. Keep Escape
+    // available, but suppress navigation, inspection, and stop actions.
+    if (terminalRows(this.maxRows()) === 0) return;
     if (confirm || data.toLowerCase() === "i") {
       if (this.running().length) {
         this.inspecting = !this.inspecting;
@@ -177,12 +197,13 @@ export class TaskMonitorPanel implements Component, Focusable {
           this.manager.list().length ? "No jobs are running." : "No jobs have been started in this session.",
         ),
         "",
-        this.theme.fg("dim", "Esc close"),
+        this.stopPrompt() ?? this.theme.fg("dim", "Esc close"),
         this.theme.fg("accent", "─".repeat(width)),
       );
-      return fitRows(lines, height).map((line) => truncateToWidth(line, width));
+      return fitRows(lines, height, this.stopPrompt()).map((line) => truncateToWidth(line, width));
     }
     lines.push("");
+    let identityLine: string | undefined;
     const task = tasks[this.selected];
     // syncSelection above guarantees a selected task whenever the running list is non-empty.
     if (!task) return lines.map((line) => truncateToWidth(line, width));
@@ -194,8 +215,9 @@ export class TaskMonitorPanel implements Component, Focusable {
         Math.max(task.baseOffset, task.outputEnd - INSPECT_BYTES),
         INSPECT_BYTES,
       );
+      identityLine = this.theme.bold(this.theme.fg("accent", "Inspect " + task.id));
       lines.push(
-        this.theme.bold(this.theme.fg("accent", "Inspect " + task.id)),
+        identityLine,
         this.theme.fg(
           "dim",
           [
@@ -249,7 +271,9 @@ export class TaskMonitorPanel implements Component, Focusable {
           cleanCommand(listed.command) +
           "  " +
           this.theme.fg("dim", age(Date.now() - Date.parse(listed.startedAt)));
-        lines.push(selected ? this.theme.bold(label) : label);
+        const line = selected ? this.theme.bold(label) : label;
+        if (selected) identityLine = line;
+        lines.push(line);
       }
       lines.push(
         "",
@@ -279,22 +303,19 @@ export class TaskMonitorPanel implements Component, Focusable {
         );
       }
     }
+    const stopPrompt = this.stopPrompt();
     lines.push(
       "",
-      this.confirming
-        ? this.theme.fg(
-            "error",
-            "Stop " + this.confirming.id + " (" + this.confirming.identity + ")? Enter/y confirm · Esc/n cancel",
-          )
-        : this.theme.fg(
-            "dim",
-            this.inspecting
-              ? "↑↓/j/k select · Enter/i back · s/x stop · Esc back"
-              : "↑↓/j/k select · Enter/i inspect · s/x stop · Esc close",
-          ),
+      stopPrompt ??
+        this.theme.fg(
+          "dim",
+          this.inspecting
+            ? "↑↓/j/k select · Enter/i back · s/x stop · Esc back"
+            : "↑↓/j/k select · Enter/i inspect · s/x stop · Esc close",
+        ),
       this.theme.fg("accent", "─".repeat(width)),
     );
-    return fitRows(lines, height).map((line) => truncateToWidth(line, width));
+    return fitRows(lines, height, stopPrompt ?? identityLine).map((line) => truncateToWidth(line, width));
   }
   invalidate() {}
   dispose() {
