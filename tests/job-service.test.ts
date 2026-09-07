@@ -140,6 +140,9 @@ test("profile settings, child identity, and three-tier limits survive helper mig
 });
 
 test("partial subagent spawn failure stops and notifies already-launched workers", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-jobs-partial-spawn-")),
+    profilesPath = join(dir, "profiles.json");
+  await writeFile(profilesPath, JSON.stringify({ fast: { model: "fixture/fast" } }));
   const notifications: any[] = [],
     manager = new TaskManager((task) => notifications.push(task)),
     originalSpawn = manager.spawn.bind(manager),
@@ -161,10 +164,12 @@ test("partial subagent spawn failure stops and notifies already-launched workers
     () => {
       throw new Error("refresh failed");
     },
+    profilesPath,
   );
+  const ctx = { cwd: dir, model: { provider: "fixture", id: "parent" } } as any;
   try {
     const error = await service
-      .handle("subagent", { type: "fast", prompts: ["started", "fails"] }, { cwd: process.cwd() } as any, signal)
+      .handle("subagent", { type: "fast", prompts: ["started", "fails"] }, ctx, signal)
       .catch((error) => error);
     expect(error).toBe(launchFailure);
 
@@ -178,6 +183,7 @@ test("partial subagent spawn failure stops and notifies already-launched workers
   } finally {
     spawn.mockRestore();
     await manager.shutdown();
+    await rm(dir, { recursive: true, force: true });
   }
 });
 
