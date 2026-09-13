@@ -53,6 +53,18 @@ describe("task completion batching", () => {
     }
   });
 
+  test("reset starts a fresh session after disposal", async () => {
+    const batches: number[][] = [];
+    const batcher = new CompletionBatcher<number>((items) => batches.push(items), 10, 20);
+    batcher.dispose();
+    batcher.reset();
+    batcher.add(1);
+
+    await Bun.sleep(30);
+    expect(batches).toEqual([[1]]);
+    batcher.dispose();
+  });
+
   test("dispose prevents later additions from rearming timers", async () => {
     let calls = 0;
     const batcher = new CompletionBatcher<number>(() => calls++, 10, 20);

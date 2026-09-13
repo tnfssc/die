@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import net, { type Server } from "node:net";
 import { tmpdir } from "node:os";
@@ -6,6 +6,8 @@ import { join } from "node:path";
 import type { EventBus, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { inspectDiagnostics } from "../src/diagnostics";
 import { registerHerdrAgentState } from "../src/herdr-agent-state";
+import asynchronousTasksExtension from "../src/tasks/extension";
+import * as execution from "../src/typescript/execution";
 
 type Handler = (event: Record<string, unknown>, ctx: ExtensionContext) => unknown;
 type WireRequest = { id: string; method: string; params: Record<string, unknown> };
@@ -27,8 +29,9 @@ function restoreEnv(): void {
 
 afterEach(restoreEnv);
 
-function harness(options: { ui?: boolean; idle?: boolean; path?: string; id?: string } = {}) {
+function harness(options: { ui?: boolean; idle?: boolean; path?: string; id?: string; mode?: string } = {}) {
   const handlers = new Map<string, Handler[]>();
+  const tools = new Map<string, any>();
   const busHandlers = new Map<string, Set<(data: unknown) => void>>();
   const events: EventBus = {
     emit(channel, data) {
@@ -43,6 +46,17 @@ function harness(options: { ui?: boolean; idle?: boolean; path?: string; id?: st
   };
   const pi = {
     events,
+    registerTool(tool: any) {
+      tools.set(tool.name, tool);
+    },
+    registerCommand() {},
+    registerFlag() {},
+    getFlag() {
+      return false;
+    },
+    registerMessageRenderer() {},
+    setActiveTools() {},
+    sendMessage() {},
     on(name: string, handler: Handler) {
       const list = handlers.get(name) ?? [];
       list.push(handler);
@@ -51,11 +65,34 @@ function harness(options: { ui?: boolean; idle?: boolean; path?: string; id?: st
   } as unknown as ExtensionAPI;
   const ctx = {
     hasUI: options.ui ?? true,
+    mode: options.mode ?? "tui",
+    cwd: process.cwd(),
     isIdle: () => options.idle ?? true,
+    isProjectTrusted: () => true,
+    hasPendingMessages: () => false,
+    getContextUsage: () => undefined,
+    getSystemPrompt: () => "base",
+    abort() {},
+    shutdown() {},
+    compact() {},
+    ui: {
+      setStatus() {},
+      notify() {},
+      getEditorComponent: () => ({}),
+      setEditorComponent() {},
+      setFooter() {},
+    },
     sessionManager: {
       getSessionFile: () => options.path,
       getSessionId: () => options.id,
+      getSessionDir: () => undefined,
+      getCwd: () => process.cwd(),
+      getEntries: () => [],
+      getLeafId: () => null,
     },
+    modelRegistry: { isUsingOAuth: () => false },
+    model: undefined,
+    scopedModels: [],
   } as unknown as ExtensionContext;
   const fire = (name: string, event: Record<string, unknown> = {}) => {
     return [...(handlers.get(name) ?? [])].map((handler) => handler(event, ctx));
@@ -63,7 +100,7 @@ function harness(options: { ui?: boolean; idle?: boolean; path?: string; id?: st
   const fireAsync = async (name: string, event: Record<string, unknown> = {}) => {
     await Promise.all(fire(name, event));
   };
-  return { pi, ctx, fire, fireAsync, events, handlers, busHandlers };
+  return { pi, ctx, fire, fireAsync, events, handlers, busHandlers, tools };
 }
 
 async function socketRecorder() {
@@ -152,6 +189,119 @@ describe("built-in Herdr agent state", () => {
     }
   });
 
+  test("running background tasks keep pane working after agent settles", async () => {
+    const recorder = await socketRecorder();
+    try {
+      enable(recorder.path);
+      const h = harness({ id: "background", idle: true });
+      registerHerdrAgentState(h.pi);
+      h.fire("session_start", { reason: "startup" });
+      await waitFor(() => recorder.requests.length >= 2);
+      h.events.emit("herdr:tasks", { running: 1 });
+      await waitFor(() => recorder.requests.some((request) => request.params.state === "working"));
+      h.fire("agent_settled");
+      await Bun.sleep(40);
+      expect(
+        [...recorder.requests].reverse().find((request) => request.method === "pane.report_agent")?.params.state,
+      ).toBe("working");
+      h.events.emit("herdr:tasks", { running: 0 });
+      await waitFor(
+        () =>
+          [...recorder.requests].reverse().find((request) => request.method === "pane.report_agent")?.params.state ===
+          "idle",
+      );
+    } finally {
+      await recorder.close();
+    }
+  });
+
+  test("real background jobs keep Herdr working across foreground and staggered completion", async () => {
+    const recorder = await socketRecorder();
+    let restoreExecution: (() => void) | undefined;
+    try {
+      enable(recorder.path);
+      const h = harness({ id: "task-integration", idle: true, ui: false });
+      const taskCounts: number[] = [];
+      h.events.on("herdr:tasks", (data) => taskCounts.push((data as { running: number }).running));
+      asynchronousTasksExtension(h.pi);
+      registerHerdrAgentState(h.pi);
+
+      let rpc: ((method: string, params: unknown, signal: AbortSignal) => Promise<any>) | undefined;
+      const mock = spyOn(execution, "executeIsolated").mockImplementation(
+        async (_code, _cwd, _signal, _timeout, options) => {
+          rpc = options?.jobHandler;
+          return {
+            exitCode: 0,
+            stdout: "",
+            stderr: "",
+            stdoutLost: false,
+            stderrLost: false,
+            timedOut: false,
+            cancelled: false,
+            images: [],
+          };
+        },
+      );
+      restoreExecution = () => mock.mockRestore();
+
+      h.fire("session_start", { reason: "startup" });
+      await waitFor(() => recorder.requests.some((request) => request.params.state === "idle"));
+      await h.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, h.ctx);
+      mock.mockRestore();
+      restoreExecution = undefined;
+      if (!rpc) throw new Error("missing task bridge");
+      const call = rpc;
+      const signal = new AbortController().signal;
+
+      h.fire("agent_start");
+      await call("shell", { command: "sleep 0.2", waitSeconds: 0 }, signal);
+      await call("shell", { command: "sleep 0.75", waitSeconds: 0 }, signal);
+      await waitFor(() => taskCounts.includes(2));
+      h.fire("agent_settled");
+      await waitFor(() => taskCounts.at(-1) === 1);
+      expect(
+        [...recorder.requests].reverse().find((request) => request.method === "pane.report_agent")?.params.state,
+      ).toBe("working");
+      await waitFor(() => taskCounts.at(-1) === 0);
+      await waitFor(
+        () =>
+          [...recorder.requests].reverse().find((request) => request.method === "pane.report_agent")?.params.state ===
+          "idle",
+      );
+
+      h.fire("agent_start");
+      await call("shell", { command: "sleep 0.1", waitSeconds: 0 }, signal);
+      await waitFor(() => taskCounts.at(-1) === 0);
+      expect(
+        [...recorder.requests].reverse().find((request) => request.method === "pane.report_agent")?.params.state,
+      ).toBe("working");
+      h.fire("agent_settled");
+      await waitFor(
+        () =>
+          [...recorder.requests].reverse().find((request) => request.method === "pane.report_agent")?.params.state ===
+          "idle",
+      );
+
+      await h.fireAsync("session_shutdown", { reason: "reload" });
+      h.fire("session_start", { reason: "reload" });
+      const restartedAt = taskCounts.length;
+      const restartedRequests = recorder.requests.length;
+      await call("shell", { command: "sleep 0.1", waitSeconds: 0 }, signal);
+      await waitFor(() => taskCounts.slice(restartedAt).includes(1));
+      await waitFor(() =>
+        recorder.requests.slice(restartedRequests).some((request) => request.params.state === "working"),
+      );
+      await waitFor(() => taskCounts.length > restartedAt && taskCounts.at(-1) === 0);
+      await waitFor(() =>
+        recorder.requests.slice(restartedRequests).some((request) => request.params.state === "idle"),
+      );
+      await h.fireAsync("session_shutdown", { reason: "quit" });
+    } finally {
+      restoreExecution?.();
+      await recorder.close();
+    }
+  });
+
   test("replacement owns reporting and stale runtime quit cannot release it", async () => {
     const recorder = await socketRecorder();
     try {
@@ -218,7 +368,7 @@ describe("built-in Herdr agent state", () => {
       expect(child.handlers.size).toBe(0);
 
       enable(recorder.path, "0");
-      const print = harness({ ui: false });
+      const print = harness({ ui: false, mode: "print" });
       registerHerdrAgentState(print.pi);
       print.fire("session_start", { reason: "startup" });
       print.fire("agent_start");

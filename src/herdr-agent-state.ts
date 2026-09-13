@@ -3,7 +3,7 @@ import { isAbsolute } from "node:path";
 import type { ExtensionAPI, ExtensionContext, SessionShutdownEvent } from "@earendil-works/pi-coding-agent";
 import { recordDiagnostic } from "./diagnostics";
 
-/** Built-in Herdr reporting derived from Herdr's managed Pi integration v6. */
+/** Built-in Herdr reporting derived from Herdr's managed Pi integration v8. */
 const SOURCE = "herdr:die";
 // Herdr 0.7.x does not render a die identity, so use its compatible Pi identity.
 const COMPATIBLE_AGENT = "pi";
@@ -94,6 +94,7 @@ class HerdrRuntime {
   private active = false;
   private shuttingDown = false;
   private agentActive = false;
+  private taskActive = false;
   private blockedCount = 0;
   private blockedMessage: string | undefined;
   private lastState: AgentState | undefined;
@@ -105,6 +106,7 @@ class HerdrRuntime {
   private sockets = new Set<Socket>();
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private unsubscribeBlocked: (() => void) | undefined;
+  private unsubscribeTasks: (() => void) | undefined;
   private diagnosticOwner: object | undefined;
   private healthFailureReported = false;
 
@@ -115,7 +117,9 @@ class HerdrRuntime {
 
   register(): void {
     this.pi.on("session_start", (event, ctx) => {
-      if (ctx.hasUI !== true) return;
+      // TUI only: RPC/JSON/print modes are headless (no PTY Herdr can display),
+      // and RPC embedders may still report hasUI=true.
+      if ((ctx as { mode?: string }).mode !== "tui") return;
       this.claim(ctx);
       this.reportSession(event.reason);
       this.agentActive = ctx.isIdle() === false;
@@ -151,6 +155,19 @@ class HerdrRuntime {
     });
   }
 
+  private ensureTaskListener(): void {
+    if (this.unsubscribeTasks) return;
+    this.unsubscribeTasks = this.pi.events.on("herdr:tasks", (data) => {
+      if (!this.owns()) return;
+      const running =
+        typeof data === "object" && data !== null && typeof (data as { running?: unknown }).running === "number"
+          ? (data as { running: number }).running
+          : 0;
+      this.taskActive = running > 0;
+      this.publish();
+    });
+  }
+
   private owns(): boolean {
     return this.active && authority === this;
   }
@@ -166,6 +183,7 @@ class HerdrRuntime {
     this.lastState = undefined;
     this.lastMessage = undefined;
     this.ensureBlockedListener();
+    this.ensureTaskListener();
   }
 
   private setBlocked(active: boolean, label?: string): void {
@@ -181,7 +199,8 @@ class HerdrRuntime {
 
   private publish(force = false): void {
     if (!this.owns()) return;
-    const state: AgentState = this.blockedCount > 0 ? "blocked" : this.agentActive ? "working" : "idle";
+    const state: AgentState =
+      this.blockedCount > 0 ? "blocked" : this.agentActive || this.taskActive ? "working" : "idle";
     const message = state === "blocked" ? this.blockedMessage : undefined;
     if (!force && state === this.lastState && message === this.lastMessage) return;
     this.lastState = state;
@@ -327,6 +346,7 @@ class HerdrRuntime {
     this.active = false;
     this.shuttingDown = false;
     this.agentActive = false;
+    this.taskActive = false;
     this.pending = [];
     this.blockedCount = 0;
     this.blockedMessage = undefined;
@@ -337,6 +357,8 @@ class HerdrRuntime {
     this.clearTransport();
     this.unsubscribeBlocked?.();
     this.unsubscribeBlocked = undefined;
+    this.unsubscribeTasks?.();
+    this.unsubscribeTasks = undefined;
     if (clearAuthority && authority === this) authority = undefined;
   }
 
@@ -355,11 +377,14 @@ class HerdrRuntime {
     this.active = false;
     this.shuttingDown = true;
     this.agentActive = false;
+    this.taskActive = false;
     this.pending = [];
     this.epoch += 1;
     this.clearTransport();
     this.unsubscribeBlocked?.();
     this.unsubscribeBlocked = undefined;
+    this.unsubscribeTasks?.();
+    this.unsubscribeTasks = undefined;
     this.pending.push({
       kind: "release",
       method: "pane.release_agent",

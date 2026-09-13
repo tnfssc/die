@@ -216,6 +216,7 @@ export default function asynchronousTasksExtension(
   let taskUi: ExtensionContext["ui"] | undefined;
   const updateTaskStatus = () => {
     const running = manager?.list().filter((task) => task.status === "running").length ?? 0;
+    pi.events?.emit?.("herdr:tasks", { running });
     taskUi?.setStatus("die-tasks", running > 0 ? `${running} task${running === 1 ? "" : "s"} running` : undefined);
   };
 
@@ -544,6 +545,7 @@ export default function asynchronousTasksExtension(
   });
 
   pi.on("session_start", (_event, ctx) => {
+    notificationBatch.reset();
     owningContext = ctx;
     scopeInstructionContinuity(ctx.sessionManager as object);
     // A resumed child keeps identity and delegation restrictions even when

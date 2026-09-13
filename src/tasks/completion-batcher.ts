@@ -36,6 +36,11 @@ export class CompletionBatcher<T> {
     }
   }
 
+  reset(): void {
+    this.dispose();
+    this.#disposed = false;
+  }
+
   dispose(): void {
     this.#disposed = true;
     if (this.#debounceTimer) clearTimeout(this.#debounceTimer);
