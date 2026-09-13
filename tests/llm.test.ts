@@ -86,7 +86,7 @@ test.skipIf(!enabled)(
           "--mode",
           "json",
           "-p",
-          "Use execute to view picture.png with await emitImage('picture.png'). Then name the color in the lower-right quadrant. Reply with one lowercase color word. Do not decode pixels or use other tools; inspect the returned image visually.",
+          "Use execute to view picture.png with await showImage('picture.png'). Then name the color in the lower-right quadrant. Reply with one lowercase color word. Do not decode pixels or use other tools; inspect the returned image visually.",
         ],
         { cwd: directory },
       );

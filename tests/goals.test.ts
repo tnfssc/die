@@ -184,7 +184,10 @@ test("only active goals continue and waiting interruption pauses", () => {
   h.handlers.agent_settled[0]({}, h.ctx);
   expect(h.sent).toHaveLength(1);
 
-  h.runtime.handle("goal.update", { status: "waiting", pendingJobIds: ["job_1"] });
+  h.handlers.tool_execution_end[0](
+    { toolName: "execute", isError: false, result: { details: { handoff: "Waiting for owned work" } } },
+    h.ctx,
+  );
   h.handlers.agent_settled[0]({}, h.ctx);
   expect(h.sent).toHaveLength(1);
   h.handlers.input[0]({ source: "interactive", streamingBehavior: "steer" }, h.ctx);
@@ -214,6 +217,17 @@ test("successful execute handoff waits only when owned work is running", () => {
   empty.statuses.clear();
   empty.handlers.tool_execution_end[0](handoff, empty.ctx);
   expect(empty.runtime.get()?.status).toBe("active");
+});
+
+test("model-facing updates reject runtime-owned waiting bookkeeping", () => {
+  const h = harness();
+  h.runtime.handle("goal.set", input);
+
+  expect(() => h.runtime.handle("goal.update", { status: "waiting" })).toThrow("waiting status is runtime-managed");
+  expect(() => h.runtime.handle("goal.update", { status: "active", pendingJobIds: ["job_1"] })).toThrow(
+    "pendingJobIds is runtime-managed",
+  );
+  expect(h.runtime.get()?.status).toBe("active");
 });
 
 test("helper-created goal bounds repeated direct handoff completion cycles", () => {
@@ -325,10 +339,46 @@ test("notifications do not impersonate queued user input", () => {
   expect(h.sent).toHaveLength(1);
 });
 
+test("goal guidance is conditional and accompanies every persisted status", () => {
+  const withoutGoal = harness();
+  expect(
+    withoutGoal.handlers.context[0]({ messages: [{ role: "user", content: "ordinary" }] }, withoutGoal.ctx),
+  ).toBeUndefined();
+
+  const cases: Array<[string, Record<string, unknown> | "handoff" | undefined]> = [
+    ["active", undefined],
+    ["waiting", "handoff"],
+    ["blocked", { status: "blocked", blocker: "Need an actionable prerequisite" }],
+    ["paused", { status: "paused", reason: "Paused deliberately" }],
+    ["completed", { status: "completed", evidence: "Focused checks passed" }],
+  ];
+  for (const [status, update] of cases) {
+    const h = harness();
+    h.runtime.handle("goal.set", input);
+    if (update === "handoff") {
+      h.handlers.tool_execution_end[0](
+        { toolName: "execute", isError: false, result: { details: { handoff: "Waiting for owned work" } } },
+        h.ctx,
+      );
+    } else if (update) h.runtime.handle("goal.update", update);
+    const prior = { role: "user", content: "preserve ordinary context" };
+    const result = h.handlers.context[0]({ messages: [prior] }, h.ctx);
+    expect(result.messages[0]).toBe(prior);
+    expect(result.messages).toHaveLength(2);
+    expect(result.messages[1]).toMatchObject({ role: "custom", customType: "die-goal-state", display: false });
+    expect(result.messages[1].content).toContain("Goal guidance:\n- Goal API:");
+    expect(result.messages[1].content).toContain("Persistent goal state (authoritative)");
+    expect(result.messages[1].content).toContain(`Status: ${status}`);
+  }
+});
+
 test("waiting job completion reactivates at the next turn boundary", () => {
   const h = harness();
   h.runtime.handle("goal.set", input);
-  h.runtime.handle("goal.update", { status: "waiting", pendingJobIds: ["job_1"] });
+  h.handlers.tool_execution_end[0](
+    { toolName: "execute", isError: false, result: { details: { handoff: "Waiting for owned work" } } },
+    h.ctx,
+  );
   h.statuses.set("job_1", "finished");
   h.runtime.jobsChanged();
 
@@ -341,7 +391,10 @@ test("waiting job completion reactivates at the next turn boundary", () => {
 test("resumed waiting work that is no longer owned pauses visibly", () => {
   const original = harness();
   original.runtime.handle("goal.set", input);
-  original.runtime.handle("goal.update", { status: "waiting", pendingJobIds: ["job_1"] });
+  original.handlers.tool_execution_end[0](
+    { toolName: "execute", isError: false, result: { details: { handoff: "Waiting for owned work" } } },
+    original.ctx,
+  );
   const resumed = harness(original.appended);
   resumed.statuses.clear();
   resumed.handlers.context[0]({ messages: [] }, resumed.ctx);
@@ -357,7 +410,8 @@ test("continuation relies on the assembled authoritative state without duplicati
   const criterion = "preserve {{constraints}} and " + "$'" + " exactly";
   await h.commands.goal.handler("set " + objective + " --criteria " + criterion + " --constraints no rewrite", h.ctx);
   const reminder = h.sent.at(-1)!;
-  expect(reminder).toContain("new automatic turn");
+  expect(reminder).toContain("Goal still active.");
+  expect(reminder).toContain("Do next useful step, not another recap.");
   expect(reminder).not.toContain(objective);
   expect(reminder).not.toContain(criterion);
   expect(reminder).not.toContain("Progress discipline");
@@ -448,9 +502,13 @@ test("goal history is durable JSONL and branch scoped", async () => {
 test("resumed waiting goal preserves all affected task references in pause explanation", () => {
   const original = harness();
   const ids = ["task_abc123", "task_def456"];
+  original.statuses.clear();
   for (const id of ids) original.statuses.set(id, "running");
   original.runtime.handle("goal.set", input);
-  original.runtime.handle("goal.update", { status: "waiting", pendingJobIds: ids });
+  original.handlers.tool_execution_end[0](
+    { toolName: "execute", isError: false, result: { details: { handoff: "Waiting for owned work" } } },
+    original.ctx,
+  );
   const resumed = harness(original.appended);
   resumed.statuses.clear();
   resumed.handlers.context[0]({ messages: [] }, resumed.ctx);

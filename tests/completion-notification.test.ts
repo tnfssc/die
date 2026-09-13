@@ -33,7 +33,8 @@ describe("completion notifications", () => {
     expect(notification).toContain("50 asynchronous tasks completed");
     expect(notification).toContain("Result previews:");
     expect(notification).toContain("additional completions omitted");
-    expect(notification).toContain("jobs.inspect");
+    expect(notification).not.toContain("jobs.inspect");
+    expect(notification).not.toContain("read retained output");
     for (const task of tasks) expect(notification).toContain(task.id);
   });
 

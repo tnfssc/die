@@ -11,8 +11,8 @@ import { withJobCancellation } from "./job-bridge";
 const HandoffParameters = z.object({ message: z.string().check(z.minLength(1), z.maxLength(2000)) });
 
 const ExecuteParameters = z.object({
-  code: z.string().check(z.describe("TypeScript source to transpile and execute")),
-  timeoutSeconds: z.optional(z.number().check(z.minimum(0.1), z.describe("Optional execution timeout"))),
+  code: z.string(),
+  timeoutSeconds: z.optional(z.number().check(z.minimum(0.1))),
 });
 
 export function registerExecuteTool(
@@ -49,7 +49,7 @@ export function registerExecuteTool(
     name: "execute",
     label: "Execute",
     description: executeDescription.trimEnd(),
-    promptSnippet: "Execute code for filesystem, process, and general coding operations",
+    promptSnippet: "Run JS/TS.",
     promptGuidelines: executeGuidance,
     parameters: toolParameters(ExecuteParameters),
     renderShell: "self",
@@ -87,6 +87,7 @@ export function registerExecuteTool(
         params.timeoutSeconds ? params.timeoutSeconds * 1_000 : undefined,
         {
           executablePath,
+          sessionFile: owner?.getSessionFile?.(),
           jobHandler: async (method, params, signal) => {
             if (method === "handoff") {
               const request = z.parse(HandoffParameters, params);
@@ -135,8 +136,7 @@ export function registerExecuteTool(
             (result.stdout || result.stderr || result.images.length ? "\n\n" + text : "");
         }
         if (result.images.length && ctx.model && !ctx.model.input.includes("image")) {
-          text +=
-            "\n\nThe current model does not support images; attachments will be omitted from its request. Switch to an image-capable model to inspect them.";
+          text += "\n\nThis model can't take images. Images not sent.";
         }
         // Pi marks tool failures only when execute throws, not via isError in
         // the returned object. Include bounded diagnostics in that exception.

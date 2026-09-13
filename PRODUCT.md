@@ -16,6 +16,28 @@ This section describes the current product; the phase/milestone sections below r
 - Formatting and recommended lint checks, CI/tag-release workflows, contributor documentation and MIT licensing are implemented. Persistent execute remains exploratory; this does not claim Codex client parity.
 - Source changes after the installed v0.2.3 artifact are built and tested but are not locally installed or released. Installation and release still require explicit authorization; do not infer the latest source features from the installed binary.
 
+### September 13 execute output retention
+
+- User requested full file-backed output for long execute results, while retaining short inline previews. Use 4,000 combined stdout/stderr characters as the inline threshold (clarified as characters, not 1 KB). Preserve the initial output when spilling, return file paths, and allow later filesystem inspection. Short output needs no files. Shell-job retention remains unchanged. No database/index or cleanup daemon is requested.
+
+### September 13 automatic image resizing
+
+- User requested automatic resizing rather than rejecting otherwise valid images at the helper's 5 MB output limit. Reuse Pi's resizer, preserve originals, and apply existing image-count/byte limits to output. Input reads have a separate 25 MB ceiling; no GIF conversion. The compiled binary embeds the existing Photon WASM dependency for resizing without installed dependency files.
+
+### September 13 image helper naming
+
+- User chose `showImage()` instead of `emitImage()` because the name should express seeing an image, not internal output plumbing. Rename the runtime helper and current guidance; no compatibility alias. Inputs and limits stay unchanged. In a subsequent review, the user explicitly removed GIF support; showImage accepts PNG, JPEG, and WebP only, with no GIF conversion. Historical `emitImage` mentions below describe the earlier API.
+
+### September 13 memory simplification
+
+- User explicitly requested removing the cooperative memory lock instead of exposing a lock API to execute. Notes use ordinary filesystem operations; save receipts and content-addressed consumption remain, without project-wide writer exclusion. This supersedes historical lock requirements below.
+
+### September 12 prompt and stdin decisions
+
+- User reviewed prompt sources line by line: keep broad values in simple caveman-style language, API facts in tool documentation, and no arbitrary limit on doing a whole job in one execution. Remove the hardcoded concision/path guidelines; identity names "die" as a coding tool.
+- Favor practical working solutions, fewer parts/state, and greenfield by default. Backward compatibility is required only when the user explicitly requests it; rebuilding from scratch is allowed when useful.
+- User explicitly authorized changing shell stdin to closed by default. Set `closeInput: false` at launch for later input; `jobs.input()` itself still leaves stdin open unless explicitly closed. This supersedes the historical instruction below not to change shell stdin semantics silently. Installation/release remains separately authorized.
+
 ### Active review fixes
 
 User authorized fixing the review findings and strengthening validation. Existing dirty work and failed evidence are preserved.

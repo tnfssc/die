@@ -150,7 +150,7 @@ for (const { customPrompt, emptyFrame } of [
           expect(initial).not.toContain("You are die");
         } else {
           expect(initial).toContain("die");
-          expect(initial).toContain("Responsive collaboration");
+          expect(initial).toContain("Quick work? Finish it.");
         }
       }
       const toolResult = (requests[2]!.messages as any[]).find(

@@ -75,24 +75,12 @@ and remains available for retry. Failed launches, failed jobs, missing or invali
 receipts do not mark notes consumed. Saved partial work may remain after failure;
 the retry should reconcile it rather than duplicate it.
 
-The project-wide `.consolidation.lock/` excludes all cooperating memory
-writers, not only consolidators. Built-in `saveConsolidatedNote` and
-`consumePendingNotes` operations acquire it automatically; callers already
-operating under a lease pass that lease through so ownership is verified without
-reacquiring. Execute-based writers must acquire `acquireMemoryLock(cwd)` before
-changing anything under `.agents/notes/`, hold the lease across the complete
-multi-file operation, and release it in `finally`. A consolidation worker does
-not reacquire the lock because the controller holds it on that worker's behalf.
-Never reclaim locks merely because they are old or their recorded owner appears
-inactive. A failure before dispatch is positively reached (including an already
-aborted request) releases its lease. After dispatcher invocation, a thrown error
-does not prove that no writer spawned, so the lease is retained unless dispatch
-metadata positively establishes otherwise. After a crash or interrupted ownership, first verify that no worker is
-still writing; only then manually remove an abandoned lock and retry. Ordinary
-execute-based writers must also coordinate with consolidation. Filesystem checks
-reject existing symlinked managed paths, but this is not a sandbox against a
-hostile process concurrently replacing directory ancestors. Multi-file edits
-are not an atomic transaction; no rollback or model-quality guarantee is implied.
+Memory writes use ordinary filesystem operations, without a project-wide lock.
+Concurrent edits can overwrite one another; multi-file edits are not an atomic
+transaction. Receipt hashes still check the saved bytes before consumption.
+Filesystem checks reject existing symlinked managed paths, but this is not a
+sandbox against a process replacing directory ancestors. No rollback or
+model-quality guarantee is implied.
 
 ## Registration and integration
 

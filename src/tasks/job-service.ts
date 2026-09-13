@@ -141,7 +141,7 @@ export class JobService {
           args: process.platform === "win32" ? ["/d", "/s", "/c", params.command] : ["-lc", params.command],
           displayCommand: params.command,
           cwd: ctx.cwd,
-          closeStdin: params.closeInput,
+          closeStdin: params.closeInput ?? true,
           timeoutMs: params.timeoutSeconds ? params.timeoutSeconds * 1000 : undefined,
           notifyOnComplete: false,
         });

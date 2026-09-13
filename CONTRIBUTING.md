@@ -62,8 +62,9 @@ ignored `artifacts/goals/`. Do not describe a mocked SDK stream as live-model ev
   user-facing behavior is documented in `docs/goals.md`.
 - `src/ui/` contains TUI behavior.
 - `src/prompts/*.md` are the source prompts imported by `src/prompts.ts`.
-  Edit the Markdown sources rather than generated representations, and preserve
-  explicit custom prompts and instruction continuity.
+  Start with [Editing prompts](docs/prompts.md) and the assembled input, not an isolated
+  sentence. Edit Markdown rather than generated representations, and preserve explicit
+  custom prompts and instruction continuity.
 - `scripts/prepare-assets.ts` copies the Pi runtime assets embedded by the build.
   Preserve upstream license banners and update `THIRD_PARTY_NOTICES.md` and the
   curated inputs under `third_party/` when the packaged asset set or licensing changes.

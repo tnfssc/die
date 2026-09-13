@@ -125,7 +125,7 @@ test("production tasks extension guidance reaches the actual stream context", as
     for (const value of workingValues) expect(prompt).toContain(value);
     for (const reference of executeReference) expect(prompt).toContain(reference);
     expect(prompt).toContain("await handoff(message)");
-    expect(prompt).toContain("operating inside die,");
+    expect(prompt).toContain('You help user build software. You work inside a coding tool named "die".');
     expect(prompt).not.toContain("Pi documentation (");
     expect(prompt).not.toContain("Main documentation:");
     expect(prompt).not.toContain("Always read pi .md files");

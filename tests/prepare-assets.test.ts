@@ -27,6 +27,7 @@ describe("build asset preparation", () => {
       "export-html/vendor/highlight.min.js",
       "export-html/vendor/marked.min.js",
       "package.json",
+      "photon_rs_bg.wasm",
       "theme/dark.json",
       "theme/light.json",
       "theme/theme-schema.json",

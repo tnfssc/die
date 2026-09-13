@@ -95,7 +95,9 @@ test("real SDK print session keeps repeated attention boundaries subscription-bo
                 type: "toolCall",
                 id: "spawn_idle",
                 name: "execute",
-                arguments: { code: 'const job=await shell("read value",{waitSeconds:0}); console.log(job);' },
+                arguments: {
+                  code: 'const job=await shell("read value",{waitSeconds:0,closeInput:false}); console.log(job);',
+                },
               },
             ]
           : calls === 7

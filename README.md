@@ -61,7 +61,7 @@ extensions, prompt templates, and skills. Die's user-facing additions are:
 | Command | Supported behavior |
 | --- | --- |
 | `/goal` | Show goal status, or `set`, `pause`, `resume`, and `clear` an opt-in durable goal. See [Goal mode](./docs/goals.md). |
-| `/mode` | Show or select `fast`, `normal`, or `orchestrator` instructions for the main agent. This changes instructions only—not the model or thinking level. |
+| `/mode` | Show or select the main-agent mode. `fast` and `normal` add no mode-specific behavioral prose; `orchestrator` adds its coordination guidance. The selection changes neither model nor thinking level. |
 | `/fast` | Show or explicitly set provider-native premium fast mode for the current session/model. Enabling requires cost acknowledgement; see [native fast mode](docs/native-fast-mode.md). |
 | `/shake` | Locally remove completed thinking/tool-call/tool-result traces from active model context without a provider request. The append-only transcript and recorded costs remain unchanged; ambiguous or active tool batches are preserved/refused. |
 | `/ps` | Open the interactive monitor for running jobs owned by this session; inspect bounded recent output or explicitly stop a selected job. TUI only. |
@@ -87,6 +87,10 @@ bun run test:llm      # Authenticated GPT-5.6 Luna test (incurs an LLM request)
 
 The automated suite verifies the compiled executable in an isolated home directory and uses a private tmux socket for TUI tests. LLM tests always use `openai-codex/gpt-5.6-luna` and are opt-in so ordinary local checks remain deterministic. They include event-level verification of recovery from an `execute` error. See [`docs/phase3-validation.md`](./docs/phase3-validation.md) for the authenticated and real-TUI validation results and remaining UX findings.
 
+## Editing prompts
+
+Start with [the prompt editing guide](docs/prompts.md). `bun run prompt:preview` shows an offline assembled request from the current source; `-- --project .` opts into project instruction files. See the guide for included/excluded context and review history.
+
 ## Unified execute helpers
 
 The model now receives **execute only**. Shell commands, sub-agents, and job
@@ -109,7 +113,7 @@ await jobs.stop("task_id");
 ~~~
 
 - Available globals are `shell`, `subagent`, `handoff`, `jobs`, `history`, and `goal`; helpers do not print automatically, so console.log the result fields you need. `history.search`/`history.read` retrieve [bounded original transcript evidence](docs/searchable-history.md), while `goal.get`/`set`/`update`/`clear` manage opt-in durable goal state.
-- shell(command, options?) accepts waitSeconds, timeoutSeconds, and closeInput.
+- shell(command, options?) accepts waitSeconds, timeoutSeconds, and closeInput. Shell stdin is closed by default (`closeInput: true`). Set `closeInput: false` at launch to send input later with `jobs.input()`. `jobs.input()` leaves stdin open unless passed `{ closeInput: true }`; `jobs.closeInput()` sends EOF without stopping the job. Closed stdin cannot be reopened.
 - subagent({type?, prompt, waitSeconds?, timeoutSeconds?}) selects a configured profile.
   prompts: string[] is supported instead of prompt and returns an array of jobs.
 - Shell launches wait up to **3 seconds by default**; sub-agent launches wait up to
@@ -194,7 +198,9 @@ When launched in a Herdr root pane, die automatically reports its lifecycle over
 
 The model-facing `execute` tool replaces `read`, `edit`, `write`, `bash`, and `powershell`. It transpiles submitted TypeScript in memory using `Bun.Transpiler`, then executes it as a module in an isolated child process in the current working directory. It supports top-level await, static imports and exports, dynamic imports, CommonJS `require`, local modules, Bun APIs, Node built-ins, installed packages, and subprocesses. Results are returned through stdout and stderr; no temporary source file is created.
 
-`execute` retains the last 24,000 bytes or 900 lines of each output stream, with explicit truncation notices and UTF-8-safe boundaries. Discarded output is not saved. Print a smaller selection or use `shell()` and `jobs.inspect()` for cursor-based output inspection; do not rerun side-effecting code just to recover output.
+`execute` returns up to 4,000 characters of combined stdout/stderr directly. Longer output is saved in full to per-execution files, with a truncated preview and file paths returned for later reading or searching. Output already produced before spilling is preserved, including for failed or interrupted executions. Short output creates no log files. This changes only `execute` output: shell jobs retain their existing bounded in-memory output and `jobs.inspect()` behavior.
+
+Long-output files live under `<session-file>.artifacts/execute-<timestamp>-<uuid>/`, as `stdout.log` and/or `stderr.log`. Standalone executions without a session file use a unique directory under the system temporary directory. Files remain available after completion; die does not automatically delete them. If saving fails, the result explicitly reports that error instead of claiming the file is complete.
 
 Cancellation, timeouts, and nonzero exits are reported as tool errors. Session shutdown cancels active executions. On Unix, subprocesses remaining in the execution's process group are killed when its leader exits; use `shell()` for work that must continue in the background. This is process isolation, not a security sandbox; deliberately detached processes can escape group cleanup. Windows currently terminates only the direct child.
 
@@ -202,7 +208,7 @@ Dynamic imports support computed specifiers and resolve when called, so missing-
 
 ### Image results
 
-Inside `execute`, use `await emitImage("screenshot.png")` to return a model-visible image. The helper also accepts `Uint8Array`/`Buffer`, `ArrayBuffer`, and `Blob`/`Bun.file(...)`. PNG, JPEG, GIF, and WebP are recognized from their headers. Limits are 4 images, 5 MB each, and 10 MB total per execution; images are not resized. Only successful executions return attachments. No temporary files are created, though normal session persistence can retain the images. See [`docs/execute-images.md`](./docs/execute-images.md).
+Inside `execute`, use `await showImage("screenshot.png")` to return a model-visible image. The helper also accepts `Uint8Array`/`Buffer`, `ArrayBuffer`, and `Blob`/`Bun.file(...)`. PNG, JPEG, and WebP are recognized from their headers. Inputs may be up to 25 MB; images over 5 MB are automatically resized using Pi’s resizer without modifying the original. Output limits remain 4 images, 5 MB each, and 10 MB total per execution. Resized results include original/output dimensions. Only successful executions return attachments. No temporary files are created, though normal session persistence can retain the images. See [`docs/execute-images.md`](./docs/execute-images.md).
 
 All agents receive only `execute`. The session-owned `subagent()` helper enforces role and depth restrictions. Nested jobs use the same foreground/background behavior, and idle JSON sessions remain alive for their pending workers.
 
@@ -304,12 +310,14 @@ warnings remain visible. `--verbose` can show diagnostic startup details. This
 default does not rewrite user settings. The model’s default prompt also omits
 Pi’s internal-documentation instructions.
 
-Codex uses native opaque checkpoints. Other providers prepare the current
-conversation through the normal prompt, context, tools, auth and provider hooks,
-then append a summarization instruction with the same cache identity. An older
-request capture measures cache affinity; it no longer gates plaintext compaction.
-If that current-context request cannot be prepared or fit, compaction is cancelled
-instead of flattening unprocessed history through another summarizer.
+Codex uses native opaque checkpoints. Other providers prepare the entire current
+model-facing conversation through the normal prompt, context, tools, auth and
+provider hooks, then append a summarization instruction with the same cache
+identity. Pi deliberately replays its existing recent tail (about 20k tokens by
+default) after the whole-conversation summary, so summary/tail overlap is expected.
+An older request capture measures cache affinity; it no longer gates plaintext
+compaction. If that current-context request cannot be prepared or fit, compaction
+is cancelled instead of flattening unprocessed history through another summarizer.
 
 Native Codex checkpoints currently require their original provider/model;
 switching is blocked rather than silently losing context. Codex's existing

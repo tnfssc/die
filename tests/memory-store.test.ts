@@ -12,7 +12,6 @@ import {
   snapshotPendingNotes,
   verifyConsolidatedSaveReceipt,
 } from "../src/memory/store";
-import { acquireMemoryLock } from "../src/memory/lock";
 
 const temporaryDirectories: string[] = [];
 
@@ -111,24 +110,6 @@ describe("pending memory notes", () => {
     expect(await snapshotPendingNotes(cwd)).toMatchObject([{ content: "replacement" }]);
   });
 
-  test("consumption waits for the project writer lease and does not publish early", async () => {
-    const cwd = await temporaryDirectory();
-    const pending = await pendingDirectory(cwd);
-    await writeFile(join(pending, "note.md"), "note");
-    const snapshot = await snapshotPendingNotes(cwd);
-    const lease = await acquireMemoryLock(cwd);
-    try {
-      await expect(consumePendingNotes(cwd, snapshot)).rejects.toThrow("locked");
-      expect(await Bun.file(join(cwd, ".agents", "notes", ".consumed")).exists()).toBe(false);
-      expect(await consumePendingNotes(cwd, snapshot, () => true, lease)).toEqual({
-        consumed: [snapshot[0]!.path],
-        retained: [],
-      });
-    } finally {
-      await lease();
-    }
-  });
-
   test("never follows a pre-existing symlink at a receipt path", async () => {
     const cwd = await temporaryDirectory();
     const pending = await pendingDirectory(cwd);
@@ -175,7 +156,7 @@ describe("consolidated topic indexes", () => {
     expect(await verifyConsolidatedSaveReceipt(cwd, receipt)).toBe(false);
   });
 
-  test("uses cooperative hash guards and does not overwrite unknown content", async () => {
+  test("uses expected-hash checks and does not overwrite unknown content", async () => {
     const cwd = await temporaryDirectory();
     const directory = join(cwd, ".agents", "notes", "decisions");
     await mkdir(directory, { recursive: true });
@@ -190,26 +171,6 @@ describe("consolidated topic indexes", () => {
     expect(await verifyConsolidatedSaveReceipt(cwd, receipt)).toBe(true);
     await expect(saveConsolidatedNote(cwd, "decisions", "stale write", current.hash)).rejects.toThrow("changed");
     expect(await readFile(join(directory, "index.md"), "utf8")).toBe("replacement");
-  });
-
-  test("serializes built-in saves with the project lease and accepts an owned lease", async () => {
-    const cwd = await temporaryDirectory();
-    const lease = await acquireMemoryLock(cwd);
-    try {
-      await expect(saveConsolidatedNote(cwd, "blocked", "no", null)).rejects.toThrow("locked");
-      const receipt = await saveConsolidatedNote(cwd, "owned", "saved", null, lease);
-      expect(await verifyConsolidatedSaveReceipt(cwd, receipt)).toBe(true);
-    } finally {
-      await lease();
-    }
-  });
-
-  test("releases the project lease when a guarded save fails", async () => {
-    const cwd = await temporaryDirectory();
-    await saveConsolidatedNote(cwd, "topic", "first", null);
-    await expect(saveConsolidatedNote(cwd, "topic", "stale", null)).rejects.toThrow("already exists");
-    const lease = await acquireMemoryLock(cwd);
-    await lease();
   });
 
   test("supports the root index", async () => {

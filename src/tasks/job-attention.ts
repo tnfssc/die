@@ -361,6 +361,19 @@ export function formatAttentionNotification(
 ): string {
   if (!notices.length || limit <= 0) return "";
   let text = `${notices.length} running job${notices.length === 1 ? "" : "s"} reached an attention checkpoint. Jobs continue running.`;
+  if (text.length >= limit) return text.slice(0, limit);
+
+  const omittedBlock = (omitted: AttentionNotice[], available: number): string => {
+    if (!omitted.length || available <= 0) return "";
+    const ids = omitted
+      .slice(0, 8)
+      .map((item) => item.id)
+      .join(" ");
+    const more = omitted.length > 8 ? ` … (+${omitted.length - 8} more)` : "";
+    const block = `${omitted.length} additional attention checkpoint${omitted.length === 1 ? "" : "s"} omitted. IDs: ${ids}${more}`;
+    return block.slice(0, available);
+  };
+
   let included = 0;
   for (const notice of notices) {
     const output = notice.task.output.trim().replaceAll(/\s+/g, " ");
@@ -369,19 +382,24 @@ export function formatAttentionNotification(
       (output
         ? `\nRecent output: ${output.length > 500 ? "\u2026" + output.slice(-499) : output}`
         : "\nNo retained output observed.");
-    if (included > 0 && text.length + block.length > limit - 260) break;
-    text += block.slice(0, Math.max(0, limit - text.length - 180));
+    const remaining = notices.slice(included + 1);
+    const omission = remaining.length ? `\n\n${omittedBlock(remaining, limit)}` : "";
+    if (text.length + block.length + omission.length > limit) {
+      if (included === 0) {
+        const reserved = omission.length;
+        text += block.slice(0, Math.max(0, limit - text.length - reserved));
+        included = 1;
+      }
+      const omitted = notices.slice(included);
+      if (omitted.length && text.length < limit) {
+        const prefix = "\n\n";
+        const available = limit - text.length - prefix.length;
+        if (available > 0) text += prefix + omittedBlock(omitted, available);
+      }
+      return text.slice(0, limit);
+    }
+    text += block;
     included++;
   }
-  if (included < notices.length) {
-    const omitted = `\n\n${notices.length - included} additional attention checkpoint${notices.length - included === 1 ? "" : "s"} omitted. IDs: ${notices
-      .slice(included, included + 8)
-      .map((item) => item.id)
-      .join(" ")}${notices.length - included > 8 ? ` \u2026 (+${notices.length - included - 8} more)` : ""}`;
-    text += omitted.slice(0, Math.max(0, limit - text.length - 150));
-  }
-  const instruction =
-    "\n\nInspect before deciding. You may provide/close input, stop obsolete work, leave it running, snooze up to 55 minutes, or disable watching for an expected persistent service.";
-  text += instruction.slice(0, Math.max(0, limit - text.length));
   return text.slice(0, limit);
 }

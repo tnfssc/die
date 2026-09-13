@@ -22,11 +22,7 @@ test("Codex serializes the complete system prompt as instructions without a netw
   const model = getModel("openai-codex", "gpt-5.6-luna");
   expect(model).toBeDefined();
 
-  const systemPrompt = [
-    "provider-prompt-serialization-marker",
-    ...workingValues,
-    ...executeReference,
-  ].join("\n\n");
+  const systemPrompt = ["provider-prompt-serialization-marker", ...workingValues, ...executeReference].join("\n\n");
   let captured: { instructions?: unknown; tool_choice?: unknown } | undefined;
   let networkCalls = 0;
 

@@ -1,10 +1,11 @@
+import { afterEach, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, test } from "bun:test";
-import { SessionManager, type ExtensionContext } from "@earendil-works/pi-coding-agent";
-import extension from "../src/tasks/extension";
+import { type ExtensionContext, SessionManager } from "@earendil-works/pi-coding-agent";
 import { snapshotPendingNotes } from "../src/memory/store";
+import extension from "../src/tasks/extension";
 
 const originalDepth = process.env.DIE_SUBAGENT_DEPTH;
 const originalType = process.env.DIE_SUBAGENT_TYPE;
@@ -106,12 +107,15 @@ test("task extension routes project memory through managed jobs and restored roo
   await writeFile(
     worker,
     String.raw`#!/usr/bin/env bun
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 appendFileSync(${JSON.stringify(launches)}, "launch\n");
+const release = ${JSON.stringify(join(cwd, "release-memory-worker"))};
+for (let attempt = 0; attempt < 400 && !existsSync(release); attempt++) await Bun.sleep(10);
+if (!existsSync(release)) process.exit(3);
 const prompt = process.argv.at(-1) ?? "";
-const receipt = /nonce receipt file ([^\n]+) containing strict JSON/.exec(prompt)?.[1];
+const receipt = /Save notes first\. Then write ([^\n]+) listing every saved/.exec(prompt)?.[1];
 if (!receipt) process.exit(2);
 const body = "# Project memory\n";
 mkdirSync(join(process.cwd(), ".agents", "notes"), { recursive: true });
@@ -134,6 +138,16 @@ writeFileSync(receipt, JSON.stringify({ files: [{ path: "index.md", sha256: crea
 
   await putPending(cwd, "root.md", "integration note");
   await memory.handler("consolidate fast --constraints none", root);
+  await waitFor(() => existsSync(launches));
+  expect(root.notices.filter((notice) => notice.message.includes("is running in the background"))).toHaveLength(1);
+  expect(await Bun.file(join(cwd, ".agents", "notes", "index.md")).exists()).toBe(false);
+
+  // The command and a subsequent conversational-turn hook complete while the real worker is gated.
+  const nextTurn = e.fire("before_agent_start", { systemPrompt: "next turn" }, root);
+  await expect(Promise.race([nextTurn.then(() => "resolved"), Bun.sleep(250).then(() => "blocked")])).resolves.toBe(
+    "resolved",
+  );
+  await writeFile(join(cwd, "release-memory-worker"), "continue");
   await waitFor(() => root.notices.some((notice) => notice.message.includes("completed; consumed 1")));
   expect((await readFile(launches, "utf8")).trim().split("\n")).toHaveLength(1);
   expect(await snapshotPendingNotes(cwd)).toHaveLength(0);

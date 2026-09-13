@@ -152,7 +152,7 @@ test("resumed leaf identity is retained in instructions", async () => {
   await e.fire("session_start", {}, ctx);
   const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
   expect(result.systemPrompt).toContain("You are a fast sub-agent");
-  expect(result.systemPrompt).toContain("Delegation is disabled");
+  expect(result.systemPrompt).not.toContain("Delegation is disabled");
   await e.fire("session_shutdown", {}, ctx);
 });
 for (const mode of ["print", "json"] as const)
@@ -179,7 +179,11 @@ for (const mode of ["print", "json"] as const)
       mock.mockRestore();
       const signal = new AbortController().signal;
       const ctx = contextFixture({ mode, signal });
-      const task = await rpc("shell", { command: "read value; printf ready", waitSeconds: 0 }, signal);
+      const task = await rpc(
+        "shell",
+        { command: "read value; printf ready", waitSeconds: 0, closeInput: false },
+        signal,
+      );
       let ended = false;
       const boundary = e.fire("agent_end", { messages: [] }, ctx).then(() => (ended = true));
       await Bun.sleep(10);
@@ -217,7 +221,7 @@ test("print agent_end wakes on attention while a job is still running", async ()
     mock.mockRestore();
     const signal = new AbortController().signal,
       ctx = contextFixture({ mode: "print", signal }),
-      task = await rpc("shell", { command: "read value", waitSeconds: 0 }, signal);
+      task = await rpc("shell", { command: "read value", waitSeconds: 0, closeInput: false }, signal);
     await e.fire("agent_end", { messages: [] }, ctx);
     await Bun.sleep(120);
     expect(e.messages).toHaveLength(1);
@@ -254,7 +258,7 @@ test("attention and a racing completion produce one deduplicated parent wakeup",
     mock.mockRestore();
     const signal = new AbortController().signal;
     const ctx = contextFixture({ mode: "print", signal });
-    const task = await rpc("shell", { command: "read value; printf done", waitSeconds: 0 }, signal);
+    const task = await rpc("shell", { command: "read value; printf done", waitSeconds: 0, closeInput: false }, signal);
     const boundary = e.fire("agent_end", { messages: [] }, ctx);
     await Bun.sleep(25);
     await rpc("jobs.input", { id: task.id, data: "go\n", closeInput: true }, signal);
@@ -277,9 +281,9 @@ test("root values are part of the agent frame and explicit user prompts retain p
   const ctx = contextFixture();
   const framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, ctx);
   expect(framed.systemPrompt).toContain("Working together");
-  expect(framed.systemPrompt).toContain("Responsive collaboration");
-  expect(framed.systemPrompt).toContain("main agent in orchestrator instruction mode");
-  expect(framed.systemPrompt).toContain("synthesize their evidence");
+  expect(framed.systemPrompt).toContain("Quick work? Finish it.");
+  expect(framed.systemPrompt).toContain("You lead work.");
+  expect(framed.systemPrompt).toContain("Put their work together for user.");
   expect(framed.systemPrompt).not.toContain("behavioral instructions only");
   const custom = await e.fire(
     "before_agent_start",
@@ -292,7 +296,7 @@ test("root values are part of the agent frame and explicit user prompts retain p
   expect(custom).toBeUndefined();
 });
 
-test("user custom prompt keeps child role and delegation guidance", async () => {
+test("user custom prompt keeps child role without disabled-delegation prose", async () => {
   const e = load(1, "normal");
   const ctx = contextFixture();
   const custom = await e.fire(
@@ -305,7 +309,7 @@ test("user custom prompt keeps child role and delegation guidance", async () => 
   );
   expect(custom.systemPrompt).toStartWith("user custom\n\n");
   expect(custom.systemPrompt).toContain("You are a normal sub-agent");
-  expect(custom.systemPrompt).toContain("Delegation is disabled");
+  expect(custom.systemPrompt).not.toContain("Delegation is disabled");
   expect(custom.systemPrompt).not.toContain("Working together");
 });
 
@@ -323,7 +327,7 @@ test("session lifecycle resets resumed child identity when returning to root", a
     ],
   });
   let framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, root);
-  expect(framed.systemPrompt).toContain("main agent in orchestrator instruction mode");
+  expect(framed.systemPrompt).toContain("You lead work.");
   await e.fire("session_shutdown", {}, root);
   await e.fire("session_start", {}, child);
   framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, child);
@@ -331,7 +335,7 @@ test("session lifecycle resets resumed child identity when returning to root", a
   await e.fire("session_shutdown", {}, child);
   await e.fire("session_start", {}, root);
   framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, root);
-  expect(framed.systemPrompt).toContain("main agent in orchestrator instruction mode");
+  expect(framed.systemPrompt).toContain("You lead work.");
   expect(framed.systemPrompt).not.toContain("You are a normal sub-agent");
   await e.fire("session_shutdown", {}, root);
 });
@@ -351,12 +355,10 @@ test("spawned environment roles cannot be changed by resumed metadata", async ()
     {
       environment: "normal",
       metadata: "orchestrator",
-      delegation: "Delegation is disabled",
     },
     {
       environment: "orchestrator",
       metadata: "normal",
-      delegation: "Fast/normal workers are available",
     },
   ] as const;
   for (const item of cases) {
@@ -376,7 +378,8 @@ test("spawned environment roles cannot be changed by resumed metadata", async ()
     const framed = await e.fire("before_agent_start", { systemPrompt: "base", systemPromptOptions: {} }, ctx);
     expect(framed.systemPrompt).toContain("You are a " + item.environment + " sub-agent");
     expect(framed.systemPrompt).not.toContain("You are a " + item.metadata + " sub-agent");
-    expect(framed.systemPrompt).toContain(item.delegation);
+    expect(framed.systemPrompt).not.toContain("Fast/normal workers are available");
+    expect(framed.systemPrompt).not.toContain("Delegation is disabled");
     await e.fire("session_shutdown", {}, ctx);
   }
 });
@@ -427,12 +430,13 @@ test("mixed completion and attention reserve bounded evidence for both", async (
     mock.mockRestore();
     const signal = new AbortController().signal;
     const ctx = contextFixture({ mode: "print", signal });
-    const idle = await rpc("shell", { command: "read value", waitSeconds: 0 }, signal);
+    const idle = await rpc("shell", { command: "read value", waitSeconds: 0, closeInput: false }, signal);
     const finishing = await rpc(
       "shell",
       {
         command: "read value; head -c 20000 /dev/zero | tr '\\0' x",
         waitSeconds: 0,
+        closeInput: false,
       },
       signal,
     );
@@ -478,7 +482,7 @@ for (const data of [
     await e.fire("session_start", {}, ctx);
     const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
     expect(result.systemPrompt).toContain("You are a normal sub-agent");
-    expect(result.systemPrompt).toContain("Delegation is disabled");
+    expect(result.systemPrompt).not.toContain("Delegation is disabled");
     expect(result.systemPrompt).not.toContain("main agent in");
     await e.fire("session_shutdown", {}, ctx);
   });
@@ -494,7 +498,7 @@ test("unreadable child metadata fails closed", async () => {
     },
   });
   const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
-  expect(result.systemPrompt).toContain("Delegation is disabled");
+  expect(result.systemPrompt).not.toContain("Delegation is disabled");
   expect(result.systemPrompt).not.toContain("main agent in");
 });
 
@@ -512,7 +516,7 @@ test("malformed trailing branch entry fails closed instead of retaining root pri
   entries.push(null);
   const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
   expect(result.systemPrompt).toContain("You are a normal sub-agent");
-  expect(result.systemPrompt).toContain("Delegation is disabled");
+  expect(result.systemPrompt).not.toContain("Delegation is disabled");
   await e.fire("session_shutdown", {}, ctx);
 });
 
@@ -528,7 +532,7 @@ test("throwing identity data getter fails closed", async () => {
   await e.fire("session_start", {}, ctx);
   const result = await e.fire("before_agent_start", { systemPrompt: "base" }, ctx);
   expect(result.systemPrompt).toContain("You are a normal sub-agent");
-  expect(result.systemPrompt).toContain("Delegation is disabled");
+  expect(result.systemPrompt).not.toContain("Delegation is disabled");
   await e.fire("session_shutdown", {}, ctx);
 });
 
@@ -559,8 +563,8 @@ test("shutdown persists every shell ownership cause without duplicating inspect 
     mock.mockRestore();
     const signal = new AbortController().signal;
     const command = "printf sentinel-useful-output; read sentinel-useful-input";
-    const first = await rpc("shell", { command, waitSeconds: 0 }, signal);
-    const second = await rpc("shell", { command: "read other", waitSeconds: 0 }, signal);
+    const first = await rpc("shell", { command, waitSeconds: 0, closeInput: false }, signal);
+    const second = await rpc("shell", { command: "read other", waitSeconds: 0, closeInput: false }, signal);
     const inspected = await rpc("jobs.inspect", { id: first.id }, signal);
     expect(inspected.command).toBe(command);
     await e.fire("session_shutdown", {}, ctx);

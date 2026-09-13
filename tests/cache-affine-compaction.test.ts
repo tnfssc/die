@@ -8,7 +8,6 @@ import {
   clearInstructionContinuity,
   isCacheAffineProviderPayload,
   isUsableSummaryResponse,
-  mapPreparedSummaryBoundary,
   registerCacheAffineCompaction,
   scopeInstructionContinuity,
   setCurrentInstructionFrame,
@@ -110,21 +109,27 @@ describe("cache-affine compaction request", () => {
     expect((request.messages[0] as any).content[0].text).toBe("HOOKED-old-user");
     expect((request.messages[2] as any).content[0].text).toBe("tail-user");
     expect((request.messages[3] as any).content[0].text).toBe("tail-assistant");
-    expect((request.messages.at(-1) as any).content[0].text).toContain("messages 1 through 2");
+    expect((request.messages.at(-1) as any).content[0].text).toContain("Summarize the whole conversation above.");
   });
 
-  test("keeps summary and retained tail disjoint for split turns", () => {
-    const split = event({
-      preparation: {
-        ...event().preparation,
-        messagesToSummarize: [],
-        turnPrefixMessages: [entries[0].message, entries[1].message],
-        isSplitTurn: true,
-      },
-    });
-    const request = buildCacheAffineRequest(snapshot(), split)!;
-    expect(request.summaryEnd).toBe(2);
-    expect(request.tailStart).toBe(3);
+  test("summarizes the whole current conversation regardless of Pi's replay boundary", () => {
+    const request = buildCacheAffineRequest(
+      snapshot(),
+      event({
+        preparation: {
+          ...event().preparation,
+          messagesToSummarize: [],
+          turnPrefixMessages: [entries[0].message, entries[1].message],
+          isSplitTurn: true,
+        },
+      }),
+    )!;
+    const prompt = (request.messages.at(-1) as any).content[0].text;
+    expect(prompt).toContain("Summarize the whole conversation above.");
+    expect(prompt).not.toContain("retained tail");
+    expect(request).not.toHaveProperty("summaryEnd");
+    expect(request).not.toHaveProperty("tailStart");
+    expect(request).not.toHaveProperty("summaryScope");
   });
 
   test("rejects a stale snapshot leaf and any untransformed raw tail", () => {
@@ -151,20 +156,14 @@ describe("cache-affine compaction request", () => {
     expect(buildCacheAffineRequest(snapshot({ messages: snapshot().messages.slice(1) }), event())).toBeUndefined();
   });
 
-  test("uses whole-current scope when transformed retained messages cannot be mapped", () => {
-    const raw = [user("discarded"), user("retained-a"), assistant("retained-b")] as any;
-    const unchanged = mapPreparedSummaryBoundary(raw, raw, 1);
-    expect(unchanged).toEqual({ summaryEnd: 1, tailStart: 2, summaryScope: "prefix" });
-    for (const transformed of [
-      [raw[0], user("redacted-a"), raw[2]],
-      [raw[0], raw[2]],
-      [raw[0], raw[2], raw[1]],
-      [raw[0], raw[1], user("inserted"), raw[2]],
-    ])
-      expect(mapPreparedSummaryBoundary(transformed as any, raw, 1).summaryScope).toBe("whole-current-conversation");
+  test("keeps the replay tail in the model-facing history being summarized", () => {
+    const request = buildCacheAffineRequest(snapshot(), event())!;
+    expect((request.messages[2] as any).content[0].text).toBe("tail-user");
+    expect((request.messages[3] as any).content[0].text).toBe("tail-assistant");
+    expect((request.messages.at(-1) as any).content[0].text).toContain("whole conversation above");
   });
 
-  test("does not duplicate retained content into a raw boundary anchor", () => {
+  test("does not insert raw retained content into the summary instruction", () => {
     const request = buildCacheAffineRequest(snapshot(), event())!;
     const serialized = JSON.stringify(request.messages);
     expect(serialized.split("tail-user")).toHaveLength(2);
@@ -332,10 +331,12 @@ describe("extension lifecycle", () => {
     expect(result.compaction.firstKeptEntryId).toBe("3");
     expect(result.compaction.details).toMatchObject({
       strategy: "cache-affine-plaintext",
-      summaryEnd: 2,
-      tailStart: 3,
+      version: 5,
       priorPayloadAffine: false,
     });
+    expect(result.compaction.details).not.toHaveProperty("summaryEnd");
+    expect(result.compaction.details).not.toHaveProperty("tailStart");
+    expect(result.compaction.details).not.toHaveProperty("summaryScope");
   });
 
   test("cancels rather than duplicating inference after a paid unusable response", async () => {
@@ -496,11 +497,23 @@ test("provider guard never treats tool-input cache_control keys as cache metadat
   expect(isCacheAffineProviderPayload(before, after)).toBe(false);
 });
 
-test("summary focus is literal data, not another round of template replacement", () => {
+test("absent or blank custom focus adds no footer", () => {
+  for (const focus of [undefined, "", "   "]) {
+    const request = buildCacheAffineRequest(snapshot(), event(), focus)!;
+    const prompt = (request.messages.at(-1) as any).content[0].text;
+    expect(prompt).not.toContain("Additional user focus:");
+    expect(prompt).not.toContain("No additional focus was requested");
+    expect(prompt).not.toContain("{{customInstructions}}");
+    expect(prompt).toEndWith("Do not call tools and do not continue the task.");
+  }
+});
+
+test("summary focus is literal data without boundary disclaimers", () => {
   const request = buildCacheAffineRequest(snapshot(), event(), "Preserve $& and {{tailAnchor}} literally")!;
-  expect((request.messages[request.messages.length - 1] as any).content[0].text).toContain(
-    "Preserve $& and {{tailAnchor}} literally",
-  );
+  const prompt = (request.messages.at(-1) as any).content[0].text;
+  expect(prompt).toContain("Additional user focus: Preserve $& and {{tailAnchor}} literally");
+  expect(prompt).not.toContain("durable checkpoint boundary");
+  expect(prompt).not.toContain("{{customInstructions}}");
 });
 
 describe("instruction frame ownership lifecycle", () => {

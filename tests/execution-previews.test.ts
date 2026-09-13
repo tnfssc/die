@@ -169,7 +169,7 @@ test("images remain summarized collapsed and represented by Pi content", () => {
     false,
     false,
     theme,
-    "emitImage()",
+    "showImage()",
   ).render(80);
   expect(rendered).toHaveLength(1);
   expect(rendered[0]).toContain("1 image");
@@ -219,7 +219,7 @@ test("untrusted task metadata is sanitized before terminal coloring", () => {
   expect(stripTerminalSequences(row)).not.toContain("\x07");
 });
 
-test("collapsed execute puts loss, image, and background diagnostics before long code", () => {
+test("collapsed execute puts truncation, image, and background diagnostics before long code", () => {
   const row = executeOutputPreview(
     {
       content: [{ type: "text", text: "Execution completed." }, { type: "image" }],
@@ -230,7 +230,7 @@ test("collapsed execute puts loss, image, and background diagnostics before long
     theme,
     "LONG_COMMAND_SUFFIX".repeat(20),
   ).render(82)[0];
-  expect(row).toContain("⚠ 2 streams lost");
+  expect(row).toContain("2 previews truncated");
   expect(row).toContain("1 image");
   expect(row).toContain("2 background");
   expect(row).not.toContain("LONG_COMMAND_SUFFIX");

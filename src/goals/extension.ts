@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import goalGuidance from "../prompts/goal.md" with { type: "text" };
 import goalContinuation from "../prompts/goal-continuation.md" with { type: "text" };
 import { GoalContinuationController } from "./controller";
 import { GoalStore } from "./store";
@@ -202,7 +203,7 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
         {
           role: "custom" as const,
           customType: "die-goal-state",
-          content: `Persistent goal state (authoritative):\n${formatGoal(goal)}`,
+          content: `Goal guidance:\n${goalGuidance.trimEnd()}\n\nPersistent goal state (authoritative):\n${formatGoal(goal)}`,
           display: false,
           timestamp: Date.now(),
         },
@@ -315,7 +316,15 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
         return result;
       }
       if (method === "goal.update") {
-        const result = requireStore().update(input as never, jobs.runningIds());
+        if ("pendingJobIds" in input) {
+          throw new Error("goal.update pendingJobIds is runtime-managed; use handoff() to wait for owned running jobs");
+        }
+        if (input.status === "waiting") {
+          throw new Error(
+            "goal.update waiting status is runtime-managed; use handoff() to wait for owned running jobs",
+          );
+        }
+        const result = requireStore().update(input as never);
         bumpGeneration();
         return result;
       }

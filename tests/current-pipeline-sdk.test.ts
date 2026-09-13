@@ -11,7 +11,6 @@ import {
   DefaultResourceLoader,
   SessionManager,
   SettingsManager,
-  convertToLlm,
 } from "@earendil-works/pi-coding-agent";
 import { dieSystemPrompt } from "../src/prompts";
 import tasks from "../src/tasks/extension";
@@ -154,7 +153,6 @@ for (const scenario of [
         payloadCalls = 0,
         rewritePrefix = false;
       const contextPrompts: string[] = [];
-      let preparedCount = 0;
       const loader = new DefaultResourceLoader({
         cwd: dir,
         agentDir: dir,
@@ -200,7 +198,6 @@ for (const scenario of [
                               ? { ...m, content: m.content.replace("Old task fixture.", "CURRENT_REWRITTEN_PREFIX.") }
                               : m,
                         );
-                preparedCount = convertToLlm(messages).length;
                 return { messages };
               });
               pi.on("before_agent_start", (event) => {
@@ -332,7 +329,7 @@ for (const scenario of [
       expect(wire).not.toContain("Old task noted.");
       expect(JSON.stringify(last.system)).toContain("CURRENT_PIPELINE_FRAME");
       expect(JSON.stringify(last.system)).not.toContain("operating inside pi,");
-      if (scenario === "tail-rewrite") expect(checkpoint.details.summaryEnd).toBe(preparedCount);
+      expect(wire).toContain("Summarize the whole conversation above.");
       expect(last.metadata).toEqual({ user_id: "pipeline-fixture" });
       if (scenario === "changed-prefix") expect(wire).toContain("CURRENT_REWRITTEN_PREFIX");
       expect(last.tools.some((t: any) => t.name === "execute")).toBe(true);

@@ -14,7 +14,6 @@ function tail(value: string, limit: number): string {
 
 function formatOmitted(tasks: TaskInspection[], limit: number): string {
   const heading = `${tasks.length} additional completion${tasks.length === 1 ? "" : "s"} omitted from this notification.`;
-  const instruction = "Use execute with jobs.inspect(id) or jobs.list() to read retained output.";
   if (limit <= heading.length) return heading.slice(0, limit);
 
   let result = `${heading}\nIDs:`;
@@ -23,12 +22,11 @@ function formatOmitted(tasks: TaskInspection[], limit: number): string {
     const candidate = `${result} ${task.id}`;
     const remaining = tasks.length - included - 1;
     const suffix = remaining > 0 ? ` … (+${remaining} more)` : "";
-    if (candidate.length + suffix.length + 1 + instruction.length > limit) break;
+    if (candidate.length + suffix.length > limit) break;
     result = candidate;
     included++;
   }
   if (included < tasks.length) result += ` … (+${tasks.length - included} more)`;
-  if (result.length + 1 + instruction.length <= limit) result += `\n${instruction}`;
   return result.slice(0, limit);
 }
 

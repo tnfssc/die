@@ -5,16 +5,12 @@ import { inspectDiagnostics, recordDiagnostic } from "../diagnostics";
 import { BoundedOutputBuffer } from "../tasks/output-buffer";
 import { decodeImageChannel, IMAGE_CHANNEL_ENV, MAX_IMAGE_CHANNEL_BYTES } from "./images";
 import { JOB_BRIDGE_ENV, openParentJobBridge, serveJobBridge } from "./job-bridge";
+import { ExecuteOutputCapture, type OutputArtifactErrors } from "./output-capture";
 import { INTERNAL_TYPESCRIPT_RUNNER_ARG } from "./runner";
 
 export const EXECUTION_DIAGNOSTIC_CODES = ["process_exit", "timeout", "caller_aborted", "shutdown"] as const;
 
 export type ExecutionDiagnosticCode = (typeof EXECUTION_DIAGNOSTIC_CODES)[number];
-
-// Leave room for stream labels, status, and truncation guidance within 50 KB /
-// 2,000 lines overall. Details retain the same bounded output as model content.
-const MAX_STREAM_BYTES = 24_000;
-const MAX_STREAM_LINES = 900;
 
 export interface ExecutionResult {
   exitCode?: number;
@@ -23,10 +19,14 @@ export interface ExecutionResult {
   stderr: string;
   stdoutLost: boolean;
   stderrLost: boolean;
+  stdoutPath?: string;
+  stderrPath?: string;
+  outputArtifactErrors?: OutputArtifactErrors;
   timedOut: boolean;
   cancelled: boolean;
   termination?: { cause: "timeout" | "execute-abort" | "session-shutdown"; requestedAt: string };
   images: ImageContent[];
+  imageResizeNotes?: string[];
   imageError?: string;
 }
 
@@ -39,23 +39,6 @@ function signalProcessGroup(child: ReturnType<typeof spawn>, signal: NodeJS.Sign
   }
 }
 
-function streamTail(output: BoundedOutputBuffer): { text: string; lost: boolean } {
-  const { buffer } = output.read(output.baseOffset, MAX_STREAM_BYTES);
-  let start = 0;
-  // Retaining a byte tail can cut through the first UTF-8 character.
-  while (start < buffer.length && (buffer[start] & 0xc0) === 0x80) start++;
-  // Invalid UTF-8 expands to three-byte replacement characters. Re-bound the
-  // decoded text as well, so binary output cannot bypass the response budget.
-  const decoded = Buffer.from(buffer.subarray(start).toString("utf8"));
-  let decodedStart = Math.max(0, decoded.length - MAX_STREAM_BYTES);
-  while (decodedStart < decoded.length && (decoded[decodedStart] & 0xc0) === 0x80) decodedStart++;
-  const lines = decoded.subarray(decodedStart).toString("utf8").split("\n");
-  return {
-    text: lines.slice(-MAX_STREAM_LINES).join("\n"),
-    lost: output.baseOffset > 0 || start > 0 || decodedStart > 0 || lines.length > MAX_STREAM_LINES,
-  };
-}
-
 export async function executeIsolated(
   code: string,
   cwd: string,
@@ -65,6 +48,7 @@ export async function executeIsolated(
     executablePath?: string;
     killGraceMs?: number;
     jobHandler?: (method: string, params: unknown, signal: AbortSignal) => Promise<unknown>;
+    sessionFile?: string;
   } = {},
 ): Promise<ExecutionResult> {
   if (signal?.aborted) {
@@ -80,6 +64,7 @@ export async function executeIsolated(
         requestedAt: new Date().toISOString(),
       },
       images: [],
+      imageResizeNotes: [],
     };
     recordDiagnostic(result, {
       component: "jobs",
@@ -100,8 +85,7 @@ export async function executeIsolated(
     detached: process.platform !== "win32",
     stdio: ["pipe", "pipe", "pipe", "pipe", ...(options.jobHandler ? ["ipc" as const] : [])],
   });
-  const stdout = new BoundedOutputBuffer(MAX_STREAM_BYTES);
-  const stderr = new BoundedOutputBuffer(MAX_STREAM_BYTES);
+  const output = new ExecuteOutputCapture({ sessionFile: options.sessionFile });
   const imageOutput = new BoundedOutputBuffer(MAX_IMAGE_CHANNEL_BYTES);
   const imagePipe = child.stdio[3] as Readable | undefined;
   const jobPipe = options.jobHandler ? openParentJobBridge(child) : undefined;
@@ -159,8 +143,10 @@ export async function executeIsolated(
     imageError = "Could not read image output channel";
     signalProcessGroup(child, "SIGKILL");
   });
-  child.stdout!.on("data", (chunk: Buffer) => stdout.append(chunk));
-  child.stderr!.on("data", (chunk: Buffer) => stderr.append(chunk));
+  const outputPumps = Promise.all([output.consume("stdout", child.stdout!), output.consume("stderr", child.stderr!)]);
+  // Avoid an unhandled rejection if spawning or cancellation fails before the
+  // main completion path gets to await the stream pumps.
+  void outputPumps.catch(() => {});
   child.stdin!.on("error", () => {
     // Early exits (including EPIPE while sending source) are reported by status.
   });
@@ -175,6 +161,7 @@ export async function executeIsolated(
   let completed: { exitCode: number | null; exitSignal: NodeJS.Signals | null } | undefined;
   try {
     completed = await completion;
+    await outputPumps;
   } finally {
     // Commit response ACKs only at clean worker completion. Until this point a
     // received ACK is provisional and bridge teardown restores notification
@@ -193,28 +180,35 @@ export async function executeIsolated(
   const { exitCode, exitSignal } = completed!;
 
   let images: ImageContent[] = [];
+  let imageResizeNotes: string[] = [];
   // Images are atomic results: never attach partial output from failed,
   // cancelled, timed-out, or malformed executions.
   if (exitCode === 0 && !timedOut && !cancelled && !imageError) {
     try {
-      images = decodeImageChannel(imageOutput.read(0, MAX_IMAGE_CHANNEL_BYTES).buffer);
+      const decodedImages = decodeImageChannel(imageOutput.read(0, MAX_IMAGE_CHANNEL_BYTES).buffer);
+      images = decodedImages.map(({ resize, ...image }, index) => {
+        if (resize) {
+          const scale = resize.originalWidth / resize.width;
+          imageResizeNotes.push(
+            `[Image ${index + 1}: original ${resize.originalWidth}x${resize.originalHeight}, displayed at ${resize.width}x${resize.height}. Multiply coordinates by ${scale.toFixed(2)} to map to the original image.]`,
+          );
+        }
+        return image;
+      });
     } catch (error) {
       imageError = error instanceof Error ? error.message : "Invalid image output";
     }
   }
-  const out = streamTail(stdout);
-  const err = streamTail(stderr);
+  const captured = await output.result();
   const result: ExecutionResult = {
     exitCode: exitCode ?? undefined,
     signal: exitSignal ?? undefined,
-    stdout: out.text,
-    stderr: err.text,
-    stdoutLost: out.lost,
-    stderrLost: err.lost,
+    ...captured,
     timedOut,
     cancelled,
     ...(termination ? { termination } : {}),
     images,
+    imageResizeNotes,
     imageError,
   };
   const diagnostic = timedOut
@@ -244,19 +238,26 @@ export function formatResult(result: ExecutionResult): string {
   const sections = [
     `Execution ${status}${result.exitCode !== undefined ? ` with exit code ${result.exitCode}` : ""}${result.signal ? ` (${result.signal})` : ""}.`,
   ];
-  if (result.stdout)
-    sections.push(`stdout${result.stdoutLost ? " (earlier output discarded)" : ""}:\n${result.stdout}`);
-  if (result.stderr)
-    sections.push(`stderr${result.stderrLost ? " (earlier output discarded)" : ""}:\n${result.stderr}`);
-  if (result.stdoutLost || result.stderrLost) {
-    sections.push(
-      "Output truncated to the last 24,000 bytes / 900 lines per stream. Discarded output is not saved; print a smaller selection or use shell() and jobs.inspect() for cursor-based inspection. Targeted inspection preserves evidence without repeating side effects.",
-    );
+  const directoryError = result.outputArtifactErrors?.directory;
+  const streamLabel = (name: "stdout" | "stderr") => {
+    const lost = result[(name + "Lost") as "stdoutLost" | "stderrLost"];
+    const path = result[(name + "Path") as "stdoutPath" | "stderrPath"];
+    const error = directoryError ?? result.outputArtifactErrors?.[name];
+    if (path && error) return `${name} (${lost ? "truncated preview; " : ""}output file may be incomplete: ${path})`;
+    if (path) return `${name} (${lost ? "truncated preview; complete output" : "complete output also saved"}: ${path})`;
+    if (lost && error) return `${name} (truncated preview; full output could not be saved)`;
+    return `${name}${lost ? " (truncated preview)" : ""}`;
+  };
+  if (result.stdout) sections.push(`${streamLabel("stdout")}:\n${result.stdout}`);
+  if (result.stderr) sections.push(`${streamLabel("stderr")}:\n${result.stderr}`);
+  if (result.outputArtifactErrors) {
+    for (const [scope, message] of Object.entries(result.outputArtifactErrors))
+      sections.push(`Output artifact error (${scope}): ${message}`);
   }
   if (result.imageError) sections.push(`Image output error: ${result.imageError}`);
   if (result.images.length)
     sections.push(`Returned ${result.images.length} image${result.images.length === 1 ? "" : "s"}.`);
-  if (!result.stdout && !result.stderr && !result.images.length && !result.imageError)
-    sections.push("No output. Use console.log(...) for text or await emitImage(...) for images.");
+  if (result.imageResizeNotes?.length) sections.push(result.imageResizeNotes.join("\n"));
+  if (!result.stdout && !result.stderr && !result.images.length && !result.imageError) sections.push("No output.");
   return sections.join("\n\n");
 }

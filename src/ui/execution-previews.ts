@@ -91,6 +91,9 @@ type ExecuteDetails = {
   stderr?: unknown;
   stdoutLost?: boolean;
   stderrLost?: boolean;
+  stdoutPath?: string;
+  stderrPath?: string;
+  outputArtifactErrors?: unknown;
   images?: unknown[];
   handoff?: string;
   backgroundJobs?: string[];
@@ -136,10 +139,14 @@ export function executeOutputPreview(
   const imageCount = Array.isArray(details?.images)
     ? details.images.length
     : result.content.filter((part) => part.type === "image").length;
-  const lostStreams = Number(details?.stdoutLost === true) + Number(details?.stderrLost === true);
+  const truncatedStreams = Number(details?.stdoutLost === true) + Number(details?.stderrLost === true);
+  const savedStreams =
+    Number(typeof details?.stdoutPath === "string") + Number(typeof details?.stderrPath === "string");
   const backgroundCount = Array.isArray(details?.backgroundJobs) ? details.backgroundJobs.length : 0;
   const diagnostic = [
-    lostStreams ? "⚠ " + lostStreams + " stream" + (lostStreams === 1 ? "" : "s") + " lost" : "",
+    truncatedStreams ? truncatedStreams + " preview" + (truncatedStreams === 1 ? "" : "s") + " truncated" : "",
+    savedStreams ? savedStreams + " output file" + (savedStreams === 1 ? "" : "s") : "",
+    details?.outputArtifactErrors ? "⚠ output save error" : "",
     imageCount ? imageCount + " image" + (imageCount === 1 ? "" : "s") : "",
     backgroundCount ? backgroundCount + " background" : "",
   ]
@@ -155,8 +162,7 @@ export function executeOutputPreview(
           "",
           ...foldedRows(full, width, 0, 0, true),
         ];
-        if (details?.stdoutLost || details?.stderrLost)
-          lines.push(theme.fg("warning", "… earlier output discarded by execute"));
+        if (details?.outputArtifactErrors) lines.push(theme.fg("warning", "… execute could not save all output"));
         return lines.map((line) => truncateToWidth(line, width));
       }
       const suffix = [diagnostic, summary].filter(Boolean).join(" — ");

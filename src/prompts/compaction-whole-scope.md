@@ -1,1 +1,0 @@
-The transform boundary cannot be mapped safely. Summarize the whole current model-facing conversation, messages 1 through {{messageCount}} (inclusive). Pi will still replay its durable retained tail after this checkpoint.

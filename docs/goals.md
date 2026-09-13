@@ -15,7 +15,7 @@ In the interactive TUI, set a goal with explicit criteria and constraints:
 ```
 
 Semicolons separate criteria and constraints. The slash form requires both segments;
-criteria are required, and use `none` when there are no constraints. Goal mode begins only after `/goal set`; ordinary sessions do not get automatic
+criteria are required, and use `none` when there are no constraints. Goal mode begins when a goal is set (through `/goal set` or the helper below); ordinary sessions do not get automatic
 goal continuations.
 
 | Command | Behavior |
@@ -33,7 +33,14 @@ fails closed rather than reviving older state.
 ## Helpers available to the agent
 
 Goal helpers are available only inside `execute`, alongside `shell`, `subagent`,
-and `jobs`:
+and `jobs`. Their model-facing guidance lives in `src/prompts/goal.md` and is supplied
+with goal state only when a goal exists, including non-active states. `/goal set`
+lets the user activate it without always-on API instructions in ordinary chat.
+Activation, updates, and clearing leave the system prompt and tool definitions
+unchanged; only the goal context message changes. This preserves the system prefix,
+not a guarantee of a provider cache hit.
+
+Helpers:
 
 ```ts
 const current = await goal.get();
@@ -43,23 +50,26 @@ await goal.set({
   constraints: ["do not publish"],
 });
 await goal.update({ status: "active", progress: "Drafted report.md" });
-await goal.update({ status: "waiting", pendingJobIds: [job.id] });
 await goal.update({ status: "blocked", blocker: "Missing source data" });
 await goal.update({ status: "paused", reason: "Needs user review" });
 await goal.update({ status: "completed", evidence: "Read report.md and checked 12 links" });
 await goal.clear();
 ```
 
-`goal.get()` returns the current goal or `null`. `goal.set()` replaces it with a
-new active goal. `goal.update()` requires a status and status-specific fields:
-completion requires `evidence`, blocking requires `blocker`, waiting requires
-`pendingJobIds`, and pausing accepts `reason`. An active update may add one
-`progress` milestone. `goal.clear()` removes the active goal by appending a clear
-entry.
+`goal.get()` returns the current goal or `null`; runtime-owned `waiting` status and
+`pendingJobIds` remain visible there as read-only state. `goal.set()` replaces it with a
+new active goal. `goal.update()` requires one of the model-controlled statuses
+`active`, `blocked`, `paused`, or `completed`. Completion requires `evidence`,
+blocking requires `blocker`, and pausing accepts `reason`. An active update may add
+one `progress` milestone. Manual `waiting` status and `pendingJobIds` inputs are
+rejected because the runtime owns that bookkeeping. `goal.clear()` removes the active
+goal by appending a clear entry.
 
-Waiting accepts only currently running job IDs owned by the same agent process. An
-explicit `handoff()` while an active goal has running jobs automatically records all
-those jobs and changes the goal to `waiting`. When an owned job settles, the goal
+A successful explicit `handoff()` while an active goal has running jobs snapshots all
+currently owned running IDs and changes the goal to `waiting`. This is the sole
+automatic entry to waiting: ordinary replies do not trigger it, and the runtime does not
+infer dependencies on persistent services or other jobs. When any tracked job settles,
+the goal
 returns to `active` and continuation can resume. Jobs themselves are process-owned,
 not reconstructed from JSONL: resuming a session whose goal was waiting pauses it when
 those IDs are unavailable. Inspect what remains and use `/goal resume` only when it is
@@ -109,8 +119,9 @@ their saved role/depth restrictions and are visibly labeled in the TUI picker.
 
 `/mode fast|normal|orchestrator` changes the main agent's session-scoped instruction
 frame. It does **not** switch the selected model, alter the thinking level, or grant a
-child different delegation capabilities. The mode selection is durable on the active
-session branch.
+child different delegation capabilities. Fast and normal have the same no-extra-guidance
+behavior; orchestrator supplies its coordination guidance. The mode selection remains durable
+on the active session branch.
 
 The footer's `cache est` countdown and `/cache-ttl` are informational. The default
 TTL estimate is one hour; accepted values range from one minute to seven days and are

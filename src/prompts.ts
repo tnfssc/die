@@ -1,12 +1,8 @@
 import type { BuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 import handoff from "./prompts/background-handoff.md" with { type: "text" };
-import delegationDisabled from "./prompts/delegation-disabled.md" with { type: "text" };
-import delegationEnabled from "./prompts/delegation-enabled.md" with { type: "text" };
 import reference from "./prompts/execute.md" with { type: "text" };
 import fast from "./prompts/fast.md" with { type: "text" };
 import identity from "./prompts/identity.md" with { type: "text" };
-import mainFast from "./prompts/main-fast.md" with { type: "text" };
-import mainNormal from "./prompts/main-normal.md" with { type: "text" };
 import mainOrchestrator from "./prompts/main-orchestrator.md" with { type: "text" };
 import normal from "./prompts/normal.md" with { type: "text" };
 import orchestrator from "./prompts/orchestrator.md" with { type: "text" };
@@ -25,8 +21,6 @@ export const executeReference = reference
   .split(/\n(?=- )/)
   .map((item) => item.replace(/^- /, ""));
 export const executeGuidance = executeReference;
-export const backgroundWorkflowExample =
-  reference.match(/  A typical decision point:.*$/m)?.[0].trim() ?? "";
 
 export function collaborationGuidance(): string {
   return system.trimEnd();
@@ -38,12 +32,9 @@ export function backgroundHandoff(ids: string[]): string {
   return handoff.trimEnd().replace("{{jobs}}", () => names);
 }
 
-export function subagentGuidance(role: string, canDelegate: boolean): string {
+export function subagentGuidance(role: string): string {
   const template = role === "fast" ? fast : role === "orchestrator" ? orchestrator : normal;
-  return template
-    .trimEnd()
-    .replace("{{role}}", () => role)
-    .replace("{{delegation}}", () => (canDelegate ? delegationEnabled : delegationDisabled).trimEnd());
+  return template.trimEnd().replace("{{role}}", () => role);
 }
 
 export const MAIN_AGENT_MODES = ["fast", "normal", "orchestrator"] as const;
@@ -54,9 +45,9 @@ function mainModeMarkers(owner: string): [string, string] {
 }
 
 export function mainAgentGuidance(mode: MainAgentMode, owner: string): string {
-  const source = mode === "fast" ? mainFast : mode === "normal" ? mainNormal : mainOrchestrator;
+  const source = mode === "orchestrator" ? mainOrchestrator.trimEnd() : "";
   const [start, end] = mainModeMarkers(owner);
-  return start + "\n" + source.trimEnd() + "\n" + end;
+  return start + "\n" + source + "\n" + end;
 }
 
 /** Replace only the region carrying this die session's unguessable owner marker. */
@@ -69,25 +60,13 @@ export function replaceMainAgentGuidance(prompt: string, mode: MainAgentMode, ow
   return prompt.slice(0, start) + mainAgentGuidance(mode, owner) + prompt.slice(end + endMarker.length);
 }
 
-export const executeToolSnippet = "Execute code for filesystem, process, and general coding operations";
-
 /**
  * Die's base prompt, supplied to Pi as its structured custom prompt. Pi remains
  * responsible for appending user additions, project context, skills, and cwd.
  */
 export function dieSystemPrompt(): string {
-  const guidelines = [
-    ...executeGuidance,
-    "Be concise in your responses",
-    "Show file paths clearly when working with files",
-  ];
-  return (
-    identity.trimEnd() +
-    "\n\nAvailable tools:\n- execute: " +
-    executeToolSnippet +
-    "\n\nIn addition to the tools above, you may have access to other custom tools depending on the project.\n\nGuidelines:\n" +
-    guidelines.map((line) => "- " + line).join("\n")
-  );
+  const guidelines = executeGuidance;
+  return identity.trimEnd() + "\n\nGuidelines:\n" + guidelines.map((line) => "- " + line).join("\n");
 }
 
 /** True only for Die's injected base; all other custom prompts are user-owned. */

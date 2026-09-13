@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const piRoot = join(root, "node_modules/@earendil-works/pi-coding-agent");
+const photonRoot = join(root, "node_modules/@silvia-odwyer/photon-node");
 const output = join(root, "runtime-assets");
 const { version } = (await Bun.file(join(root, "package.json")).json()) as { version: string };
 
@@ -34,6 +35,8 @@ await Promise.all(
     await writeIfChanged(join(output, target), await readFile(join(piRoot, source)));
   }),
 );
+
+await writeIfChanged(join(output, "photon_rs_bg.wasm"), await readFile(join(photonRoot, "photon_rs_bg.wasm")));
 
 await writeIfChanged(
   join(output, "package.json"),

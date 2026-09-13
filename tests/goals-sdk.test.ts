@@ -11,6 +11,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { MAX_NO_PROGRESS_CONTINUATIONS } from "../src/goals/controller";
+import { dieSystemPrompt } from "../src/prompts";
 import tasks from "../src/tasks/extension";
 import { installLiveDispatchBudget } from "./live-dispatch-budget";
 
@@ -22,6 +23,111 @@ const usage = {
   totalTokens: 2,
   cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
+
+test("real offline assembly changes only messages across goal set, update, and clear", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-goal-context-sdk-"));
+  let session: any;
+  try {
+    const model = getModel("anthropic", "claude-sonnet-4-5")!;
+    const runtime = await ModelRuntime.create({
+      authPath: join(dir, "auth.json"),
+      modelsPath: null,
+      refreshOnCreate: false,
+    });
+    runtime.hasConfiguredAuth = () => true;
+    runtime.getAuth = (async () => ({ auth: { apiKey: "offline" } })) as any;
+
+    const contexts: any[] = [];
+    const scripts = [
+      'await goal.set({objective:"Assemble conditional guidance",criteria:["observe lifecycle"],constraints:["offline"]})',
+      'await goal.update({status:"blocked",blocker:"Need focused fixture"})',
+      "await goal.clear()",
+    ];
+    const scripted = (_model: any, context: any) => {
+      contexts.push({
+        systemPrompt: context.systemPrompt,
+        tools: JSON.stringify(context.tools),
+        messages: JSON.stringify(context.messages),
+      });
+      const index = contexts.length - 1;
+      const content: any[] =
+        index < scripts.length
+          ? [{ type: "toolCall", id: "goal_context_" + index, name: "execute", arguments: { code: scripts[index] } }]
+          : [{ type: "text", text: "Lifecycle captured." }];
+      const message: AssistantMessage = {
+        role: "assistant",
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        content,
+        stopReason: index < scripts.length ? "toolUse" : "stop",
+        usage,
+        timestamp: Date.now(),
+      };
+      const stream = createAssistantMessageEventStream();
+      queueMicrotask(() => {
+        stream.push({ type: "done", reason: message.stopReason as any, message });
+        stream.end(message);
+      });
+      return stream;
+    };
+    runtime.stream = scripted as any;
+    runtime.streamSimple = scripted as any;
+
+    const manager = SessionManager.create(dir, join(dir, "sessions"));
+    const loader = new DefaultResourceLoader({
+      cwd: dir,
+      agentDir: dir,
+      noExtensions: true,
+      noSkills: true,
+      noThemes: true,
+      noPromptTemplates: true,
+      systemPrompt: dieSystemPrompt(),
+      extensionFactories: [
+        {
+          name: "die-tasks",
+          factory: (pi) => tasks(pi, { executablePath: resolve(import.meta.dir, "../dist/die") }),
+        },
+      ],
+    });
+    await loader.reload();
+    ({ session } = await createAgentSession({
+      cwd: dir,
+      agentDir: dir,
+      resourceLoader: loader,
+      model,
+      modelRuntime: runtime,
+      sessionManager: manager,
+      settingsManager: SettingsManager.inMemory({ compaction: { enabled: false } }),
+      tools: ["execute"],
+    }));
+
+    await session.prompt("Capture conditional goal guidance");
+    expect(contexts).toHaveLength(4);
+
+    const systems = contexts.map((context) => context.systemPrompt);
+    const tools = contexts.map((context) => context.tools);
+    expect(systems[0]).toContain(dieSystemPrompt());
+    expect(new Set(systems).size).toBe(1);
+    expect(new Set(tools).size).toBe(1);
+    for (const systemPrompt of systems) expect(systemPrompt).not.toContain("Goal API:");
+
+    const messages = contexts.map((context) => context.messages);
+    expect(messages[0]).not.toContain("Goal guidance:");
+    expect(messages[0]).not.toContain("Persistent goal state (authoritative)");
+    expect(messages[1]).toContain("Goal guidance:");
+    expect(messages[1]).toContain("Goal API:");
+    expect(messages[1]).toContain("Status: active");
+    expect(messages[2]).toContain("Goal guidance:");
+    expect(messages[2]).toContain("Status: blocked");
+    expect(messages[2]).toContain("Need focused fixture");
+    expect(messages[3]).not.toContain("Goal guidance:");
+    expect(messages[3]).not.toContain("Persistent goal state (authoritative)");
+  } finally {
+    session?.dispose();
+    await rm(dir, { recursive: true, force: true });
+  }
+}, 15_000);
 
 test("real SDK reconciles helper waiting through task-complete and completes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "die-goal-sdk-"));

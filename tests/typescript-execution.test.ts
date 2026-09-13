@@ -6,6 +6,7 @@ import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-w
 import { inspectDiagnostics } from "../src/diagnostics";
 import { executeIsolated, formatResult } from "../src/typescript/execution";
 import { registerExecuteTool } from "../src/typescript/extension";
+import { makePng } from "./image-fixture";
 
 const binary = resolve(import.meta.dir, "../dist/die");
 let directory: string;
@@ -24,8 +25,12 @@ afterEach(async () => {
   await rm(directory, { recursive: true, force: true });
 });
 
-function execute(code: string, signal?: AbortSignal, timeoutMs = 3_000, executablePath = binary) {
-  return executeIsolated(code, directory, signal, timeoutMs, { executablePath, killGraceMs: 100 });
+async function execute(code: string, signal?: AbortSignal, timeoutMs = 3_000, executablePath = binary) {
+  return executeIsolated(code, directory, signal, timeoutMs, {
+    executablePath,
+    killGraceMs: 100,
+    sessionFile: join(directory, "session.jsonl"),
+  });
 }
 
 async function until(check: () => Promise<boolean>) {
@@ -59,6 +64,40 @@ describe("execute process lifecycle and output", () => {
     expect(failure.exitCode).toBe(1);
     expect(failure.stderr).toContain("intentional-error");
     expect(failure.stderr).not.toContain("data:text/javascript;base64");
+  });
+
+  test("uses the concise no-output fallback", async () => {
+    const result = await execute("void 0;");
+    expect(formatResult(result)).toBe("Execution completed with exit code 0.\n\nNo output.");
+  });
+
+  test("returns short output inline and spills complete streams above 4000 combined characters", async () => {
+    const short = await execute('process.stdout.write("x".repeat(3000)); process.stderr.write("y".repeat(1000));');
+    expect(short.stdout).toBe("x".repeat(3000));
+    expect(short.stderr).toBe("y".repeat(1000));
+    expect(short.stdoutPath).toBeUndefined();
+    expect(short.stderrPath).toBeUndefined();
+    const long = await execute(
+      String.raw`process.stdout.write("PREFIX\n" + "x".repeat(5000) + "\nEND"); process.stderr.write("error stream");`,
+    );
+    expect(long.exitCode).toBe(0);
+    expect(long.stdout.length + long.stderr.length).toBeLessThanOrEqual(4000);
+    expect(typeof long.stdoutPath).toBe("string");
+    expect(typeof long.stderrPath).toBe("string");
+    expect(await readFile(long.stdoutPath!, "utf8")).toBe("PREFIX\n" + "x".repeat(5000) + "\nEND");
+    expect(await readFile(long.stderrPath!, "utf8")).toBe("error stream");
+    expect(formatResult(long)).toContain(long.stdoutPath!);
+    expect(formatResult(long)).not.toContain("Discarded output is not saved");
+  });
+
+  test("saves long output on failure and preserves output across the spill boundary", async () => {
+    const result = await execute(
+      'process.stdout.write("first"); await Bun.sleep(10); process.stdout.write("x".repeat(6000)); process.stdout.write("last"); console.error("failure detail"); process.exit(7);',
+    );
+    expect(result.exitCode).toBe(7);
+    expect(await readFile(result.stdoutPath!, "utf8")).toBe("first" + "x".repeat(6000) + "last");
+    expect(await readFile(result.stderrPath!, "utf8")).toBe("failure detail\n");
+    expect(formatResult(result)).toContain("failed with exit code 7");
   });
 
   test("does not launch already-cancelled code", async () => {
@@ -178,8 +217,10 @@ describe("execute process lifecycle and output", () => {
     expect(result.stderr).not.toContain("�");
     const text = formatResult(result);
     expect(Buffer.byteLength(text)).toBeLessThan(50_000);
-    expect(text).toContain("Discarded output is not saved");
-    expect(Buffer.byteLength(result.stdout)).toBeLessThanOrEqual(24_000);
+    expect(text).toContain("truncated preview");
+    expect(result.stdout.length + result.stderr.length).toBeLessThanOrEqual(4000);
+    expect(await readFile(result.stdoutPath!, "utf8")).toBe("🙂".repeat(300_000) + "\n");
+    expect(await readFile(result.stderrPath!, "utf8")).toBe("界".repeat(400_000) + "\n");
   });
 
   test("keeps decoded binary output within the response byte budget", async () => {
@@ -187,6 +228,9 @@ describe("execute process lifecycle and output", () => {
       "process.stdout.write(Buffer.alloc(24_000, 255)); process.stderr.write(Buffer.alloc(24_000, 255));",
     );
     expect(Buffer.byteLength(formatResult(result))).toBeLessThan(50_000);
+    expect(result.stdout.length + result.stderr.length).toBeLessThanOrEqual(4000);
+    expect((await readFile(result.stdoutPath!)).equals(Buffer.alloc(24_000, 255))).toBe(true);
+    expect((await readFile(result.stderrPath!)).equals(Buffer.alloc(24_000, 255))).toBe(true);
     expect(result.stdoutLost).toBe(true);
     expect(result.stderrLost).toBe(true);
   });
@@ -216,6 +260,47 @@ describe("execute process lifecycle and output", () => {
     expect(formatResult(result).split("\n").length).toBeLessThan(2_000);
   });
 
+  test.skipIf(process.platform === "win32")("keeps full captured output after cancellation", async () => {
+    const controller = new AbortController();
+    const pending = execute(
+      'process.stdout.write("begin" + "x".repeat(6000) + "end"); await Bun.write("ready", "yes"); ' + hang,
+      controller.signal,
+    );
+    try {
+      await until(() => Bun.file(join(directory, "ready")).exists());
+    } finally {
+      controller.abort();
+    }
+    const result = await pending;
+    expect(result.cancelled).toBe(true);
+    expect(await readFile(result.stdoutPath!, "utf8")).toBe("begin" + "x".repeat(6000) + "end");
+    expect(formatResult(result)).toContain(result.stdoutPath!);
+  });
+
+  test("tool result exposes session-backed output files to the model", async () => {
+    let tool!: ToolDefinition;
+    registerExecuteTool(
+      {
+        registerTool(value: ToolDefinition) {
+          tool = value;
+        },
+        on() {},
+      } as unknown as ExtensionAPI,
+      undefined,
+      binary,
+    );
+    const sessionFile = join(directory, "real-session.jsonl");
+    const ctx = {
+      cwd: directory,
+      sessionManager: { getSessionFile: () => sessionFile },
+    } as unknown as ExtensionContext;
+    const result = await tool.execute("long", { code: 'console.log("x".repeat(6000));' }, undefined, undefined, ctx);
+    const details = result.details as { stdoutPath: string };
+    expect(details.stdoutPath).toStartWith(sessionFile + ".artifacts/");
+    expect(await readFile(details.stdoutPath, "utf8")).toBe("x".repeat(6000) + "\n");
+    expect(JSON.stringify(result.content)).toContain(details.stdoutPath);
+  });
+
   test("marks cancellation as a tool error and rejects calls after session shutdown", async () => {
     let tool!: ToolDefinition;
     let shutdown!: () => Promise<void>;
@@ -236,6 +321,32 @@ describe("execute process lifecycle and output", () => {
       "Execution cancelled",
     );
   });
+});
+
+test("unsupported-image results keep the image for Pi to omit and use the concise advisory", async () => {
+  let tool!: ToolDefinition;
+  registerExecuteTool(
+    {
+      registerTool(value: ToolDefinition) {
+        tool = value;
+      },
+      on() {},
+    } as unknown as ExtensionAPI,
+    undefined,
+    binary,
+  );
+  const encoded = makePng().toString("base64");
+  const result = await tool.execute(
+    "image",
+    { code: `await showImage(Buffer.from(${JSON.stringify(encoded)}, "base64"));` },
+    undefined,
+    undefined,
+    { cwd: directory, model: { input: ["text"] } } as unknown as ExtensionContext,
+  );
+  const content = result.content as Array<{ type: string; text?: string }>;
+  expect(content[0]!.text).toEndWith("This model can't take images. Images not sent.");
+  expect(content[0]!.text).not.toContain("Switch to an image-capable model");
+  expect(content.filter((item) => item.type === "image")).toHaveLength(1);
 });
 
 test("execute shutdown cancellation is classified and a new session receives a fresh controller", async () => {

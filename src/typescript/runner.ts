@@ -4,7 +4,7 @@ import { exports as resolveExports, imports as resolveImports } from "resolve.ex
 import { init, parse as parseModules } from "es-module-lexer";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createImageEmitter, IMAGE_CHANNEL_ENV } from "./images";
+import { createImageHelper, IMAGE_CHANNEL_ENV } from "./images";
 import { HandoffSignal, installJobGlobals, openWorkerJobBridge } from "./job-bridge";
 
 export const INTERNAL_TYPESCRIPT_RUNNER_ARG = "--die-internal-execute";
@@ -209,10 +209,10 @@ export async function runTypeScriptFromStdin(): Promise<void> {
     return resolved;
   };
 
-  const images = createImageEmitter(process.env[IMAGE_CHANNEL_ENV] === "1");
+  const images = createImageHelper(process.env[IMAGE_CHANNEL_ENV] === "1");
   const jobs = installJobGlobals(openWorkerJobBridge());
   Object.assign(globalThis, {
-    emitImage: images.emitImage,
+    showImage: images.showImage,
     require: executeRequire,
     __dieExecuteDirname: cwd,
     __dieExecuteFilename: entryFilename,

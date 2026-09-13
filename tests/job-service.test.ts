@@ -30,6 +30,48 @@ test("job helper validation rejects invalid inputs before spawning", async () =>
     await manager.shutdown();
   }
 });
+test("shell closes stdin by default while explicit open input remains writable", async () => {
+  const manager = new TaskManager(() => {}),
+    service = new JobService(
+      manager,
+      () => ({ depth: 0 }),
+      () => {},
+    ),
+    ctx = { cwd: process.cwd() } as any;
+  try {
+    const closed = (await service.handle(
+      "shell",
+      { command: "cat >/dev/null; printf eof", waitSeconds: 1 },
+      ctx,
+      signal,
+    )) as { status: string; output: string; stdinOpen?: boolean };
+    expect(closed).toMatchObject({ status: "completed", output: "eof", stdinOpen: false });
+
+    const launched = (await service.handle(
+      "shell",
+      {
+        command: "cat",
+        waitSeconds: 0,
+        closeInput: false,
+      },
+      ctx,
+      signal,
+    )) as { id: string; status: string; stdinOpen?: boolean };
+    expect(launched).toMatchObject({ status: "running", stdinOpen: true });
+
+    const stillOpen = (await service.handle("jobs.input", { id: launched.id, data: "one\n" }, ctx, signal)) as {
+      stdinOpen?: boolean;
+    };
+    expect(stillOpen.stdinOpen).toBe(true);
+    await service.handle("jobs.input", { id: launched.id, data: "two\n", closeInput: true }, ctx, signal);
+    const finished = await manager.wait(launched.id);
+    expect(finished.output).toBe("one\ntwo\n");
+    expect(finished.stdinOpen).toBe(false);
+  } finally {
+    await manager.shutdown();
+  }
+});
+
 test("records metadata-only dispatch lifecycle against the supplied session recorder", async () => {
   const manager = new TaskManager(() => {}),
     records: JobDiagnosticInput[] = [];

@@ -187,6 +187,12 @@ for (const [provider, id, api] of [
       }));
       await session.prompt("Keep the current request as recent detail. " + "recent-detail ".repeat(100));
       expect(captured).toHaveLength(1);
+      const recentMessage = structuredClone(
+        manager
+          .buildSessionContext()
+          .messages.filter((m) => m.role === "user")
+          .at(-1)!,
+      );
       compacting = true;
       await session.compact();
       const checkpoint = manager
@@ -224,6 +230,17 @@ for (const [provider, id, api] of [
         expect(last.system).toEqual(first.system);
         expect(last.thinking).toEqual(first.thinking);
       }
+      const conversation = provider === "openai-codex" ? last.input : last.messages;
+      const summaryInstruction = JSON.stringify(conversation.at(-1));
+      expect(summaryInstruction).toContain("Summarize the whole conversation above.");
+      expect(summaryInstruction).not.toContain("retained tail");
+      expect(summaryInstruction).not.toContain("### Scope");
+      expect(JSON.stringify(conversation)).toContain("Old task fixture.");
+      expect(JSON.stringify(conversation)).toContain("recent-detail");
+      const replay = manager.buildSessionContext().messages;
+      expect(replay).toContainEqual(recentMessage);
+      expect(JSON.stringify(replay)).toContain("fixture-checkpoint");
+      expect(JSON.stringify(replay)).not.toContain("Old task fixture.");
       expect(networkCalls).toBe(0);
     } finally {
       restoreNotify();

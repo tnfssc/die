@@ -25,7 +25,7 @@ import { registerManualShake } from "./manual-shake";
 import { registerNativeCodexCompaction } from "./native-compaction";
 import { registerNativeFastMode } from "./native-fast-mode";
 import { registerResumeSafeguards } from "./resume-safeguards";
-import { canDelegate, SUBAGENT_TYPES } from "./subagent-profiles";
+import { SUBAGENT_TYPES } from "./subagent-profiles";
 import { registerSubagentSettings } from "./subagent-settings-ui";
 import { createTaskLifecycleRecorder } from "./task-lifecycle";
 import { type TaskInspection, TaskManager } from "./task-manager";
@@ -97,7 +97,6 @@ export default function asynchronousTasksExtension(
     : undefined;
   let subagentDepth = environmentDepth;
   let agentType = environmentType;
-  let canSpawnSubagent = canDelegate(subagentDepth, agentType);
   const instructionMode = registerInstructionMode(pi, () => subagentDepth === 0);
   let identityDiagnosticSession: object | undefined;
   let identityDiagnosticId: string | undefined;
@@ -185,7 +184,6 @@ export default function asynchronousTasksExtension(
       agentType = environmentType;
       subagentDepth = environmentDepth;
     }
-    canSpawnSubagent = canDelegate(subagentDepth, agentType);
   };
   let manager: TaskManager | undefined;
   let owningContext: ExtensionContext | undefined;
@@ -540,10 +538,7 @@ export default function asynchronousTasksExtension(
     // retain their role identity and delegation boundary on every base.
     const userCustom = custom && !isDieSystemPrompt(event.systemPromptOptions);
     if (userCustom && subagentDepth === 0) return;
-    const role =
-      subagentDepth > 0
-        ? subagentGuidance(agentType ?? "normal", canSpawnSubagent)
-        : instructionMode.guidance(ctx, false);
+    const role = subagentDepth > 0 ? subagentGuidance(agentType ?? "normal") : instructionMode.guidance(ctx, false);
     const additions = [userCustom ? "" : collaborationGuidance(), role].filter(Boolean).join("\n\n");
     if (additions) return { systemPrompt: event.systemPrompt + "\n\n" + additions };
   });

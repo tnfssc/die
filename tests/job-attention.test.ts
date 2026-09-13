@@ -183,9 +183,15 @@ test("TaskManager pending/event contracts are snapshot-based and attention text 
     stdinOpen: false,
     task: manager.inspect(task.id),
   };
-  const text = formatAttentionNotification(Array.from({ length: 100 }, () => sample));
+  const text = formatAttentionNotification(
+    Array.from({ length: 100 }, (_, index) => ({ ...sample, id: `job_${index}` })),
+  );
   expect(text.length).toBeLessThanOrEqual(5000);
   expect(text).toContain("Jobs continue running");
+  expect(text).toContain("additional attention checkpoints omitted. IDs:");
+  expect(text).toMatch(/IDs: job_\d+/);
+  expect(text).not.toContain("Inspect before deciding");
+  expect(text).not.toContain("You may provide/close input");
   expect(text).not.toMatch(/kill(ed)? automatically/i);
 });
 
@@ -212,7 +218,8 @@ test("late attachment uses existing activity and watch grace does not fabricate 
   const manager = new TaskManager(() => {}, 10);
   managers.push(manager);
   const task = manager.spawn(launch("late"));
-  clock.nowMs = Date.parse(task.startedAt);
+  // Start and first activity can straddle a real clock tick.
+  clock.nowMs = Date.parse(task.lastActivityAt ?? task.startedAt);
   clock.advance(4 * 60_000);
   const scheduler = new JobAttentionScheduler(manager, (items) => batches.push(items), { clock });
   clock.advance(60_000);

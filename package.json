@@ -1,6 +1,6 @@
 {
   "name": "die",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "private": true,
   "type": "module",
   "bin": {
@@ -18,7 +18,8 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "lint": "biome lint .",
-    "generate:notices": "bun ./scripts/generate-third-party-notices.ts"
+    "generate:notices": "bun ./scripts/generate-third-party-notices.ts",
+    "prompt:preview": "bun ./scripts/prompt-preview.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.85.0",

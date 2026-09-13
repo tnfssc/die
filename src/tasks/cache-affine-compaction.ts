@@ -12,11 +12,9 @@ import {
 import { recordDiagnostic } from "../diagnostics.js";
 import promptTemplate from "../prompts/compaction.md" with { type: "text" };
 import jobsTemplate from "../prompts/compaction-jobs.md" with { type: "text" };
-import prefixScopeTemplate from "../prompts/compaction-prefix-scope.md" with { type: "text" };
-import wholeScopeTemplate from "../prompts/compaction-whole-scope.md" with { type: "text" };
 import { withStandardProviderTier } from "./native-fast-mode";
 
-export const CACHE_AFFINE_COMPACTION_VERSION = 4;
+export const CACHE_AFFINE_COMPACTION_VERSION = 5;
 
 type Snapshot = {
   /** Retained only for the legacy pure request-builder API; production prepares current state. */
@@ -175,11 +173,8 @@ export type CacheAffineRequest = {
   systemPrompt: string;
   messages: Message[];
   tools: Tool[];
-  summaryEnd: number;
-  tailStart: number;
   outputTokens: number;
   estimatedInputTokens: number;
-  summaryScope: "prefix" | "whole-current-conversation";
 };
 
 const textOf = (response: AssistantMessage): string =>
@@ -209,26 +204,10 @@ function activeTools(pi: ExtensionAPI): Tool[] {
 
 type RequestBuildResult = { request: CacheAffineRequest } | { reason: string };
 
-export function mapPreparedSummaryBoundary(
-  history: Message[],
-  currentRaw: Message[],
-  discardedNativeCount: number,
-): Pick<CacheAffineRequest, "summaryEnd" | "tailStart" | "summaryScope"> {
-  const retainedCount = currentRaw.length - discardedNativeCount;
-  const retainedRaw = retainedCount >= 0 ? currentRaw.slice(discardedNativeCount) : [];
-  const suffixMapsExactly =
-    retainedCount >= 0 &&
-    retainedCount <= history.length &&
-    jsonEqual(retainedRaw, history.slice(history.length - retainedCount));
-  const summaryScope = suffixMapsExactly ? "prefix" : "whole-current-conversation";
-  const summaryEnd = suffixMapsExactly ? history.length - retainedCount : history.length;
-  return { summaryEnd, tailStart: summaryEnd + 1, summaryScope };
-}
-
 /** Prepare the current branch after it has passed through the same context
- * conversion used by an ordinary assistant request. The retained-tail boundary
- * remains Pi's durable checkpoint boundary; it is intentionally independent of
- * the previously captured request. */
+ * conversion used by an ordinary assistant request. The request summarizes the
+ * entire prepared history; Pi independently applies its durable retained-tail
+ * boundary when replaying the resulting checkpoint. */
 function prepareCacheAffineRequest(
   snapshot: Snapshot,
   event: SessionBeforeCompactEvent,
@@ -237,31 +216,11 @@ function prepareCacheAffineRequest(
 ): RequestBuildResult {
   const { preparation } = event;
   const history = current.messages;
-  const currentRaw = convertToLlm(buildSessionContext(event.branchEntries).messages);
-  const discardedNativeCount =
-    convertToLlm([...preparation.messagesToSummarize, ...preparation.turnPrefixMessages]).length +
-    (preparation.previousSummary ? 1 : 0);
-  // Message counts alone carry no provenance through arbitrary context hooks.
-  // A prefix boundary is defensible only when the complete retained raw suffix
-  // is still the exact prepared suffix. Otherwise summarize all model-facing
-  // history; Pi's durable firstKeptEntryId remains authoritative for replay.
-  const { summaryEnd, tailStart, summaryScope } = mapPreparedSummaryBoundary(history, currentRaw, discardedNativeCount);
-  if (summaryEnd <= 0) return { reason: "the prepared summary scope is empty" };
-  const custom = customInstructions?.trim()
-    ? "Additional user focus (without changing the durable checkpoint boundary): " + customInstructions.trim()
-    : "No additional focus was requested.";
-  const scopeFields: Record<string, string> = {
-    summaryEnd: String(summaryEnd),
-    tailStart: String(tailStart),
-    messageCount: String(history.length),
-  };
-  const scope = (summaryScope === "prefix" ? prefixScopeTemplate : wholeScopeTemplate)
-    .trimEnd()
-    .replace(/\{\{(summaryEnd|tailStart|messageCount)\}\}/g, (_match, key: string) => scopeFields[key]!);
-  const fields: Record<string, string> = { scope, customInstructions: custom };
-  const prompt = promptTemplate
-    .trimEnd()
-    .replace(/\{\{(scope|customInstructions)\}\}/g, (_match, key: string) => fields[key]!);
+  if (history.length === 0) return { reason: "the prepared conversation is empty" };
+  const custom = customInstructions?.trim() ? "Additional user focus: " + customInstructions.trim() : "";
+  // Use a replacement callback so dollar sequences and template-like text in
+  // the user-provided focus remain literal data rather than another pass.
+  const prompt = promptTemplate.replace("{{customInstructions}}", () => custom).trimEnd();
 
   const suffixTokens = Math.ceil(prompt.length / 4) + 32;
   const transformedTokens = history.reduce((total, message) => total + estimateTokens(message as AgentMessage), 0);
@@ -287,11 +246,8 @@ function prepareCacheAffineRequest(
       systemPrompt: current.systemPrompt,
       messages: [...history, { role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
       tools: current.tools,
-      summaryEnd,
-      tailStart,
       outputTokens,
       estimatedInputTokens,
-      summaryScope,
     },
   };
 }
@@ -570,8 +526,7 @@ export function registerCacheAffineCompaction(
     if (!("request" in prepared)) {
       bestEffortCompactionDiagnostic(ctx, {
         component: "compaction",
-        code:
-          prepared.reason === "the prepared summary scope is empty" ? "capacity_insufficient" : "capacity_insufficient",
+        code: "capacity_insufficient",
         outcome: "blocked",
         operationId,
         dispatch: "none",
@@ -723,9 +678,6 @@ export function registerCacheAffineCompaction(
           details: {
             strategy: "cache-affine-plaintext",
             version: CACHE_AFFINE_COMPACTION_VERSION,
-            summaryEnd: request.summaryEnd,
-            tailStart: request.tailStart,
-            summaryScope: request.summaryScope,
             ...(priorPayloadAffine === undefined ? {} : { priorPayloadAffine }),
             readFiles: [...event.preparation.fileOps.read].filter((path) => !modified.has(path)).sort(),
             modifiedFiles: [...modified].sort(),

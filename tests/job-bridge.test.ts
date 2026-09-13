@@ -63,7 +63,7 @@ test("foreground work returns inline; background work survives execute and accep
     expect(JSON.parse(fast.stdout)).toMatchObject({ background: false, status: "completed", output: "inline" });
     expect(notifications).toHaveLength(0);
     const launch = await execute(
-      'console.log(JSON.stringify(await shell("read value; printf received:$value", {waitSeconds:0})))',
+      'console.log(JSON.stringify(await shell("read value; printf received:$value", {waitSeconds:0,closeInput:false})))',
     );
     expect(launch.exitCode).toBe(0);
     const job = JSON.parse(launch.stdout);
@@ -105,7 +105,7 @@ test("canceling execute after a delayed job spawn transfers notification ownersh
   });
   try {
     const execution = executeIsolated(
-      'await shell("read value; printf survived", {waitSeconds:60})',
+      'await shell("read value; printf survived", {waitSeconds:60,closeInput:false})',
       process.cwd(),
       controller.signal,
       3000,
@@ -164,18 +164,22 @@ test("shell defaults to a three-second foreground budget; zero wait and timeout 
     });
   try {
     let started = Date.now();
-    const normal = await execute('console.log(JSON.stringify(await shell("read value")))');
+    const normal = await execute('console.log(JSON.stringify(await shell("read value", {closeInput:false})))');
     const elapsed = Date.now() - started;
     expect(normal.exitCode).toBe(0);
     expect(JSON.parse(normal.stdout).background).toBe(true);
     expect(elapsed).toBeGreaterThanOrEqual(2900);
     expect(elapsed).toBeLessThan(4900);
     started = Date.now();
-    const immediate = await execute('console.log(JSON.stringify(await shell("read value", {waitSeconds:0})))');
+    const immediate = await execute(
+      'console.log(JSON.stringify(await shell("read value", {waitSeconds:0,closeInput:false})))',
+    );
     expect(immediate.exitCode).toBe(0);
     expect(JSON.parse(immediate.stdout).background).toBe(true);
     expect(Date.now() - started).toBeLessThan(1000);
-    const timeout = await execute('console.log(JSON.stringify(await shell("read value", {timeoutSeconds:0.2})))');
+    const timeout = await execute(
+      'console.log(JSON.stringify(await shell("read value", {timeoutSeconds:0.2,closeInput:false})))',
+    );
     expect(timeout.exitCode).toBe(0);
     expect(JSON.parse(timeout.stdout)).toMatchObject({ background: false, status: "killed", timedOut: true });
     const failure = await execute('console.log(JSON.stringify(await shell("exit 7")))');
@@ -199,7 +203,7 @@ test("canceling concurrent bridge waits hands off every launched job exactly onc
   let launched = 0;
   try {
     const result = await executeIsolated(
-      'await Promise.all(Array.from({length:3}, () => shell("read value; printf done", {waitSeconds:60})))',
+      'await Promise.all(Array.from({length:3}, () => shell("read value; printf done", {waitSeconds:60,closeInput:false})))',
       process.cwd(),
       abort.signal,
       5000,
@@ -393,7 +397,7 @@ test("registered execute handoff separates completed delivery from pending wait 
     const result = await executeTool.execute(
       "handoff",
       {
-        code: 'await shell("printf inline"); await shell("read value; printf pending:$value", {waitSeconds:0}); await handoff("waiting")',
+        code: 'await shell("printf inline"); await shell("read value; printf pending:$value", {waitSeconds:0,closeInput:false}); await handoff("waiting")',
       },
       new AbortController().signal,
       () => {},

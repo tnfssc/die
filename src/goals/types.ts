@@ -2,6 +2,16 @@ export const GOAL_STATUSES = ["active", "waiting", "blocked", "completed", "paus
 
 export type GoalStatus = (typeof GOAL_STATUSES)[number];
 
+export type GoalUpdateStatus = Exclude<GoalStatus, "waiting">;
+
+export interface GoalUpdateInput {
+  status: GoalUpdateStatus;
+  progress?: string;
+  evidence?: string;
+  blocker?: string;
+  reason?: string;
+}
+
 export interface GoalState {
   id: string;
   revision: number;

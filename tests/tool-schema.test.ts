@@ -16,11 +16,14 @@ test("only execute is registered with a provider-friendly schema", () => {
     on() {},
   } as any);
   expect(tools.map((t) => t.name)).toEqual(["execute"]);
+  expect(tools[0].promptSnippet).toBe("Run JS/TS.");
   expect(tools[0].parameters).toMatchObject({
     type: "object",
     required: ["code"],
-    properties: { code: { type: "string" }, timeoutSeconds: { minimum: 0.1 } },
+    properties: { code: { type: "string" }, timeoutSeconds: { type: "number", minimum: 0.1 } },
   });
+  expect(tools[0].parameters.properties.code.description).toBeUndefined();
+  expect(tools[0].parameters.properties.timeoutSeconds.description).toBeUndefined();
   expect(toolParameters(z.object({ choice: z.enum(["one", "two"]) }))).toMatchObject({
     properties: { choice: { enum: ["one", "two"] } },
   });

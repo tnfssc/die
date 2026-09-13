@@ -2,7 +2,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { link, lstat, mkdir, open, opendir, rename, rm } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
-import { acquireMemoryLock, type MemoryLockLease } from "./lock";
 
 const NOTES_RELATIVE = join(".agents", "notes");
 const PENDING_RELATIVE = join(NOTES_RELATIVE, ".pending");
@@ -253,34 +252,25 @@ export async function consumePendingNotes(
   cwd: string,
   snapshot: readonly PendingNoteRecord[],
   stillValid: () => boolean = () => true,
-  lease?: MemoryLockLease,
 ): Promise<{ consumed: string[]; retained: string[] }> {
   if (!stillValid()) return { consumed: [], retained: snapshot.map((record) => record.path) };
-  const ownedLease = lease ? undefined : await acquireMemoryLock(cwd);
-  const activeLease = lease ?? ownedLease!;
-  try {
-    await activeLease.assertOwned();
-    if (!stillValid()) return { consumed: [], retained: snapshot.map((record) => record.path) };
-    const notes = await notesRoot(cwd, true);
-    if (!notes) return { consumed: [], retained: snapshot.map((record) => record.path) };
-    const consumedDirectory = await ensureChildDirectories(notes, [CONSUMED_DIRECTORY]);
+  const notes = await notesRoot(cwd, true);
+  if (!notes) return { consumed: [], retained: snapshot.map((record) => record.path) };
+  const consumedDirectory = await ensureChildDirectories(notes, [CONSUMED_DIRECTORY]);
 
-    const consumed: string[] = [];
-    const retained: string[] = [];
-    for (const record of snapshot) {
-      // Refuse inconsistent caller-created records: snapshots produced here always satisfy this.
-      if (!stillValid() || digest(record.content) !== record.hash) {
-        retained.push(record.path);
-        continue;
-      }
-      pendingPathFromRecord(cwd, record.path);
-      if (await writeConsumptionReceipt(consumedDirectory, record, stillValid)) consumed.push(record.path);
-      else retained.push(record.path);
+  const consumed: string[] = [];
+  const retained: string[] = [];
+  for (const record of snapshot) {
+    // Refuse inconsistent caller-created records: snapshots produced here always satisfy this.
+    if (!stillValid() || digest(record.content) !== record.hash) {
+      retained.push(record.path);
+      continue;
     }
-    return { consumed, retained };
-  } finally {
-    await ownedLease?.();
+    pendingPathFromRecord(cwd, record.path);
+    if (await writeConsumptionReceipt(consumedDirectory, record, stillValid)) consumed.push(record.path);
+    else retained.push(record.path);
   }
+  return { consumed, retained };
 }
 
 /** Read a topic's index.md. The empty topic addresses .agents/notes/index.md. */
@@ -308,77 +298,52 @@ export async function readConsolidatedNote(cwd: string, topic = ""): Promise<Con
 }
 
 /**
- * Save one topic index while holding a cooperative per-topic lock.
+ * Save one topic index after validating its current content.
  * Pass null to create a new index; pass the hash returned by readConsolidatedNote
- * when replacing one. The hash guard serializes callers of this API, but cannot
- * provide compare-and-swap guarantees against external writers that ignore the lock.
+ * when replacing one. The hash check detects stale inputs but does not provide
+ * compare-and-swap guarantees against concurrent filesystem writers.
  */
 export async function saveConsolidatedNote(
   cwd: string,
   topic: string,
   content: string,
   expectedHash: string | null,
-  lease?: MemoryLockLease,
 ): Promise<ConsolidatedSaveReceipt> {
   const segments = topicSegments(topic);
-  const ownedLease = lease ? undefined : await acquireMemoryLock(cwd);
-  const activeLease = lease ?? ownedLease!;
+  const notes = await notesRoot(cwd, true);
+  if (!notes) throw new Error("Unable to create managed notes directory");
+  const parent = await ensureChildDirectories(notes, segments);
+  const path = join(parent, "index.md");
+  const temp = join(parent, `.index.md.${randomUUID()}.tmp`);
+  let tempCreated = false;
   try {
-    await activeLease.assertOwned();
-    const notes = await notesRoot(cwd, true);
-    if (!notes) throw new Error("Unable to create managed notes directory");
-    const parent = await ensureChildDirectories(notes, segments);
-    const path = join(parent, "index.md");
-    const lockPath = join(parent, ".index.md.lock");
-    let lockHandle: Awaited<ReturnType<typeof open>>;
+    let existing: string | undefined;
     try {
-      lockHandle = await open(
-        lockPath,
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-        0o600,
-      );
+      existing = await readRegularFile(path);
     } catch (error) {
-      if (errorCode(error) === "EEXIST") {
-        throw new Error(`Consolidated note is locked by another cooperative writer: ${portableRelative(cwd, path)}`);
-      }
-      throw error;
+      if (errorCode(error) !== "ENOENT") throw error;
+    }
+    if (existing === undefined ? expectedHash !== null : expectedHash === null || digest(existing) !== expectedHash) {
+      throw new Error(`Consolidated note changed or already exists: ${portableRelative(cwd, path)}`);
     }
 
-    const temp = join(parent, `.index.md.${randomUUID()}.tmp`);
-    let tempCreated = false;
+    const handle = await open(
+      temp,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      0o600,
+    );
+    tempCreated = true;
     try {
-      let existing: string | undefined;
-      try {
-        existing = await readRegularFile(path);
-      } catch (error) {
-        if (errorCode(error) !== "ENOENT") throw error;
-      }
-      if (existing === undefined ? expectedHash !== null : expectedHash === null || digest(existing) !== expectedHash) {
-        throw new Error(`Consolidated note changed or already exists: ${portableRelative(cwd, path)}`);
-      }
-
-      const handle = await open(
-        temp,
-        constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
-        0o600,
-      );
-      tempCreated = true;
-      try {
-        await handle.writeFile(content, "utf8");
-        await handle.sync();
-      } finally {
-        await handle.close();
-      }
-      await rename(temp, path);
-      tempCreated = false;
-      return { path: portableRelative(cwd, path), hash: digest(content) };
+      await handle.writeFile(content, "utf8");
+      await handle.sync();
     } finally {
-      if (tempCreated) await rm(temp, { force: true }).catch(() => undefined);
-      await lockHandle.close().catch(() => undefined);
-      await rm(lockPath, { force: true }).catch(() => undefined);
+      await handle.close();
     }
+    await rename(temp, path);
+    tempCreated = false;
+    return { path: portableRelative(cwd, path), hash: digest(content) };
   } finally {
-    await ownedLease?.();
+    if (tempCreated) await rm(temp, { force: true }).catch(() => undefined);
   }
 }
 

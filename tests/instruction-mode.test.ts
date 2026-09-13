@@ -85,8 +85,13 @@ test("bounded mode replacement preserves framing before and after it", () => {
   const switched = replaceMainAgentGuidance(frame, "normal", owner);
   expect(switched).toStartWith("CUSTOM BEFORE");
   expect(switched).toEndWith("CUSTOM AFTER");
-  expect(switched).toContain("main agent in normal instruction mode");
-  expect(switched).not.toContain("main agent in orchestrator instruction mode");
+  expect(switched).toContain("<!-- die:main-agent-mode:owned-test-region:start -->\n\n");
+  expect(switched).not.toContain("You build and fix code.");
+  expect(switched).not.toContain("You lead work.");
+  const restored = replaceMainAgentGuidance(switched, "orchestrator", owner);
+  expect(restored).toStartWith("CUSTOM BEFORE");
+  expect(restored).toEndWith("CUSTOM AFTER");
+  expect(restored).toContain("You lead work.");
   expect(replaceMainAgentGuidance("EXPLICIT CUSTOM", "fast", owner)).toBe("EXPLICIT CUSTOM");
 });
 
@@ -161,7 +166,9 @@ test("a real disk reopen produces a byte-identical mode prompt", async () => {
     const beforeRestart = render(SessionManager.open(file));
     const afterRestart = render(SessionManager.open(file));
     expect(afterRestart).toBe(beforeRestart);
-    expect(afterRestart).toContain("main agent in normal instruction mode");
+    expect(afterRestart).toContain("<!-- die:main-agent-mode:");
+    expect(afterRestart).not.toContain("You build and fix code.");
+    expect(afterRestart).not.toContain("You lead work.");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
