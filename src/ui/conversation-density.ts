@@ -18,47 +18,19 @@ type RenderComponent = Component & {
   render: (width: number) => string[];
   handleMouse: (event: TuiMouseEvent) => TuiMouseEventResult | undefined;
 };
-type DensityKind = "user" | "assistant" | "tool" | "custom" | "compact";
+type DensityKind = "user" | "non-user";
 type BoxShape = { paddingY: number; invalidate: () => void };
-
-type ToolShape = RenderComponent & {
-  toolName?: unknown;
-  expanded?: unknown;
-  imageComponents?: unknown;
-  result?: { content?: Array<{ type?: unknown }> };
-};
-type CustomShape = RenderComponent & {
-  message?: { role?: unknown; customType?: unknown };
-  _expanded?: unknown;
-};
 
 function kind(component: Component): DensityKind | undefined {
   if (component instanceof UserMessageComponent) return "user";
-  if (component instanceof AssistantMessageComponent) return "assistant";
-  if (component instanceof ToolExecutionComponent) {
-    const tool = component as unknown as ToolShape;
-    if (!("toolName" in tool) || !("expanded" in tool) || !Array.isArray(tool.imageComponents)) {
-      throw new Error("Pi 0.85 conversation-density seam changed: execute component shape is unsupported");
-    }
-    return tool.toolName === "execute" &&
-      tool.expanded === false &&
-      Array.isArray(tool.imageComponents) &&
-      tool.imageComponents.length === 0 &&
-      !tool.result?.content?.some((part) => part.type === "image")
-      ? "compact"
-      : "tool";
+  if (
+    component instanceof AssistantMessageComponent ||
+    component instanceof ToolExecutionComponent ||
+    component instanceof CustomMessageComponent
+  ) {
+    return "non-user";
   }
-  if (!(component instanceof CustomMessageComponent)) return undefined;
-  const custom = component as unknown as CustomShape;
-  if (!("message" in custom) || !("_expanded" in custom)) {
-    throw new Error("Pi 0.85 conversation-density seam changed: custom message shape is unsupported");
-  }
-  const customType = custom.message?.customType;
-  return custom.message?.role === "custom" &&
-    (customType === "task-complete" || customType === "task-attention") &&
-    custom._expanded === false
-    ? "compact"
-    : "custom";
+  return undefined;
 }
 
 function userContentBox(component: UserMessageComponent): BoxShape {
@@ -196,21 +168,6 @@ function compactThinkingForDisplay(message: AssistantMessageShape): AssistantMes
   return changed ? { ...message, content: compacted } : message;
 }
 
-function isDisplayedThinkingOnly(component: Component): boolean {
-  if (!(component instanceof AssistantMessageComponent)) return false;
-  const message = (component as unknown as AssistantShape).lastMessage;
-  const content = message?.content;
-  return (
-    message?.stopReason !== "length" &&
-    message?.stopReason !== "aborted" &&
-    message?.stopReason !== "error" &&
-    Array.isArray(content) &&
-    content.length > 0 &&
-    content.every((part) => part.type === "thinking") &&
-    content.some((part) => typeof part.thinking === "string" && part.thinking.trim())
-  );
-}
-
 function isInvisibleToolCarrier(component: Component): boolean {
   if (!(component instanceof AssistantMessageComponent)) return false;
   if (!("lastMessage" in component) || !("hasToolCalls" in component)) {
@@ -232,7 +189,7 @@ function previousComponent(parent: Container, index: number): Component | undefi
   for (let previousIndex = index - 1; previousIndex >= 0; previousIndex--) {
     const previous = parent.children[previousIndex];
     if (!previous) return undefined;
-    if (isInvisibleToolCarrier(previous)) continue;
+    if ((previous instanceof Spacer && previous.render(1).length === 0) || isInvisibleToolCarrier(previous)) continue;
     return previous;
   }
   return undefined;
@@ -248,8 +205,8 @@ function isBlank(line: string): boolean {
 }
 
 /**
- * Pi 0.85 puts vertical padding inside each user message and also gives
- * native successor components ownership of their leading space. InteractiveMode
+ * Pi 0.85 puts highlighted vertical padding inside each user message and gives
+ * every native message ownership of leading transition space. InteractiveMode
  * additionally inserts a standalone one-line spacer before non-initial users,
  * but does not expose a transition-spacing hook on its chat container.
  * Container.addChild is global, so this adapts recognized message instances added
@@ -257,9 +214,11 @@ function isBlank(line: string): boolean {
  * chat tree. Its assistant update wrapper compacts plain-prose gaps only in
  * displayed thinking (including provider-accumulated summaries and adjacent Pi
  * thinking parts), retaining the source message for streaming and restoration.
- * User Markdown stays inside its native background box with only that box's
- * vertical padding disabled. Normal answer Markdown, structured thinking
- * Markdown, unrecognized components, images, and editor layout are unchanged.
+ * User Markdown stays inside its native background box with that box's vertical
+ * padding replaced by one plain terminal row on each conversation boundary.
+ * Structural leading rows are removed between non-user messages. Normal answer
+ * Markdown, structured thinking Markdown, expanded tools, images, unrecognized
+ * components, and editor layout are otherwise unchanged.
  *
  * Remove this pinned compatibility seam when Pi exposes chat transition
  * spacing. Every patched method and component restoration is identity-checked
@@ -280,8 +239,9 @@ export function installConversationDensity(): () => void {
     reference: WeakRef<RenderComponent>;
     originalMouse: RenderComponent["handleMouse"];
     mouseWrapper: RenderComponent["handleMouse"];
-    collapsedWidth?: number;
-    collapsed: boolean;
+    mouseWidth?: number;
+    mouseYOffset: number;
+    mouseHeightOffset: number;
     originalUpdate?: AssistantShape["updateContent"];
     updateWrapper?: AssistantShape["updateContent"];
     sourceMessage?: AssistantMessageShape;
@@ -421,36 +381,45 @@ export function installConversationDensity(): () => void {
       if (active && this instanceof UserMessageComponent) setUserVerticalPadding(this, 0);
       const lines = originalRender.call(this, width);
       if (!active) {
-        restoration.collapsed = false;
+        restoration.mouseYOffset = 0;
+        restoration.mouseHeightOffset = 0;
         return lines;
       }
       const parent = parentReference.deref();
       const index = parent ? parentIndexes.get(parent)?.get(this) : undefined;
-      let collapsed = false;
-      if (lines.length >= 2 && isBlank(lines[0] ?? "") && parent && index !== undefined && index >= 1) {
-        const precedingKind = previousKind(parent, index);
-        const currentKind = kind(this);
-        const preceding = previousComponent(parent, index);
-        const collapseAfterUserBoundary = currentKind !== "user" && precedingKind === "user";
-        const collapseThinkingBoundary =
-          currentKind === "assistant" &&
-          isDisplayedThinkingOnly(this) &&
-          !!preceding &&
-          isDisplayedThinkingOnly(preceding);
-        const collapseCompactBoundary =
-          currentKind === "compact" && precedingKind === "compact" && lines.length === 2 && !isBlank(lines[1] ?? "");
-        collapsed = collapseAfterUserBoundary || collapseThinkingBoundary || collapseCompactBoundary;
+      const precedingKind = parent && index !== undefined ? previousKind(parent, index) : undefined;
+      const currentKind = kind(this);
+      let rendered = lines;
+      let mouseYOffset = 0;
+      let mouseHeightOffset = 0;
+      if (currentKind === "user") {
+        const hasLeadingRow = precedingKind !== "user";
+        rendered = hasLeadingRow ? ["", ...lines, ""] : [...lines, ""];
+        mouseYOffset = hasLeadingRow ? -1 : 0;
+        mouseHeightOffset = hasLeadingRow ? -2 : -1;
+      } else if (
+        currentKind === "non-user" &&
+        precedingKind !== undefined &&
+        lines.length >= 2 &&
+        isBlank(lines[0] ?? "")
+      ) {
+        rendered = lines.slice(1);
+        mouseYOffset = 1;
+        mouseHeightOffset = 1;
       }
-      restoration.collapsedWidth = width;
-      restoration.collapsed = collapsed;
-      return collapsed ? lines.slice(1) : lines;
+      restoration.mouseWidth = width;
+      restoration.mouseYOffset = mouseYOffset;
+      restoration.mouseHeightOffset = mouseHeightOffset;
+      return rendered;
     }
     function denseMouse(this: RenderComponent, event: TuiMouseEvent): TuiMouseEventResult | undefined {
-      const offset = active && restoration.collapsedWidth === event.width && restoration.collapsed ? 1 : 0;
-      return originalMouse.call(
-        this,
-        offset ? { ...event, y: event.y + offset, height: event.height + offset } : event,
-      );
+      if (!active || restoration.mouseWidth !== event.width) return originalMouse.call(this, event);
+      const { mouseYOffset, mouseHeightOffset } = restoration;
+      return originalMouse.call(this, {
+        ...event,
+        y: event.y + mouseYOffset,
+        height: event.height + mouseHeightOffset,
+      });
     }
     const reference = new WeakRef(renderable);
     restoration = {
@@ -459,7 +428,8 @@ export function installConversationDensity(): () => void {
       reference,
       originalMouse,
       mouseWrapper: denseMouse,
-      collapsed: false,
+      mouseYOffset: 0,
+      mouseHeightOffset: 0,
     };
     restorations.set(renderable, restoration);
     liveReferences.add(reference);

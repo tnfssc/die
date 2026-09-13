@@ -95,7 +95,7 @@ function blankRuns(lines: string[]): number[] {
 }
 
 describe("native conversation density adapter", () => {
-  test("removes only structural rows around first and consecutive users", () => {
+  test("gives first and consecutive users one unhighlighted boundary row", () => {
     restores.push(installConversationDensity());
     const chat = new Container();
     add(
@@ -110,14 +110,19 @@ describe("native conversation density adapter", () => {
       assistant("alpha\n\nomega", 2),
     );
 
-    const rows = plain(chat.render(80));
+    const rendered = chat.render(80);
+    const rows = plain(rendered);
     const visible = rows.map((row) => row.trim());
-    expect(rows[0]).toBe("  first paragraph");
+    expect(rendered[0]).toBe("");
+    expect(rows[1]).toBe("  first paragraph");
     expect(visible.indexOf("second paragraph")).toBe(visible.indexOf("first paragraph") + 2);
     expect(visible.indexOf("const second = 2;")).toBe(visible.indexOf("const first = 1;") + 2);
     expect(visible.indexOf("ending prose")).toBeGreaterThan(visible.indexOf("const second = 2;") + 1);
-    expect(visible.indexOf("next user")).toBe(visible.indexOf("ending prose") + 1);
-    expect(visible.indexOf("alpha")).toBe(visible.indexOf("next user") + 1);
+    const nextUser = visible.indexOf("next user");
+    expect(nextUser).toBe(visible.indexOf("ending prose") + 2);
+    expect(rendered[nextUser - 1]).toBe("");
+    expect(rendered[nextUser + 1]).toBe("");
+    expect(visible.indexOf("alpha")).toBe(nextUser + 2);
     expect(visible.indexOf("omega")).toBe(visible.indexOf("alpha") + 2);
     expect(rows.filter((row) => row.trim() === "next user" || row.trim() === "alpha")).toEqual([
       "  next user",
@@ -125,7 +130,7 @@ describe("native conversation density adapter", () => {
     ]);
   });
 
-  test("removes user boundaries owned by every native predecessor and successor", () => {
+  test("uses one plain row at every native user predecessor and successor", () => {
     restores.push(installConversationDensity());
     const pairs: Array<[Component, Component, string, string]> = [
       [assistant("assistant before"), thinking(["thinking after"]), "assistant before", "thinking after"],
@@ -139,12 +144,14 @@ describe("native conversation density adapter", () => {
       add(chat, before, new Spacer(1), new UserMessageComponent("user content"), after);
       const rows = plain(chat.render(80)).map((row) => row.trim());
       const user = rows.indexOf("user content");
-      expect(user).toBe(rows.indexOf(beforeText) + 1);
-      expect(rows.indexOf(afterText)).toBe(user + 1);
+      expect(user).toBe(rows.indexOf(beforeText) + 2);
+      expect(rows[user - 1]).toBe("");
+      expect(rows[user + 1]).toBe("");
+      expect(rows.indexOf(afterText)).toBe(user + 2);
     }
   });
 
-  test("keeps internal user Markdown and successor image rows while removing structural padding", () => {
+  test("keeps internal user Markdown and successor image rows outside plain boundaries", () => {
     restores.push(installConversationDensity());
     const chat = new Container();
     const imageBearing = tool("image status");
@@ -155,10 +162,12 @@ describe("native conversation density adapter", () => {
 
     const rows = plain(chat.render(80)).map((row) => row.trim());
     const first = rows.indexOf("paragraph one");
+    expect(rows[first - 1]).toBe("");
     expect(rows[first + 1]).toBe("");
     expect(rows[first + 2]).toBe("paragraph two");
-    expect(rows[first + 3]).toBe("image status");
-    expect(rows[first + 4]).toBe("attachment preview");
+    expect(rows[first + 3]).toBe("");
+    expect(rows[first + 4]).toBe("image status");
+    expect(rows[first + 5]).toBe("attachment preview");
   });
 
   test("does not consume meaningful trailing rows from prior output", () => {
@@ -171,7 +180,8 @@ describe("native conversation density adapter", () => {
     const rows = plain(chat.render(80)).map((row) => row.trim());
     const priorRow = rows.indexOf("prior");
     const userRow = rows.indexOf("user after output");
-    expect(rows.slice(priorRow + 1, userRow)).toEqual(["", ""]);
+    // Two rows belong to the expanded output; the final row is the user boundary.
+    expect(rows.slice(priorRow + 1, userRow)).toEqual(["", "", ""]);
   });
 
   test("keeps user boundaries dense through streaming updates and history-style rebuilds", () => {
@@ -184,10 +194,10 @@ describe("native conversation density adapter", () => {
       { role: "assistant", content: [{ type: "thinking", thinking: "stream thought" }] } as never,
       true,
     );
-    expect(plain(chat.render(80)).map((row) => row.trim())).toEqual(["stream question", "stream thought"]);
+    expect(plain(chat.render(80)).map((row) => row.trim())).toEqual(["", "stream question", "", "stream thought"]);
 
     user.setOutputPad(2);
-    expect(plain(user.render(80))).toEqual(["  stream question"]);
+    expect(plain(user.render(80))).toEqual(["", "  stream question", ""]);
 
     chat.clear();
     add(
@@ -200,7 +210,9 @@ describe("native conversation density adapter", () => {
     const rebuilt = plain(chat.render(80)).map((row) => row.trim());
     expect(rebuilt.slice(rebuilt.indexOf("history answer"))).toEqual([
       "history answer",
+      "",
       "history question",
+      "",
       "history custom",
     ]);
   });
@@ -333,7 +345,7 @@ describe("native conversation density adapter", () => {
     expect(rows.indexOf("Following prose")).toBe(rows.indexOf("- Second item") + 2);
   });
 
-  test("compacts consecutive thinking-only messages but preserves surrounding boundaries", () => {
+  test("compacts every consecutive non-user message boundary", () => {
     restores.push(installConversationDensity());
     const chat = new Container();
     const firstPhase = thinking(["Fixing test-harness isolation"]);
@@ -350,12 +362,9 @@ describe("native conversation density adapter", () => {
     expect(plain(chat.render(80))).toEqual([
       "",
       " Normal answer before",
-      "",
       " Fixing test-harness isolation",
       " Securing test-harness probes",
-      "",
       " tool output",
-      "",
       " Normal answer after",
     ]);
   });
@@ -408,13 +417,14 @@ describe("native conversation density adapter", () => {
     ]);
   });
 
-  test("keeps prose/tool separators but removes gaps inside collapsed execute/status groups", () => {
+  test("removes gaps across collapsed execute, thinking, and handoff statuses", () => {
     restores.push(installConversationDensity());
     const chat = new Container();
     add(
       chat,
       assistant("before"),
       tool("tool one"),
+      thinking(["Waiting for workflow completion"]),
       new AssistantMessageComponent({
         role: "assistant",
         content: [{ type: "toolCall", id: "two", name: "execute", arguments: {} }],
@@ -426,7 +436,16 @@ describe("native conversation density adapter", () => {
     );
 
     const rows = plain(chat.render(80));
-    expect(rows).toEqual(["", " before", "", " tool one", " tool two", " complete", " attention", "", " after"]);
+    expect(rows).toEqual([
+      "",
+      " before",
+      " tool one",
+      " Waiting for workflow completion",
+      " tool two",
+      " complete",
+      " attention",
+      " after",
+    ]);
   });
 
   test("preserves expanded tool content, image-bearing layout, and failure text", () => {
@@ -445,8 +464,8 @@ describe("native conversation density adapter", () => {
     expect(rows).toContain("");
     expect(rows).toContain(" output");
     expect(rows).toContain(" ✗ Execution failed · exit 1");
-    // None of these transitions qualifies as two adjacent compact text rows.
-    expect(blankRuns(rows).length).toBeGreaterThanOrEqual(3);
+    // Only the initial structural row and the expanded tool's internal Markdown gap remain.
+    expect(blankRuns(rows)).toEqual([1, 1]);
   });
 
   test("restores only wrappers it still owns", () => {
@@ -504,7 +523,7 @@ describe("native conversation density adapter", () => {
     const secondRestore = installConversationDensity();
     const rebuilt = new Container();
     add(rebuilt, first, second, answer);
-    expect(blankRuns(rebuilt.render(80))).toEqual([]);
+    expect(blankRuns(rebuilt.render(80))).toEqual([1, 1, 1]);
     secondRestore();
   });
 
@@ -518,7 +537,9 @@ describe("native conversation density adapter", () => {
     add(chat, assistant("before"), spacer, user);
 
     expect(spacer.render(80)).toEqual([]);
-    expect(plain(user.render(80))).toEqual([" question"]);
+    expect(user.render(80)[0]).toBe("");
+    expect(user.render(80).at(-1)).toBe("");
+    expect(plain(user.render(80))).toEqual(["", " question", ""]);
     chat.removeChild(user);
     expect(spacer.render(80)).toEqual([""]);
     expect(user.render).toBe(nativeUserRender);
@@ -559,7 +580,12 @@ describe("native conversation density adapter", () => {
       toggleHits.push({ y: event.y, height: event.height });
       return { handled: true };
     };
+    const firstUserHits: Array<{ y: number; height: number }> = [];
     const firstUser = new UserMessageComponent("copy user one");
+    (firstUser as Component).handleMouse = (event) => {
+      firstUserHits.push({ y: event.y, height: event.height });
+      return { handled: true };
+    };
     const userHits: Array<{ y: number; height: number }> = [];
     const secondUser = new UserMessageComponent("copy user two");
     (secondUser as Component).handleMouse = (event) => {
@@ -575,7 +601,17 @@ describe("native conversation density adapter", () => {
     add(chat, first, second, firstUser, secondUser, answer);
 
     const rows = chat.render(80);
-    expect(plain(rows)).toEqual(["", " first", " second", " copy user one", " copy user two", " copy assistant"]);
+    expect(plain(rows)).toEqual([
+      "",
+      " first",
+      " second",
+      "",
+      " copy user one",
+      "",
+      " copy user two",
+      "",
+      " copy assistant",
+    ]);
     const event = {
       type: "click",
       button: "left",
@@ -592,8 +628,10 @@ describe("native conversation density adapter", () => {
     expect(chat.handleMouse(event)?.handled).toBe(true);
     expect(toggleHits).toEqual([{ y: 1, height: 2 }]);
     expect(chat.handleMouse({ ...event, y: 4, screenY: 4 })?.handled).toBe(true);
+    expect(firstUserHits).toEqual([{ y: 0, height: 1 }]);
+    expect(chat.handleMouse({ ...event, y: 6, screenY: 6 })?.handled).toBe(true);
     expect(userHits).toEqual([{ y: 0, height: 1 }]);
-    expect(chat.handleMouse({ ...event, y: 5, screenY: 5 })?.handled).toBe(true);
+    expect(chat.handleMouse({ ...event, y: 8, screenY: 8 })?.handled).toBe(true);
     expect(assistantHits).toEqual([{ y: 1, height: 2 }]);
   });
   test("foreign render chains stop applying density after disposal", () => {
