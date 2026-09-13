@@ -7,6 +7,7 @@ const stateDir = join(root, ".die-harness");
 const artifactsDir = join(root, "artifacts", "tui");
 const timeoutSeconds = Number(process.env.DIE_TUI_TIMEOUT_SECONDS ?? 60 * 60);
 const [command = "help", session = "test", ...args] = Bun.argv.slice(2);
+const offlineEnv = { ...process.env, HERDR_ENV: "0", HERDR_SOCKET_PATH: undefined, HERDR_PANE_ID: undefined };
 
 type State = { artifactDir: string; transcript: string; expiresAt?: string };
 
@@ -36,6 +37,7 @@ function shellQuote(value: string): string {
 async function tmux(tmuxArgs: string[], allowFailure = false): Promise<string> {
   const proc = Bun.spawn(["tmux", "-L", SOCKET, "-f", join(root, "scripts", "tmux.conf"), ...tmuxArgs], {
     cwd: root,
+    env: offlineEnv,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -96,7 +98,18 @@ switch (command) {
     await mkdir(artifactDir, { recursive: true });
 
     const dieArgs = ["--provider", "openai-codex", "--model", "gpt-5.6-luna", ...args];
-    const launch = [join(root, "dist", "die"), ...dieArgs].map(shellQuote).join(" ");
+    const launch = [
+      "env",
+      "-u",
+      "HERDR_SOCKET_PATH",
+      "-u",
+      "HERDR_PANE_ID",
+      "HERDR_ENV=0",
+      join(root, "dist", "die"),
+      ...dieArgs,
+    ]
+      .map(shellQuote)
+      .join(" ");
     await tmux(["new-session", "-d", "-s", session, "-x", "120", "-y", "40", launch]);
     let expiresAt: string | undefined;
     if (session === "demo") {

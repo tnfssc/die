@@ -131,6 +131,7 @@ test("real offline assembly changes only messages across goal set, update, and c
 
 test("real SDK reconciles helper waiting through task-complete and completes", async () => {
   const dir = await mkdtemp(join(tmpdir(), "die-goal-sdk-"));
+  const releaseJob = join(dir, "release-sdk-job");
   let session: any;
   try {
     const model = getModel("anthropic", "claude-sonnet-4-5")!;
@@ -144,6 +145,7 @@ test("real SDK reconciles helper waiting through task-complete and completes", a
 
     let calls = 0;
     let settled = 0;
+    let handoffGoalStatus: string | undefined;
     const prompts: string[] = [];
     const scripted = (_model: any, context: any) => {
       calls++;
@@ -157,7 +159,10 @@ test("real SDK reconciles helper waiting through task-complete and completes", a
                 id: "goal_wait",
                 name: "execute",
                 arguments: {
-                  code: 'await shell("sleep 0.1; echo sdk-job",{waitSeconds:0}); await handoff("Waiting for owned SDK job")',
+                  code:
+                    "await shell(" +
+                    JSON.stringify(`while [ ! -f ${JSON.stringify(releaseJob)} ]; do sleep 0.01; done; echo sdk-job`) +
+                    ',{waitSeconds:0}); await handoff("Waiting for owned SDK job")',
                 },
               },
             ]
@@ -231,6 +236,20 @@ test("real SDK reconciles helper waiting through task-complete and completes", a
             }),
         },
         {
+          name: "release-sdk-job",
+          factory: (pi) =>
+            pi.on("tool_execution_end", async (event) => {
+              if (event.toolName !== "execute" || event.isError || typeof event.result?.details?.handoff !== "string")
+                return;
+              const latestGoal = manager
+                .getEntries()
+                .filter((entry: any) => entry.type === "custom" && entry.customType === "die-goal")
+                .at(-1) as any;
+              handoffGoalStatus = latestGoal?.data.goal?.status;
+              await Bun.write(releaseJob, "release");
+            }),
+        },
+        {
           name: "goal-context-filter",
           factory: (pi) =>
             pi.on("context", (event) => ({
@@ -256,6 +275,10 @@ test("real SDK reconciles helper waiting through task-complete and completes", a
     }));
 
     await session.prompt("Begin");
+
+    // The fixture releases the child from tool_execution_end only after the
+    // production goal listener has persisted the handoff's waiting state.
+    expect(handoffGoalStatus).toBe("waiting");
     for (let attempt = 0; attempt < 100 && calls < 3; attempt++) await Bun.sleep(10);
     expect({ calls, settled }).toMatchObject({ calls: 3 });
     expect(prompts[0]).toContain("Status: active");
@@ -282,6 +305,8 @@ test("real SDK reconciles helper waiting through task-complete and completes", a
     });
     expect(calls).toBeLessThanOrEqual(3);
   } finally {
+    // Never strand the gated fixture if setup or an assertion fails.
+    await Bun.write(releaseJob, "release").catch(() => {});
     session?.dispose();
     await rm(dir, { recursive: true, force: true });
   }
