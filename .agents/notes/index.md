@@ -19,3 +19,11 @@
 - [Shake-first compaction](auto-shake-compaction.md): active feature; >=75% character reduction chooses shake before native/normal compaction.
 
 - [v0.2.10 release](release-v0210.md): release/install authorized, validation underway.
+
+- [Temporary die web feasibility](die-web-feasibility.md): research only, T3 Code bridge until official Pi support; repo clones and tvly evidence.
+
+- [Full die web plan](die-web-full-plan.md): supersedes temporary bridge; mapping Claude/Codex agent/task support and maintainable T3 updates.
+
+- [Minimal die web implementation](die-web-implementation.md): current official T3 6f00d38 /0.0.40 installed and installed-browser verified; no web pairing on loopback, origin guards, model switching and sparse Agents status. Not committed/released; optional T3 MCP browser tools unsupported.
+
+- [v0.2.11 release](release-v0211.md): optional local web UI, task status, Stop fix; publication/install tracking.

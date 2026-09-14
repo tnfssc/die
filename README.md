@@ -10,7 +10,7 @@ executable, and place it in a directory on your `PATH`. Release source links, th
 license, and third-party notices are published alongside each binary. Other platforms
 have not been validated as release targets.
 
-This README describes the current source tree. The locally installed executable remains the older v0.2.3 release; features added afterward are not claimed as released or installed.
+This README describes the current source tree. For a release, use the README at its corresponding tag.
 
 To build from source, install Bun 1.4.1 (the version pinned in `mise.toml`), clone the
 repository, and enter the checkout.
@@ -35,7 +35,7 @@ Tool schemas use `zod/mini`. `src/tool-schema.ts` converts them to input JSON Sc
 bun run install:local
 ```
 
-This builds and atomically installs the executable to `~/.local/bin/die`. If that directory is not already on `PATH`, the installer prints a reminder. Set `DIE_INSTALL_DIR` to override the destination.
+This builds and atomically installs the executable to `~/.local/bin/die`. If `dist/die-web` has been built, it also installs that optional sidecar beside the executable. If that directory is not already on `PATH`, the installer prints a reminder. Set `DIE_INSTALL_DIR` to override the destination.
 
 ```sh
 die --help
@@ -68,6 +68,22 @@ extensions, prompt templates, and skills. Die's user-facing additions are:
 | `/subagents` | Configure model and thinking inheritance for fast, normal, and orchestrator sub-agents. |
 | `/cache-ttl [duration]` | Show or set the local cache-expiry estimate (for example, `30m`, `1h`, or `1d`). It is informational, not a provider cache guarantee. |
 | `/status` | Show the compact session status, including combined descendant cost estimates. |
+
+### Local web UI
+
+```sh
+bun run build
+bun run build:web
+./dist/die web
+```
+
+The optional web build uses Node 24 and pnpm. It builds a pinned T3 Code frontend/server alongside `dist/die`, with the real die runtime behind it and basic agent/task status in T3’s existing UI. It opens on localhost without web login or pairing and uses your existing die provider credentials. Cross-origin browser access is blocked; other local processes can access the app. `--no-browser` and `--port` are forwarded to T3.
+
+The T3 source pin and reviewed integration patch live in `web/`. Updates are explicit builds, not automatic downloads at startup.
+
+### Release downloads
+
+Linux x64 releases include the existing `die-linux-x64` binary and optional `die-web-linux-x64.tar.gz` sidecar. The web sidecar requires Node 24 at runtime (pnpm is only needed to build it). Download both assets, verify the accompanying `.sha256` files, and extract the sidecar next to the binary before running `./die-linux-x64 web`.
 
 ### Manual context shake
 

@@ -18,6 +18,10 @@ import { formatThrownValue } from "./typescript/error-diagnostic";
 import { INTERNAL_TYPESCRIPT_RUNNER_ARG, runTypeScriptFromStdin } from "./typescript/runner";
 
 const cliArgs = process.argv.slice(2);
+if (cliArgs[0] === "web") {
+  const { runWeb } = await import("./web/launcher");
+  process.exit(await runWeb(cliArgs.slice(1)));
+}
 if (cliArgs[0] === INTERNAL_TYPESCRIPT_RUNNER_ARG) {
   try {
     await runTypeScriptFromStdin();

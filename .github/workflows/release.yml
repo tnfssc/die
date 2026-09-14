@@ -19,6 +19,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.1
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.10.0
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.1
@@ -63,6 +69,25 @@ jobs:
       - name: Generate production dependency notices
         shell: bash
         run: bun run generate:notices 2>&1 | tee artifacts/release/notices.log
+      - name: Build web sidecar
+        shell: bash
+        run: bun run build:web 2>&1 | tee artifacts/release/web-build.log
+      - name: Validate web backend
+        shell: bash
+        run: |
+          cd node_modules/.cache/die-t3code/apps/server
+          ../../node_modules/.bin/tsc --noEmit 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-typecheck.log"
+          ../../node_modules/.bin/vp test run src/provider/Layers/PiAdapter.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-tests.log"
+      - name: Package web sidecar
+        shell: bash
+        run: |
+          t3_revision=$(bun -e 'console.log(require("./web/t3-source.json").revision)')
+          patch_sha256=$(sha256sum web/t3.patch | awk '{print $1}')
+          printf 'Source: https://github.com/pingdotgg/t3code/tree/%s\nRevision: %s\nPatch: web/t3.patch\nPatch-SHA256: %s\nDie source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\n' \
+            "$t3_revision" "$t3_revision" \
+            "$patch_sha256" "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REF_NAME" > dist/die-web/SOURCE.txt
+          tar -C dist -czf dist/release/die-web-linux-x64.tar.gz die-web
+          sha256sum dist/release/die-web-linux-x64.tar.gz | awk '{print $1 "  die-web-linux-x64.tar.gz"}' > dist/release/die-web-linux-x64.tar.gz.sha256
       - name: Create checksums and source information
         shell: bash
         run: |
@@ -70,6 +95,8 @@ jobs:
           sha256sum die-linux-x64 > die-linux-x64.sha256
           cp ../../LICENSE ../../THIRD_PARTY_NOTICES.md .
           printf 'Source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\nTarget: bun-linux-x64-baseline\n' "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REF_NAME" > SOURCE.txt
+          printf '\nWeb sidecar source:\n' >> SOURCE.txt
+          cat ../die-web/SOURCE.txt >> SOURCE.txt
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -79,6 +106,8 @@ jobs:
             --generate-notes \
             --title "$GITHUB_REF_NAME" \
             dist/release/die-linux-x64 \
+            dist/release/die-web-linux-x64.tar.gz \
+            dist/release/die-web-linux-x64.tar.gz.sha256 \
             dist/release/die-linux-x64.sha256 \
             dist/release/LICENSE \
             dist/release/THIRD_PARTY_NOTICES.md \

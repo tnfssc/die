@@ -30,6 +30,7 @@ import { registerSubagentSettings } from "./subagent-settings-ui";
 import { createTaskLifecycleRecorder } from "./task-lifecycle";
 import { type TaskInspection, TaskManager } from "./task-manager";
 import { registerTaskMonitor } from "./task-monitor";
+import { createWebTaskEventEmitter } from "./web-events";
 
 export function completionDiagnosticDetails(tasks: TaskInspection[], notices: AttentionNotice[]) {
   const taskStatusCounts = {
@@ -348,7 +349,9 @@ export default function asynchronousTasksExtension(
       detachManagerDiagnostics = attachDiagnosticSink(manager, (_type, data) =>
         recordOwned(data as Parameters<typeof recordDiagnostic>[1]),
       );
+      const emitWebTask = createWebTaskEventEmitter(ctx?.mode);
       manager.subscribe((event) => {
+        emitWebTask(event);
         if (event.type === "activity") return;
         if (event.type === "completed") reconcileProjectMemory();
         const task = event.task;
