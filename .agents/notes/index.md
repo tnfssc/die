@@ -37,3 +37,5 @@
 - [Current native compaction incident](native-compaction-current-incident.md): confirmed journal-only empty failed assistant causes coverage false rejection; narrow fix tested (612 pass) and CLI installed locally. User must restart/resume old v0.2.10 process. Single-binary work remains paused.
 
 - [Single-binary packaging](single-binary-packaging.md): Bun-only CLI/web candidate passed browser terminal/chat/Mode/model/Stop and 616 core tests. Preparing v0.2.14; v0.2.13 tag remains immutable.
+
+- [v0.2.15 release](release-v0215.md): v0.2.14 failed backend TS validation; corrected final check pipeline and PTY tests, 616 core +121 backend tests passing; next release pending.

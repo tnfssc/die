@@ -86,7 +86,7 @@ jobs:
         run: |
           cd .cache/die-t3code/apps/server
           ../../node_modules/.bin/tsc --noEmit 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-typecheck.log"
-          ../../node_modules/.bin/vp test run src/provider/Layers/PiAdapter.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts src/terminal/NodePtyAdapter.test.ts src/terminal/BunPtyAdapter.test.ts src/device/AgentDeviceTarget.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-tests.log"
+          ../../node_modules/.bin/vp test run src/provider/Layers/PiAdapter.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts src/terminal/NodePtyAdapter.test.ts src/terminal/BunPtyAdapter.test.ts src/terminal/NodePtyAdapter.test.ts src/terminal/BunPtyAdapter.test.ts src/device/AgentDeviceTarget.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-tests.log"
       - name: Create checksums and source information
         shell: bash
         run: |

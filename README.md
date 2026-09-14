@@ -83,7 +83,7 @@ The T3 source pin and reviewed integration patch live in `web/`. Updates are exp
 
 ### Release downloads
 
-Starting with v0.2.14, Linux x64 releases include one `die-linux-x64` executable with the web application embedded. Download the executable and `die-linux-x64.sha256`, verify the checksum, make the executable runnable, and run `./die-linux-x64 web`. It does not require an external Node or pnpm runtime. Source provenance, the project license, and third-party notices and licenses—including the embedded backend’s dependencies—are published beside it.
+Starting with v0.2.15, Linux x64 releases include one `die-linux-x64` executable with the web application embedded. Download the executable and `die-linux-x64.sha256`, verify the checksum, make the executable runnable, and run `./die-linux-x64 web`. It does not require an external Node or pnpm runtime. Source provenance, the project license, and third-party notices and licenses—including the embedded backend’s dependencies—are published beside it.
 
 ### Manual context shake
 

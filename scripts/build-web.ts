@@ -35,6 +35,8 @@ export async function buildWeb(): Promise<void> {
     await run(["git", "apply", patch]);
   }
   await run(["pnpm", "install", "--frozen-lockfile"]);
+  // Bundlers erase types; validate the final patched backend before packaging it.
+  await run([source + "/node_modules/.bin/tsc", "--noEmit"], source + "/apps/server");
   await run(["pnpm", "--filter", "@t3tools/web", "build"]);
   await run(["pnpm", "--filter", "t3", "build:bundle"]);
   await cp(source + "/apps/web/dist", source + "/apps/server/dist/client", { recursive: true });

@@ -43,6 +43,11 @@ jobs:
       - name: Build
         shell: bash
         run: bun run build 2>&1 | tee artifacts/ci/build.log
+      - name: Validate web backend
+        shell: bash
+        run: |
+          cd .cache/die-t3code/apps/server
+          ../../node_modules/.bin/vp test run src/provider/Layers/PiAdapter.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts src/terminal/NodePtyAdapter.test.ts src/terminal/BunPtyAdapter.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/ci/web-tests.log"
       - name: Deterministic tests
         shell: bash
         env:
