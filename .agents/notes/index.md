@@ -8,4 +8,4 @@
 
 - [Releases and Herdr sidebar investigation](releases-herdr-2026-09-13.md): v0.2.8 published and verified; spacing/Herdr fixes installed, sidebar recovered, tests isolated. No pending jobs.
 
-- [Experimental Go port](godie-handoff.md): renamed to ./expt-go; Go core + bundled Bun, explicitly experimental. Validation and remaining parity/release limits in handoff. [Research/work log](godie-research.md).
+- [Failed Go experiment](go-experiment.md): archived in ac80ddd, then removed at user request. Original app unchanged.
