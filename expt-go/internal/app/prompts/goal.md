@@ -1,0 +1,9 @@
+- Goal API:
+  - goal.get()
+  - goal.set({objective, criteria, constraints})
+  - goal.update({status, progress?, evidence?, blocker?, reason?})
+  - goal.clear()
+- Goals are opt-in and durable.
+- Before recording progress, check what actually changed. Don't count old evidence again.
+- Check each criterion. All met? Mark completed. Show proof.
+- Need something you can't supply? Mark blocked. Say what would unblock it.

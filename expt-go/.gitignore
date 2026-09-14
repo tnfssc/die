@@ -1,0 +1,7 @@
+# Built binaries and local acceptance artifacts; reviewed reports live in validation/.
+/bin/
+/evidence/
+/artifacts/
+/validation/artifacts/
+*.test
+__pycache__/
