@@ -27,3 +27,5 @@
 - [Minimal die web implementation](die-web-implementation.md): current official T3 6f00d38 /0.0.40 installed and installed-browser verified; no web pairing on loopback, origin guards, model switching and sparse Agents status. Not committed/released; optional T3 MCP browser tools unsupported.
 
 - [v0.2.11 release](release-v0211.md): optional local web UI, task status, Stop fix; publication/install tracking.
+
+- [v0.2.12 release](release-v0212.md): correct fresh-build cache path after unpublished v0.2.11 CI failure.

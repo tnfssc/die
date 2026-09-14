@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import sourcePin from "../web/t3-source.json";
 
 const root = resolve(import.meta.dir, "..");
-const source = resolve(process.env.DIE_T3_SOURCE ?? root + "/node_modules/.cache/die-t3code");
+const source = resolve(process.env.DIE_T3_SOURCE ?? root + "/.cache/die-t3code");
 const output = resolve(root, "dist/die-web");
 const patch = resolve(root, "web/t3.patch");
 async function run(args: string[], cwd = source): Promise<void> {

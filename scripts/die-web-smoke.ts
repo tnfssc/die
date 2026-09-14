@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { once } from "node:events";
 
 const repo = resolve(import.meta.dirname, "..");
-const t3Source = process.env.DIE_T3_SOURCE ?? join(repo, "node_modules/.cache/die-t3code");
+const t3Source = process.env.DIE_T3_SOURCE ?? join(repo, ".cache/die-t3code");
 const playwrightRoot = join(t3Source, "node_modules/.pnpm/playwright-core@1.60.0/node_modules/playwright-core");
 const chromiumPath =
   process.env.DIE_WEB_CHROMIUM ??

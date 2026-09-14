@@ -75,7 +75,7 @@ jobs:
       - name: Validate web backend
         shell: bash
         run: |
-          cd node_modules/.cache/die-t3code/apps/server
+          cd .cache/die-t3code/apps/server
           ../../node_modules/.bin/tsc --noEmit 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-typecheck.log"
           ../../node_modules/.bin/vp test run src/provider/Layers/PiAdapter.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-tests.log"
       - name: Package web sidecar

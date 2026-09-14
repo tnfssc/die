@@ -7,3 +7,5 @@ artifacts/
 
 # Commit reviewed project memory, not pending inputs or runtime metadata.
 .agents/notes/.*
+
+.cache/
