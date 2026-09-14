@@ -295,7 +295,8 @@ test("fresh compaction prepares the frame and redacted context for a later custo
 
     await session.compact();
     expect(frameCalls).toBe(1);
-    expect(contextCalls).toBe(1);
+    // Shake preview transforms context once before the actual compaction request.
+    expect(contextCalls).toBe(2);
     expect(seen).toHaveLength(1);
     expect(seen[0]!.systemPrompt).toContain("FRESH_PREPARED_FRAME");
     expect(JSON.stringify(seen[0]!.messages)).toContain("[FRESH_REDACTED]");
@@ -340,7 +341,7 @@ test("fresh compaction prepares the frame and redacted context for a later custo
       "result-for-fresh-tool-a",
       "result-for-fresh-tool-b",
     ]);
-    expect(contextCalls).toBe(3);
+    expect(contextCalls).toBe(4);
   } finally {
     session?.dispose();
     await rm(dir, { recursive: true, force: true });

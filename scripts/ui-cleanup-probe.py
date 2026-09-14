@@ -33,7 +33,7 @@ def chunk(delta: dict, finish=None) -> dict:
 
 def sse_for(n: int) -> bytes:
     calls = {
-        1: ("success_call", 'console.log("SUCCESS_OUTPUT")'),
+        1: ("success_call", 'console.log("SUCCESS_OUTPUT"); await Bun.sleep(1200)'),
         2: ("error_call", 'throw new Error("EXPECTED_BOOM")'),
         3: ("long_call", 'console.log("L".repeat(6000))'),
         5: ("jobs_call", '''const a = await shell("sleep 0.20; exit 0", { waitSeconds: 0 });
@@ -160,6 +160,11 @@ def main() -> int:
         raise TimeoutError(f"timed out waiting for {marker}")
     try:
         run(tmux+["-f", str(tmux_conf), "new-session","-d","-s",session,"-x","120","-y","36","-c",str(home),command], env=env)
+        wait_for('… executing · console.log("SUCCESS_OUTPUT")')
+        active_plain, active_ansi = capture(False), capture(True)
+        Path(str(prefix)+"-executing-plain.txt").write_text(active_plain, encoding="utf-8")
+        Path(str(prefix)+"-executing-ansi.txt").write_text(active_ansi, encoding="utf-8")
+        assertions["executing_row"] = '… executing · console.log("SUCCESS_OUTPUT")' in strip_ansi(active_plain)
         wait_for("FINAL_FIRST_MARKER")
         run(tmux+["send-keys","-t",session,"-l","SECOND_USER_MARKER"], timeout=3)
         run(tmux+["send-keys","-t",session,"Enter"], timeout=3)
@@ -179,7 +184,7 @@ def main() -> int:
     lines = [x.rstrip() for x in clean.splitlines()]
     def has(pattern): return re.search(pattern, clean, re.MULTILINE) is not None
     assertions["six_bounded_requests"] = len(fixture.records) == 6
-    assertions["success_row"] = has(r'^\s*✓ executed · console\.log\("SUCCESS_OUTPUT"\)\s*$')
+    assertions["success_row"] = has(r'^\s*✓ executed · console\.log\("SUCCESS_OUTPUT"\); await Bun\.sleep\(1200\)\s*$')
     assertions["error_row"] = has(r'^\s*✗ execute failed · throw new Error\("EXPECTED_BOOM"\)\s*$')
     assertions["long_row_truncated_only"] = has(r'^\s*✓ executed · truncated · console\.log\("L"\.repeat\(6000\)\)\s*$')
     assertions["no_output_file_count"] = not has(r'(?i)(output file|output artifact|\d+ output)')

@@ -21,7 +21,7 @@ const success = {
 
 test("collapsed execute call and settled result are deterministic single rows", () => {
   expect(executeInputPreview(code, false, theme, undefined, true).render(100)).toEqual([
-    '… Execute running · console.log("first"); console.log("last");',
+    '… executing · console.log("first"); console.log("last");',
   ]);
   expect(executeOutputPreview(success, false, false, theme, code).render(120)).toEqual([
     '✓ executed · console.log("first"); console.log("last");',
@@ -80,7 +80,7 @@ test("execute tool wiring supplies configured padding to call and result rendere
     () => 2,
   );
   if (!tool) throw new Error("execute tool was not registered");
-  expect(tool.renderCall(context.args, theme, context).render(80)[0]).toStartWith("  … Execute");
+  expect(tool.renderCall(context.args, theme, context).render(80)[0]).toStartWith("  … executing");
   expect(tool.renderResult(success, { expanded: false }, theme, context).render(80)[0]).toStartWith("  ✓ executed");
 });
 
@@ -300,4 +300,12 @@ test("collapsed execute uses one compact truncation marker and hides output-file
   expect(rows.map((row) => stripTerminalSequences(row).trimEnd())).toEqual([
     '✓ executed · truncated · console.log("large")',
   ]);
+});
+
+test("preparing and running execute calls share the compact executing label", () => {
+  for (const started of [false, true]) {
+    expect(executeInputPreview('console.log("work")', false, theme, undefined, started).render(100)).toEqual([
+      '… executing · console.log("work")',
+    ]);
+  }
 });

@@ -12,6 +12,7 @@ import {
   MANUAL_SHAKE_ENTRY,
   projectShakenContext,
   registerManualShake,
+  shouldShakeBeforeCompaction,
   SHAKE_CARRY_FORWARD_PERSIST_FAILED,
   SHAKE_CHECKPOINT_PERSIST_FAILED,
   SHAKE_REFUSED_AMBIGUOUS_TOOL,
@@ -664,5 +665,127 @@ describe("manual shake diagnostic persistence guards", () => {
         .sort(),
     ).toEqual(["code", "component", "count", "dispatch", "operationId", "outcome"]);
     expect(JSON.stringify(diagnostic)).not.toContain("success-private");
+  });
+});
+
+describe("shake-before-compaction policy", () => {
+  function largeCompleted(manager: SessionManager, id: string) {
+    manager.appendMessage(
+      assistant([
+        { type: "thinking", thinking: "x".repeat(4000) },
+        { type: "toolCall", id, name: "execute", arguments: { code: id } },
+      ]),
+    );
+    manager.appendMessage(result(id, "x".repeat(4000)));
+  }
+
+  function compactionHarness(
+    manager: SessionManager,
+    append: (type: string, data: any) => void = (type, data) => manager.appendCustomEntry(type, data),
+  ) {
+    const handlers = new Map<string, Function[]>();
+    let invalidations = 0;
+    const notices: string[] = [];
+    registerManualShake(
+      {
+        on: (name: string, fn: Function) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
+        registerCommand() {},
+        appendEntry: append,
+      } as any,
+      () => invalidations++,
+    );
+    const ctx: any = {
+      sessionManager: manager,
+      model: { provider: "test", id: "test" },
+      ui: { notify: (message: string) => notices.push(message) },
+    };
+    const run = () =>
+      handlers.get("session_before_compact")![0]!(
+        { reason: "overflow", willRetry: true, signal: new AbortController().signal },
+        ctx,
+      );
+    return { handlers, ctx, run, notices, invalidations: () => invalidations };
+  }
+
+  test("accepts exact 75% character reduction and rejects just below it", () => {
+    const after = [{ role: "user", content: "", timestamp: 1 }] as any;
+    const exact = [{ role: "user", content: "x".repeat(132), timestamp: 1 }] as any;
+    const below = [{ role: "user", content: "x".repeat(131), timestamp: 1 }] as any;
+    expect(JSON.stringify(exact).length).toBe(JSON.stringify(after).length * 4);
+    expect(shouldShakeBeforeCompaction(exact, after)).toBe(true);
+    expect(shouldShakeBeforeCompaction(below, after)).toBe(false);
+  });
+
+  test("qualifying shake persists once, invalidates snapshots, and wins before native and normal handlers", async () => {
+    const manager = SessionManager.inMemory();
+    manager.appendMessage({ role: "user", content: "keep", timestamp: 1 });
+    largeCompleted(manager, "large");
+    const h = compactionHarness(manager);
+    let native = 0;
+    let normal = 0;
+    const ordered = [h.handlers.get("session_before_compact")![0]!, () => native++, () => normal++];
+    let result: any;
+    for (const handler of ordered) {
+      result = await handler({ reason: "overflow", willRetry: true, signal: new AbortController().signal }, h.ctx);
+      if (result?.cancel) break;
+    }
+    expect(result).toEqual({ cancel: true });
+    expect([native, normal]).toEqual([0, 0]);
+    expect(h.invalidations()).toBe(1);
+    expect(latestShakeRecord(manager.buildContextEntries(), manager.getSessionId())).toBeDefined();
+    expect(await h.run()).toBeUndefined();
+    expect(h.invalidations()).toBe(1);
+  });
+
+  test("rejected and no-op previews do not mutate context and fall through", async () => {
+    const rejected = SessionManager.inMemory();
+    rejected.appendMessage({ role: "user", content: "y".repeat(4000), timestamp: 1 });
+    completed(rejected, "small", "tiny");
+    const beforeRejected = JSON.stringify(rejected.buildContextEntries());
+    const rh = compactionHarness(rejected);
+    expect(await rh.run()).toBeUndefined();
+    expect(JSON.stringify(rejected.buildContextEntries())).toBe(beforeRejected);
+    expect(rh.invalidations()).toBe(0);
+
+    const noop = SessionManager.inMemory();
+    noop.appendMessage({ role: "user", content: "nothing removable", timestamp: 1 });
+    const beforeNoop = JSON.stringify(noop.buildContextEntries());
+    const nh = compactionHarness(noop);
+    expect(await nh.run()).toBeUndefined();
+    expect(JSON.stringify(noop.buildContextEntries())).toBe(beforeNoop);
+    expect(nh.invalidations()).toBe(0);
+  });
+
+  test("preview and persistence failures preserve fallback ownership and atomic active state", async () => {
+    const preview = SessionManager.inMemory();
+    largeCompleted(preview, "broken");
+    bindInstructionContinuitySession({
+      sessionManager: preview,
+      agent: {
+        transformContext: async () => {
+          throw new Error("preview failed");
+        },
+      },
+    } as any);
+    try {
+      const before = JSON.stringify(preview.buildContextEntries());
+      const h = compactionHarness(preview);
+      expect(await h.run()).toBeUndefined();
+      expect(JSON.stringify(preview.buildContextEntries())).toBe(before);
+    } finally {
+      clearInstructionContinuity(preview);
+    }
+
+    const persist = SessionManager.inMemory();
+    largeCompleted(persist, "disk");
+    const priorLeaf = persist.getLeafId();
+    const h = compactionHarness(persist, (type, data) => {
+      persist.appendCustomEntry(type, data);
+      throw new Error("disk failed");
+    });
+    expect(await h.run()).toBeUndefined();
+    expect(persist.getLeafId()).toBe(priorLeaf);
+    expect(latestShakeRecord(persist.buildContextEntries(), persist.getSessionId())).toBeUndefined();
+    expect(h.invalidations()).toBe(0);
   });
 });

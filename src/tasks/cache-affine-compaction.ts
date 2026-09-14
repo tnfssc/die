@@ -12,6 +12,7 @@ import {
 import { recordDiagnostic } from "../diagnostics.js";
 import promptTemplate from "../prompts/compaction.md" with { type: "text" };
 import jobsTemplate from "../prompts/compaction-jobs.md" with { type: "text" };
+import { isReadOnlyCompactionContext } from "./native-compaction";
 import { withStandardProviderTier } from "./native-fast-mode";
 
 export const CACHE_AFFINE_COMPACTION_VERSION = 5;
@@ -387,7 +388,7 @@ export function registerCacheAffineCompaction(
   // die's inline extension is loaded after discovered/CLI extensions, so this
   // sees the final chained context and current per-turn system prompt.
   pi.on("context", (event, ctx) => {
-    if (!ctx.model) return;
+    if (!ctx.model || isReadOnlyCompactionContext()) return;
     const same =
       snapshot?.sessionId === ctx.sessionManager.getSessionId() &&
       snapshot.model.provider === ctx.model.provider &&

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { isDeepStrictEqual } from "node:util";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { calculateCost, type Model, type Usage } from "@earendil-works/pi-ai";
@@ -13,6 +14,17 @@ import { recordDiagnostic } from "../diagnostics.js";
 import jobsTemplate from "../prompts/compaction-jobs.md" with { type: "text" };
 import noticeTemplate from "../prompts/native-compaction.md" with { type: "text" };
 import { reportProviderAttempt } from "./provider-attempts";
+
+const readOnlyContextPreview = new AsyncLocalStorage<boolean>();
+
+/** Run context transforms for accounting/projection without refreshing provider captures. */
+export function withReadOnlyCompactionContext<T>(operation: () => Promise<T>): Promise<T> {
+  return readOnlyContextPreview.run(true, operation);
+}
+
+export function isReadOnlyCompactionContext(): boolean {
+  return readOnlyContextPreview.getStore() === true;
+}
 
 export const NATIVE_CODEX_COMPACTION_VERSION = 1;
 export const NATIVE_CODEX_SUMMARY = noticeTemplate.trimEnd();
@@ -623,8 +635,8 @@ export function registerNativeCodexCompaction(
       ctx.abort();
       return { messages: event.messages };
     }
-    blockOrdinaryRequest = undefined;
-    if (ctx.model?.api === "openai-codex-responses") {
+    if (!isReadOnlyCompactionContext()) blockOrdinaryRequest = undefined;
+    if (!isReadOnlyCompactionContext() && ctx.model?.api === "openai-codex-responses") {
       captureInvalidated = false;
       captured = {
         sessionId: ctx.sessionManager.getSessionId(),

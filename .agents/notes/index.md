@@ -15,3 +15,7 @@
 - [Native compaction coverage investigation](native-compaction-coverage-2026-09-14.md): strict timestamp identity can falsely reject reconstructed task completions; current warning traced, no fix yet.
 
 - [v0.2.9 release](release-v029.md): install/push/release authorized; full validation in progress.
+
+- [Shake-first compaction](auto-shake-compaction.md): active feature; >=75% character reduction chooses shake before native/normal compaction.
+
+- [v0.2.10 release](release-v0210.md): release/install authorized, validation underway.

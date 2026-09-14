@@ -14,6 +14,7 @@ import {
   registerNativeCodexCompaction,
   requestNativeCodexCompaction,
   resolveCodexResponsesUrl,
+  withReadOnlyCompactionContext,
 } from "../src/tasks/native-compaction";
 import { subscribeProviderAttempts } from "../src/tasks/provider-attempts";
 
@@ -363,6 +364,22 @@ describe("fail-closed checkpoint lifecycle", () => {
     manager.appendCompaction(NATIVE_CODEX_SUMMARY, first, 10, details, true);
     return manager;
   }
+  test("read-only transformed-context previews preserve a complete native request capture", async () => {
+    const manager = SessionManager.inMemory();
+    manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });
+    const h = harness(manager, model);
+    h.handlers.get("context")!({ messages: manager.buildSessionContext().messages }, h.ctx);
+    h.handlers.get("before_provider_headers")!({ headers: { Authorization: "Bearer x" } }, h.ctx);
+    h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+    expect(h.capture.hasFreshCapture()).toBe(true);
+
+    await withReadOnlyCompactionContext(async () => {
+      h.handlers.get("context")!({ messages: [{ role: "user", content: "preview only", timestamp: 2 }] }, h.ctx);
+      await Promise.resolve();
+    });
+
+    expect(h.capture.hasFreshCapture()).toBe(true);
+  });
   test("explicit invalidation prevents a pre-shake native snapshot from being reused", () => {
     const manager = SessionManager.inMemory();
     manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });

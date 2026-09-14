@@ -1,3 +1,4 @@
+import { isReadOnlyCompactionContext } from "../src/tasks/native-compaction";
 import { test, expect } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -167,7 +168,9 @@ for (const scenario of [
             factory: (pi) => {
               pi.on("context", (event, ctx) => {
                 contextCalls++;
-                contextPrompts.push(ctx.getSystemPrompt());
+                // A local preview can precede fresh request framing; only provider-bound
+                // transforms must already carry the prepared instruction frame.
+                if (!isReadOnlyCompactionContext()) contextPrompts.push(ctx.getSystemPrompt());
                 const messages =
                   compacting && scenario === "empty-context"
                     ? []
@@ -317,7 +320,8 @@ for (const scenario of [
       expect(checkpoint.usage).toEqual(usage);
       expect(checkpoint.fromHook).toBe(true);
       expect(captured).toHaveLength(ordinaryCount + 1);
-      expect(contextCalls).toBe(ordinaryCount + 1);
+      // One additional read-only context transform previews shake without a provider call.
+      expect(contextCalls).toBe(ordinaryCount + 2);
       expect(frameCalls).toBe(1);
       expect(payloadCalls).toBe(ordinaryCount + 1);
       expect(contextPrompts.every((p) => p.includes("CURRENT_PIPELINE_FRAME"))).toBe(true);

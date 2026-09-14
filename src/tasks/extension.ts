@@ -191,6 +191,8 @@ export default function asynchronousTasksExtension(
   let detachManagerDiagnostics: (() => void) | undefined;
   let attention: JobAttentionScheduler | undefined;
   let invalidateShakeSnapshots = () => {};
+  // Registration order is policy: shake previews first and a qualifying cancel
+  // short-circuits native Codex and normal cache-affine compaction handlers.
   registerManualShake(pi, () => invalidateShakeSnapshots());
   const nativeCompaction = registerNativeCodexCompaction(
     pi,

@@ -9,6 +9,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { recordDiagnostic } from "../diagnostics.js";
 import { getInstructionContinuitySession } from "./instruction-continuity";
+import { withReadOnlyCompactionContext } from "./native-compaction";
 
 /** Durable, branch-scoped manual context projection. Session JSONL stays append-only. */
 export const MANUAL_SHAKE_ENTRY = "die-manual-shake";
@@ -32,6 +33,8 @@ export const SHAKE_CARRY_FORWARD_SUCCEEDED = "shake_applied";
 export const SHAKE_INVALID_CHECKPOINT = "state_invalid";
 
 const projectionFailures = new WeakMap<object, { sessionId: string; error: Error }>();
+// Successful compaction-time shakes observed by the AgentSession lifecycle adapter.
+const compactionShakeApplications = new WeakMap<object, number>();
 function restoreLeaf(manager: ExtensionContext["sessionManager"], priorLeaf: string | null | undefined): void {
   if (priorLeaf === undefined) return;
   try {
@@ -418,6 +421,14 @@ export function projectShakenContext(
 ): AgentMessage[] {
   return projection(incoming, entries, record).messages;
 }
+export function contextCharacters(messages: readonly AgentMessage[]): number {
+  // Compare the exact same deterministic representation on both sides. This is
+  // deliberately a character policy, not a provider-token estimate.
+  return JSON.stringify(messages).length;
+}
+export function shouldShakeBeforeCompaction(before: readonly AgentMessage[], after: readonly AgentMessage[]): boolean {
+  return contextCharacters(after) * 4 <= contextCharacters(before);
+}
 export function estimateContext(messages: readonly AgentMessage[]): number {
   return messages.reduce((total, message) => total + estimateTokens(message), 0);
 }
@@ -437,7 +448,7 @@ async function currentTransformedContext(
   const transform = agent?.transformContext;
   if (typeof transform === "function") {
     const signal = ctx.signal ?? new AbortController().signal;
-    return await transform.call(agent, structuredClone(raw), signal);
+    return await withReadOnlyCompactionContext(() => transform.call(agent, structuredClone(raw), signal));
   }
   const prior = latestShakeRecord(entries, ctx.sessionManager.getSessionId());
   return prior ? projectShakenContext(raw, entries, prior) : raw;
@@ -490,7 +501,17 @@ export function installShakeAccountingAdapter(): void {
     // prompt. A response that just came back may itself report overflow (often
     // as an error with no usage), and must retain Pi's compact-and-retry path.
     if (skipAbortedCheck === false && lacksFreshUsage(this)) return false;
-    return await originalCheck.call(this, message, skipAbortedCheck);
+    const manager = this.sessionManager as object | undefined;
+    const applicationsBefore = manager ? (compactionShakeApplications.get(manager) ?? 0) : 0;
+    const shouldContinue = await originalCheck.call(this, message, skipAbortedCheck);
+    const shakeApplied = manager && (compactionShakeApplications.get(manager) ?? 0) > applicationsBefore;
+    // The hook cancels to short-circuit both compaction handlers. Preserve Pi's
+    // compact-and-retry continuation for an interrupted response.
+    return (
+      Boolean(
+        shakeApplied && skipAbortedCheck !== false && message.role === "assistant" && message.stopReason !== "stop",
+      ) || shouldContinue
+    );
   };
   prototype.getContextUsage = function () {
     const usage = originalUsage.call(this);
@@ -535,6 +556,72 @@ export function registerManualShake(pi: ExtensionAPI, invalidateProviderSnapshot
     if (boundRuntime) detachShakeRequestGuard(boundRuntime, guardController);
     boundRuntime = undefined;
     guardController.context = undefined;
+  });
+  // This handler is registered before native-Codex and normal compaction. A
+  // qualifying projection is persisted before cancellation short-circuits both.
+  pi.on("session_before_compact", async (event, ctx) => {
+    const snapshot = {
+      manager: ctx.sessionManager,
+      sessionId: ctx.sessionManager.getSessionId(),
+      leafId: ctx.sessionManager.getLeafId(),
+      model: ctx.model,
+      signal: ctx.signal,
+    };
+    const entries = snapshot.manager.buildContextEntries();
+    if (hasOpaqueNativeCheckpoint(entries) || event.signal?.aborted) return;
+    let plan: ShakePlan;
+    let beforeMessages: AgentMessage[];
+    try {
+      plan = buildShakePlan(entries, snapshot.sessionId);
+      beforeMessages = await currentTransformedContext(ctx, entries);
+    } catch {
+      return; // Existing compaction/fallback handlers retain ownership.
+    }
+    const stale =
+      ctx.sessionManager !== snapshot.manager ||
+      ctx.sessionManager.getSessionId() !== snapshot.sessionId ||
+      ctx.sessionManager.getLeafId() !== snapshot.leafId ||
+      ctx.model !== snapshot.model ||
+      ctx.signal !== snapshot.signal ||
+      snapshot.signal?.aborted === true ||
+      event.signal?.aborted === true;
+    if (stale || plan.storageError || plan.unresolvedToolCallIds.length || plan.orphanToolResultIds.length) return;
+    const projected = projection(beforeMessages, entries, plan.record);
+    if (!projected.removedAssistantBlocks && !projected.removedToolResults) return;
+    const beforeChars = contextCharacters(beforeMessages);
+    const afterChars = contextCharacters(projected.messages);
+    if (!shouldShakeBeforeCompaction(beforeMessages, projected.messages)) return;
+    const priorLeaf = ctx.sessionManager.getLeafId();
+    try {
+      pi.appendEntry(MANUAL_SHAKE_ENTRY, plan.record);
+    } catch {
+      restoreLeaf(ctx.sessionManager, priorLeaf);
+      return;
+    }
+    projectionFailures.delete(ctx.sessionManager as object);
+    compactionShakeApplications.set(
+      ctx.sessionManager as object,
+      (compactionShakeApplications.get(ctx.sessionManager as object) ?? 0) + 1,
+    );
+    try {
+      invalidateProviderSnapshot();
+    } catch {
+      // Persistence already committed the projection; cancellation must still
+      // prevent either compactor from running against the changed context.
+    }
+    try {
+      ctx.ui.notify(
+        "Shake replaced compaction: " +
+          beforeChars.toLocaleString() +
+          " → " +
+          afterChars.toLocaleString() +
+          " active-context characters (at least 75% reduction).",
+        "info",
+      );
+    } catch {
+      // UI is observational after the durable decision.
+    }
+    return { cancel: true };
   });
   // Compaction may hide the old marker while retaining some of its tail. Carry
   // only still-active IDs; an empty projection needs no marker after the summary.

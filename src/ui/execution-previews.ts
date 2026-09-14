@@ -54,7 +54,7 @@ export function executeInputPreview(
   expanded: boolean,
   theme: Theme,
   state?: ExecutePreviewState,
-  executionStarted = true,
+  _executionStarted = true,
   padding = 0,
 ): Component {
   const source = typeof code === "string" ? code : "";
@@ -69,10 +69,9 @@ export function executeInputPreview(
           truncateToWidth(theme.fg("toolTitle", "Execute · TypeScript"), width),
           ...foldedRows(source, width, 0, 0, true).map((line) => theme.fg("muted", line)),
         ];
-      const status = executionStarted ? "running" : "preparing";
       const line =
         theme.fg("warning", "…") +
-        theme.fg("toolTitle", " Execute " + status) +
+        theme.fg("toolTitle", " executing") +
         (summary ? theme.fg("muted", " · " + summary) : "");
       return [truncateToWidth(line, width)];
     }),
