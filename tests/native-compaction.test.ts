@@ -364,6 +364,143 @@ describe("fail-closed checkpoint lifecycle", () => {
     manager.appendCompaction(NATIVE_CODEX_SUMMARY, first, 10, details, true);
     return manager;
   }
+  test("allows an opaque checkpoint when live context omits an empty failed assistant", async () => {
+    const manager = checkpointManager();
+    const failed = { role: "assistant", content: [], stopReason: "error", timestamp: 3 } as any;
+    manager.appendMessage({ role: "user", content: "current", timestamp: 2 });
+    manager.appendMessage(failed);
+    const live = manager
+      .buildSessionContext()
+      .messages.filter(
+        (message: any) =>
+          !(
+            message.role === "assistant" &&
+            message.stopReason === "error" &&
+            Array.isArray(message.content) &&
+            message.content.length === 0
+          ),
+      );
+    const liveBefore = structuredClone(live);
+    const h = harness(manager, model);
+    h.ctx.modelRegistry.getApiKeyAndHeaders = async () => ({
+      ok: true,
+      headers: { Authorization: "Bearer hidden", "chatgpt-account-id": "acct" },
+    });
+    const item = { type: "compaction" as const, id: "cmp_guard", encrypted_content: "opaque" };
+    const oldFetch = globalThis.fetch;
+    let body: any;
+    try {
+      globalThis.fetch = (async (_url: any, init: any) => {
+        body = JSON.parse(init.body);
+        const event = {
+          type: "response.completed",
+          response: { status: "completed", output: [item], usage: { input_tokens: 4, output_tokens: 1 } },
+        };
+        return new Response("data: " + JSON.stringify(event) + "\n\n", { status: 200 });
+      }) as any;
+      h.handlers.get("context")!({ messages: live }, h.ctx);
+      h.handlers.get("before_provider_headers")!(
+        { headers: { Authorization: "Bearer x", "chatgpt-account-id": "acct" } },
+        h.ctx,
+      );
+      h.handlers.get("before_provider_request")!({ payload: { ...payload, input: [item, ...payload.input] } }, h.ctx);
+      const branch = manager.getBranch();
+      const result = await h.handlers.get("session_before_compact")!(
+        {
+          type: "session_before_compact",
+          branchEntries: branch,
+          reason: "auto",
+          willRetry: false,
+          signal: new AbortController().signal,
+          preparation: {
+            firstKeptEntryId: branch[1].id,
+            messagesToSummarize: [failed],
+            turnPrefixMessages: [],
+            isSplitTurn: false,
+            tokensBefore: 10,
+            fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+            settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+          },
+        },
+        h.ctx,
+      );
+      expect(result).toHaveProperty("compaction");
+      expect(body.input.at(-1)).toEqual({ type: "compaction_trigger" });
+      expect(live).toEqual(liveBefore);
+      expect(manager.getEntries().some((entry: any) => entry.message === failed || entry.data === failed)).toBe(true);
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+  test("keeps nonempty failed replies and missing message kinds fail-closed", async () => {
+    const run = async (required: any[], omit: (message: any) => boolean) => {
+      const manager = checkpointManager();
+      manager.appendMessage({ role: "user", content: "current", timestamp: 2 });
+      const journalMessage = required.find((message) => message.role === "assistant") ?? undefined;
+      if (journalMessage) manager.appendMessage(journalMessage);
+      const live = manager.buildSessionContext().messages.filter((message: any) => !omit(message));
+      const h = harness(manager, model);
+      let fetches = 0;
+      const oldFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = (async () => {
+          fetches++;
+          return new Response("");
+        }) as any;
+        h.handlers.get("context")!({ messages: live }, h.ctx);
+        h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+        h.handlers.get("before_provider_request")!(
+          {
+            payload: {
+              ...payload,
+              input: [{ type: "compaction", id: "cmp_guard", encrypted_content: "opaque" }, ...payload.input],
+            },
+          },
+          h.ctx,
+        );
+        const branch = manager.getBranch();
+        const result = await h.handlers.get("session_before_compact")!(
+          {
+            type: "session_before_compact",
+            branchEntries: branch,
+            reason: "auto",
+            willRetry: false,
+            signal: new AbortController().signal,
+            preparation: {
+              firstKeptEntryId: branch[1].id,
+              messagesToSummarize: required,
+              turnPrefixMessages: [],
+              isSplitTurn: false,
+              tokensBefore: 10,
+              fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+              settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+            },
+          },
+          h.ctx,
+        );
+        expect(result).toEqual({ cancel: true });
+        expect(fetches).toBe(0);
+        expect(inspectDiagnostics(manager).records.at(-1)?.code).toBe("coverage_incomplete");
+      } finally {
+        globalThis.fetch = oldFetch;
+      }
+    };
+    const failed = {
+      role: "assistant",
+      content: [{ type: "text", text: "partial" }],
+      stopReason: "error",
+      timestamp: 3,
+    };
+    await run([failed], (message) => message.role === "assistant" && message.stopReason === "error");
+    for (const content of [
+      [{ type: "thinking", thinking: "", thinkingSignature: "opaque-reasoning-must-stay" }],
+      [{ type: "toolCall", id: "call_guard", name: "execute", arguments: { code: "preserve" } }],
+    ]) {
+      await run([{ ...failed, content }], (message) => message.role === "assistant" && message.stopReason === "error");
+    }
+    await run([{ role: "user", content: "missing", timestamp: 4 }], () => false);
+    await run([{ role: "toolResult", content: "missing", timestamp: 5 }], () => false);
+  });
   test("read-only transformed-context previews preserve a complete native request capture", async () => {
     const manager = SessionManager.inMemory();
     manager.appendMessage({ role: "user", content: "ordinary", timestamp: 1 });

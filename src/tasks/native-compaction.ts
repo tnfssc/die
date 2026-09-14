@@ -443,9 +443,20 @@ function coverageMessageKey(message: AgentMessage): string {
   return JSON.stringify(semanticMessage);
 }
 function coversDiscardedMessages(c: CapturedRequest, event: SessionBeforeCompactEvent): boolean {
-  const required = [...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages].map(
-    coverageMessageKey,
-  );
+  // The SDK retains failed attempts in the journal but removes them from live
+  // context when retrying. An empty failed reply has no model content to cover.
+  // Partial replies (including signatures/tool calls) must still be covered.
+  const required = [...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages]
+    .filter(
+      (message) =>
+        !(
+          message.role === "assistant" &&
+          message.stopReason === "error" &&
+          Array.isArray(message.content) &&
+          message.content.length === 0
+        ),
+    )
+    .map(coverageMessageKey);
   const available = c.messages.map(coverageMessageKey);
   let at = 0;
   for (const message of required) {
