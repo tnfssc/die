@@ -1,0 +1,5 @@
+# v0.2.13 release underway
+
+User confirmed Mode dropdown update and requested release. Package0.2.13. Includes Die/Pi Mode selector replacing Access, existingdraft/modeloption persistence, actualRPC /mode preflight (no extraLLM), independentmodel/reasoning, mobilemenu, directcontrolledSelecttrigger. Sourcecanonicalpatch web/t3.patch matches.cache/die-t3code; officialpinunchanged. CurrentinstalledCLI0.2.12 + testedunreleasedbackend. Corevalidationtask_a8a95263; read-onlyaudit task_5100c177. Main tocommit/tag/push afterpass, watchrelease, downloadchecksums/CLI/web/SOURCE, installpublishedartifacts and runMode+Stop/modelsmokes. Nevermovetags; userexistingserversuntouched. Priorreleasev0.2.12 succeeded.
+
+Validationpassed610coretests14skip,113backendtests; format/lint/check/build/smoke/tag checkpassed. Auditverifiedcanonicalpatch appliescleanpin andmatches.cache paths noextracontractstate. AuditcompactModeblocker isfalse: CompactComposerControlsMenu renders suppliedtraitsMenuContent, whosegenericcatalogdescriptors renderinstructionMode; actualinstalled5requestsmokealreadyselectedcompactFast successfully. No duplicatecustomcompactsectionneeded. Proceedingrelease.

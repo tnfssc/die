@@ -77,7 +77,7 @@ bun run build:web
 ./dist/die web
 ```
 
-The optional web build uses Node 24 and pnpm. It builds a pinned T3 Code frontend/server alongside `dist/die`, with the real die runtime behind it and basic agent/task status in T3’s existing UI. It opens on localhost without web login or pairing and uses your existing die provider credentials. Cross-origin browser access is blocked; other local processes can access the app. `--no-browser` and `--port` are forwarded to T3.
+The optional web build uses Node 24 and pnpm. It builds a pinned T3 Code frontend/server alongside `dist/die`, with the real die runtime behind it and basic agent/task status in T3’s existing UI. It opens on localhost without web login or pairing and uses your existing die provider credentials. Cross-origin browser access is blocked; other local processes can access the app. `--no-browser` and `--port` are forwarded to T3. For Die/Pi, the composer’s Mode selector chooses Fast, Normal, or Orchestrator without changing the model or reasoning level.
 
 The T3 source pin and reviewed integration patch live in `web/`. Updates are explicit builds, not automatic downloads at startup.
 

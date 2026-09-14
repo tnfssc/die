@@ -814,6 +814,434 @@ index ec820e2f..3fbdaa95 100644
                yield* Effect.logInfo(
                  "Authentication required. Open T3 Code using the pairing URL.",
                ).pipe(Effect.annotateLogs({ pairingUrl: startupBrowserTarget }));
+diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
+index fafdee59..bd116c05 100644
+--- a/apps/web/src/components/chat/ChatComposer.tsx
++++ b/apps/web/src/components/chat/ChatComposer.tsx
+@@ -1031,6 +1031,9 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
+   showInteractionModeToggle: boolean;
+   interactionMode: ProviderInteractionMode;
+   runtimeMode: RuntimeMode;
++  dieMode?: "fast" | "normal" | "orchestrator";
++  showDieMode?: boolean;
++  onDieModeChange?: (mode: "fast" | "normal" | "orchestrator") => void;
+   size?: "sm" | "xs";
+   hidden?: boolean;
+   onToggleInteractionMode: () => void;
+@@ -1091,53 +1094,80 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
+ 
+   return (
+     <>
+-      <ComposerControlSeparator size={size} />
+-
+-      <Tooltip>
+-        <Select
+-          open={open}
+-          onOpenChange={setOpen}
+-          value={props.runtimeMode}
+-          onValueChange={(value) => props.onRuntimeModeChange(value!)}
+-        >
+-          <TooltipTrigger
+-            render={
+-              <ComposerSelectControl
+-                size={size}
+-                className={size === "xs" ? undefined : "font-medium"}
+-                aria-label="Runtime mode"
+-              />
+-            }
++      {props.showDieMode ? (
++        <>
++          <ComposerControlSeparator size={size} />
++          <Select
++            open={open}
++            onOpenChange={setOpen}
++            value={props.dieMode ?? "orchestrator"}
++            onValueChange={(value) => {
++              if (value === "fast" || value === "normal" || value === "orchestrator") {
++                props.onDieModeChange?.(value);
++              }
++            }}
+           >
+-            <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
+-            <SelectValue>{runtimeModeOption.label}</SelectValue>
+-          </TooltipTrigger>
+-          <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
+-            {runtimeModeOptions.map((mode) => {
+-              const option = runtimeModeConfig[mode];
+-              const OptionIcon = option.icon;
+-              return (
+-                <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
+-                  <div className="flex min-w-0 items-center gap-3">
+-                    <div className="grid min-w-0 flex-1 gap-0.5">
+-                      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+-                        <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
+-                        {option.label}
+-                      </span>
+-                      <span className="text-muted-foreground text-xs leading-4">
+-                        {option.description}
+-                      </span>
+-                    </div>
+-                  </div>
+-                </SelectItem>
+-              );
+-            })}
+-          </SelectPopup>
+-        </Select>
+-        <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
+-      </Tooltip>
+-
+-      {interactionModeToggle}
++            <ComposerSelectControl size={size} aria-label="Die mode">
++              <SelectValue>{props.dieMode ?? "orchestrator"}</SelectValue>
++            </ComposerSelectControl>
++            <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
++              <SelectItem value="fast">Fast</SelectItem>
++              <SelectItem value="normal">Normal</SelectItem>
++              <SelectItem value="orchestrator">Orchestrator</SelectItem>
++            </SelectPopup>
++          </Select>
++        </>
++      ) : (
++        <>
++          <ComposerControlSeparator size={size} />
++
++          <Tooltip>
++            <Select
++              open={open}
++              onOpenChange={setOpen}
++              value={props.runtimeMode}
++              onValueChange={(value) => props.onRuntimeModeChange(value!)}
++            >
++              <TooltipTrigger
++                render={
++                  <ComposerSelectControl
++                    size={size}
++                    className={size === "xs" ? undefined : "font-medium"}
++                    aria-label="Runtime mode"
++                  />
++                }
++              >
++                <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
++                <SelectValue>{runtimeModeOption.label}</SelectValue>
++              </TooltipTrigger>
++              <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
++                {runtimeModeOptions.map((mode) => {
++                  const option = runtimeModeConfig[mode];
++                  const OptionIcon = option.icon;
++                  return (
++                    <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
++                      <div className="flex min-w-0 items-center gap-3">
++                        <div className="grid min-w-0 flex-1 gap-0.5">
++                          <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
++                            <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
++                            {option.label}
++                          </span>
++                          <span className="text-muted-foreground text-xs leading-4">
++                            {option.description}
++                          </span>
++                        </div>
++                      </div>
++                    </SelectItem>
++                  );
++                })}
++              </SelectPopup>
++            </Select>
++            <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
++          </Tooltip>
++
++          {interactionModeToggle}
++        </>
++      )}
+     </>
+   );
+ });
+@@ -1974,6 +2004,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+ 
+   const selectedPromptEffort = composerProviderState.promptEffort;
+   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
++  const showDieMode =
++    selectedProvider === "pi" &&
++    selectedProviderModels.some((model) =>
++      model.capabilities?.optionDescriptors?.some((option) => option.id === "instructionMode"),
++    );
+   const { enabled: planModeUiEnabled, interactionMode } = resolveComposerInteractionMode({
+     planModeEnabled: settings.planModeEnabled,
+     provider: selectedProviderStatus,
+@@ -1983,6 +2018,40 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+     () => createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
+     [selectedInstanceId, selectedModel, selectedModelOptionsForDispatch],
+   );
++  const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
++  const instructionMode = useMemo<"fast" | "normal" | "orchestrator">(() => {
++    const value = selectedModelSelection.options?.find(
++      (option) => option.id === "instructionMode",
++    )?.value;
++    return value === "fast" || value === "normal" || value === "orchestrator"
++      ? value
++      : "orchestrator";
++  }, [selectedModelSelection.options]);
++  const handleInstructionModeChange = useCallback(
++    (mode: "fast" | "normal" | "orchestrator") => {
++      const options = (selectedModelSelection.options ?? []).filter(
++        (option) => option.id !== "instructionMode",
++      );
++      setProviderModelOptions(
++        composerDraftTarget,
++        selectedProvider,
++        [...options, { id: "instructionMode", value: mode }],
++        {
++          instanceId: selectedInstanceId,
++          model: selectedModel,
++          persistSticky: true,
++        },
++      );
++    },
++    [
++      composerDraftTarget,
++      selectedInstanceId,
++      selectedModel,
++      selectedModelSelection.options,
++      selectedProvider,
++      setProviderModelOptions,
++    ],
++  );
+   const selectedModelForPicker = selectedModel;
+   // Instance-keyed option list so the picker can show each configured
+   // instance (built-in + custom) as a first-class sidebar entry. The
+@@ -4861,6 +4930,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+           showInteractionModeToggle={planModeUiEnabled}
+           interactionMode={interactionMode}
+           runtimeMode={runtimeMode}
++          dieMode={instructionMode}
++          showDieMode={showDieMode}
++          onDieModeChange={handleInstructionModeChange}
+           size={composerControlsInStrip ? "xs" : "sm"}
+           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+           onToggleInteractionMode={toggleInteractionMode}
+@@ -4948,6 +5020,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+         <CompactComposerControlsMenu
+           interactionMode={interactionMode}
+           runtimeMode={runtimeMode}
++          showDieMode={showDieMode}
+           showInteractionModeToggle={planModeUiEnabled}
+           traitsMenuContent={providerTraitsMenuContent}
+           onToggleInteractionMode={toggleInteractionMode}
+diff --git a/apps/web/src/components/chat/CompactComposerControlsMenu.tsx b/apps/web/src/components/chat/CompactComposerControlsMenu.tsx
+index 039f12d4..1b9c1b94 100644
+--- a/apps/web/src/components/chat/CompactComposerControlsMenu.tsx
++++ b/apps/web/src/components/chat/CompactComposerControlsMenu.tsx
+@@ -16,6 +16,7 @@ import { useComposerMenuState } from "./useComposerMenuState";
+ export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
+   interactionMode: ProviderInteractionMode;
+   runtimeMode: RuntimeMode;
++  showDieMode?: boolean;
+   showInteractionModeToggle: boolean;
+   traitsMenuContent?: ReactNode;
+   size?: "sm" | "xs";
+@@ -68,19 +69,23 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
+             <MenuDivider />
+           </>
+         ) : null}
+-        <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
+-        <MenuRadioGroup
+-          value={props.runtimeMode}
+-          onValueChange={(value) => {
+-            if (!value || value === props.runtimeMode) return;
+-            props.onRuntimeModeChange(value as RuntimeMode);
+-          }}
+-        >
+-          <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
+-          <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
+-          <MenuRadioItem value="auto">Auto</MenuRadioItem>
+-          <MenuRadioItem value="full-access">Full access</MenuRadioItem>
+-        </MenuRadioGroup>
++        {props.showDieMode ? null : (
++          <>
++            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
++            <MenuRadioGroup
++              value={props.runtimeMode}
++              onValueChange={(value) => {
++                if (!value || value === props.runtimeMode) return;
++                props.onRuntimeModeChange(value as RuntimeMode);
++              }}
++            >
++              <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
++              <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
++              <MenuRadioItem value="auto">Auto</MenuRadioItem>
++              <MenuRadioItem value="full-access">Full access</MenuRadioItem>
++            </MenuRadioGroup>
++          </>
++        )}
+       </MenuPopup>
+     </Menu>
+   );
+diff --git a/apps/web/src/components/chat/TraitsPicker.tsx b/apps/web/src/components/chat/TraitsPicker.tsx
+index 47ce59ef..6998a1de 100644
+--- a/apps/web/src/components/chat/TraitsPicker.tsx
++++ b/apps/web/src/components/chat/TraitsPicker.tsx
+@@ -270,6 +270,7 @@ export function shouldRenderTraitsControls(input: {
+ }
+ 
+ export interface TraitsMenuContentProps {
++  hideInstructionMode?: boolean;
+   provider: ProviderDriverKind;
+   instanceId?: ProviderInstanceId;
+   models: ReadonlyArray<ServerProviderModel>;
+@@ -285,6 +286,7 @@ export interface TraitsMenuContentProps {
+ }
+ 
+ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
++  hideInstructionMode = false,
+   provider,
+   instanceId,
+   models,
+@@ -386,64 +388,68 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
+ 
+   return (
+     <>
+-      {selectDescriptors.map((descriptor, index) => {
+-        const selectedValue =
+-          ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
+-            ? "ultrathink"
+-            : (getDescriptorStringValue(descriptor) ?? "");
++      {selectDescriptors
++        .filter((descriptor) => !hideInstructionMode || descriptor.id !== "instructionMode")
++        .map((descriptor, index) => {
++          const selectedValue =
++            ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
++              ? "ultrathink"
++              : (getDescriptorStringValue(descriptor) ?? "");
+ 
+-        return (
+-          <div key={descriptor.id}>
+-            {index > 0 ? <MenuDivider /> : null}
+-            <MenuGroup>
+-              <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
+-                {descriptor.label}
+-              </div>
+-              {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
+-                <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
+-                  Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change this
+-                  option.
++          return (
++            <div key={descriptor.id}>
++              {index > 0 ? <MenuDivider /> : null}
++              <MenuGroup>
++                <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
++                  {descriptor.label}
+                 </div>
+-              ) : null}
+-              <MenuRadioGroup
+-                value={selectedValue}
+-                onValueChange={(value) => handleSelectChange(descriptor, value)}
+-              >
+-                {descriptor.options.map((option) => (
+-                  <MenuRadioItem
+-                    key={option.id}
+-                    value={option.id}
+-                    hideIndicator
+-                    // Base UI keeps radio menus open by default. Close on pick so
+-                    // the traits menu behaves like the model picker.
+-                    closeOnClick
+-                    disabled={ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id}
+-                  >
+-                    <span className="flex w-full min-w-0 flex-col">
+-                      <span className="flex w-full min-w-0 items-center justify-between gap-3">
+-                        <span className="min-w-0 truncate">
+-                          {option.label}
+-                          {option.isDefault ? (
+-                            <>
+-                              {" "}
+-                              <DefaultBadge />
+-                            </>
+-                          ) : null}
++                {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
++                  <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
++                    Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change
++                    this option.
++                  </div>
++                ) : null}
++                <MenuRadioGroup
++                  value={selectedValue}
++                  onValueChange={(value) => handleSelectChange(descriptor, value)}
++                >
++                  {descriptor.options.map((option) => (
++                    <MenuRadioItem
++                      key={option.id}
++                      value={option.id}
++                      hideIndicator
++                      // Base UI keeps radio menus open by default. Close on pick so
++                      // the traits menu behaves like the model picker.
++                      closeOnClick
++                      disabled={
++                        ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id
++                      }
++                    >
++                      <span className="flex w-full min-w-0 flex-col">
++                        <span className="flex w-full min-w-0 items-center justify-between gap-3">
++                          <span className="min-w-0 truncate">
++                            {option.label}
++                            {option.isDefault ? (
++                              <>
++                                {" "}
++                                <DefaultBadge />
++                              </>
++                            ) : null}
++                          </span>
+                         </span>
++                        {option.description ? (
++                          <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
++                            {option.description}
++                          </span>
++                        ) : null}
+                       </span>
+-                      {option.description ? (
+-                        <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
+-                          {option.description}
+-                        </span>
+-                      ) : null}
+-                    </span>
+-                  </MenuRadioItem>
+-                ))}
+-              </MenuRadioGroup>
+-            </MenuGroup>
+-          </div>
+-        );
+-      })}
++                    </MenuRadioItem>
++                  ))}
++                </MenuRadioGroup>
++              </MenuGroup>
++            </div>
++          );
++        })}
+       {booleanDescriptors.map((descriptor, index) => {
+         const selectedValue = descriptor.currentValue === true ? "on" : "off";
+ 
+@@ -582,9 +588,14 @@ export const TraitsPicker = memo(function TraitsPicker({
+     return null;
+   }
+ 
++  const visibleDescriptors =
++    provider === "pi" && isComposerOwned
++      ? descriptors.filter((descriptor) => descriptor.id !== "instructionMode")
++      : descriptors;
++  if (visibleDescriptors.length === 0) return null;
+   const { label: triggerLabel, showFastModeIcon } = buildTraitsTriggerDisplay({
+     provider,
+-    descriptors,
++    descriptors: visibleDescriptors,
+     primarySelectDescriptorId: primarySelectDescriptor?.id ?? null,
+     ultrathinkPromptControlled,
+   });
+@@ -649,6 +660,7 @@ export const TraitsPicker = memo(function TraitsPicker({
+       </MenuTrigger>
+       <MenuPopup align="start" {...(isComposerOwned ? composerFloatingLayerProps : {})}>
+         <TraitsMenuContent
++          hideInstructionMode={provider === "pi" && isComposerOwned === true}
+           provider={provider}
+           {...(instanceId ? { instanceId } : {})}
+           models={models}
 diff --git a/apps/web/src/components/chat/providerIconUtils.ts b/apps/web/src/components/chat/providerIconUtils.ts
 index db0e5ca2..c344a6d9 100644
 --- a/apps/web/src/components/chat/providerIconUtils.ts
@@ -1440,10 +1868,10 @@ index 00000000..91882f4d
 +};
 diff --git a/apps/server/src/provider/Layers/PiAdapter.test.ts b/apps/server/src/provider/Layers/PiAdapter.test.ts
 new file mode 100644
-index 00000000..827d5354
+index 00000000..aaa9d9e9
 --- /dev/null
 +++ b/apps/server/src/provider/Layers/PiAdapter.test.ts
-@@ -0,0 +1,3544 @@
+@@ -0,0 +1,3650 @@
 +// @effect-diagnostics nodeBuiltinImport:off
 +import * as NodeFS from "node:fs";
 +import * as NodeOS from "node:os";
@@ -2620,8 +3048,7 @@ index 00000000..827d5354
 +            (event.type === "task.started" ||
 +              event.type === "task.completed" ||
 +              event.type === "session.exited") &&
-+            (event.type === "session.exited" ||
-+              event.payload.toolUseId === "background-shell"),
++            (event.type === "session.exited" || event.payload.toolUseId === "background-shell"),
 +        );
 +        assert.deepEqual(
 +          lifecycle.map((event) => event.type),
@@ -4987,13 +5414,120 @@ index 00000000..827d5354
 +      }),
 +    );
 +  });
++
++  it.effect("preflights Die instruction mode before the user prompt", () => {
++    const h = makeHarness({ environment: { DIE_WEB_DIE_BINARY: "/tmp/die" } });
++    const selection = createModelSelection(instanceId, "openai/gpt-5", [
++      { id: "instructionMode", value: "fast" },
++    ]);
++    return withAdapter(h, (adapter) =>
++      Effect.gen(function* () {
++        yield* start(adapter);
++        yield* adapter.sendTurn({
++          threadId: ThreadId.make("thread"),
++          input: "hello",
++          modelSelection: selection,
++        });
++        assert.deepEqual(
++          h.client.calls.prompts.map((prompt) => prompt.message),
++          ["/mode fast", "hello"],
++        );
++        assert.equal(h.client.calls.prompts[0]?.streamingBehavior, undefined);
++        yield* Queue.offer(h.client.input, { type: "agent_settled" });
++      }),
++    );
++  });
++
++  it.effect("does not send a mode command for stock Pi selections", () => {
++    const h = makeHarness();
++    return withAdapter(h, (adapter) =>
++      Effect.gen(function* () {
++        yield* start(adapter);
++        yield* adapter.sendTurn({
++          threadId: ThreadId.make("thread"),
++          input: "hello",
++          modelSelection,
++        });
++        assert.deepEqual(
++          h.client.calls.prompts.map((prompt) => prompt.message),
++          ["hello"],
++        );
++        yield* Queue.offer(h.client.input, { type: "agent_settled" });
++      }),
++    );
++  });
++
++  it.effect("rejects invalid and changed active instruction modes", () => {
++    const h = makeHarness({ environment: { DIE_WEB_DIE_BINARY: "/tmp/die" } });
++    const invalid = createModelSelection(instanceId, "openai/gpt-5", [
++      { id: "instructionMode", value: "bogus" },
++    ]);
++    const fast = createModelSelection(instanceId, "openai/gpt-5", [
++      { id: "instructionMode", value: "fast" },
++    ]);
++    const normal = createModelSelection(instanceId, "openai/gpt-5", [
++      { id: "instructionMode", value: "normal" },
++    ]);
++    return withAdapter(h, (adapter) =>
++      Effect.gen(function* () {
++        yield* start(adapter);
++        const bad = yield* adapter
++          .sendTurn({ threadId: ThreadId.make("thread"), input: "bad", modelSelection: invalid })
++          .pipe(Effect.result);
++        assert.equal(bad._tag, "Failure");
++        assert.equal(h.client.calls.prompts.length, 0);
++        yield* adapter.sendTurn({
++          threadId: ThreadId.make("thread"),
++          input: "first",
++          modelSelection: fast,
++        });
++        const changed = yield* adapter
++          .sendTurn({ threadId: ThreadId.make("thread"), input: "changed", modelSelection: normal })
++          .pipe(Effect.result);
++        assert.equal(changed._tag, "Failure");
++        assert.deepEqual(
++          h.client.calls.prompts.map((prompt) => prompt.message),
++          ["/mode fast", "first"],
++        );
++        yield* Queue.offer(h.client.input, { type: "agent_settled" });
++      }),
++    );
++  });
++
++  it.effect("steers an active turn when instruction mode is unchanged", () => {
++    const h = makeHarness({ environment: { DIE_WEB_DIE_BINARY: "/tmp/die" } });
++    const fast = createModelSelection(instanceId, "openai/gpt-5", [
++      { id: "instructionMode", value: "fast" },
++    ]);
++    return withAdapter(h, (adapter) =>
++      Effect.gen(function* () {
++        yield* start(adapter);
++        yield* adapter.sendTurn({
++          threadId: ThreadId.make("thread"),
++          input: "first",
++          modelSelection: fast,
++        });
++        yield* adapter.sendTurn({
++          threadId: ThreadId.make("thread"),
++          input: "steer",
++          modelSelection: fast,
++        });
++        assert.deepEqual(
++          h.client.calls.prompts.map((prompt) => prompt.message),
++          ["/mode fast", "first", "steer"],
++        );
++        assert.equal(h.client.calls.prompts[2]?.streamingBehavior, "steer");
++        yield* Queue.offer(h.client.input, { type: "agent_settled" });
++      }),
++    );
++  });
 +});
 diff --git a/apps/server/src/provider/Layers/PiAdapter.ts b/apps/server/src/provider/Layers/PiAdapter.ts
 new file mode 100644
-index 00000000..b3629355
+index 00000000..2ad1d069
 --- /dev/null
 +++ b/apps/server/src/provider/Layers/PiAdapter.ts
-@@ -0,0 +1,2405 @@
+@@ -0,0 +1,2420 @@
 +import {
 +  ApprovalRequestId,
 +  EventId,
@@ -5061,6 +5595,7 @@ index 00000000..b3629355
 +const decodePiThinkingLevel = Schema.decodeUnknownEffect(PiThinkingLevel);
 +const DETERMINISTIC_ARGS = ["--offline"] as const;
 +const INTERRUPT_TIMEOUT = "10 seconds";
++const DIE_INSTRUCTION_MODES = new Set(["fast", "normal", "orchestrator"]);
 +
 +export type PiRpcClientFactory = (
 +  options: PiRpcSpawnOptions,
@@ -5078,6 +5613,7 @@ index 00000000..b3629355
 +}
 +
 +interface ActiveTurn {
++  instructionMode?: string;
 +  readonly id: TurnId;
 +  readonly model: string | undefined;
 +  readonly effort: string | undefined;
@@ -7151,15 +7687,22 @@ index 00000000..b3629355
 +        const thinking = selection
 +          ? getModelSelectionStringOptionValue(selection, "thinkingLevel")
 +          : undefined;
++        const instructionMode =
++          isDieWebMode && selection
++            ? getModelSelectionStringOptionValue(selection, "instructionMode")
++            : undefined;
++        if (instructionMode !== undefined && !DIE_INSTRUCTION_MODES.has(instructionMode))
++          return yield* validation("sendTurn", "Invalid Die instruction mode.");
 +        if (steeringTurn && ctx.activeTurn === steeringTurn) {
 +          if (
 +            selection &&
 +            (selectedModel !== steeringTurn.model ||
-+              (thinking !== undefined && thinking !== steeringTurn.effort))
++              (thinking !== undefined && thinking !== steeringTurn.effort) ||
++              (instructionMode !== undefined && instructionMode !== steeringTurn.instructionMode))
 +          )
 +            return yield* validation(
 +              "sendTurn",
-+              "Pi model and thinking level cannot change during an active turn.",
++              "Pi model, thinking level, and instruction mode cannot change during an active turn.",
 +            );
 +          ctx.steeringPromptsInFlight += 1;
 +          ctx.steeringGeneration += 1;
@@ -7235,10 +7778,17 @@ index 00000000..b3629355
 +            provider: PROVIDER,
 +            threadId: input.threadId,
 +          });
++        if (instructionMode !== undefined) {
++          const modeCommand = yield* ctx.client
++            .prompt("/mode " + instructionMode)
++            .pipe(Effect.result);
++          if (Result.isFailure(modeCommand)) return yield* request("prompt", modeCommand.failure);
++        }
 +        const turn = yield* beginTurn(ctx, {
 +          model: selectedModel,
 +          ...(ctx.thinkingLevel ? { effort: ctx.thinkingLevel } : {}),
 +        });
++        if (instructionMode !== undefined) turn.instructionMode = instructionMode;
 +        createdTurn = turn;
 +        const turnId = turn.id;
 +        const prompted = yield* ctx.client.prompt(input.input ?? "", images).pipe(Effect.result);
@@ -7312,8 +7862,7 @@ index 00000000..b3629355
 +        (task) => task.state === "running",
 +      );
 +      if (!turn && isDieWebMode && hasRunningDieTasks) {
-+        if (turnId)
-+          return yield* validation("interruptTurn", "No matching active Pi turn.");
++        if (turnId) return yield* validation("interruptTurn", "No matching active Pi turn.");
 +        // Die's detached TaskManager work no longer belongs to an abortable Pi
 +        // turn. Closing this one owning session invokes Die's bounded shutdown
 +        // (SIGTERM then forced termination) without redefining active-turn Stop.
@@ -7401,10 +7950,10 @@ index 00000000..b3629355
 +});
 diff --git a/apps/server/src/provider/Layers/PiProvider.test.ts b/apps/server/src/provider/Layers/PiProvider.test.ts
 new file mode 100644
-index 00000000..9a7d38dd
+index 00000000..3f7ff569
 --- /dev/null
 +++ b/apps/server/src/provider/Layers/PiProvider.test.ts
-@@ -0,0 +1,225 @@
+@@ -0,0 +1,245 @@
 +import * as NodeAssert from "node:assert/strict";
 +
 +import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -7482,90 +8031,99 @@ index 00000000..9a7d38dd
 +    assert.equal(snapshot.status, "warning");
 +    assert.equal(snapshot.auth.status, "authenticated");
 +    assert.match(snapshot.message ?? "", /pi-mcp-adapter was not detected/u);
++    assert.equal(
++      snapshot.models[0]?.capabilities?.optionDescriptors?.some(
++        (descriptor) => descriptor.id === "instructionMode",
++      ) ?? false,
++      false,
++    );
 +  }).pipe(Effect.provide(NodeServices.layer)),
 +);
 +
 +it.effect("maps Pi RPC inventory into selectable models", () =>
 +  Effect.gen(function* () {
-+    const snapshot = yield* checkPiProviderStatus(settings, { PI_TOKEN: "test" }, (options) =>
-+      Effect.succeed({
-+        ...unusedClientMethods,
-+        getState: () =>
-+          Effect.succeed({
-+            model: { provider: "openai compatible", id: "gpt/5", reasoning: true },
-+            thinkingLevel: "medium" as const,
-+          }),
-+        getAvailableModels: () =>
-+          Effect.succeed({
-+            models: [
-+              { provider: "openai compatible", id: "gpt/5", name: " GPT Five ", reasoning: true },
-+            ],
-+          }),
-+        getCommands: () =>
-+          Effect.succeed({
-+            commands: [
-+              {
-+                name: "mcp",
-+                description: "Show MCP server status",
-+                source: "extension" as const,
-+                sourceInfo: {
-+                  path: "/home/test/.pi/extensions/mcp.ts",
-+                  source: "auto",
-+                  scope: "user",
-+                  origin: "top-level",
++    const snapshot = yield* checkPiProviderStatus(
++      settings,
++      { PI_TOKEN: "test", DIE_WEB_DIE_BINARY: "/tmp/die" },
++      (options) =>
++        Effect.succeed({
++          ...unusedClientMethods,
++          getState: () =>
++            Effect.succeed({
++              model: { provider: "openai compatible", id: "gpt/5", reasoning: true },
++              thinkingLevel: "medium" as const,
++            }),
++          getAvailableModels: () =>
++            Effect.succeed({
++              models: [
++                { provider: "openai compatible", id: "gpt/5", name: " GPT Five ", reasoning: true },
++              ],
++            }),
++          getCommands: () =>
++            Effect.succeed({
++              commands: [
++                {
++                  name: "mcp",
++                  description: "Show MCP server status",
++                  source: "extension" as const,
++                  sourceInfo: {
++                    path: "/home/test/.pi/extensions/mcp.ts",
++                    source: "auto",
++                    scope: "user",
++                    origin: "top-level",
++                  },
 +                },
-+              },
-+              {
-+                name: "subagents",
-+                description: "List subagents",
-+                source: "extension" as const,
-+                sourceInfo: {
-+                  path: "/home/test/.pi/extensions/subagents.ts",
-+                  source: "auto",
-+                  scope: "user",
-+                  origin: "top-level",
++                {
++                  name: "subagents",
++                  description: "List subagents",
++                  source: "extension" as const,
++                  sourceInfo: {
++                    path: "/home/test/.pi/extensions/subagents.ts",
++                    source: "auto",
++                    scope: "user",
++                    origin: "top-level",
++                  },
 +                },
-+              },
-+              {
-+                name: "project-only",
-+                description: "Project command",
-+                source: "extension" as const,
-+                sourceInfo: {
-+                  path: "/workspace/.pi/extensions/project.ts",
-+                  source: "auto",
-+                  scope: "project",
-+                  origin: "top-level",
++                {
++                  name: "project-only",
++                  description: "Project command",
++                  source: "extension" as const,
++                  sourceInfo: {
++                    path: "/workspace/.pi/extensions/project.ts",
++                    source: "auto",
++                    scope: "project",
++                    origin: "top-level",
++                  },
 +                },
-+              },
-+              {
-+                name: "skill:review",
-+                description: "Review changes",
-+                source: "skill" as const,
-+                sourceInfo: {
-+                  path: "/home/test/.pi/skills/review/SKILL.md",
-+                  source: "auto",
-+                  scope: "user",
-+                  origin: "top-level",
++                {
++                  name: "skill:review",
++                  description: "Review changes",
++                  source: "skill" as const,
++                  sourceInfo: {
++                    path: "/home/test/.pi/skills/review/SKILL.md",
++                    source: "auto",
++                    scope: "user",
++                    origin: "top-level",
++                  },
 +                },
-+              },
-+            ],
-+          }),
-+      } satisfies PiRpcClient).pipe(
-+        Effect.tap(() =>
-+          Effect.sync(() => {
-+            assert.equal(options.command, "fake-pi");
-+            assert.equal(options.env?.PI_TOKEN, "test");
-+            assert.equal(options.args?.includes("--no-session"), true);
-+            for (const arg of [
-+              "--no-context-files",
-+              "--no-extensions",
-+              "--no-skills",
-+              "--no-prompt-templates",
-+            ])
-+              assert.equal(options.args?.includes(arg), false);
-+          }),
++              ],
++            }),
++        } satisfies PiRpcClient).pipe(
++          Effect.tap(() =>
++            Effect.sync(() => {
++              assert.equal(options.command, "fake-pi");
++              assert.equal(options.env?.PI_TOKEN, "test");
++              assert.equal(options.args?.includes("--no-session"), true);
++              for (const arg of [
++                "--no-context-files",
++                "--no-extensions",
++                "--no-skills",
++                "--no-prompt-templates",
++              ])
++                assert.equal(options.args?.includes(arg), false);
++            }),
++          ),
 +        ),
-+      ),
 +    );
 +
 +    assert.equal(snapshot.status, "ready");
@@ -7575,7 +8133,18 @@ index 00000000..9a7d38dd
 +    assert.equal(snapshot.models[0]?.isDefault, true);
 +    assert.equal(snapshot.models[0]?.capabilities?.optionDescriptors?.[0]?.id, "thinkingLevel");
 +    assert.equal(snapshot.models[0]?.capabilities?.optionDescriptors?.[0]?.currentValue, "medium");
-+    assert.match(snapshot.message ?? "", /MCP support is available/u);
++    const descriptors = snapshot.models[0]?.capabilities?.optionDescriptors ?? [];
++    const thinking = descriptors.find((descriptor) => descriptor.id === "thinkingLevel");
++    const mode = snapshot.models
++      .flatMap((model) => model.capabilities?.optionDescriptors ?? [])
++      .find((descriptor) => descriptor.id === "instructionMode");
++    assert.equal(thinking?.currentValue, "medium");
++    assert.equal(mode?.currentValue, "orchestrator");
++    assert.deepEqual(
++      mode?.options?.map((option) => option.id),
++      ["fast", "normal", "orchestrator"],
++    );
++    assert.match(snapshot.message ?? "", /(?:MCP support is available|Die reported)/u);
 +    assert.deepEqual(snapshot.slashCommands, [
 +      { name: "mcp", description: "Show MCP server status" },
 +      { name: "subagents", description: "List subagents" },
@@ -7632,10 +8201,10 @@ index 00000000..9a7d38dd
 +);
 diff --git a/apps/server/src/provider/Layers/PiProvider.ts b/apps/server/src/provider/Layers/PiProvider.ts
 new file mode 100644
-index 00000000..a4750619
+index 00000000..e19d5909
 --- /dev/null
 +++ b/apps/server/src/provider/Layers/PiProvider.ts
-@@ -0,0 +1,180 @@
+@@ -0,0 +1,204 @@
 +import { PiSettings } from "@t3tools/contracts";
 +import * as DateTime from "effect/DateTime";
 +import * as Cause from "effect/Cause";
@@ -7668,10 +8237,34 @@ index 00000000..a4750619
 +type PiRpcClientFactory = (
 +  options: PiRpcSpawnOptions,
 +) => Effect.Effect<PiRpcClient, PiRpcError, ChildProcessSpawner.ChildProcessSpawner | Scope.Scope>;
-+const models = (settings: PiSettings, discovered = mapPiDiscoveredModels([])) =>
-+  providerModelsFromSettings(discovered, settings.customModels, {
++const DIE_INSTRUCTION_MODES = ["fast", "normal", "orchestrator"] as const;
++const models = (settings: PiSettings, discovered = mapPiDiscoveredModels([]), isDieWeb = false) => {
++  const catalog = providerModelsFromSettings(discovered, settings.customModels, {
 +    optionDescriptors: [],
 +  });
++  if (!isDieWeb) return catalog;
++  return catalog.map((model) => {
++    const capabilities = model.capabilities ?? { optionDescriptors: [] };
++    const descriptors = capabilities.optionDescriptors ?? [];
++    if (descriptors.some((descriptor) => descriptor.id === "instructionMode")) return model;
++    return {
++      ...model,
++      capabilities: {
++        ...capabilities,
++        optionDescriptors: [
++          ...descriptors,
++          {
++            id: "instructionMode",
++            label: "Mode",
++            currentValue: "orchestrator",
++            type: "select" as const,
++            options: DIE_INSTRUCTION_MODES.map((id) => ({ id, label: id })),
++          },
++        ],
++      },
++    };
++  });
++};
 +
 +const mapPiCommands = (commands: ReadonlyArray<PiRpcCommand>) => {
 +  const environmentCommands = commands.filter((command) => command.sourceInfo.scope !== "project");
@@ -7797,7 +8390,7 @@ index 00000000..a4750619
 +    presentation: PRESENTATION,
 +    enabled: true,
 +    checkedAt,
-+    models: models(settings, discovered),
++    models: models(settings, discovered, isDieWeb),
 +    slashCommands: commands.slashCommands,
 +    skills: commands.skills,
 +    probe: {

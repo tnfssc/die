@@ -29,3 +29,7 @@
 - [v0.2.11 release](release-v0211.md): optional local web UI, task status, Stop fix; publication/install tracking.
 
 - [v0.2.12 release](release-v0212.md): correct fresh-build cache path after unpublished v0.2.11 CI failure.
+
+- Web Mode selector implemented and locally installed after v0.2.12: see final section of [web implementation](die-web-implementation.md); source patch and smoke are uncommitted.
+
+- [v0.2.13 release](release-v0213.md): Mode selector and direct dropdown trigger publication tracking.
