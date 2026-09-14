@@ -39,3 +39,7 @@
 - [Single-binary packaging](single-binary-packaging.md): Bun-only CLI/web candidate passed browser terminal/chat/Mode/model/Stop and 616 core tests. Preparing v0.2.14; v0.2.13 tag remains immutable.
 
 - [v0.2.15 release](release-v0215.md): v0.2.14 failed backend TS validation; corrected final check pipeline and PTY tests, 616 core +121 backend tests passing; next release pending.
+
+- Upcoming v0.3.0: user requested `die update`. Worker implementation started; official GitHub stable release, checksum verification, atomic self-replacement, no downgrade/source-Bun overwrite. Keep separate from running v0.2.15 releaseCI.
+
+- [v0.3.0 updater](update-v030.md): `die update` implemented and verified (635 full tests passed), no v0.3.0 release yet; installed binary remains official v0.2.15.

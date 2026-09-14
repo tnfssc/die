@@ -67,11 +67,13 @@ describe("compiled die CLI", () => {
     }
   });
 
-  test("disables self-update until die has an update channel", async () => {
-    const result = await run([binary, "update"], { env: isolatedEnv() });
-
-    expect(result.code).toBe(1);
-    expect(result.stderr).toContain("die updates are disabled");
+  test("self-update help and argument errors never invoke the SDK updater", async () => {
+    const help = await run([binary, "update", "--help"], { env: isolatedEnv() });
+    expect(help.code).toBe(0);
+    expect(help.stdout).toContain("Usage: die update");
+    const invalid = await run([binary, "update", "self"], { env: isolatedEnv() });
+    expect(invalid.code).toBe(1);
+    expect(invalid.stderr).toContain("Usage: die update");
   });
 
   test("installs atomically into the requested local bin directory", async () => {

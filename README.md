@@ -345,3 +345,9 @@ cost. See [compaction implementation and evidence](docs/compaction-research.md).
 ## Project-local memory extension
 
 The integrated opt-in [project-memory extension](docs/project-memory.md) supports filesystem topic notes and explicitly requested managed consolidation through `/memory consolidate fast|normal --constraints <text>`. Consolidation is manual only: automatic assignment-completion, turn, settled-event, job-completion, and shutdown triggers remain undecided and disabled.
+
+## Updating die
+
+Planned for v0.3.0: run `die update` to install the latest stable Linux x64 release from this repository. It verifies the release SHA256 checksum before atomically replacing the executable, preserves launcher symlinks, and never downgrades a newer version. Failed updates leave the installed executable intact. The installation directory must be writable; the command does not elevate privileges.
+
+Running sessions and web servers are not stopped. Restart them when convenient to fully use the new version. Source Bun invocations and unsupported platforms are refused. Use `die update --help` for usage.

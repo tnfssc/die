@@ -16,8 +16,37 @@ import themeSchema from "../runtime-assets/theme/theme-schema.json" with { type:
 import { withDieSystemPrompt } from "./system-prompt";
 import { formatThrownValue } from "./typescript/error-diagnostic";
 import { INTERNAL_TYPESCRIPT_RUNNER_ARG, runTypeScriptFromStdin } from "./typescript/runner";
+import { updateDie } from "./update";
 
 const cliArgs = process.argv.slice(2);
+if (cliArgs[0] === "update") {
+  if (cliArgs.length === 2 && ["--help", "-h"].includes(cliArgs[1]!)) {
+    console.log("Usage: die update\n\nInstall the latest stable release of this executable after SHA256 verification.");
+    process.exit(0);
+  }
+  if (cliArgs.length !== 1) {
+    console.error("Usage: die update");
+    process.exit(1);
+  }
+  try {
+    console.log("Checking for die updates...");
+    const result = await updateDie({
+      currentVersion: diePackage.version,
+      onDownload: (version) => console.log("Downloading die " + version + "..."),
+    });
+    console.log(
+      result.status === "updated"
+        ? "Updated die to " + result.version + ". Restart running die sessions and web servers to fully use the update."
+        : result.status === "current"
+          ? "die is already current (" + result.version + ")"
+          : "die is newer than the latest release (" + result.version + ")",
+    );
+    process.exit(0);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  }
+}
 if (cliArgs[0] === "web") {
   const { runWeb } = await import("./web/launcher");
   process.exit(await runWeb(cliArgs.slice(1)));
@@ -89,13 +118,8 @@ process.title = "die";
 process.env.AI_AGENT = "die";
 process.env.PI_CODING_AGENT = "true";
 process.env.PI_PACKAGE_DIR = runtimeRoot;
-// die has no self-update channel yet; suppress Pi's update lookup and banner.
+// Die owns explicit self-updates; suppress Pi's separate update lookup and banner.
 process.env.PI_SKIP_VERSION_CHECK = "1";
-
-if (cliArgs[0] === "update") {
-  console.error("die updates are disabled until an update channel is available.");
-  process.exit(1);
-}
 
 // die owns the compiled entry point, including Pi's Bun-specific setup.
 registerBunOAuthFlows();
@@ -126,7 +150,10 @@ function filterHelp(text: string): string {
       skipNextExample = false;
       continue;
     }
-    if (line.includes(" update [source|self|pi]")) continue;
+    if (line.includes(" update [source|self|pi]")) {
+      filtered.push("  update                 Update die to the latest stable release");
+      continue;
+    }
     if (["--no-tools", "--no-builtin-tools", "--tools,", "--exclude-tools"].some((option) => line.includes(option)))
       continue;
     if (line.trim() === "Applies to built-in, extension, and custom tools") continue;
