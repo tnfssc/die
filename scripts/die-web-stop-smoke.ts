@@ -1,19 +1,18 @@
-#!/usr/bin/env -S node --experimental-strip-types
+#!/usr/bin/env bun
 /** Installed die-web Stop smoke: real Chromium, Pi provider, loopback OpenAI fixture. */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { access, chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { once } from "node:events";
 
 const repo = resolve(import.meta.dirname, "..");
-const t3Source = process.env.DIE_T3_SOURCE ?? "/home/tnfssc/Code/die-research/t3code-upgrade";
+const t3Source = process.env.DIE_T3_SOURCE ?? join(repo, ".cache/die-t3code");
 const playwrightRoot = join(t3Source, "node_modules/.pnpm/playwright-core@1.60.0/node_modules/playwright-core");
 const chromiumPath =
   process.env.DIE_WEB_CHROMIUM ??
   join(process.env.HOME ?? "", ".cache/ms-playwright/chromium-1228/chrome-linux64/chrome");
-const die = resolve(process.env.DIE_WEB_STOP_BINARY ?? join(process.env.HOME ?? "", ".local/bin/die"));
-const backendPath = join(dirname(die), "die-web/t3");
+const die = resolve(process.env.DIE_WEB_STOP_BINARY ?? process.env.DIE_WEB_BINARY ?? join(repo, "dist/die-bundled"));
 const artifacts = join(repo, "artifacts");
 const temp = await mkdtemp("/var/tmp/die-web-stop-");
 await chmod(temp, 0o700);
@@ -44,7 +43,13 @@ async function waitUntil<T>(probe: () => T | Promise<T>, timeoutMs: number, labe
 async function listen(server: ReturnType<typeof createServer>) {
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
-  return (server.address() as { port: number }).port;
+  const port = (server.address() as { port: number }).port;
+  if (port === 13773) {
+    server.close();
+    await once(server, "close");
+    return listen(server);
+  }
+  return port;
 }
 async function reservePort() {
   const s = createServer();
@@ -251,15 +256,10 @@ await writeFile(
   { mode: 0o600 },
 );
 
-const results: any = { installedBinary: die, installedBackend: backendPath, temp, scenarios: {} };
+const results: any = { candidateBinary: die, backend: "EMBEDDED", temp, scenarios: {} };
 let readers: Promise<void>[] = [];
 try {
-  await Promise.all([
-    access(die),
-    access(backendPath),
-    access(chromiumPath),
-    access(join(playwrightRoot, "index.mjs")),
-  ]);
+  await Promise.all([access(die), access(chromiumPath), access(join(playwrightRoot, "index.mjs"))]);
   const port = await reservePort();
   const safeEnv: any = {
     PATH: process.env.PATH ?? "/usr/local/bin:/usr/bin:/bin",
@@ -271,13 +271,12 @@ try {
     HERDR_ENV: "0",
     DIE_SUBAGENT_TYPE: "",
     DIE_SUBAGENT_DEPTH: "0",
-    DIE_WEB_SERVER: backendPath,
     DIE_WEB_TASK_EVENTS: "1",
     DIE_WEB_DIE_BINARY: die,
   };
   backend = spawn(die, ["web", "--no-browser", "--port", String(port), "--auto-bootstrap-project-from-cwd"], {
     cwd: repo,
-    detached: true,
+    detached: false,
     stdio: ["ignore", "pipe", "pipe"],
     env: safeEnv,
   });
@@ -509,10 +508,8 @@ try {
     { mode: 0o600 },
   );
   if (browser) await browser.close().catch(() => {});
-  if (backend?.pid && backend.exitCode === null) {
-    try {
-      process.kill(-backend.pid, "SIGTERM");
-    } catch {}
+  if (backend && backend.exitCode === null) {
+    backend.kill("SIGTERM");
     await once(backend, "exit").catch(() => {});
   }
   for (const res of heldResponses) res.destroy();

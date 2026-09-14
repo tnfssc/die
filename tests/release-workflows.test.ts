@@ -39,6 +39,8 @@ describe("release automation", () => {
     const workflow = await read(".github/workflows/ci.yml");
     expect(() => Bun.YAML.parse(workflow)).not.toThrow();
     expect(workflow).toContain("bun-version: 1.4.1");
+    expect(workflow).toContain("pnpm/action-setup@v4");
+    expect(workflow).toContain("version: 11.10.0");
     expect(workflow).toContain("apt-get install -y tmux");
     expect(workflow).toContain("bun install --frozen-lockfile");
     expect(workflow).toContain("bun run lint");
@@ -70,7 +72,17 @@ describe("release automation", () => {
     expect(workflow).toContain("THIRD_PARTY_NOTICES.md");
     expect(workflow).toContain("bun run generate:notices");
     expect(workflow).toContain("THIRD_PARTY_LICENSES.txt");
+    expect(workflow).toContain("EMBEDDED T3 CODE BACKEND LICENSING");
+    expect(workflow).toContain("src/terminal/BunPtyAdapter.test.ts");
+    expect(workflow).toContain("dist/die-web/LICENSE-T3CODE");
     expect(workflow).toContain("SOURCE.txt");
+    expect(workflow).toContain("Embedded T3 Code source:");
+    expect(workflow).toContain("Patch-SHA256:");
+    expect(workflow).toContain(
+      "bun run build -- --target=bun-linux-x64-baseline --outfile=./dist/release/die-linux-x64",
+    );
+    expect(workflow).not.toContain("die-web-linux-x64.tar.gz");
+    expect(workflow).not.toContain("Package web sidecar");
     expect(workflow).not.toMatch(/bun-(darwin|windows|linux-arm)/);
   });
 

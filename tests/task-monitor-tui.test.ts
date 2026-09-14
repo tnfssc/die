@@ -73,6 +73,22 @@ test("real TUI /ps selects live jobs and only stops the confirmed target", async
       },
     }),
   );
+  // This extension is a controlled, deliberately slow startup prerequisite. Its
+  // registration is not itself readiness: the harmless command handshake below
+  // proves that the normal submit handler actually accepts extension commands.
+  const readinessMarker = join(home, "startup-readiness.marker");
+  const readinessExtension = join(home, "startup-readiness.ts");
+  await writeFile(
+    readinessExtension,
+    `export default async function (pi) {
+  await new Promise((resolve) => setTimeout(resolve, 5500));
+  pi.registerCommand("die-test-ready", {
+    description: "TUI startup handshake",
+    handler: async (_args, ctx) => ctx.ui.notify("DIE_TEST_READY", "info"),
+  });
+  await Bun.write(${JSON.stringify(readinessMarker)}, "registered");
+}`,
+  );
   const socket = "die-ps-" + process.pid + "-" + Date.now(),
     name = "ps";
   const tmux = (...args: string[]) => run(["tmux", "-L", socket, ...args]);
@@ -90,17 +106,42 @@ test("real TUI /ps selects live jobs and only stops the confirmed target", async
         "fixture",
         "--model",
         "fixture-model",
+        "--extension",
+        readinessExtension,
       ]
         .map(quote)
         .join(" ");
     expect((await tmux("new-session", "-d", "-s", name, "-x", "100", "-y", "30", "-c", home, launch)).code).toBe(0);
     let frame = "";
-    for (let i = 0; i < 100; i++) {
+    const startupDeadline = Date.now() + 30_000;
+    while (Date.now() < startupDeadline) {
       frame = await capture();
-      if (frame.includes("fixture-model") && !frame.includes("Startup is still in progress")) break;
+      if (frame.includes("fixture-model")) break;
       await Bun.sleep(50);
     }
-    await Bun.sleep(1000);
+    expect(frame).toContain("fixture-model");
+
+    // Do not use handleStartupSubmit's status as readiness: the SDK only sets
+    // that status *after* a premature submit. The fixture's explicit marker is
+    // written after its command is registered. Only its UI response below proves
+    // that managed-tool setup and the editor submit-handler transition finished.
+    while (Date.now() < startupDeadline) {
+      if (await Bun.file(readinessMarker).exists()) break;
+      await Bun.sleep(50);
+    }
+    expect(await Bun.file(readinessMarker).exists()).toBe(true);
+    await tmux("send-keys", "-t", name, "-l", "/die-test-ready");
+    // This is a harmless command probe, not a prompt: retrying it cannot start
+    // another job. It is complete only when the real submit handler accepts it.
+    while (Date.now() < startupDeadline) {
+      await tmux("send-keys", "-t", name, "Enter");
+      frame = await capture();
+      if (frame.includes("DIE_TEST_READY")) break;
+      await Bun.sleep(50);
+    }
+    expect(frame).toContain("DIE_TEST_READY");
+    // The readiness probe is not an LLM turn and must not create duplicate work.
+    expect(requests).toBe(0);
     await tmux("send-keys", "-t", name, "-l", "start");
     await tmux("send-keys", "-t", name, "Enter");
     for (let i = 0; i < 120; i++) {

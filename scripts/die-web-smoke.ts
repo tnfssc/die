@@ -1,9 +1,9 @@
-#!/usr/bin/env -S node --experimental-strip-types
+#!/usr/bin/env bun
 /** One isolated, real-browser acceptance for the die -> T3 -> die RPC bridge. */
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { access, chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { spawn, type ChildProcess } from "node:child_process";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { once } from "node:events";
 
 const repo = resolve(import.meta.dirname, "..");
@@ -12,8 +12,7 @@ const playwrightRoot = join(t3Source, "node_modules/.pnpm/playwright-core@1.60.0
 const chromiumPath =
   process.env.DIE_WEB_CHROMIUM ??
   join(process.env.HOME ?? "", ".cache/ms-playwright/chromium-1228/chrome-linux64/chrome");
-const die = resolve(process.env.DIE_WEB_SMOKE_BINARY ?? join(repo, "dist/die"));
-const backendPath = join(dirname(die), "die-web/t3");
+const die = resolve(process.env.DIE_WEB_SMOKE_BINARY ?? process.env.DIE_WEB_BINARY ?? join(repo, "dist/die-bundled"));
 const artifacts = join(repo, "artifacts");
 const temp = await mkdtemp("/var/tmp/die-web-smoke-");
 await chmod(temp, 0o700);
@@ -59,7 +58,13 @@ function sse(response: ServerResponse, delta: Record<string, unknown>, finishRea
 async function listen(server: ReturnType<typeof createServer>): Promise<number> {
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
-  return (server.address() as { port: number }).port;
+  const port = (server.address() as { port: number }).port;
+  if (port === 13773) {
+    server.close();
+    await once(server, "close");
+    return listen(server);
+  }
+  return port;
 }
 async function reservePort() {
   const server = createServer();
@@ -167,12 +172,13 @@ await writeFile(
 );
 
 let outputReaders: Promise<void>[] = [];
+const terminalFrames: string[] = [];
 try {
-  await Promise.all([access(die), access(backendPath), access(chromiumPath)]);
+  await Promise.all([access(die), access(chromiumPath)]);
   const backendPort = await reservePort();
   backend = spawn(die, ["web", "--no-browser", "--port", String(backendPort), "--auto-bootstrap-project-from-cwd"], {
     cwd: repo,
-    detached: true,
+    detached: false,
     stdio: ["ignore", "pipe", "pipe"],
     env: {
       PATH: process.env.PATH,
@@ -184,7 +190,6 @@ try {
       HERDR_ENV: "0",
       DIE_SUBAGENT_TYPE: "",
       DIE_SUBAGENT_DEPTH: "0",
-      DIE_WEB_SERVER: backendPath,
       DIE_WEB_TASK_EVENTS: "1",
       DIE_WEB_DIE_BINARY: die,
     },
@@ -220,6 +225,12 @@ try {
   });
   console.log("Browser launched");
   page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  page.on("websocket", (socket: any) =>
+    socket.on("framereceived", (event: any) => {
+      const text = typeof event.payload === "string" ? event.payload : Buffer.from(event.payload).toString("utf8");
+      terminalFrames.push(text);
+    }),
+  );
   console.log("Opening direct app URL");
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
 
@@ -266,6 +277,67 @@ try {
   check(visibleText.includes("settled"), "Agents panel omitted settled status");
 
   check(requests.length >= 3, "expected parent/tool/subagent loopback requests");
+  if (process.env.DIE_WEB_TEST_TERMINAL === "1") {
+    await page.getByRole("button", { name: "Toggle terminal drawer", exact: true }).click();
+    const input = page.getByRole("textbox", { name: "Terminal input", exact: true });
+    await input.waitFor({ state: "visible", timeout: 15000 });
+    const canvas = page.locator(".thread-terminal-drawer canvas").first();
+    await canvas.waitFor({ state: "visible", timeout: 10000 });
+    const before = await canvas.evaluate((element: HTMLCanvasElement) => ({
+      width: element.width,
+      height: element.height,
+    }));
+    const terminalOutput = () =>
+      terminalFrames
+        .flatMap((frame) => {
+          try {
+            const values = JSON.parse(frame).values ?? [];
+            return values.filter((event: any) => event.type === "output").map((event: any) => event.data);
+          } catch {
+            return [];
+          }
+        })
+        .join("");
+    await waitUntil(() => terminalOutput().length > 0, 10000, "interactive shell prompt");
+    // The textarea appears before Ghostty finishes attaching its input handlers.
+    await page.waitForTimeout(500);
+    const marker = "DIE_PTY_" + crypto.randomUUID().replaceAll("-", "");
+    // Input echo cannot satisfy this: the marker itself never occurs in the command.
+    const octal = [...Buffer.from(marker)].map((byte) => "\\" + byte.toString(8).padStart(3, "0")).join("");
+    await input.focus();
+    await input.pressSequentially("printf '" + octal + "\\n'", { delay: 10 });
+    await input.press("Enter");
+    try {
+      await waitUntil(() => terminalOutput().includes(marker), 10000, "PTY output-only marker");
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.waitForTimeout(500);
+      const after = await canvas.evaluate((element: HTMLCanvasElement) => ({
+        width: element.width,
+        height: element.height,
+      }));
+      check(before.width !== after.width || before.height !== after.height, "terminal canvas did not resize");
+      await writeFile(
+        join(artifacts, "die-web-terminal-summary.json"),
+        JSON.stringify(
+          {
+            passed: true,
+            marker,
+            binary: die,
+            assertions: [
+              "persisted chat terminal opened",
+              "output-only marker received from PTY",
+              "browser viewport resized",
+            ],
+          },
+          null,
+          2,
+        ),
+      );
+    } finally {
+      await writeFile(join(artifacts, "die-web-terminal-frames.json"), JSON.stringify(terminalFrames, null, 2));
+    }
+  }
+
   await page.screenshot({ path: join(artifacts, "die-web-smoke.png"), fullPage: true });
   await writeFile(join(artifacts, "die-web-smoke.txt"), visibleText + "\n", { mode: 0o600 });
   await writeFile(
@@ -299,6 +371,13 @@ try {
   passed = true;
   console.log("die web browser smoke passed; task " + taskId + "; requests " + requests.length);
 } catch (error) {
+  await writeFile(join(artifacts, "die-web-terminal-frames.json"), JSON.stringify(terminalFrames, null, 2));
+  if (process.env.DIE_WEB_TEST_TERMINAL === "1") {
+    await writeFile(
+      join(artifacts, "die-web-terminal-summary.json"),
+      JSON.stringify({ passed: false, binary: die, blocker: String(error) }, null, 2),
+    );
+  }
   await writeFile(join(artifacts, "die-web-server.log"), redact(t3Output), { mode: 0o600 });
   console.error(error);
   console.error(
@@ -335,10 +414,8 @@ try {
   process.exitCode = 1;
 } finally {
   if (browser) await browser.close().catch(() => {});
-  if (backend?.pid && backend.exitCode === null) {
-    try {
-      process.kill(-backend.pid, "SIGTERM");
-    } catch {}
+  if (backend && backend.exitCode === null) {
+    backend.kill("SIGTERM");
     await once(backend, "exit").catch(() => {});
   }
   await Promise.all(outputReaders);

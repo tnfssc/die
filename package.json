@@ -1,6 +1,6 @@
 {
   "name": "die",
-  "version": "0.2.13",
+  "version": "0.2.14",
   "private": true,
   "type": "module",
   "bin": {
@@ -8,7 +8,7 @@
   },
   "scripts": {
     "prepare:assets": "bun ./scripts/prepare-assets.ts",
-    "build": "bun run prepare:assets && bun build --compile --minify ./src/cli.ts --outfile ./dist/die",
+    "build": "bun run prepare:assets && bun ./scripts/build.ts",
     "check": "bun run prepare:assets && tsc --noEmit",
     "test": "bun run build && bun test ./tests",
     "test:llm": "bun run build && DIE_RUN_LLM_TESTS=1 bun test ./tests/llm.test.ts",

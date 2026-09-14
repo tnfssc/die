@@ -12,8 +12,7 @@ have not been validated as release targets.
 
 This README describes the current source tree. For a release, use the README at its corresponding tag.
 
-To build from source, install Bun 1.4.1 (the version pinned in `mise.toml`), clone the
-repository, and enter the checkout.
+To build from source, install Bun 1.4.1 (the version pinned in `mise.toml`), Node 24, and pnpm 11, then clone the repository and enter the checkout. Node and pnpm are build-time tools only; the compiled executable does not require an external JavaScript runtime.
 
 ## Build
 
@@ -23,7 +22,7 @@ bun run check
 bun run build
 ```
 
-The executable is written to `dist/die`.
+The build first produces the pinned, patched T3 Code web bundle as an intermediate and then embeds it in `dist/die`. `bun run build:web` can produce only that intermediate for web-build debugging; it is not a separately distributed or installed artifact.
 
 `@earendil-works/pi-server` is pinned alongside Pi because Pi 0.85.0's unbundled entry point imports it without declaring it as a dependency; the standalone build requires it.
 
@@ -35,7 +34,7 @@ Tool schemas use `zod/mini`. `src/tool-schema.ts` converts them to input JSON Sc
 bun run install:local
 ```
 
-This builds and atomically installs the executable to `~/.local/bin/die`. If `dist/die-web` has been built, it also installs that optional sidecar beside the executable. If that directory is not already on `PATH`, the installer prints a reminder. Set `DIE_INSTALL_DIR` to override the destination.
+This builds and atomically installs the single executable to `~/.local/bin/die`. The web application is embedded in that executable; no sidecar or external Node runtime is installed. If that directory is not already on `PATH`, the installer prints a reminder. Set `DIE_INSTALL_DIR` to override the destination.
 
 ```sh
 die --help
@@ -73,17 +72,18 @@ extensions, prompt templates, and skills. Die's user-facing additions are:
 
 ```sh
 bun run build
-bun run build:web
 ./dist/die web
 ```
 
-The optional web build uses Node 24 and pnpm. It builds a pinned T3 Code frontend/server alongside `dist/die`, with the real die runtime behind it and basic agent/task status in T3’s existing UI. It opens on localhost without web login or pairing and uses your existing die provider credentials. Cross-origin browser access is blocked; other local processes can access the app. `--no-browser` and `--port` are forwarded to T3. For Die/Pi, the composer’s Mode selector chooses Fast, Normal, or Orchestrator without changing the model or reasoning level.
+The normal build uses Node 24 and pnpm to build a pinned T3 Code frontend/server and embeds it in `dist/die`, with the real die runtime behind it and basic agent/task status in T3’s existing UI. Node and pnpm are not needed to run the compiled binary. It opens on localhost without web login or pairing and uses your existing die provider credentials. Cross-origin browser access is blocked; other local processes can access the app. `--no-browser` and `--port` are forwarded to T3. For Die/Pi, the composer’s Mode selector chooses Fast, Normal, or Orchestrator without changing the model or reasoning level.
+
+The first `die web` start extracts embedded web/native files into a private, content-addressed cache at `${XDG_CACHE_HOME:-~/.cache}/die/web-runtime/`. Concurrent starts publish one complete cache directory atomically; CLI-only starts do not extract the web payload. No runtime download is performed. Standard system tools such as Git and a shell are still needed for their respective features.
 
 The T3 source pin and reviewed integration patch live in `web/`. Updates are explicit builds, not automatic downloads at startup.
 
 ### Release downloads
 
-Linux x64 releases include the existing `die-linux-x64` binary and optional `die-web-linux-x64.tar.gz` sidecar. The web sidecar requires Node 24 at runtime (pnpm is only needed to build it). Download both assets, verify the accompanying `.sha256` files, and extract the sidecar next to the binary before running `./die-linux-x64 web`.
+Starting with v0.2.14, Linux x64 releases include one `die-linux-x64` executable with the web application embedded. Download the executable and `die-linux-x64.sha256`, verify the checksum, make the executable runnable, and run `./die-linux-x64 web`. It does not require an external Node or pnpm runtime. Source provenance, the project license, and third-party notices and licenses—including the embedded backend’s dependencies—are published beside it.
 
 ### Manual context shake
 

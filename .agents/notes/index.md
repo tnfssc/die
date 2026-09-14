@@ -33,3 +33,7 @@
 - Web Mode selector implemented and locally installed after v0.2.12: see final section of [web implementation](die-web-implementation.md); source patch and smoke are uncommitted.
 
 - [v0.2.13 release](release-v0213.md): Mode selector and direct dropdown trigger publication tracking.
+
+- [Current native compaction incident](native-compaction-current-incident.md): confirmed journal-only empty failed assistant causes coverage false rejection; narrow fix tested (612 pass) and CLI installed locally. User must restart/resume old v0.2.10 process. Single-binary work remains paused.
+
+- [Single-binary packaging](single-binary-packaging.md): Bun-only CLI/web candidate passed browser terminal/chat/Mode/model/Stop and 616 core tests. Preparing v0.2.14; v0.2.13 tag remains immutable.

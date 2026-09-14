@@ -3,11 +3,11 @@ import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { run } from "./helpers";
-import { webLaunch } from "../src/web/launcher";
+import { seedWebSettings, webLaunch } from "../src/web/launcher";
 
-test("web launches the adjacent backend on loopback with separate T3 state", () => {
+test("web configures the embedded backend on loopback with separate T3 state", () => {
   const launch = webLaunch([], { HOME: "/fixture", PATH: "/bin" }, "/tools/die");
-  expect(launch.server).toBe("/tools/die-web/t3");
+  expect(launch.server).toBeUndefined();
   expect(launch.args).toEqual(["--host", "127.0.0.1", "--base-dir", "/fixture/.die/web"]);
   expect(launch.env.DIE_WEB_DIE_BINARY).toBe("/tools/die");
   expect(launch.env.PATH).toBe("/bin");
@@ -31,7 +31,7 @@ test("compiled die web dispatches directly to the backend and preserves its exit
       "#!/usr/bin/env node\nconsole.log(JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),binary:process.env.DIE_WEB_DIE_BINARY})); process.exit(7);\n",
     );
     await chmod(server, 0o755);
-    const binary = resolve(import.meta.dir, "../dist/die");
+    const binary = resolve(process.env.DIE_WEB_BINARY ?? resolve(import.meta.dir, "../dist/die"));
     const result = await run([binary, "web", "--no-browser"], {
       cwd: home,
       env: { HOME: home, PATH: process.env.PATH, DIE_WEB_SERVER: server },
@@ -49,7 +49,7 @@ test("compiled die web dispatches directly to the backend and preserves its exit
 });
 
 test("compiled die web reports a missing backend without entering the agent", async () => {
-  const result = await run([resolve(import.meta.dir, "../dist/die"), "web"], {
+  const result = await run([resolve(process.env.DIE_WEB_BINARY ?? resolve(import.meta.dir, "../dist/die")), "web"], {
     env: { PATH: process.env.PATH, DIE_WEB_SERVER: "/nonexistent/die-web-fixture" },
   });
   expect(result.code).toBe(1);
@@ -64,3 +64,55 @@ test.each([
 ])("web respects explicit defaults: $args", ({ args, expected }) => {
   expect(webLaunch([...args], { HOME: "/fixture" }, "/tools/die").args).toEqual([...expected]);
 });
+
+test("embedded web settings preserve unrelated configuration", async () => {
+  const home = await mkdtemp(join(tmpdir(), "die-web-settings-"));
+  try {
+    const settings = join(home, "userdata", "settings.json");
+    await Bun.write(
+      settings,
+      JSON.stringify({
+        theme: "dark",
+        providerInstances: { pi: { config: { custom: true } }, other: { enabled: true } },
+      }),
+    );
+    await seedWebSettings(home, "/fixture/die");
+    expect(JSON.parse(await Bun.file(settings).text())).toEqual({
+      theme: "dark",
+      providerInstances: {
+        pi: { driver: "pi", enabled: true, config: { custom: true, binaryPath: "/fixture/die" } },
+        other: { enabled: true },
+      },
+    });
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test("embedded web settings refuse malformed existing files", async () => {
+  const home = await mkdtemp(join(tmpdir(), "die-web-settings-bad-"));
+  try {
+    const settings = join(home, "userdata", "settings.json");
+    await Bun.write(settings, "{bad");
+    await expect(seedWebSettings(home, "/fixture/die")).rejects.toThrow("Refusing to replace unreadable T3 settings");
+    expect(await Bun.file(settings).text()).toBe("{bad");
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
+test.each([null, [], { providers: [] }, { providerInstances: { pi: { config: "bad" } } }].map((value) => ({ value })))(
+  "embedded web settings refuse malformed structures: %j",
+  async ({ value }) => {
+    const home = await mkdtemp(join(tmpdir(), "die-web-settings-shape-"));
+    try {
+      const settings = join(home, "userdata", "settings.json");
+      const original = JSON.stringify(value);
+      await Bun.write(settings, original);
+      await expect(seedWebSettings(home, "/fixture/die")).rejects.toThrow("Refusing to replace non-object T3");
+      expect(await Bun.file(settings).text()).toBe(original);
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  },
+);
