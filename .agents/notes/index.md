@@ -43,3 +43,5 @@
 - Upcoming v0.3.0: user requested `die update`. Worker implementation started; official GitHub stable release, checksum verification, atomic self-replacement, no downgrade/source-Bun overwrite. Keep separate from running v0.2.15 releaseCI.
 
 - [v0.3.0 updater](update-v030.md): `die update` implemented and verified (635 full tests passed), no v0.3.0 release yet; installed binary remains official v0.2.15.
+
+- [v0.3.0 release](release-v030.md): user authorized install/push/release; 635 core +121 backend tests and browser checks passed, release preparation underway.
