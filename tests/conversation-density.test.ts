@@ -345,7 +345,7 @@ describe("native conversation density adapter", () => {
     expect(rows.indexOf("Following prose")).toBe(rows.indexOf("- Second item") + 2);
   });
 
-  test("compacts every consecutive non-user message boundary", () => {
+  test("compacts consecutive non-user boundaries except status-to-prose", () => {
     restores.push(installConversationDensity());
     const chat = new Container();
     const firstPhase = thinking(["Fixing test-harness isolation"]);
@@ -365,6 +365,7 @@ describe("native conversation density adapter", () => {
       " Fixing test-harness isolation",
       " Securing test-harness probes",
       " tool output",
+      "",
       " Normal answer after",
     ]);
   });
@@ -417,7 +418,7 @@ describe("native conversation density adapter", () => {
     ]);
   });
 
-  test("removes gaps across collapsed execute, thinking, and handoff statuses", () => {
+  test("keeps statuses compact through thinking and separates following prose", () => {
     restores.push(installConversationDensity());
     const chat = new Container();
     add(
@@ -444,8 +445,51 @@ describe("native conversation density adapter", () => {
       " tool two",
       " complete",
       " attention",
+      "",
       " after",
     ]);
+  });
+
+  test("separates tool status from prose but not pure thinking", () => {
+    restores.push(installConversationDensity());
+
+    const proseChat = new Container();
+    add(proseChat, tool("completed tool"), assistant("Visible answer"));
+    expect(plain(proseChat.render(80)).map((row) => row.trim())).toEqual(["", "completed tool", "", "Visible answer"]);
+
+    const thinkingChat = new Container();
+    add(thinkingChat, tool("completed tool"), thinking(["Checking result"]));
+    expect(plain(thinkingChat.render(80)).map((row) => row.trim())).toEqual(["", "completed tool", "Checking result"]);
+  });
+
+  test("tracks mixed and streaming assistant transitions after a status", () => {
+    restores.push(installConversationDensity());
+    const chat = new Container();
+    const phases = new AssistantMessageComponent(undefined, false, undefined, undefined, 1);
+    add(chat, status("task-complete", "complete"), phases);
+
+    phases.updateContent(
+      { role: "assistant", content: [{ type: "thinking", thinking: "Reviewing output" }] } as never,
+      true,
+    );
+    expect(plain(chat.render(80)).map((row) => row.trim())).toEqual(["", "complete", "Reviewing output"]);
+
+    phases.updateContent({ role: "assistant", content: [{ type: "text", text: "Streaming answer" }] } as never, true);
+    expect(plain(chat.render(80)).map((row) => row.trim())).toEqual(["", "complete", "", "Streaming answer"]);
+
+    phases.updateContent(
+      {
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Final check" },
+          { type: "text", text: "Final answer\n\nSecond paragraph" },
+        ],
+      } as never,
+      false,
+    );
+    const rows = plain(chat.render(80)).map((row) => row.trim());
+    expect(rows).toEqual(["", "complete", "Final check", "", "Final answer", "", "Second paragraph"]);
+    expect(blankRuns(chat.render(80))).toEqual([1, 1, 1]);
   });
 
   test("preserves expanded tool content, image-bearing layout, and failure text", () => {

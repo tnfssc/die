@@ -137,10 +137,12 @@ test("real TUI /ps selects live jobs and only stops the confirmed target", async
     frame = await capture();
     expect(frame).toContain("Stop task_");
     expect(frame).toContain("BETA");
+    const stoppedTaskId = frame.match(/Stop (task_\w+)/)?.[1];
+    expect(stoppedTaskId).toBeDefined();
     await tmux("send-keys", "-t", name, "y");
     await Bun.sleep(700);
     frame = await capture();
-    expect(frame).toContain("killed");
+    expect(frame).toContain("✗ " + stoppedTaskId + " failed");
     expect(frame.slice(frame.lastIndexOf("Running jobs"))).toContain("ALPHA");
     expect(frame.slice(frame.lastIndexOf("Running jobs"))).not.toContain("BETA");
     await tmux("send-keys", "-t", name, "Escape");

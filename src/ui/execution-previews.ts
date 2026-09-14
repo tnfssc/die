@@ -102,20 +102,19 @@ function statusSummary(
   full: string,
   details: ExecuteDetails | undefined,
   isError: boolean,
-): { icon: string; color: "success" | "error"; text: string } {
+): { icon: string; color: "success" | "error" | "warning"; text: string } {
   const first = oneLine(full.split("\n")[0] ?? "");
+  // Structured result details, rather than prose intended for the model, are
+  // authoritative. This keeps cancelled and non-zero executions from ever
+  // acquiring a success treatment when their wording changes.
   if (isError || details?.imageError || details?.timedOut || details?.cancelled)
-    return { icon: "✗", color: "error", text: first || "Execution failed" };
-  if (details?.handoff) return { icon: "✓", color: "success", text: "Execution handed off" };
-  if (details?.exitCode !== undefined) {
+    return { icon: "✗", color: "error", text: "execute failed" };
+  if (details?.handoff) return { icon: "✓", color: "success", text: "executed" };
+  if (typeof details?.exitCode === "number") {
     const ok = details.exitCode === 0;
-    return {
-      icon: ok ? "✓" : "✗",
-      color: ok ? "success" : "error",
-      text: "Execution " + (ok ? "completed" : "failed") + " · exit " + details.exitCode,
-    };
+    return { icon: ok ? "✓" : "✗", color: ok ? "success" : "error", text: ok ? "executed" : "execute failed" };
   }
-  return { icon: "✓", color: "success", text: first || "Execution completed" };
+  return { icon: "?", color: "warning", text: first || "execute result" };
 }
 
 export function executeOutputPreview(
@@ -139,19 +138,17 @@ export function executeOutputPreview(
   const imageCount = Array.isArray(details?.images)
     ? details.images.length
     : result.content.filter((part) => part.type === "image").length;
-  const truncatedStreams = Number(details?.stdoutLost === true) + Number(details?.stderrLost === true);
-  const savedStreams =
-    Number(typeof details?.stdoutPath === "string") + Number(typeof details?.stderrPath === "string");
-  const backgroundCount = Array.isArray(details?.backgroundJobs) ? details.backgroundJobs.length : 0;
+  const truncated = details?.stdoutLost === true || details?.stderrLost === true;
+  const backgroundCount =
+    !details?.handoff && Array.isArray(details?.backgroundJobs) ? details.backgroundJobs.length : 0;
   const diagnostic = [
-    truncatedStreams ? truncatedStreams + " preview" + (truncatedStreams === 1 ? "" : "s") + " truncated" : "",
-    savedStreams ? savedStreams + " output file" + (savedStreams === 1 ? "" : "s") : "",
+    truncated ? "truncated" : "",
     details?.outputArtifactErrors ? "⚠ output save error" : "",
     imageCount ? imageCount + " image" + (imageCount === 1 ? "" : "s") : "",
     backgroundCount ? backgroundCount + " background" : "",
   ]
     .filter(Boolean)
-    .join(" — ");
+    .join(" · ");
   return padded(
     component((width) => {
       if (width < 1) return [];
@@ -165,7 +162,7 @@ export function executeOutputPreview(
         if (details?.outputArtifactErrors) lines.push(theme.fg("warning", "… execute could not save all output"));
         return lines.map((line) => truncateToWidth(line, width));
       }
-      const suffix = [diagnostic, summary].filter(Boolean).join(" — ");
+      const suffix = [diagnostic, summary].filter(Boolean).join(" · ");
       const line =
         theme.fg(status.color, status.icon) +
         theme.fg("toolTitle", " " + status.text) +
@@ -217,68 +214,67 @@ export function completionPreview(
       if (width < 1) return [];
       const tasks = Array.isArray(details?.tasks) ? details.tasks : [];
       const omittedTasks = count(details?.omittedTasks);
-      const statuses = tasks.map((task) => safeMetadata(task?.status));
+      const attention = Array.isArray(details?.attention) ? details.attention : [];
+      const omittedAttention = count(details?.omittedAttention);
+      const first = oneLine(text.split("\n")[0] ?? "");
+
+      if (kind === "task-attention") {
+        const label = "⚠ Task attention · " + (first || "running task needs attention");
+        return [truncateToWidth(theme.fg("warning", label), width)];
+      }
+
       const aggregate = details?.taskStatusCounts;
       const hasAggregate =
         !!aggregate &&
         ["completed", "failed", "killed", "running", "unknown"].every(
           (status) => typeof aggregate[status as keyof typeof aggregate] === "number",
         );
-      const failedCount = hasAggregate
-        ? count(aggregate?.failed) + count(aggregate?.killed)
-        : statuses.filter((status) => status && status !== "completed").length;
-      const aggregateUnknown = hasAggregate
-        ? count(aggregate?.unknown) + count(aggregate?.running) > 0 ||
-          Object.values(aggregate ?? {}).reduce<number>((sum, value) => sum + count(value), 0) !==
-            count(details?.taskCount)
-        : false;
-      const unknown = hasAggregate
-        ? aggregateUnknown
-        : tasks.length === 0 || omittedTasks > 0 || statuses.some((status) => !status);
-      const attention =
-        typeof details?.attentionCount === "number"
-          ? count(details.attentionCount)
-          : (Array.isArray(details?.attention) ? details.attention.length : 0) + count(details?.omittedAttention);
-      const first = oneLine(text.split("\n")[0] ?? "");
-      let label: string;
-      let color: "success" | "error" | "warning";
-      if (kind === "task-attention") {
-        label = "⚠ Task attention · " + (first || "running task needs attention");
-        color = "warning";
-      } else {
-        const attentionPrefix = attention ? "⚠ " + attention + " need attention · " : "";
-        if (failedCount) {
-          label = "✗ " + attentionPrefix + "Task completion · " + first;
-          color = "error";
-        } else if (unknown) {
-          label = attentionPrefix + "? Task completion · " + first;
-          color = "warning";
-        } else {
-          label = attentionPrefix + "✓ Task complete · " + first;
-          color = attention ? "warning" : "success";
-        }
+      const knownCounts = { completed: 0, failed: 0, killed: 0, running: 0, unknown: 0 };
+      for (const task of tasks) {
+        const status = safeMetadata(task?.status);
+        if (status in knownCounts) knownCounts[status as keyof typeof knownCounts]++;
+        else knownCounts.unknown++;
       }
-      if (tasks.length) {
-        const descriptions = tasks
-          .slice(0, 3)
-          .map((task) => {
-            const exitCode =
-              typeof task.exitCode === "number" && Number.isFinite(task.exitCode) ? task.exitCode : undefined;
-            return [
-              safeMetadata(task.id),
-              safeMetadata(task.status),
-              exitCode !== undefined ? "exit " + exitCode : safeMetadata(task.signal),
-            ]
-              .filter(Boolean)
-              .join(" ");
-          })
-          .filter(Boolean)
-          .join(", ");
-        if (descriptions) label += " · " + descriptions;
-        const omitted = omittedTasks + Math.max(0, tasks.length - 3);
-        if (omitted) label += " (+" + omitted + " more)";
+
+      const pieces: string[] = [];
+      const add = (color: "success" | "error" | "warning", value: string) => {
+        if (value) pieces.push(theme.fg(color, value));
+      };
+
+      // Metadata can be capped for large batches. Surface an omitted failure
+      // before the ID sequence so narrow terminals cannot make the batch look
+      // successful merely because the failed task was outside the cap.
+      if (hasAggregate) {
+        const omittedFailures =
+          count(aggregate?.failed) + count(aggregate?.killed) - knownCounts.failed - knownCounts.killed;
+        if (omittedFailures > 0)
+          add("error", "✗ " + omittedFailures + " omitted task" + (omittedFailures === 1 ? "" : "s") + " failed");
+        const omittedUncertain =
+          count(aggregate?.running) + count(aggregate?.unknown) - knownCounts.running - knownCounts.unknown;
+        if (omittedUncertain > 0)
+          add(
+            "warning",
+            "? " + omittedUncertain + " omitted task" + (omittedUncertain === 1 ? "" : "s") + " unresolved",
+          );
       }
-      return [truncateToWidth(theme.fg(color, label), width)];
+
+      for (const task of tasks) {
+        const id = safeMetadata(task?.id) || "task";
+        const status = safeMetadata(task?.status);
+        if (status === "completed") add("success", "✓ " + id + " executed");
+        else if (status === "failed" || status === "killed") add("error", "✗ " + id + " failed");
+        else add("warning", "? " + id + (status ? " " + status : " status unknown"));
+      }
+
+      for (const notice of attention) {
+        const id = safeMetadata(notice?.id);
+        add("warning", "⚠ " + (id ? id + " needs attention" : "task needs attention"));
+      }
+      if (omittedAttention) add("warning", "⚠ " + omittedAttention + " more need attention");
+
+      if (omittedTasks && !hasAggregate) add("warning", "? " + omittedTasks + " task details omitted");
+      if (!pieces.length) add("warning", "? Task completion · " + (first || "unknown task update"));
+      return [truncateToWidth(pieces.join(", "), width)];
     }),
   );
   return box;

@@ -92,6 +92,7 @@ test("real TUI shows one-line collapsed execute/task rows and expandable details
       "OPENAI_API_KEY=offline-test-placeholder",
       binary,
       "--offline",
+      "--no-approve",
       "--session",
       session.getSessionFile()!,
       "--provider",
@@ -105,20 +106,20 @@ test("real TUI shows one-line collapsed execute/task rows and expandable details
       0,
     );
 
-    const compact = await frameContaining("Task complete");
-    expect(compact).toContain("Execution completed");
-    expect(compact).toContain("Execution failed");
-    expect(compact).toContain("task_fixture completed exit 0");
+    const compact = await frameContaining("task_fixture executed");
+    expect(compact).toContain("✓ executed");
+    expect(compact).toContain("✗ execute failed");
+    expect(compact).toContain("✓ task_fixture executed");
     expect(compact).not.toContain("COMMAND_HIDDEN_5");
     expect(compact).not.toContain("OUTPUT_HIDDEN_5");
     expect(compact).not.toContain("FAILURE_OUTPUT_DETAIL");
     expect(compact).not.toContain("TASK_OUTPUT_DETAIL");
     // A settled tool is one combined renderer row, not separate call/result rows.
-    expect(compact.split("\n").filter((line) => line.includes("Execution completed")).length).toBe(1);
+    expect(compact.split("\n").filter((line) => line.includes("✓ executed")).length).toBe(1);
 
     expect((await tmux("resize-window", "-t", "preview", "-x", "38", "-y", "40")).code).toBe(0);
     await Bun.sleep(300);
-    const narrow = await frameContaining("Task complete");
+    const narrow = await frameContaining("task_fixture executed");
     for (const line of narrow.split("\n")) expect([...line].length).toBeLessThanOrEqual(38);
     expect(narrow).not.toContain("OUTPUT_HIDDEN_5");
 

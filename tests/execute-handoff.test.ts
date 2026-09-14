@@ -121,7 +121,7 @@ test("cooperative handoff releases a foreground wait, preserves its job, and not
     const theme = { fg: (_: unknown, text: string) => text } as any;
     const collapsed = executeOutputPreview(result, false, false, theme).render(80);
     expect(collapsed).toHaveLength(1);
-    expect(collapsed[0]).toContain("Execution handed off");
+    expect(collapsed[0].trimEnd()).toBe("✓ executed");
     expect(collapsed[0]).not.toContain("Waiting for a dependency");
     const expanded = executeOutputPreview(result, true, false, theme).render(80).join("\n");
     expect(expanded).toContain("Waiting for a dependency");

@@ -1,0 +1,9 @@
+# v0.2.9 release in progress
+
+User explicitly requested install, push, release after UI cleanup and native compaction timestamp fix. package.json bumped0.2.9; lock has no root version. Worker task_3464d0cf runs full offline release validation (HERDR_ENV0, private home TMPDIR) logs artifacts/release-v029-validation.log. Main to inspect results, install using scripts/install-local.sh (atomic replacement), commit tracked changes + new notes/probe, tagv0.2.9, pushdevelop/tag, watch GitHub Release workflow and verify asset checksum/version/source commit. Do not modify old tags or create duplicate release manually while workflow active. No live provider calls. Installed binary currently old until validation completed.
+
+First validation: format/lint/check/build/smoke/tag passed; full tests573pass8fail14skip. Six trust prompt failures and2task-monitor resource/startup failures when TMPDIR under ~/.cache. Suspect ancestor project configuration discovery from real home; investigating neutral /var/tmp (disk-backed274GB free, unlike full16GiB /tmp). Worker task_09575609 reruns full offline suite with neutral private TMPDIR. No push/tag/install performed yet.
+
+Neutral /var/tmp rerun580pass1fail14skip: all prior trust/startup failure modes cleared. Remaining task-monitor TUI expected old killed text, but new collapsed completion intentionally displays ✗ task_ID failed. Parent updated assertion to extract exact stopped task ID from confirmation and expect its failed outcome (also retains ALPHA remains/BETA removed checks). Full suite rerun task_06cf93e7, logs artifacts/release-v029-final-tests.log, temp /var/tmp/die-v029-final-9cl08h.
+
+Full final suite PASSED581tests14skips0fail3720assertions, task_06cf93e7. Format/lint/check/build/smoke/tag checks passed (lint preexisting warnings only). Owned final temp removed. Atomic local install completed using tested dist/die; ~/.local/bin/die --version0.2.9. Next commit/tag/push, watch release workflow.

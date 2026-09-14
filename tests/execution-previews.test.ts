@@ -24,7 +24,7 @@ test("collapsed execute call and settled result are deterministic single rows", 
     '… Execute running · console.log("first"); console.log("last");',
   ]);
   expect(executeOutputPreview(success, false, false, theme, code).render(120)).toEqual([
-    '✓ Execution completed · exit 0 · console.log("first"); console.log("last");',
+    '✓ executed · console.log("first"); console.log("last");',
   ]);
 });
 
@@ -81,7 +81,7 @@ test("execute tool wiring supplies configured padding to call and result rendere
   );
   if (!tool) throw new Error("execute tool was not registered");
   expect(tool.renderCall(context.args, theme, context).render(80)[0]).toStartWith("  … Execute");
-  expect(tool.renderResult(success, { expanded: false }, theme, context).render(80)[0]).toStartWith("  ✓ Execution");
+  expect(tool.renderResult(success, { expanded: false }, theme, context).render(80)[0]).toStartWith("  ✓ executed");
 });
 
 test("expanded execute keeps source/result grouping inside configured padding", () => {
@@ -107,9 +107,7 @@ test("task completion and attention collapse to recognizable summaries without o
   const complete = completionPreview(content, false, theme, 0, "task-complete", {
     tasks: [{ id: "task_1", status: "completed", exitCode: 0 }],
   }).render(100);
-  expect(complete.map((line) => line.trimEnd())).toEqual([
-    "✓ Task complete · 1 asynchronous task completed. · task_1 completed exit 0",
-  ]);
+  expect(complete.map((line) => line.trimEnd())).toEqual(["✓ task_1 executed"]);
   expect(complete.join("\n")).not.toContain("SECRET_OUTPUT");
   const attention = completionPreview(
     "task_2 needs a progress checkpoint.\nSECRET_PROGRESS",
@@ -131,8 +129,7 @@ test("failed task and execute summaries retain failure status", () => {
   const failedTask = completionPreview("1 asynchronous task completed.\noutput", false, theme, 0, "task-complete", {
     tasks: [{ id: "task_bad", status: "failed", exitCode: 7 }],
   }).render(100);
-  expect(failedTask[0]).toContain("✗ Task completion");
-  expect(failedTask[0]).toContain("task_bad failed exit 7");
+  expect(failedTask[0].trimEnd()).toBe("✗ task_bad failed");
   const failure = executeOutputPreview(
     { content: [{ type: "text", text: "Execution failed with exit code 2.\n\nstderr:\nBAD" }] },
     false,
@@ -141,7 +138,52 @@ test("failed task and execute summaries retain failure status", () => {
     "throw new Error()",
   ).render(100);
   expect(failure).toHaveLength(1);
-  expect(failure[0]).toContain("✗ Execution failed with exit code 2.");
+  expect(failure[0]).toContain("✗ execute failed");
+});
+
+test("execute completion labels use structured outcomes and never infer false success", () => {
+  const render = (details: unknown, isError = false) =>
+    executeOutputPreview(
+      { content: [{ type: "text", text: "Execution completed." }], details },
+      false,
+      isError,
+      theme,
+      "work()",
+    )
+      .render(80)[0]
+      .trimEnd();
+  expect(render({ exitCode: 0 })).toBe("✓ executed · work()");
+  expect(render({ handoff: "continue later" })).toBe("✓ executed · work()");
+  expect(render({ exitCode: 9 })).toBe("✗ execute failed · work()");
+  expect(
+    executeOutputPreview(
+      { content: [{ type: "text", text: "Execution failed with exit code 17." }], details: { exitCode: 17 } },
+      false,
+      false,
+      theme,
+      'await shell("exit 17")',
+    )
+      .render(80)[0]
+      .trimEnd(),
+  ).toBe('✗ execute failed · await shell("exit 17")');
+  expect(render({ exitCode: 0, cancelled: true })).toBe("✗ execute failed · work()");
+  expect(render({ exitCode: 0, timedOut: true })).toBe("✗ execute failed · work()");
+  expect(render(undefined)).toBe("? Execution completed. · work()");
+  expect(render({}, true)).toBe("✗ execute failed · work()");
+});
+
+test("mixed completion batches preserve order and color each task outcome", () => {
+  const colored = { fg: (color: string, text: string) => "<" + color + ">" + text + "</" + color + ">" } as any;
+  const row = completionPreview("3 asynchronous tasks completed.", false, colored, 0, "task-complete", {
+    tasks: [
+      { id: "task_a", status: "completed", exitCode: 0 },
+      { id: "task_b", status: "failed", exitCode: 2 },
+      { id: "task_c", status: "completed", exitCode: 0 },
+    ],
+  }).render(200)[0];
+  expect(row).toContain(
+    "<success>✓ task_a executed</success>, <error>✗ task_b failed</error>, <success>✓ task_c executed</success>",
+  );
 });
 
 test("collapsed rows are control-safe and bounded at small widths", () => {
@@ -189,14 +231,14 @@ test("full-batch diagnostics retain a failure omitted after the first 50 tasks",
   const row = completionPreview("51 asynchronous tasks completed.", false, theme, 0, "task-complete", details).render(
     32,
   )[0];
-  expect(row.startsWith("✗ Task completion")).toBe(true);
+  expect(row.startsWith("✗ 1 omitted task failed")).toBe(true);
   expect(visibleWidth(row)).toBeLessThanOrEqual(32);
 });
 
 test("legacy or incomplete completion metadata renders unknown rather than success", () => {
   for (const details of [undefined, {}, { tasks: [{ id: "old" }] }, { tasks: [], omittedTasks: 1 }]) {
     const row = completionPreview("Task update", false, theme, 0, "task-complete", details).render(80)[0];
-    expect(row).toStartWith("? Task completion");
+    expect(row).toStartWith("?");
     expect(row).not.toStartWith("✓");
   }
 });
@@ -205,9 +247,9 @@ test("mixed failure and attention indicators precede truncatable descriptions", 
   const row = completionPreview("A deliberately long completion description", false, theme, 0, "task-complete", {
     tasks: [{ id: "task_bad", status: "failed", signal: "SIGTERM" }],
     attention: [{ id: "task_waiting" }],
-  }).render(18)[0];
-  expect(row.startsWith("✗ ⚠ 1")).toBe(true);
-  expect(visibleWidth(row)).toBeLessThanOrEqual(18);
+  }).render(80)[0];
+  expect(row.trimEnd()).toBe("✗ task_bad failed, ⚠ task_waiting needs attention");
+  expect(visibleWidth(row)).toBeLessThanOrEqual(80);
 });
 
 test("untrusted task metadata is sanitized before terminal coloring", () => {
@@ -230,10 +272,13 @@ test("collapsed execute puts truncation, image, and background diagnostics befor
     theme,
     "LONG_COMMAND_SUFFIX".repeat(20),
   ).render(82)[0];
-  expect(row).toContain("2 previews truncated");
+  expect(row).toContain("truncated");
+  expect(row).not.toContain("previews");
+  expect(row).not.toContain("output file");
   expect(row).toContain("1 image");
   expect(row).toContain("2 background");
-  expect(row).not.toContain("LONG_COMMAND_SUFFIX");
+  expect(row.indexOf("truncated")).toBeLessThan(row.indexOf("LONG_COMMAND_SUFFIX"));
+  expect(visibleWidth(row)).toBeLessThanOrEqual(82);
 });
 
 test("execute error flag takes precedence over handoff success", () => {
@@ -243,5 +288,16 @@ test("execute error flag takes precedence over handoff success", () => {
     true,
     theme,
   ).render(80)[0];
-  expect(row).toStartWith("✗ Execution failed.");
+  expect(row).toStartWith("✗ execute failed");
+});
+
+test("collapsed execute uses one compact truncation marker and hides output-file counts", () => {
+  const result = {
+    ...success,
+    details: { exitCode: 0, stdoutLost: true, stderrLost: true, stdoutPath: "/tmp/stdout", stderrPath: "/tmp/stderr" },
+  };
+  const rows = executeOutputPreview(result, false, false, theme, 'console.log("large")').render(160);
+  expect(rows.map((row) => stripTerminalSequences(row).trimEnd())).toEqual([
+    '✓ executed · truncated · console.log("large")',
+  ]);
 });

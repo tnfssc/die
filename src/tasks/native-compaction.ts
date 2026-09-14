@@ -423,11 +423,18 @@ function sameIdentity(c: CapturedRequest, event: SessionBeforeCompactEvent, ctx:
     c.thinkingLevel === (ctx.thinkingLevel ?? null)
   );
 }
+function coverageMessageKey(message: AgentMessage): string {
+  if (message.role !== "custom") return JSON.stringify(message);
+  // Custom messages are reconstructed from persisted entries, which assigns the
+  // entry timestamp rather than retaining the live notification timestamp.
+  const { timestamp: _nonsemanticTimestamp, ...semanticMessage } = message;
+  return JSON.stringify(semanticMessage);
+}
 function coversDiscardedMessages(c: CapturedRequest, event: SessionBeforeCompactEvent): boolean {
-  const required = [...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages].map((m) =>
-    JSON.stringify(m),
+  const required = [...event.preparation.messagesToSummarize, ...event.preparation.turnPrefixMessages].map(
+    coverageMessageKey,
   );
-  const available = c.messages.map((m) => JSON.stringify(m));
+  const available = c.messages.map(coverageMessageKey);
   let at = 0;
   for (const message of required) {
     at = available.indexOf(message, at);

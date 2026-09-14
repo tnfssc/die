@@ -200,6 +200,26 @@ function previousKind(parent: Container, index: number): DensityKind | undefined
   return previous ? kind(previous) : undefined;
 }
 
+type CustomMessageShape = { message?: { customType?: unknown } };
+
+function isCompactStatusComponent(component: Component | undefined): boolean {
+  if (component instanceof ToolExecutionComponent) return true;
+  if (!(component instanceof CustomMessageComponent)) return false;
+  const customType = (component as unknown as CustomMessageShape).message?.customType;
+  return customType === "task-complete" || customType === "task-attention";
+}
+
+function startsWithVisibleProse(component: Component): boolean {
+  if (!(component instanceof AssistantMessageComponent)) return false;
+  const content = (component as unknown as AssistantShape).lastMessage?.content;
+  if (!Array.isArray(content)) return false;
+  for (const part of content) {
+    if (part.type === "text" && typeof part.text === "string" && part.text.trim()) return true;
+    if (part.type === "thinking" && typeof part.thinking === "string" && part.thinking.trim()) return false;
+  }
+  return false;
+}
+
 function isBlank(line: string): boolean {
   return stripTerminalSequences(line).trim().length === 0;
 }
@@ -216,8 +236,9 @@ function isBlank(line: string): boolean {
  * thinking parts), retaining the source message for streaming and restoration.
  * User Markdown stays inside its native background box with that box's vertical
  * padding replaced by one plain terminal row on each conversation boundary.
- * Structural leading rows are removed between non-user messages. Normal answer
- * Markdown, structured thinking Markdown, expanded tools, images, unrecognized
+ * Structural leading rows are removed between non-user messages except for the
+ * single requested status-to-prose boundary. Normal answer Markdown, structured
+ * thinking Markdown, expanded tools, images, unrecognized
  * components, and editor layout are otherwise unchanged.
  *
  * Remove this pinned compatibility seam when Pi exposes chat transition
@@ -403,9 +424,17 @@ export function installConversationDensity(): () => void {
         lines.length >= 2 &&
         isBlank(lines[0] ?? "")
       ) {
-        rendered = lines.slice(1);
-        mouseYOffset = 1;
-        mouseHeightOffset = 1;
+        const preceding = parent && index !== undefined ? previousComponent(parent, index) : undefined;
+        // Keep Pi's one native leading row only for a model answer that starts
+        // with visible prose after a compact tool/task status. Thinking remains
+        // attached to the status; mixed thinking/text gets its separator from
+        // AssistantMessageComponent between those blocks.
+        const keepStatusToProseGap = isCompactStatusComponent(preceding) && startsWithVisibleProse(this);
+        if (!keepStatusToProseGap) {
+          rendered = lines.slice(1);
+          mouseYOffset = 1;
+          mouseHeightOffset = 1;
+        }
       }
       restoration.mouseWidth = width;
       restoration.mouseYOffset = mouseYOffset;

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Model } from "@earendil-works/pi-ai";
 import { convertResponsesMessages } from "@earendil-works/pi-ai/api/openai-responses-shared";
 import { buildSessionContext, SessionManager } from "@earendil-works/pi-coding-agent";
@@ -466,6 +467,81 @@ describe("fail-closed checkpoint lifecycle", () => {
       ).code,
     ).toBe("coverage_incomplete");
   });
+  test("ignores only reconstructed custom timestamps when checking discarded-message coverage", async () => {
+    const item = { type: "compaction", id: "cmp_custom_timestamp", encrypted_content: "opaque" };
+    const oldFetch = globalThis.fetch;
+    let fetches = 0;
+    try {
+      globalThis.fetch = (async () => {
+        fetches++;
+        return new Response(
+          `data: ${JSON.stringify({
+            type: "response.completed",
+            response: { status: "completed", output: [item], usage: { input_tokens: 4, output_tokens: 1 } },
+          })}\n\n`,
+          { status: 200 },
+        );
+      }) as any;
+      type CustomMessage = Extract<AgentMessage, { role: "custom" }>;
+      const run = async (required: (messages: CustomMessage[]) => AgentMessage[]) => {
+        const manager = SessionManager.inMemory();
+        manager.appendCustomMessageEntry("task-complete", "first result", true, { taskId: "task_1" });
+        manager.appendCustomMessageEntry("task-attention", "second result", false, { taskId: "task_2" });
+        const reconstructed = manager.buildSessionContext().messages as CustomMessage[];
+        const live = reconstructed.map((message) => ({ ...message, timestamp: message.timestamp - 1 }));
+        const h = harness(manager, model);
+        h.ctx.modelRegistry.getApiKeyAndHeaders = async () => ({
+          ok: true,
+          headers: { Authorization: "Bearer hidden", "chatgpt-account-id": "acct" },
+        });
+        h.handlers.get("context")!({ messages: live }, h.ctx);
+        h.handlers.get("before_provider_headers")!({ headers: {} }, h.ctx);
+        h.handlers.get("before_provider_request")!({ payload }, h.ctx);
+        const branch = manager.getBranch();
+        const result = await h.handlers.get("session_before_compact")!(
+          {
+            type: "session_before_compact",
+            branchEntries: branch,
+            reason: "auto",
+            willRetry: false,
+            signal: new AbortController().signal,
+            preparation: {
+              firstKeptEntryId: branch[0].id,
+              messagesToSummarize: [],
+              turnPrefixMessages: required(reconstructed),
+              isSplitTurn: true,
+              tokensBefore: 10,
+              fileOps: { read: new Set(), written: new Set(), edited: new Set() },
+              settings: { enabled: true, reserveTokens: 1, keepRecentTokens: 1 },
+            },
+          },
+          h.ctx,
+        );
+        return { manager, result };
+      };
+
+      expect((await run((messages) => messages)).result).toHaveProperty("compaction");
+      expect(fetches).toBe(1);
+
+      const rejected = [
+        await run(([first, second]) => [{ ...first, content: "changed result" }, second]),
+        await run(([first, second]) => [{ ...first, customType: "changed-type" }, second]),
+        await run(([first, second]) => [{ ...first, display: !first.display }, second]),
+        await run(([first, second]) => [{ ...first, details: { timestamp: 123 } }, second]),
+        await run(([first, second]) => [first, second, { ...second, content: "missing result" }]),
+        await run(([first]) => [first, first]),
+        await run(([first, second]) => [second, first]),
+      ];
+      expect(fetches).toBe(1);
+      for (const { manager, result } of rejected) {
+        expect(result).toBeUndefined();
+        expect(inspectDiagnostics(manager).records.at(-1)?.code).toBe("coverage_incomplete");
+      }
+    } finally {
+      globalThis.fetch = oldFetch;
+    }
+  });
+
   test("aborts a switched-model request before a provider payload can proceed", () => {
     const h = harness(checkpointManager(), { ...model, provider: "foreign", api: "openai-responses" });
     const messages = buildSessionContext(h.ctx.sessionManager.getEntries()).messages;
