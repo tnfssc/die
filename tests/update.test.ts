@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { isCompiledInvocation, updateDie } from "../src/update";
+import { UPDATE_ASSETS, isCompiledInvocation, updateAssetFor, updateDie } from "../src/update";
 
 const body = new TextEncoder().encode("new compiled die");
 const hash = createHash("sha256").update(body).digest("hex");
@@ -29,14 +29,15 @@ async function target(kind = "file") {
   return { dir, path };
 }
 function fixture(tag = "v0.3.0", opts: any = {}) {
-  const bin = root(tag) + "die-linux-x64",
+  const asset = opts.asset || "die-linux-x64";
+  const bin = root(tag) + asset,
     sum = bin + ".sha256",
     calls: string[] = [];
   const release = opts.release || {
     tag_name: tag,
     assets: [
-      { name: "die-linux-x64", browser_download_url: bin },
-      { name: "die-linux-x64.sha256", browser_download_url: sum },
+      { name: asset, browser_download_url: bin },
+      { name: asset + ".sha256", browser_download_url: sum },
     ],
   };
   const fetch = (async (url: RequestInfo | URL) => {
@@ -46,7 +47,7 @@ function fixture(tag = "v0.3.0", opts: any = {}) {
     if (u === bin) return new Response(opts.binaryBody || body, { status: opts.binaryStatus || 200 });
     if (u === sum) {
       if (opts.mutate) await opts.mutate();
-      return new Response((opts.checksum || hash) + "  " + (opts.checksumFile || "die-linux-x64") + "\n", {
+      return new Response((opts.checksum || hash) + "  " + (opts.checksumFile || asset) + "\n", {
         status: opts.checksumStatus || 200,
       });
     }
@@ -109,18 +110,37 @@ describe("die self-update", () => {
       expect(f.calls).toEqual([releaseUrl]);
     }
   });
+  test("maps supported update assets", () => {
+    expect(updateAssetFor("linux", "x64")).toBe(UPDATE_ASSETS["linux-x64"]);
+    expect(updateAssetFor("darwin", "x64")).toBe(UPDATE_ASSETS["darwin-x64"]);
+    expect(updateAssetFor("darwin", "arm64")).toBe(UPDATE_ASSETS["darwin-arm64"]);
+    expect(updateAssetFor("linux", "arm64")).toBeUndefined();
+  });
+  test("downloads the matching macOS asset", async () => {
+    const f = fixture("v0.3.0", { asset: "die-darwin-arm64" });
+    const x = await target();
+    await expect(updateDie(deps(f.fetch, x.path, { platform: "darwin", arch: "arm64" }))).resolves.toMatchObject({
+      status: "updated",
+    });
+    expect(await Bun.file(x.path).bytes()).toEqual(body);
+    expect(f.calls).toEqual([
+      releaseUrl,
+      root("v0.3.0") + "die-darwin-arm64",
+      root("v0.3.0") + "die-darwin-arm64.sha256",
+    ]);
+  });
   test("unsupported platform rejects before fetch", async () => {
     let calls = 0;
     await expect(
       updateDie({
-        platform: "darwin",
+        platform: "win32",
         arch: "x64",
         compiled: true,
         fetch: (async () => {
           calls++;
         }) as unknown as typeof globalThis.fetch,
       }),
-    ).rejects.toThrow("Linux x64");
+    ).rejects.toThrow("Linux x64 and macOS x64/arm64");
     expect(calls).toBe(0);
   });
   test("requires official exact asset URLs", async () => {

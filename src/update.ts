@@ -4,7 +4,16 @@ import { dirname, join } from "node:path";
 import diePackage from "../package.json";
 
 export const RELEASES_URL = "https://api.github.com/repos/tnfssc/die/releases/latest";
-export const UPDATE_ASSET = "die-linux-x64";
+export const UPDATE_ASSETS = {
+  "linux-x64": "die-linux-x64",
+  "darwin-x64": "die-darwin-x64",
+  "darwin-arm64": "die-darwin-arm64",
+} as const;
+export type UpdateAssetKey = keyof typeof UPDATE_ASSETS;
+export const UPDATE_ASSET = UPDATE_ASSETS["linux-x64"];
+export function updateAssetFor(platform: NodeJS.Platform, arch: string): string | undefined {
+  return UPDATE_ASSETS[`${platform}-${arch}` as UpdateAssetKey];
+}
 export type UpdateResult = { status: "updated" | "current" | "newer"; version: string; path?: string };
 export type UpdateDeps = {
   fetch?: typeof fetch;
@@ -34,8 +43,10 @@ export function isCompiledInvocation(moduleUrl = import.meta.url): boolean {
 export async function updateDie(deps: UpdateDeps = {}): Promise<UpdateResult> {
   if (!(deps.compiled ?? isCompiledInvocation()))
     throw new Error("Refusing to self-update a source Bun invocation; run the compiled die executable.");
-  if ((deps.platform ?? process.platform) !== "linux" || (deps.arch ?? process.arch) !== "x64")
-    throw new Error("Self-update is currently supported only on Linux x64.");
+  const platform = deps.platform ?? process.platform;
+  const arch = deps.arch ?? process.arch;
+  const updateAsset = updateAssetFor(platform, arch);
+  if (!updateAsset) throw new Error("Self-update is currently supported only on Linux x64 and macOS x64/arm64.");
   const current = deps.currentVersion ?? diePackage.version;
   const currentParts = version(current);
   if (!currentParts) throw new Error("Cannot self-update this development version: " + current);
@@ -72,8 +83,8 @@ export async function updateDie(deps: UpdateDeps = {}): Promise<UpdateResult> {
       throw new Error("The release is missing a valid official " + name + " asset.");
     return expected;
   };
-  const binaryUrl = assetUrl(UPDATE_ASSET);
-  const checksumUrl = assetUrl(UPDATE_ASSET + ".sha256");
+  const binaryUrl = assetUrl(updateAsset);
+  const checksumUrl = assetUrl(updateAsset + ".sha256");
   let target: string;
   let original: Awaited<ReturnType<typeof stat>>;
   try {
@@ -96,7 +107,8 @@ export async function updateDie(deps: UpdateDeps = {}): Promise<UpdateResult> {
   try {
     const response = await request(checksumUrl, "text/plain");
     if (!response.ok) throw new Error("HTTP " + response.status);
-    const match = /^([a-fA-F0-9]{64})[ \t]+\*?die-linux-x64$/.exec((await response.text()).trim());
+    const escapedAsset = updateAsset.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const match = new RegExp("^([a-fA-F0-9]{64})[ \t]+\\*?" + escapedAsset + "$").exec((await response.text()).trim());
     if (!match) throw new Error("invalid checksum format or filename");
     if (createHash("sha256").update(bytes).digest("hex") !== match[1]!.toLowerCase())
       throw new Error("download does not match the release SHA256");
