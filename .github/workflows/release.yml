@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   release:
-    name: Linux and macOS release
+    name: Linux, macOS, and Android release
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
@@ -64,9 +64,10 @@ jobs:
         run: |
           bun run build -- --reuse-web --target=bun-linux-x64-baseline --outfile=./dist/release/die-linux-x64 2>&1 | tee artifacts/release/build-linux-x64.log
           test "$(./dist/release/die-linux-x64 --version)" = "${GITHUB_REF_NAME#v}"
-          bun run build -- --reuse-web --target=bun-darwin-x64 --outfile=./dist/release/die-darwin-x64 2>&1 | tee artifacts/release/build-darwin-x64.log
+          bun run build -- --reuse-web --target=bun-linux-arm64 --outfile=./dist/release/die-linux-arm64 2>&1 | tee artifacts/release/build-linux-arm64.log
           bun run build -- --reuse-web --target=bun-darwin-arm64 --outfile=./dist/release/die-darwin-arm64 2>&1 | tee artifacts/release/build-darwin-arm64.log
-          chmod 0755 ./dist/release/die-linux-x64 ./dist/release/die-darwin-x64 ./dist/release/die-darwin-arm64
+          bun run build -- --reuse-web --target=bun-android-arm64 --outfile=./dist/release/die-android-arm64 2>&1 | tee artifacts/release/build-android-arm64.log
+          chmod 0755 ./dist/release/die-linux-x64 ./dist/release/die-linux-arm64 ./dist/release/die-darwin-arm64 ./dist/release/die-android-arm64
       - name: Generate production dependency notices
         shell: bash
         run: bun run generate:notices 2>&1 | tee artifacts/release/notices.log
@@ -94,12 +95,13 @@ jobs:
         run: |
           cd dist/release
           sha256sum die-linux-x64 > die-linux-x64.sha256
-          sha256sum die-darwin-x64 > die-darwin-x64.sha256
+          sha256sum die-linux-arm64 > die-linux-arm64.sha256
           sha256sum die-darwin-arm64 > die-darwin-arm64.sha256
+          sha256sum die-android-arm64 > die-android-arm64.sha256
           cp ../../LICENSE ../../THIRD_PARTY_NOTICES.md .
           t3_revision=$(bun -e 'console.log(require("../../web/t3-source.json").revision)')
           patch_sha256=$(sha256sum ../../web/t3.patch | awk '{print $1}')
-          printf 'Source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\nTargets:\n- bun-linux-x64-baseline -> die-linux-x64\n- bun-darwin-x64 -> die-darwin-x64\n- bun-darwin-arm64 -> die-darwin-arm64\n\nEmbedded T3 Code source: https://github.com/pingdotgg/t3code/tree/%s\nRevision: %s\nPatch: web/t3.patch\nPatch-SHA256: %s\n' \
+          printf 'Source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\nTargets:\n- bun-linux-x64-baseline -> die-linux-x64\n- bun-linux-arm64 -> die-linux-arm64\n- bun-darwin-arm64 -> die-darwin-arm64\n- bun-android-arm64 -> die-android-arm64\n\nEmbedded T3 Code source: https://github.com/pingdotgg/t3code/tree/%s\nRevision: %s\nPatch: web/t3.patch\nPatch-SHA256: %s\n' \
             "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REF_NAME" \
             "$t3_revision" "$t3_revision" "$patch_sha256" > SOURCE.txt
       - name: Publish GitHub release
@@ -112,10 +114,12 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             dist/release/die-linux-x64 \
             dist/release/die-linux-x64.sha256 \
-            dist/release/die-darwin-x64 \
-            dist/release/die-darwin-x64.sha256 \
+            dist/release/die-linux-arm64 \
+            dist/release/die-linux-arm64.sha256 \
             dist/release/die-darwin-arm64 \
             dist/release/die-darwin-arm64.sha256 \
+            dist/release/die-android-arm64 \
+            dist/release/die-android-arm64.sha256 \
             dist/release/LICENSE \
             dist/release/THIRD_PARTY_NOTICES.md \
             dist/release/THIRD_PARTY_LICENSES.txt \

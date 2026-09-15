@@ -6,8 +6,9 @@ import diePackage from "../package.json";
 export const RELEASES_URL = "https://api.github.com/repos/tnfssc/die/releases/latest";
 export const UPDATE_ASSETS = {
   "linux-x64": "die-linux-x64",
-  "darwin-x64": "die-darwin-x64",
+  "linux-arm64": "die-linux-arm64",
   "darwin-arm64": "die-darwin-arm64",
+  "android-arm64": "die-android-arm64",
 } as const;
 export type UpdateAssetKey = keyof typeof UPDATE_ASSETS;
 export const UPDATE_ASSET = UPDATE_ASSETS["linux-x64"];
@@ -46,7 +47,10 @@ export async function updateDie(deps: UpdateDeps = {}): Promise<UpdateResult> {
   const platform = deps.platform ?? process.platform;
   const arch = deps.arch ?? process.arch;
   const updateAsset = updateAssetFor(platform, arch);
-  if (!updateAsset) throw new Error("Self-update is currently supported only on Linux x64 and macOS x64/arm64.");
+  if (!updateAsset)
+    throw new Error(
+      "Self-update is currently supported only on Linux x64/arm64, macOS arm64, and Android/Termux arm64.",
+    );
   const current = deps.currentVersion ?? diePackage.version;
   const currentParts = version(current);
   if (!currentParts) throw new Error("Cannot self-update this development version: " + current);

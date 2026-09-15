@@ -4,10 +4,10 @@ A small terminal coding agent built on [Pi](https://pi.dev). It runs as one stan
 
 ## Install
 
-Linux x64 and macOS x64/Apple Silicon:
+Linux x64/arm64, macOS Apple Silicon, and Android Termux arm64:
 
 ```sh
-asset="die-$(uname -s | tr A-Z a-z)-$(uname -m | sed s/aarch64/arm64/ | sed s/x86_64/x64/)"; mkdir -p ~/.local/bin && cd "$(mktemp -d)" && curl -fLO "https://github.com/tnfssc/die/releases/latest/download/$asset" && curl -fLO "https://github.com/tnfssc/die/releases/latest/download/$asset.sha256" && (sha256sum -c "$asset.sha256" 2>/dev/null || shasum -a 256 -c "$asset.sha256") && install -m 755 "$asset" ~/.local/bin/die
+os="$(uname -s | tr A-Z a-z)"; [ "$(uname -o 2>/dev/null)" = Android ] && os=android; asset="die-$os-$(uname -m | sed s/aarch64/arm64/ | sed s/x86_64/x64/)"; mkdir -p ~/.local/bin && cd "$(mktemp -d)" && curl -fLO "https://github.com/tnfssc/die/releases/latest/download/$asset" && curl -fLO "https://github.com/tnfssc/die/releases/latest/download/$asset.sha256" && (sha256sum -c "$asset.sha256" 2>/dev/null || shasum -a 256 -c "$asset.sha256") && install -m 755 "$asset" ~/.local/bin/die
 ```
 
 Make sure `~/.local/bin` is on your `PATH`, then run:
@@ -51,7 +51,7 @@ bun run install:local
 
 ## Notes
 
-- Released binaries currently support Linux x64 and macOS x64/Apple Silicon.
+- Released binaries currently support Linux x64/arm64, macOS Apple Silicon, and Android Termux arm64.
 - Credentials and model configuration are supplied at runtime, like Pi.
 - State is stored under `~/.die`.
 - See `docs/` for design notes and deeper documentation.

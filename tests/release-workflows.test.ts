@@ -55,7 +55,7 @@ describe("release automation", () => {
     expect(workflow).not.toMatch(/API_KEY|AUTH_TOKEN/);
   });
 
-  test("tag release is version-gated and builds Linux and macOS binaries", async () => {
+  test("tag release is version-gated and builds Linux x64/arm64, macOS arm64, and Android binaries", async () => {
     const workflow = await read(".github/workflows/release.yml");
     expect(() => Bun.YAML.parse(workflow)).not.toThrow();
     expect(workflow).toContain('- "v*"');
@@ -66,13 +66,15 @@ describe("release automation", () => {
     expect(workflow).toContain("bun run lint");
     expect(workflow.indexOf("bun run build")).toBeLessThan(workflow.indexOf("bun test ./tests"));
     expect(workflow).toContain("--target=bun-linux-x64-baseline");
-    expect(workflow).toContain("--target=bun-darwin-x64");
+    expect(workflow).toContain("--target=bun-linux-arm64");
     expect(workflow).toContain("--target=bun-darwin-arm64");
+    expect(workflow).toContain("--target=bun-android-arm64");
     expect(workflow).toContain('test "$(./dist/release/die-linux-x64 --version)" = "${GITHUB_REF_NAME#v}"');
     expect(workflow).toContain("GH_TOKEN: ${{ github.token }}");
     expect(workflow).toContain("die-linux-x64.sha256");
-    expect(workflow).toContain("die-darwin-x64.sha256");
+    expect(workflow).toContain("die-linux-arm64.sha256");
     expect(workflow).toContain("die-darwin-arm64.sha256");
+    expect(workflow).toContain("die-android-arm64.sha256");
     expect(workflow).toContain("THIRD_PARTY_NOTICES.md");
     expect(workflow).toContain("bun run generate:notices");
     expect(workflow).toContain("THIRD_PARTY_LICENSES.txt");
@@ -86,14 +88,17 @@ describe("release automation", () => {
       "bun run build -- --reuse-web --target=bun-linux-x64-baseline --outfile=./dist/release/die-linux-x64",
     );
     expect(workflow).toContain(
-      "bun run build -- --reuse-web --target=bun-darwin-x64 --outfile=./dist/release/die-darwin-x64",
+      "bun run build -- --reuse-web --target=bun-linux-arm64 --outfile=./dist/release/die-linux-arm64",
     );
     expect(workflow).toContain(
       "bun run build -- --reuse-web --target=bun-darwin-arm64 --outfile=./dist/release/die-darwin-arm64",
     );
+    expect(workflow).toContain(
+      "bun run build -- --reuse-web --target=bun-android-arm64 --outfile=./dist/release/die-android-arm64",
+    );
     expect(workflow).not.toContain("die-web-linux-x64.tar.gz");
     expect(workflow).not.toContain("Package web sidecar");
-    expect(workflow).not.toMatch(/bun-(windows|linux-arm)/);
+    expect(workflow).not.toMatch(/bun-(windows|darwin-x64|linux-arm32)/);
   });
 
   test("release validator handles mismatch and prerelease versions without a real tag", () => {

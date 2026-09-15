@@ -112,9 +112,10 @@ describe("die self-update", () => {
   });
   test("maps supported update assets", () => {
     expect(updateAssetFor("linux", "x64")).toBe(UPDATE_ASSETS["linux-x64"]);
-    expect(updateAssetFor("darwin", "x64")).toBe(UPDATE_ASSETS["darwin-x64"]);
+    expect(updateAssetFor("linux", "arm64")).toBe(UPDATE_ASSETS["linux-arm64"]);
     expect(updateAssetFor("darwin", "arm64")).toBe(UPDATE_ASSETS["darwin-arm64"]);
-    expect(updateAssetFor("linux", "arm64")).toBeUndefined();
+    expect(updateAssetFor("android", "arm64")).toBe(UPDATE_ASSETS["android-arm64"]);
+    expect(updateAssetFor("darwin", "x64")).toBeUndefined();
   });
   test("downloads the matching macOS asset", async () => {
     const f = fixture("v0.3.0", { asset: "die-darwin-arm64" });
@@ -140,7 +141,7 @@ describe("die self-update", () => {
           calls++;
         }) as unknown as typeof globalThis.fetch,
       }),
-    ).rejects.toThrow("Linux x64 and macOS x64/arm64");
+    ).rejects.toThrow("Linux x64/arm64, macOS arm64, and Android/Termux arm64");
     expect(calls).toBe(0);
   });
   test("requires official exact asset URLs", async () => {
