@@ -47,3 +47,5 @@
 - [v0.3.0 release](release-v030.md): user authorized install/push/release; 635 core +121 backend tests and browser checks passed, release preparation underway.
 
 - [Dependency update and v0.3.3](deps-release-v033.md): npm and T3 v0.0.42 updates plus terminal/web handoff visibility fixes; v0.3.3 published and official Linux binary verified.
+
+- [Shared memory value](shared-memory-value.md): approved plain-language value makes code and notes part of finishing work; prompt delivery tested.

@@ -400,6 +400,9 @@ test("shutdown cancels and root memory guidance comes from Markdown without load
   const source = await Bun.file(new URL("../src/prompts/memory.md", import.meta.url)).text();
   expect(result.systemPrompt).toBe("base\n\n" + source.trimEnd());
   expect(result.systemPrompt).toContain("Save decisions, reasons, and where work stopped.");
+  expect(result.systemPrompt).toContain(
+    "Work not done if next person cannot pick it up. Leave code and notes together, where others can get both. Say what finished and what still needs care.",
+  );
   expect(result.systemPrompt).toContain("index.md");
   expect(result.systemPrompt).not.toContain("secret corpus");
   expect(await root.fire("context", { messages: [] }, root.ctx)).toBeUndefined();
