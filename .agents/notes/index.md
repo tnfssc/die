@@ -49,3 +49,5 @@
 - [Dependency update and v0.3.3](deps-release-v033.md): npm and T3 v0.0.42 updates plus terminal/web handoff visibility fixes; v0.3.3 published and official Linux binary verified.
 
 - [Shared memory value](shared-memory-value.md): approved plain-language value makes code and notes part of finishing work; prompt delivery tested.
+
+- [Blacksmith CI request](blacksmith-ci.md): blocked by personal-repository ownership; no workflow changes or new release. Needs user decision.
