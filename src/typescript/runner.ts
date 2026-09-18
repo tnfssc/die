@@ -92,18 +92,18 @@ function rewriteImports(javascript: string, entryFilename: string): string {
   const [imports] = parseModules(javascript);
   const replacements: Array<{ start: number; end: number; value: string }> = [];
   for (const imported of imports) {
-    if (imported.d >= 0) {
+    if (imported.type === "dynamic") {
       // A data URL has no filesystem-relative base. Keep every dynamic import
       // lazy and resolve it only when execution reaches the expression.
       replacements.push({
-        start: imported.ss,
-        end: imported.ss + 6,
+        start: imported.importStart,
+        end: imported.dynamicStart,
         value: `globalThis.__dieExecuteImportFrom.bind(null, ${JSON.stringify(dirname(entryFilename))})`,
       });
       continue;
     }
-    if (imported.d === -2 || !imported.n) continue;
-    const specifier = imported.n;
+    if (imported.type === "import-meta") continue;
+    const specifier = imported.specifier;
     if (isBuiltin(specifier) || specifier === "bun" || specifier.includes(":")) continue;
     const from = dirname(entryFilename);
     const resolved =
@@ -112,7 +112,7 @@ function rewriteImports(javascript: string, entryFilename: string): string {
         : specifier.startsWith("#")
           ? resolvePackageImport(specifier, from)
           : resolveInstalledPackage(specifier, from);
-    replacements.push({ start: imported.s, end: imported.e, value: pathToFileURL(resolved).href });
+    replacements.push({ start: imported.start, end: imported.end, value: pathToFileURL(resolved).href });
   }
   let output = javascript;
   for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
@@ -127,7 +127,7 @@ export async function runTypeScriptFromStdin(): Promise<void> {
 
   const cwd = process.cwd();
   const entryFilename = join(cwd, "__die_execute__.ts");
-  await init;
+  await init();
 
   let registerEsmGraph: (filename: string) => void;
   const resolveRequirePackage = (specifier: string, from: string, paths?: string[]): string => {
@@ -302,8 +302,8 @@ export async function runTypeScriptFromStdin(): Promise<void> {
         : contents;
     const [imports] = parseModules(moduleJavascript);
     for (const imported of imports) {
-      if (imported.d !== -1 || !imported.n) continue;
-      const dependency = resolveImport(imported.n, filename);
+      if (imported.type !== "static" && imported.type !== "reexport-star") continue;
+      const dependency = resolveImport(imported.specifier, filename);
       if (dependency) registerEsmGraph(dependency);
     }
     const loader = extension === ".jsx" ? "jsx" : "js";
@@ -319,8 +319,8 @@ export async function runTypeScriptFromStdin(): Promise<void> {
   // The entry itself is in memory, but its static targets need rewriting.
   const [entryImports] = parseModules(transpiled);
   for (const imported of entryImports) {
-    if (imported.d !== -1 || !imported.n) continue;
-    const dependency = resolveImport(imported.n, entryFilename);
+    if (imported.type !== "static" && imported.type !== "reexport-star") continue;
+    const dependency = resolveImport(imported.specifier, entryFilename);
     if (dependency) registerEsmGraph(dependency);
   }
 

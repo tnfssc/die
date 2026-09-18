@@ -6,7 +6,7 @@ does not replace them.
 
 Every release includes THIRD_PARTY_LICENSES.txt, a bounded, generated attribution
 bundle containing the complete LICENSE, COPYING, and NOTICE files found in the
-installed production dependency graph. It also reproduces the pinned Pi 0.85.0
+installed production dependency graph. It also reproduces the pinned Pi 0.85.1
 license and Bun 1.4.1's upstream runtime and linked-library licensing notice.
 The generator fails on an unrecognized package with no notice file so omissions
 must be reviewed rather than silently reduced to package names or links.

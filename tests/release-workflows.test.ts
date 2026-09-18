@@ -132,7 +132,7 @@ describe("release automation", () => {
       });
       expect(result.exitCode, result.stderr.toString()).toBe(0);
       const notices = await Bun.file(output).text();
-      expect(notices).toContain("@earendil-works/pi-coding-agent@0.85.0");
+      expect(notices).toContain("@earendil-works/pi-coding-agent@0.85.1");
       expect(notices).toContain("PI UPSTREAM LICENSE");
       expect(notices).toContain("Copyright (c) 2025 Mario Zechner");
       expect(notices).toContain("Permission is hereby granted, free of charge");
@@ -160,8 +160,8 @@ describe("release automation", () => {
 
   test("Pi fallback fails closed for unknown packages and unpinned versions", async () => {
     for (const [name, version] of [
-      ["@earendil-works/not-pi", "0.85.0"],
-      ["@earendil-works/pi-ai", "0.85.1"],
+      ["@earendil-works/not-pi", "0.85.1"],
+      ["@earendil-works/pi-ai", "0.85.0"],
     ]) {
       const directory = await mkdtemp(join(tmpdir(), "die-notices-fallback-"));
       try {

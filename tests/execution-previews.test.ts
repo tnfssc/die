@@ -1,15 +1,15 @@
 import { expect, test } from "bun:test";
-import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
+import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
 import { completionDiagnosticDetails } from "../src/tasks/extension";
 import { registerExecuteTool } from "../src/typescript/extension";
 import {
   completionPreview,
+  type ExecutePreviewState,
   executeInputPreview,
   executeOutputPreview,
   foldedRows,
-  type ExecutePreviewState,
 } from "../src/ui/execution-previews";
 
 const theme = { fg: (_color: string, text: string) => text } as any;
@@ -26,6 +26,43 @@ test("collapsed execute call and settled result are deterministic single rows", 
   expect(executeOutputPreview(success, false, false, theme, code).render(120)).toEqual([
     '✓ executed · console.log("first"); console.log("last");',
   ]);
+});
+
+test("collapsed handoff results present their progress text once without requiring expansion", () => {
+  const message = "Work is continuing while the background job finishes.";
+  const handoff = {
+    content: [{ type: "text", text: "Execution handed off.\n\n" + message }],
+    details: { exitCode: 0, handoff: message, backgroundJobs: ["job_1"], images: [] },
+  };
+  const rows = executeOutputPreview(handoff, false, false, theme, "await handoff(message)").render(32);
+  const rendered = rows.map((row) => stripTerminalSequences(row).trimEnd()).join("\n");
+
+  expect(rows.length).toBeGreaterThan(1);
+  expect(rendered).toContain("Work is continuing");
+  expect(rendered.split("Work is continuing")).toHaveLength(2);
+  expect(rendered).not.toContain("await handoff");
+  expect(rendered).not.toContain("Execution handed off");
+});
+
+test("handoff-only execute calls still settle to one visible progress message", () => {
+  const state: ExecutePreviewState = {};
+  const message = "Waiting for the user to continue.";
+  const call = executeInputPreview('await handoff("' + message + '")', false, theme, state, true);
+  const result = executeOutputPreview(
+    {
+      content: [{ type: "text", text: "Execution handed off.\n\n" + message }],
+      details: { exitCode: 0, handoff: message, backgroundJobs: [], images: [] },
+    },
+    false,
+    false,
+    theme,
+    undefined,
+    state,
+  );
+  const rendered = [...call.render(100), ...result.render(100)].join("\n");
+
+  expect(rendered).toBe("↪ " + message);
+  expect(rendered.split(message)).toHaveLength(2);
 });
 
 test("shared renderer state prevents Pi call/result composition from adding a second row", () => {
@@ -153,7 +190,7 @@ test("execute completion labels use structured outcomes and never infer false su
       .render(80)[0]
       .trimEnd();
   expect(render({ exitCode: 0 })).toBe("✓ executed · work()");
-  expect(render({ handoff: "continue later" })).toBe("✓ executed · work()");
+  expect(render({ handoff: "continue later" })).toBe("↪ continue later");
   expect(render({ exitCode: 9 })).toBe("✗ execute failed · work()");
   expect(
     executeOutputPreview(

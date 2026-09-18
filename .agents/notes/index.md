@@ -45,3 +45,5 @@
 - [v0.3.0 updater](update-v030.md): `die update` implemented and verified (635 full tests passed), no v0.3.0 release yet; installed binary remains official v0.2.15.
 
 - [v0.3.0 release](release-v030.md): user authorized install/push/release; 635 core +121 backend tests and browser checks passed, release preparation underway.
+
+- [Dependency update and v0.3.3](deps-release-v033.md): npm and T3 v0.0.42 updates plus user-reported handoff visibility fix, validation/release in progress.

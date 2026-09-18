@@ -1,6 +1,6 @@
 {
   "name": "die",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "private": true,
   "type": "module",
   "bin": {
@@ -23,17 +23,17 @@
     "build:web": "bun ./scripts/build-web.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.85.0",
-    "@earendil-works/pi-coding-agent": "0.85.0",
-    "@earendil-works/pi-server": "0.85.0",
-    "@earendil-works/pi-tui": "0.85.0",
-    "es-module-lexer": "^2.3.2",
+    "@earendil-works/pi-ai": "0.85.1",
+    "@earendil-works/pi-coding-agent": "0.85.1",
+    "@earendil-works/pi-server": "0.85.1",
+    "@earendil-works/pi-tui": "0.85.1",
+    "es-module-lexer": "^3.0.2",
     "resolve.exports": "2.0.3",
-    "zod": "4.5.4"
+    "zod": "4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.12",
-    "@types/bun": "1.4.1",
+    "@biomejs/biome": "2.5.14",
+    "@types/bun": "1.4.2",
     "typescript": "7.0.2"
   },
   "engines": {

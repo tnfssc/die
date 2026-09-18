@@ -15,6 +15,181 @@ index e07681ae..2084d5d1 100644
    Layer.mock(Keybindings.Keybindings)({
      start: Effect.void,
    }),
+diff --git a/apps/server/src/auth/DieWebAuth.test.ts b/apps/server/src/auth/DieWebAuth.test.ts
+new file mode 100644
+index 00000000..3e8a4048
+--- /dev/null
++++ b/apps/server/src/auth/DieWebAuth.test.ts
+@@ -0,0 +1,97 @@
++import { describe, expect, it } from "@effect/vitest";
++
++import { dieWebPrincipal, isAllowedDieWebRequest, isDieWebNoAuthEnabled } from "./DieWebAuth.ts";
++
++describe("DieWebAuth", () => {
++  it("only enables no-auth for explicit web-mode loopback listeners", () => {
++    expect(
++      isDieWebNoAuthEnabled({
++        requested: true,
++        mode: "web",
++        host: "127.0.0.1",
++        tailscaleServeEnabled: false,
++      }),
++    ).toBe(true);
++    expect(
++      isDieWebNoAuthEnabled({
++        requested: false,
++        mode: "web",
++        host: "127.0.0.1",
++        tailscaleServeEnabled: false,
++      }),
++    ).toBe(false);
++    expect(
++      isDieWebNoAuthEnabled({
++        requested: true,
++        mode: "desktop",
++        host: "127.0.0.1",
++        tailscaleServeEnabled: false,
++      }),
++    ).toBe(false);
++    expect(
++      isDieWebNoAuthEnabled({
++        requested: true,
++        mode: "web",
++        host: "0.0.0.0",
++        tailscaleServeEnabled: false,
++      }),
++    ).toBe(false);
++    expect(
++      isDieWebNoAuthEnabled({
++        requested: true,
++        mode: "web",
++        host: undefined,
++        tailscaleServeEnabled: false,
++      }),
++    ).toBe(false);
++    expect(
++      isDieWebNoAuthEnabled({
++        requested: true,
++        mode: "web",
++        host: "::1",
++        tailscaleServeEnabled: true,
++      }),
++    ).toBe(false);
++  });
++
++  it("allows exact same-origin loopback browser HTTP and WebSocket requests", () => {
++    const requestUrl = new URL("http://127.0.0.1:3773/ws");
++    expect(
++      isAllowedDieWebRequest({
++        requestUrl,
++        origin: "http://127.0.0.1:3773",
++        secFetchSite: "same-origin",
++      }),
++    ).toBe(true);
++    expect(isAllowedDieWebRequest({ requestUrl, origin: undefined, secFetchSite: undefined })).toBe(
++      true,
++    );
++    expect(dieWebPrincipal.scopes).toContain("terminal:operate");
++    expect(dieWebPrincipal.scopes).toContain("orchestration:operate");
++  });
++
++  it.each([
++    ["external origin", "https://evil.example", "cross-site"],
++    ["wrong loopback port", "http://127.0.0.1:9999", "same-origin"],
++    ["opaque origin", "null", "cross-site"],
++    ["different loopback host", "http://localhost:3773", "same-origin"],
++  ])("rejects %s", (_label, origin, secFetchSite) => {
++    expect(
++      isAllowedDieWebRequest({
++        requestUrl: new URL("http://127.0.0.1:3773/api"),
++        origin,
++        secFetchSite,
++      }),
++    ).toBe(false);
++  });
++
++  it("rejects DNS-rebinding style nonloopback Host URLs", () => {
++    expect(
++      isAllowedDieWebRequest({
++        requestUrl: new URL("http://evil.example:3773/api"),
++        origin: "http://evil.example:3773",
++        secFetchSite: "same-origin",
++      }),
++    ).toBe(false);
++  });
++});
+diff --git a/apps/server/src/auth/DieWebAuth.ts b/apps/server/src/auth/DieWebAuth.ts
+new file mode 100644
+index 00000000..56eda5fd
+--- /dev/null
++++ b/apps/server/src/auth/DieWebAuth.ts
+@@ -0,0 +1,66 @@
++import {
++  AuthAdministrativeScopes,
++  AuthSessionId,
++  type AuthEnvironmentScope,
++} from "@t3tools/contracts";
++
++import type { AuthenticatedSession } from "./EnvironmentAuth.ts";
++
++const LOOPBACK_BIND_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
++export const DIE_WEB_SESSION_ID = AuthSessionId.make("die-web-loopback");
++
++export function isLoopbackBindHost(host: string | undefined): boolean {
++  if (host === undefined) return false;
++  const normalized = host
++    .trim()
++    .toLowerCase()
++    .replace(/^\[(.*)\]$/, "$1");
++  return LOOPBACK_BIND_HOSTS.has(normalized);
++}
++
++export function isDieWebNoAuthEnabled(input: {
++  readonly requested: boolean;
++  readonly mode: "web" | "desktop";
++  readonly host: string | undefined;
++  readonly tailscaleServeEnabled: boolean;
++}): boolean {
++  return (
++    input.requested &&
++    input.mode === "web" &&
++    isLoopbackBindHost(input.host) &&
++    !input.tailscaleServeEnabled
++  );
++}
++
++/**
++ * Browser requests in loopback no-auth mode must come from the exact server
++ * origin. This blocks cross-site fetches, forms, and WebSocket upgrades. Calls
++ * from local non-browser clients may omit browser origin metadata.
++ */
++export function isAllowedDieWebRequest(input: {
++  readonly requestUrl: URL | undefined;
++  readonly origin: string | undefined;
++  readonly secFetchSite: string | undefined;
++}): boolean {
++  const requestUrl = input.requestUrl;
++  if (requestUrl === undefined || !isLoopbackBindHost(requestUrl.hostname)) return false;
++
++  const fetchSite = input.secFetchSite?.trim().toLowerCase();
++  if (fetchSite !== undefined && fetchSite !== "same-origin" && fetchSite !== "none") return false;
++
++  if (input.origin === undefined) return true;
++  if (input.origin.trim().toLowerCase() === "null") return false;
++  try {
++    const origin = new URL(input.origin);
++    return isLoopbackBindHost(origin.hostname) && origin.origin === requestUrl.origin;
++  } catch {
++    return false;
++  }
++}
++
++export const dieWebPrincipal: AuthenticatedSession = {
++  sessionId: DIE_WEB_SESSION_ID,
++  subject: "die-web-loopback",
++  method: "browser-session-cookie",
++  scopes: [...AuthAdministrativeScopes] as ReadonlyArray<AuthEnvironmentScope>,
++};
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
 index bfa1b87d..79cfaaee 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
@@ -170,11 +345,71 @@ index 1ec78ff2..65c22ee5 100644
  if (
    isEntrypoint({
      moduleUrl: import.meta.url,
+diff --git a/apps/server/src/cli/config.test.ts b/apps/server/src/cli/config.test.ts
+index 8c4dbbcd..099b0734 100644
+--- a/apps/server/src/cli/config.test.ts
++++ b/apps/server/src/cli/config.test.ts
+@@ -223,6 +223,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
+         ...derivedPaths,
+         host: "0.0.0.0",
+         staticDir: undefined,
++        dieWebNoAuth: false,
+         devUrl: new URL("http://127.0.0.1:5173"),
+         devAllowedOrigins: ["https://host.example.ts.net", "https://phone.example.ts.net"],
+         noBrowser: true,
+@@ -294,6 +295,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
+         ...derivedPaths,
+         host: "127.0.0.1",
+         staticDir: undefined,
++        dieWebNoAuth: false,
+         devUrl: new URL("http://127.0.0.1:4173"),
+         noBrowser: true,
+         startupPresentation: "browser",
+@@ -367,6 +369,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
+         ...derivedPaths,
+         host: "127.0.0.1",
+         staticDir: undefined,
++        dieWebNoAuth: false,
+         devUrl: new URL("http://127.0.0.1:4173"),
+         noBrowser: false,
+         startupPresentation: "browser",
+@@ -445,6 +448,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
+         ...derivedPaths,
+         host: "127.0.0.2",
+         staticDir: resolved.staticDir,
++        dieWebNoAuth: false,
+         devUrl: undefined,
+         noBrowser: true,
+         startupPresentation: "browser",
+@@ -578,6 +582,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
+         ...derivedPaths,
+         host: "127.0.0.1",
+         staticDir: undefined,
++        dieWebNoAuth: false,
+         devUrl: new URL("http://127.0.0.1:4173"),
+         noBrowser: true,
+         startupPresentation: "browser",
+@@ -647,6 +652,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
+         ...derivedPaths,
+         host: "127.0.0.1",
+         staticDir: resolved.staticDir,
++        dieWebNoAuth: false,
+         devUrl: undefined,
+         noBrowser: true,
+         startupPresentation: "browser",
+@@ -710,6 +716,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
+         ...derivedPaths,
+         host: undefined,
+         staticDir: resolved.staticDir,
++        dieWebNoAuth: false,
+         devUrl: undefined,
+         noBrowser: true,
+         startupPresentation: "headless",
 diff --git a/apps/server/src/cli/config.ts b/apps/server/src/cli/config.ts
-index 1759b4b0..a493956a 100644
+index e0ba4e19..c772dd63 100644
 --- a/apps/server/src/cli/config.ts
 +++ b/apps/server/src/cli/config.ts
-@@ -16,6 +16,7 @@ import { Argument, Flag } from "effect/unstable/cli";
+@@ -17,6 +17,7 @@ import { Argument, Flag } from "effect/unstable/cli";
  
  import { readBootstrapEnvelope } from "../bootstrap.ts";
  import * as ServerConfig from "../config.ts";
@@ -182,7 +417,7 @@ index 1759b4b0..a493956a 100644
  import { expandHomePath, resolveBaseDir } from "../os-jank.ts";
  
  const modeFlag = Flag.choice("mode", ServerConfig.RuntimeMode.literals).pipe(
-@@ -107,6 +108,10 @@ const EnvServerConfig = Config.all({
+@@ -115,6 +116,10 @@ const EnvServerConfig = Config.all({
    host: Config.string("T3CODE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
    t3Home: Config.string("T3CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
    devUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
@@ -193,7 +428,7 @@ index 1759b4b0..a493956a 100644
    devAllowedOrigins: Config.string("T3CODE_DEV_ALLOWED_ORIGINS").pipe(
      Config.withDefault(""),
      Config.map((value) =>
-@@ -366,8 +371,17 @@ export const resolveServerConfig = (
+@@ -374,8 +379,17 @@ export const resolveServerConfig = (
          Option.fromUndefinedOr(env.host),
          Option.fromUndefinedOr(bootstrap?.host),
        ),
@@ -212,7 +447,7 @@ index 1759b4b0..a493956a 100644
      const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
  
      const config: ServerConfig.ServerConfig["Service"] = {
-@@ -398,6 +412,7 @@ export const resolveServerConfig = (
+@@ -408,6 +422,7 @@ export const resolveServerConfig = (
        devUrl,
        ...(devAuthToken === undefined ? {} : { devAuthToken }),
        devAllowedOrigins: env.devAllowedOrigins,
@@ -221,10 +456,10 @@ index 1759b4b0..a493956a 100644
        startupPresentation,
        desktopBootstrapToken,
 diff --git a/apps/server/src/config.ts b/apps/server/src/config.ts
-index b0544ef3..a4c3a5e5 100644
+index 919628c8..ee8f7bf1 100644
 --- a/apps/server/src/config.ts
 +++ b/apps/server/src/config.ts
-@@ -82,6 +82,8 @@ export class ServerConfig extends Context.Service<
+@@ -85,6 +85,8 @@ export class ServerConfig extends Context.Service<
      readonly devUrl: URL | undefined;
      readonly devAuthToken?: Redacted.Redacted<string> | undefined;
      readonly devAllowedOrigins: ReadonlyArray<string>;
@@ -473,1679 +708,6 @@ index 5a18d6e8..7534be13 100644
          timeout: Duration.millis(options?.timeoutMs ?? 20_000),
          timeoutBehavior: "timedOutResult",
          ...(options?.stdin === undefined ? {} : { stdin: options.stdin }),
-diff --git a/apps/server/src/provider/Layers/ClaudeAdapter.ts b/apps/server/src/provider/Layers/ClaudeAdapter.ts
-index 3afde2b3..3e2b8333 100644
---- a/apps/server/src/provider/Layers/ClaudeAdapter.ts
-+++ b/apps/server/src/provider/Layers/ClaudeAdapter.ts
-@@ -69,7 +69,11 @@ import {
-   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
-   formatClaudeResumeCompactionQuestion,
- } from "@t3tools/shared/claudeCompaction";
--import { HostProcessIsExecutable } from "@t3tools/shared/hostProcess";
-+import {
-+  HostProcessIsBun,
-+  HostProcessIsExecutable,
-+  withBunSelfExecEnvironment,
-+} from "@t3tools/shared/hostProcess";
- import * as Cause from "effect/Cause";
- import * as Crypto from "effect/Crypto";
- import * as DateTime from "effect/DateTime";
-@@ -5133,7 +5137,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
-       }
-       // The single-executable has no sibling script and no Node to run one
-       // with, so it hosts the worker as a hidden subcommand of itself.
--      const historyWorkerArguments = (yield* HostProcessIsExecutable)
-+      const hostProcessIsExecutable = yield* HostProcessIsExecutable;
-+      const hostProcessIsBun = yield* HostProcessIsBun;
-+      const historyWorkerArguments = hostProcessIsExecutable
-         ? ["__claude-history"]
-         : [
-             yield* path
-@@ -5160,7 +5166,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
-             ChildProcess.make(
-               process.execPath,
-               [...historyWorkerArguments, method, historySessionId, encodeHistoryArgs(args)],
--              { env: { ...claudeEnvironment, ELECTRON_RUN_AS_NODE: "1" } },
-+              {
-+                env: {
-+                  ...withBunSelfExecEnvironment(
-+                    claudeEnvironment,
-+                    hostProcessIsBun && !hostProcessIsExecutable,
-+                  ),
-+                  ELECTRON_RUN_AS_NODE: "1",
-+                },
-+              },
-             ),
-           ).pipe(
-             Effect.timeout("30 seconds"),
-diff --git a/apps/server/src/provider/ProviderInstanceEnvironment.test.ts b/apps/server/src/provider/ProviderInstanceEnvironment.test.ts
-index 7d6bbe61..a36fa2f0 100644
---- a/apps/server/src/provider/ProviderInstanceEnvironment.test.ts
-+++ b/apps/server/src/provider/ProviderInstanceEnvironment.test.ts
-@@ -50,6 +50,18 @@ describe("mergeProviderInstanceEnvironment", () => {
-     ).toEqual({ ...baseEnv, CUSTOM_VALUE: "~/.custom" });
-   });
- 
-+  it("never leaks Bun interpreter mode into provider children", () => {
-+    const baseEnv = { PATH: "/bin", BUN_BE_BUN: "1" };
-+    expect(mergeProviderInstanceEnvironment(undefined, baseEnv)).toEqual({ PATH: "/bin" });
-+    expect(
-+      mergeProviderInstanceEnvironment(
-+        [{ name: "BUN_BE_BUN", value: "1", sensitive: false }],
-+        baseEnv,
-+      ),
-+    ).toEqual({ PATH: "/bin" });
-+    expect(baseEnv.BUN_BE_BUN).toBe("1");
-+  });
-+
-   it("overrides inherited environment values and preserves empty strings", () => {
-     expect(
-       mergeProviderInstanceEnvironment(
-diff --git a/apps/server/src/provider/ProviderInstanceEnvironment.ts b/apps/server/src/provider/ProviderInstanceEnvironment.ts
-index 77c0c6c2..e440f89b 100644
---- a/apps/server/src/provider/ProviderInstanceEnvironment.ts
-+++ b/apps/server/src/provider/ProviderInstanceEnvironment.ts
-@@ -1,4 +1,5 @@
- import type { ProviderInstanceEnvironment } from "@t3tools/contracts";
-+import { withoutBunSelfExecEnvironment } from "@t3tools/shared/hostProcess";
- 
- import { expandHomePath } from "../pathExpansion.ts";
- 
-@@ -6,17 +7,17 @@ export function mergeProviderInstanceEnvironment(
-   environment: ProviderInstanceEnvironment | undefined,
-   baseEnv: NodeJS.ProcessEnv = process.env,
- ): NodeJS.ProcessEnv {
--  if (!environment || environment.length === 0) {
--    return baseEnv;
--  }
-+  const next = withoutBunSelfExecEnvironment(baseEnv);
-+  if (!environment || environment.length === 0) return next;
- 
--  const next: NodeJS.ProcessEnv = { ...baseEnv };
-+  const merged: NodeJS.ProcessEnv = { ...next };
-   for (const variable of environment) {
-     // Child processes do not apply shell expansion to environment values.
--    next[variable.name] =
-+    merged[variable.name] =
-       variable.name === "CODEX_HOME" || variable.name === "CLAUDE_CONFIG_DIR"
-         ? expandHomePath(variable.value)
-         : variable.value;
-   }
--  return next;
-+  delete merged.BUN_BE_BUN;
-+  return merged;
- }
-diff --git a/apps/server/src/provider/builtInDrivers.ts b/apps/server/src/provider/builtInDrivers.ts
-index 60e3402e..947408e9 100644
---- a/apps/server/src/provider/builtInDrivers.ts
-+++ b/apps/server/src/provider/builtInDrivers.ts
-@@ -25,6 +25,7 @@ import { CodexDriver, type CodexDriverEnv } from "./Drivers/CodexDriver.ts";
- import { CursorDriver, type CursorDriverEnv } from "./Drivers/CursorDriver.ts";
- import { GrokDriver, type GrokDriverEnv } from "./Drivers/GrokDriver.ts";
- import { OpenCodeDriver, type OpenCodeDriverEnv } from "./Drivers/OpenCodeDriver.ts";
-+import { PiDriver, type PiDriverEnv } from "./Drivers/PiDriver.ts";
- import { AntigravityDriver, type AntigravityDriverEnv } from "./Drivers/AntigravityDriver.ts";
- import type { AnyProviderDriver } from "./ProviderDriver.ts";
- 
-@@ -39,6 +40,7 @@ export type BuiltInDriversEnv =
-   | CursorDriverEnv
-   | GrokDriverEnv
-   | OpenCodeDriverEnv
-+  | PiDriverEnv
-   | AntigravityDriverEnv;
- 
- /**
-@@ -52,5 +54,6 @@ export const BUILT_IN_DRIVERS: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv
-   CursorDriver,
-   GrokDriver,
-   OpenCodeDriver,
-+  PiDriver,
-   AntigravityDriver,
- ];
-diff --git a/apps/server/src/serverRuntimeStartup.test.ts b/apps/server/src/serverRuntimeStartup.test.ts
-index 158606e9..104d7a92 100644
---- a/apps/server/src/serverRuntimeStartup.test.ts
-+++ b/apps/server/src/serverRuntimeStartup.test.ts
-@@ -16,13 +16,147 @@ import * as PlatformError from "effect/PlatformError";
- import * as Ref from "effect/Ref";
- import * as Stream from "effect/Stream";
- 
-+import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
- import * as ServerConfig from "./config.ts";
-+import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
- import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
- import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
- import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
- import * as ServerSettings from "./serverSettings.ts";
- import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
- 
-+it.effect("uses the direct loopback URL for Die web no-auth startup", () =>
-+  Effect.gen(function* () {
-+    const target = yield* ServerRuntimeStartup.resolveStartupBrowserTarget.pipe(
-+      Effect.provideService(ServerConfig.ServerConfig, {
-+        mode: "web",
-+        host: "127.0.0.1",
-+        port: 3773,
-+        dieWebNoAuth: true,
-+        devUrl: undefined,
-+      } as never),
-+      Effect.provideService(EnvironmentAuth.EnvironmentAuth, {
-+        issueStartupPairingUrl: () => Effect.die("No-auth startup must not issue pairing credentials"),
-+      } as never),
-+    );
-+
-+    assert.equal(target, "http://127.0.0.1:3773");
-+  }),
-+);
-+
-+it.effect("uses pairing URL for ordinary web startup", () =>
-+  Effect.gen(function* () {
-+    const target = yield* ServerRuntimeStartup.resolveStartupBrowserTarget.pipe(
-+      Effect.provideService(ServerConfig.ServerConfig, {
-+        mode: "web",
-+        host: "127.0.0.1",
-+        port: 3773,
-+        dieWebNoAuth: false,
-+        devUrl: undefined,
-+      } as never),
-+      Effect.provideService(EnvironmentAuth.EnvironmentAuth, {
-+        issueStartupPairingUrl: (baseUrl: string) => Effect.succeed(`paired:${baseUrl}`),
-+      } as never),
-+    );
-+
-+    assert.equal(target, "paired:http://127.0.0.1:3773");
-+  }),
-+);
-+
-+it("uses the canonical Codex default for auto-bootstrapped model selection", () => {
-+  assert.deepStrictEqual(ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection(), {
-+    instanceId: ProviderInstanceId.make("codex"),
-+    model: DEFAULT_MODEL,
-+  });
-+});
-+
-+it.effect("preserves the Codex auto-bootstrap default outside Die web", () =>
-+  Effect.gen(function* () {
-+    const selection = yield* ServerRuntimeStartup.resolveAutoBootstrapDefaultModelSelection(
-+      {},
-+    ).pipe(
-+      Effect.provideService(ProviderRegistry.ProviderRegistry, {
-+        refreshInstance: () => Effect.die("Pi inventory must not be read"),
-+      } as never),
-+    );
-+
-+    assert.deepStrictEqual(selection, {
-+      instanceId: ProviderInstanceId.make("codex"),
-+      model: DEFAULT_MODEL,
-+    });
-+  }),
-+);
-+
-+it.effect("uses the discovered Pi default for Die web auto-bootstrap", () =>
-+  Effect.gen(function* () {
-+    const refreshCalls = yield* Ref.make<ReadonlyArray<string>>([]);
-+    const selection = yield* ServerRuntimeStartup.resolveAutoBootstrapDefaultModelSelection({
-+      DIE_WEB_DIE_BINARY: "/tmp/fake-die",
-+    }).pipe(
-+      Effect.provideService(ProviderRegistry.ProviderRegistry, {
-+        refreshInstance: (instanceId: ProviderInstanceId) =>
-+          Ref.update(refreshCalls, (calls) => [...calls, instanceId]).pipe(
-+            Effect.as([
-+              {
-+                instanceId: ProviderInstanceId.make("pi"),
-+                driver: "pi",
-+                enabled: true,
-+                availability: "available",
-+                models: [
-+                  {
-+                    slug: "other/model",
-+                    name: "Other",
-+                    isCustom: false,
-+                    capabilities: null,
-+                  },
-+                  {
-+                    slug: "die/default-model",
-+                    name: "Die default",
-+                    isCustom: false,
-+                    isDefault: true,
-+                    capabilities: {
-+                      optionDescriptors: [
-+                        {
-+                          id: "thinkingLevel",
-+                          label: "Thinking level",
-+                          type: "select",
-+                          currentValue: "high",
-+                          options: [{ id: "high", label: "high" }],
-+                        },
-+                      ],
-+                    },
-+                  },
-+                ],
-+              },
-+            ] as never),
-+          ),
-+      } as never),
-+    );
-+
-+    assert.deepStrictEqual(selection, {
-+      instanceId: ProviderInstanceId.make("pi"),
-+      model: "die/default-model",
-+      options: [{ id: "thinkingLevel", value: "high" }],
-+    });
-+    assert.deepStrictEqual(yield* Ref.get(refreshCalls), [ProviderInstanceId.make("pi")]);
-+  }),
-+);
-+
-+it("does not disguise Codex as Die when Pi has no model inventory", () => {
-+  assert.equal(
-+    ServerRuntimeStartup.getDieWebAutoBootstrapModelSelection([
-+      {
-+        instanceId: ProviderInstanceId.make("pi"),
-+        driver: "pi",
-+        enabled: true,
-+        availability: "available",
-+        models: [],
-+      } as never,
-+    ]),
-+    undefined,
-+  );
-+});
-+
- it.effect("automatic pull only updates enabled, behind, clean default-branch checkouts", () =>
-   Effect.gen(function* () {
-     const pulled: string[] = [];
-@@ -138,6 +272,9 @@ it.effect("enqueueCommand fails queued work when readiness fails", () =>
- it.effect("resolveWelcomeBase derives cwd and project name from server config", () =>
-   Effect.gen(function* () {
-     const welcome = yield* ServerRuntimeStartup.resolveWelcomeBase.pipe(
-+      Effect.provideService(ProviderRegistry.ProviderRegistry, {
-+        refreshInstance: () => Effect.succeed([]),
-+      } as never),
-       Effect.provideService(ServerConfig.ServerConfig, {
-         cwd: "/tmp/startup-project",
-       } as never),
-@@ -158,6 +295,9 @@ it.effect("resolveAutoBootstrapWelcomeTargets returns existing project and threa
-     const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
-     const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
-       Effect.provide(ServerSettings.layerTest()),
-+      Effect.provideService(ProviderRegistry.ProviderRegistry, {
-+        refreshInstance: () => Effect.succeed([]),
-+      } as never),
-       Effect.provideService(ServerConfig.ServerConfig, {
-         cwd: "/tmp/startup-project",
-         autoBootstrapProjectFromCwd: true,
-@@ -287,6 +427,9 @@ it.effect.each([
-               : {},
-         }),
-       ),
-+      Effect.provideService(ProviderRegistry.ProviderRegistry, {
-+        refreshInstance: () => Effect.succeed([]),
-+      } as never),
-       Effect.provideService(ServerConfig.ServerConfig, {
-         cwd: "/tmp/startup-project",
-         autoBootstrapProjectFromCwd: true,
-@@ -372,6 +515,9 @@ it.effect(
-       const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
-       const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
-         Effect.provide(ServerSettings.layerTest()),
-+        Effect.provideService(ProviderRegistry.ProviderRegistry, {
-+          refreshInstance: () => Effect.succeed([]),
-+        } as never),
-         Effect.provideService(ServerConfig.ServerConfig, {
-           cwd: "/tmp/startup-project",
-           autoBootstrapProjectFromCwd: true,
-@@ -435,6 +581,9 @@ it.effect("resolveAutoBootstrapWelcomeTargets preserves typed UUID generation fa
- 
-     const error = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
-       Effect.provide(ServerSettings.layerTest()),
-+      Effect.provideService(ProviderRegistry.ProviderRegistry, {
-+        refreshInstance: () => Effect.succeed([]),
-+      } as never),
-       Effect.provideService(ServerConfig.ServerConfig, {
-         cwd: "/tmp/startup-project",
-         autoBootstrapProjectFromCwd: true,
-@@ -513,3 +662,50 @@ it.effect("completeAutoBootstrapWelcome settles an empty bootstrap result", () =
-     assert.deepStrictEqual(completion, { bootstrapStatus: "complete" });
-   }),
- );
-+
-+it.effect(
-+  "Die bootstrap seeds project metadata and first thread with the discovered actual model",
-+  () =>
-+    Effect.gen(function* () {
-+      const commands: Array<any> = [];
-+      const modelSelection = { instanceId: ProviderInstanceId.make("pi"), model: "fixture/actual" };
-+      yield* ServerRuntimeStartup.makeResolveAutoBootstrapWelcomeTargets({
-+        DIE_WEB_DIE_BINARY: "/fixture/die",
-+      }).pipe(
-+        Effect.provide(ServerSettings.layerTest()),
-+        Effect.provideService(ProviderRegistry.ProviderRegistry, {
-+          refreshInstance: () =>
-+            Effect.succeed([
-+              {
-+                instanceId: ProviderInstanceId.make("pi"),
-+                driver: "pi",
-+                enabled: true,
-+                models: [{ slug: "fixture/actual", isDefault: true }],
-+              },
-+            ]),
-+        } as never),
-+        Effect.provideService(ServerConfig.ServerConfig, {
-+          cwd: "/fixture/workspace",
-+          autoBootstrapProjectFromCwd: true,
-+        } as never),
-+        Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
-+          getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
-+          getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
-+        } as never),
-+        Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
-+          dispatch: (command: any) =>
-+            Effect.sync(() => {
-+              commands.push(command);
-+              return { sequence: commands.length };
-+            }),
-+        } as never),
-+        Effect.provide(NodeServices.layer),
-+      );
-+      assert.deepStrictEqual(
-+        commands.map((command) => command.type),
-+        ["project.create", "project.meta.update", "thread.create"],
-+      );
-+      assert.deepStrictEqual(commands[1].defaultModelSelection, modelSelection);
-+      assert.deepStrictEqual(commands[2].modelSelection, modelSelection);
-+    }),
-+);
-diff --git a/apps/server/src/serverRuntimeStartup.ts b/apps/server/src/serverRuntimeStartup.ts
-index ec820e2f..3fbdaa95 100644
---- a/apps/server/src/serverRuntimeStartup.ts
-+++ b/apps/server/src/serverRuntimeStartup.ts
-@@ -5,12 +5,18 @@ import {
-   DEFAULT_SERVER_SETTINGS,
-   type ServerSettings as ServerSettingsValue,
-   type ModelSelection,
-+  type ServerProvider,
-   type OrchestrationProjectShell,
-   ProjectId,
-   ProviderInstanceId,
-   ThreadId,
-   TurnId,
- } from "@t3tools/contracts";
-+import {
-+  buildProviderOptionSelectionsFromDescriptors,
-+  createModelSelection,
-+} from "@t3tools/shared/model";
-+import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
- import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
- import * as Cause from "effect/Cause";
- import * as Console from "effect/Console";
-@@ -171,11 +177,47 @@ const recordStartupHeartbeat = Effect.gen(function* () {
-   });
- });
- 
--const getAutoBootstrapThreadModelSelection = (): ModelSelection => ({
-+export const getAutoBootstrapDefaultModelSelection = (): ModelSelection => ({
-   instanceId: ProviderInstanceId.make("codex"),
-   model: DEFAULT_MODEL,
- });
- 
-+const DIE_WEB_PI_INSTANCE_ID = ProviderInstanceId.make("pi");
-+
-+export const getDieWebAutoBootstrapModelSelection = (
-+  providers: ReadonlyArray<ServerProvider>,
-+): ModelSelection | undefined => {
-+  const pi = providers.find(
-+    (provider) =>
-+      provider.instanceId === DIE_WEB_PI_INSTANCE_ID &&
-+      provider.driver === "pi" &&
-+      provider.enabled &&
-+      provider.availability !== "unavailable",
-+  );
-+  if (!pi) return undefined;
-+  const model = pi.models.find((candidate) => candidate.isDefault) ?? pi.models[0];
-+  if (!model) return undefined;
-+
-+  return createModelSelection(
-+    pi.instanceId,
-+    model.slug,
-+    buildProviderOptionSelectionsFromDescriptors(model.capabilities?.optionDescriptors),
-+  );
-+};
-+
-+export const resolveAutoBootstrapDefaultModelSelection = (
-+  environment: NodeJS.ProcessEnv = process.env,
-+) =>
-+  Effect.gen(function* () {
-+    if (!environment.DIE_WEB_DIE_BINARY?.trim()) {
-+      return getAutoBootstrapDefaultModelSelection();
-+    }
-+
-+    const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
-+    const providers = yield* providerRegistry.refreshInstance(DIE_WEB_PI_INSTANCE_ID);
-+    return getDieWebAutoBootstrapModelSelection(providers);
-+  });
-+
- export const resolveWelcomeBase = Effect.gen(function* () {
-   const serverConfig = yield* ServerConfig.ServerConfig;
-   const segments = serverConfig.cwd.split(/[/\\]/).filter(Boolean);
-@@ -187,98 +229,118 @@ export const resolveWelcomeBase = Effect.gen(function* () {
-   } as const;
- });
- 
--export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
--  const crypto = yield* Crypto.Crypto;
--  const randomUUID = crypto.randomUUIDv4;
--  const serverConfig = yield* ServerConfig.ServerConfig;
--  const projectionReadModelQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
--  const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
--  const path = yield* Path.Path;
--
--  let bootstrapProjectId: ProjectId | undefined;
--  let bootstrapThreadId: ThreadId | undefined;
--  let bootstrapProjectCreated = false;
--  let bootstrapThreadCreated = false;
--
--  if (serverConfig.autoBootstrapProjectFromCwd) {
--    const settings = yield* (yield* ServerSettings.ServerSettingsService).getSettings;
--    const defaultModelSelection =
--      settings.defaultModelSelection ?? getAutoBootstrapThreadModelSelection();
--    yield* Effect.gen(function* () {
--      const existingProject = yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(
--        serverConfig.cwd,
--      );
--      let nextProjectId: ProjectId;
--      let nextThreadModelSelection: ModelSelection;
--
--      if (Option.isNone(existingProject)) {
--        const createdAt = DateTime.formatIso(yield* DateTime.now);
--        nextProjectId = ProjectId.make(yield* randomUUID);
--        const bootstrapProjectTitle = path.basename(serverConfig.cwd) || "project";
--        nextThreadModelSelection = defaultModelSelection;
--        yield* orchestrationEngine.dispatch({
--          type: "project.create",
--          commandId: CommandId.make(yield* randomUUID),
--          projectId: nextProjectId,
--          title: bootstrapProjectTitle,
--          workspaceRoot: serverConfig.cwd,
--          createdAt,
--        });
--        bootstrapProjectId = nextProjectId;
--        bootstrapProjectCreated = true;
--      } else {
--        nextProjectId = existingProject.value.id;
--        bootstrapProjectId = nextProjectId;
--        nextThreadModelSelection =
--          resolveProjectSettings(settings, nextProjectId, existingProject.value).settings
--            .defaultModelSelection ?? defaultModelSelection;
--      }
-+export const makeResolveAutoBootstrapWelcomeTargets = (
-+  environment: NodeJS.ProcessEnv = process.env,
-+) =>
-+  Effect.gen(function* () {
-+    const crypto = yield* Crypto.Crypto;
-+    const randomUUID = crypto.randomUUIDv4;
-+    const serverConfig = yield* ServerConfig.ServerConfig;
-+    const projectionReadModelQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
-+    const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
-+    const path = yield* Path.Path;
- 
-+    let bootstrapProjectId: ProjectId | undefined;
-+    let bootstrapThreadId: ThreadId | undefined;
-+    let bootstrapProjectCreated = false;
-+    let bootstrapThreadCreated = false;
-+
-+    if (serverConfig.autoBootstrapProjectFromCwd) {
-+      const settings = yield* (yield* ServerSettings.ServerSettingsService).getSettings;
-       yield* Effect.gen(function* () {
--        const existingThreadId =
--          yield* projectionReadModelQuery.getFirstActiveThreadIdByProjectId(nextProjectId);
--        if (Option.isNone(existingThreadId)) {
-+        const defaultModelSelection =
-+          settings.defaultModelSelection ??
-+          (yield* resolveAutoBootstrapDefaultModelSelection(environment));
-+        if (!defaultModelSelection) {
-+          yield* Effect.logWarning(
-+            "skipping workspace auto-bootstrap because the Die Pi provider reported no models",
-+          );
-+          return;
-+        }
-+        const existingProject = yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(
-+          serverConfig.cwd,
-+        );
-+        let nextProjectId: ProjectId;
-+        let nextThreadModelSelection: ModelSelection;
-+
-+        if (Option.isNone(existingProject)) {
-           const createdAt = DateTime.formatIso(yield* DateTime.now);
--          const createdThreadId = ThreadId.make(yield* randomUUID);
-+          nextProjectId = ProjectId.make(yield* randomUUID);
-+          const bootstrapProjectTitle = path.basename(serverConfig.cwd) || "project";
-+          nextThreadModelSelection = defaultModelSelection;
-           yield* orchestrationEngine.dispatch({
--            type: "thread.create",
-+            type: "project.create",
-             commandId: CommandId.make(yield* randomUUID),
--            threadId: createdThreadId,
-             projectId: nextProjectId,
--            title: "New thread",
--            modelSelection: nextThreadModelSelection,
--            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
--            runtimeMode: resolveProjectSettings(settings, nextProjectId).settings
--              .defaultRuntimeMode,
--            branch: null,
--            worktreePath: null,
-+            title: bootstrapProjectTitle,
-+            workspaceRoot: serverConfig.cwd,
-             createdAt,
-           });
--          bootstrapThreadId = createdThreadId;
--          bootstrapThreadCreated = true;
-+          if (environment.DIE_WEB_DIE_BINARY?.trim()) {
-+            yield* orchestrationEngine.dispatch({
-+              type: "project.meta.update",
-+              commandId: CommandId.make(yield* randomUUID),
-+              projectId: nextProjectId,
-+              defaultModelSelection: nextThreadModelSelection,
-+            });
-+          }
-+          bootstrapProjectId = nextProjectId;
-+          bootstrapProjectCreated = true;
-         } else {
--          bootstrapThreadId = existingThreadId.value;
-+          nextProjectId = existingProject.value.id;
-+          bootstrapProjectId = nextProjectId;
-+          nextThreadModelSelection =
-+            resolveProjectSettings(settings, nextProjectId, existingProject.value).settings
-+              .defaultModelSelection ?? defaultModelSelection;
-         }
--      }).pipe(
--        Effect.catchCause((cause) =>
--          Cause.hasInterrupts(cause)
--            ? Effect.failCause(cause)
--            : Effect.logWarning("startup thread auto-bootstrap failed", {
--                bootstrapProjectId: nextProjectId,
--                cause,
--              }),
--        ),
--      );
--    });
--  }
- 
--  return {
--    ...(bootstrapProjectId ? { bootstrapProjectId } : {}),
--    ...(bootstrapThreadId ? { bootstrapThreadId } : {}),
--    ...(bootstrapProjectId ? { bootstrapProjectCreated } : {}),
--    ...(bootstrapThreadId ? { bootstrapThreadCreated } : {}),
--  } as const;
--});
-+        yield* Effect.gen(function* () {
-+          const existingThreadId =
-+            yield* projectionReadModelQuery.getFirstActiveThreadIdByProjectId(nextProjectId);
-+          if (Option.isNone(existingThreadId)) {
-+            const createdAt = DateTime.formatIso(yield* DateTime.now);
-+            const createdThreadId = ThreadId.make(yield* randomUUID);
-+            yield* orchestrationEngine.dispatch({
-+              type: "thread.create",
-+              commandId: CommandId.make(yield* randomUUID),
-+              threadId: createdThreadId,
-+              projectId: nextProjectId,
-+              title: "New thread",
-+              modelSelection: nextThreadModelSelection,
-+              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
-+              runtimeMode: resolveProjectSettings(settings, nextProjectId).settings
-+                .defaultRuntimeMode,
-+              branch: null,
-+              worktreePath: null,
-+              createdAt,
-+            });
-+            bootstrapThreadId = createdThreadId;
-+            bootstrapThreadCreated = true;
-+          } else {
-+            bootstrapThreadId = existingThreadId.value;
-+          }
-+        }).pipe(
-+          Effect.catchCause((cause) =>
-+            Cause.hasInterrupts(cause)
-+              ? Effect.failCause(cause)
-+              : Effect.logWarning("startup thread auto-bootstrap failed", {
-+                  bootstrapProjectId: nextProjectId,
-+                  cause,
-+                }),
-+          ),
-+        );
-+      });
-+    }
-+
-+    return {
-+      ...(bootstrapProjectId ? { bootstrapProjectId } : {}),
-+      ...(bootstrapThreadId ? { bootstrapThreadId } : {}),
-+      ...(bootstrapProjectId ? { bootstrapProjectCreated } : {}),
-+      ...(bootstrapThreadId ? { bootstrapThreadCreated } : {}),
-+    } as const;
-+  });
-+
-+export const resolveAutoBootstrapWelcomeTargets = makeResolveAutoBootstrapWelcomeTargets();
- 
- export const completeAutoBootstrapWelcome = <A extends object, E, R>(
-   bootstrap: Effect.Effect<A, E, R>,
-@@ -299,20 +361,22 @@ export const completeAutoBootstrapWelcome = <A extends object, E, R>(
-     }),
-   );
- 
--const resolveStartupBrowserTarget = Effect.gen(function* () {
-+export const resolveStartupBrowserTarget = Effect.gen(function* () {
-   const serverConfig = yield* ServerConfig.ServerConfig;
--  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-   const localUrl = `http://localhost:${serverConfig.port}`;
-   const bindUrl =
-     serverConfig.host && !isWildcardHost(serverConfig.host)
-       ? `http://${formatHostForUrl(serverConfig.host)}:${serverConfig.port}`
-       : localUrl;
-   const baseTarget = serverConfig.devUrl?.toString() ?? bindUrl;
--  return yield* Effect.succeed(serverConfig.mode === "desktop" ? baseTarget : undefined).pipe(
--    Effect.flatMap((target) =>
--      target ? Effect.succeed(target) : serverAuth.issueStartupPairingUrl(baseTarget),
--    ),
--  );
-+  if (serverConfig.dieWebNoAuth === true) {
-+    return baseTarget;
-+  }
-+  if (serverConfig.mode === "desktop") {
-+    return baseTarget;
-+  }
-+  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-+  return yield* serverAuth.issueStartupPairingUrl(baseTarget);
- });
- 
- const maybeOpenBrowser = (target: string) =>
-@@ -932,14 +996,23 @@ export const make = (options?: StartupOptions) =>
-             Effect.ignoreCause({ log: true }),
-           );
-           if (serverConfig.startupPresentation === "headless") {
--            const accessInfo = yield* issueHeadlessServeAccessInfo();
--            yield* runStartupPhase(
--              "headless.output",
--              Console.log(formatHeadlessServeOutput(accessInfo)),
--            );
-+            if (serverConfig.dieWebNoAuth === true) {
-+              yield* runStartupPhase(
-+                "headless.output",
-+                Console.log(
-+                  `T3 Code server is ready.\nConnection string: ${yield* resolveStartupBrowserTarget}`,
-+                ),
-+              );
-+            } else {
-+              const accessInfo = yield* issueHeadlessServeAccessInfo();
-+              yield* runStartupPhase(
-+                "headless.output",
-+                Console.log(formatHeadlessServeOutput(accessInfo)),
-+              );
-+            }
-           } else {
-             const startupBrowserTarget = yield* resolveStartupBrowserTarget;
--            if (serverConfig.mode !== "desktop") {
-+            if (serverConfig.mode !== "desktop" && serverConfig.dieWebNoAuth !== true) {
-               yield* Effect.logInfo(
-                 "Authentication required. Open T3 Code using the pairing URL.",
-               ).pipe(Effect.annotateLogs({ pairingUrl: startupBrowserTarget }));
-diff --git a/apps/server/src/terminal/NodePtyAdapter.test.ts b/apps/server/src/terminal/NodePtyAdapter.test.ts
-index e6650025..11df4fe3 100644
---- a/apps/server/src/terminal/NodePtyAdapter.test.ts
-+++ b/apps/server/src/terminal/NodePtyAdapter.test.ts
-@@ -28,6 +28,7 @@ const makeTestLayer = (platform: NodeJS.Platform = "win32") =>
-         NodeServices.layer,
-         Layer.succeed(HostProcessPlatform, platform),
-         Layer.succeed(HostProcessArchitecture, "x64"),
-+        Layer.succeed(NodePtyAdapter.BunTerminalRuntimeRef, undefined),
-         Layer.succeed(NodePtyAdapter.NodePtyModuleLoaderRef, () => Promise.resolve(fakeNodePty)),
-       ),
-     ),
-diff --git a/apps/server/src/terminal/NodePtyAdapter.ts b/apps/server/src/terminal/NodePtyAdapter.ts
-index 67cdcecd..a8621acf 100644
---- a/apps/server/src/terminal/NodePtyAdapter.ts
-+++ b/apps/server/src/terminal/NodePtyAdapter.ts
-@@ -8,6 +8,7 @@ import * as Path from "effect/Path";
- import * as Schema from "effect/Schema";
- import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
- 
-+import * as BunPtyAdapter from "./BunPtyAdapter.ts";
- import * as PtyAdapter from "./PtyAdapter.ts";
- 
- export class NodePtyModuleLoadError extends Schema.TaggedError<NodePtyModuleLoadError>()(
-@@ -129,6 +130,9 @@ class NodePtyProcess implements PtyAdapter.PtyProcess {
- }
- 
- export const make = Effect.fn("NodePtyAdapter.make")(function* () {
-+  const bunRuntime = yield* BunPtyAdapter.BunTerminalRuntimeRef;
-+  if (bunRuntime !== undefined) return BunPtyAdapter.make(bunRuntime);
-+
-   const loadNodePtyModule = yield* NodePtyModuleLoaderRef;
-   const fs = yield* FileSystem.FileSystem;
-   const path = yield* Path.Path;
-@@ -187,3 +191,5 @@ export const make = Effect.fn("NodePtyAdapter.make")(function* () {
- });
- 
- export const layer = Layer.effect(PtyAdapter.PtyAdapter, make());
-+
-+export { BunTerminalRuntimeRef } from "./BunPtyAdapter.ts";
-diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index fafdee59..bd116c05 100644
---- a/apps/web/src/components/chat/ChatComposer.tsx
-+++ b/apps/web/src/components/chat/ChatComposer.tsx
-@@ -1031,6 +1031,9 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
-   showInteractionModeToggle: boolean;
-   interactionMode: ProviderInteractionMode;
-   runtimeMode: RuntimeMode;
-+  dieMode?: "fast" | "normal" | "orchestrator";
-+  showDieMode?: boolean;
-+  onDieModeChange?: (mode: "fast" | "normal" | "orchestrator") => void;
-   size?: "sm" | "xs";
-   hidden?: boolean;
-   onToggleInteractionMode: () => void;
-@@ -1091,53 +1094,80 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
- 
-   return (
-     <>
--      <ComposerControlSeparator size={size} />
--
--      <Tooltip>
--        <Select
--          open={open}
--          onOpenChange={setOpen}
--          value={props.runtimeMode}
--          onValueChange={(value) => props.onRuntimeModeChange(value!)}
--        >
--          <TooltipTrigger
--            render={
--              <ComposerSelectControl
--                size={size}
--                className={size === "xs" ? undefined : "font-medium"}
--                aria-label="Runtime mode"
--              />
--            }
-+      {props.showDieMode ? (
-+        <>
-+          <ComposerControlSeparator size={size} />
-+          <Select
-+            open={open}
-+            onOpenChange={setOpen}
-+            value={props.dieMode ?? "orchestrator"}
-+            onValueChange={(value) => {
-+              if (value === "fast" || value === "normal" || value === "orchestrator") {
-+                props.onDieModeChange?.(value);
-+              }
-+            }}
-           >
--            <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
--            <SelectValue>{runtimeModeOption.label}</SelectValue>
--          </TooltipTrigger>
--          <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
--            {runtimeModeOptions.map((mode) => {
--              const option = runtimeModeConfig[mode];
--              const OptionIcon = option.icon;
--              return (
--                <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
--                  <div className="flex min-w-0 items-center gap-3">
--                    <div className="grid min-w-0 flex-1 gap-0.5">
--                      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
--                        <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
--                        {option.label}
--                      </span>
--                      <span className="text-muted-foreground text-xs leading-4">
--                        {option.description}
--                      </span>
--                    </div>
--                  </div>
--                </SelectItem>
--              );
--            })}
--          </SelectPopup>
--        </Select>
--        <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
--      </Tooltip>
--
--      {interactionModeToggle}
-+            <ComposerSelectControl size={size} aria-label="Die mode">
-+              <SelectValue>{props.dieMode ?? "orchestrator"}</SelectValue>
-+            </ComposerSelectControl>
-+            <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
-+              <SelectItem value="fast">Fast</SelectItem>
-+              <SelectItem value="normal">Normal</SelectItem>
-+              <SelectItem value="orchestrator">Orchestrator</SelectItem>
-+            </SelectPopup>
-+          </Select>
-+        </>
-+      ) : (
-+        <>
-+          <ComposerControlSeparator size={size} />
-+
-+          <Tooltip>
-+            <Select
-+              open={open}
-+              onOpenChange={setOpen}
-+              value={props.runtimeMode}
-+              onValueChange={(value) => props.onRuntimeModeChange(value!)}
-+            >
-+              <TooltipTrigger
-+                render={
-+                  <ComposerSelectControl
-+                    size={size}
-+                    className={size === "xs" ? undefined : "font-medium"}
-+                    aria-label="Runtime mode"
-+                  />
-+                }
-+              >
-+                <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
-+                <SelectValue>{runtimeModeOption.label}</SelectValue>
-+              </TooltipTrigger>
-+              <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
-+                {runtimeModeOptions.map((mode) => {
-+                  const option = runtimeModeConfig[mode];
-+                  const OptionIcon = option.icon;
-+                  return (
-+                    <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
-+                      <div className="flex min-w-0 items-center gap-3">
-+                        <div className="grid min-w-0 flex-1 gap-0.5">
-+                          <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-+                            <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
-+                            {option.label}
-+                          </span>
-+                          <span className="text-muted-foreground text-xs leading-4">
-+                            {option.description}
-+                          </span>
-+                        </div>
-+                      </div>
-+                    </SelectItem>
-+                  );
-+                })}
-+              </SelectPopup>
-+            </Select>
-+            <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
-+          </Tooltip>
-+
-+          {interactionModeToggle}
-+        </>
-+      )}
-     </>
-   );
- });
-@@ -1974,6 +2004,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
- 
-   const selectedPromptEffort = composerProviderState.promptEffort;
-   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
-+  const showDieMode =
-+    selectedProvider === "pi" &&
-+    selectedProviderModels.some((model) =>
-+      model.capabilities?.optionDescriptors?.some((option) => option.id === "instructionMode"),
-+    );
-   const { enabled: planModeUiEnabled, interactionMode } = resolveComposerInteractionMode({
-     planModeEnabled: settings.planModeEnabled,
-     provider: selectedProviderStatus,
-@@ -1983,6 +2018,40 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
-     () => createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
-     [selectedInstanceId, selectedModel, selectedModelOptionsForDispatch],
-   );
-+  const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
-+  const instructionMode = useMemo<"fast" | "normal" | "orchestrator">(() => {
-+    const value = selectedModelSelection.options?.find(
-+      (option) => option.id === "instructionMode",
-+    )?.value;
-+    return value === "fast" || value === "normal" || value === "orchestrator"
-+      ? value
-+      : "orchestrator";
-+  }, [selectedModelSelection.options]);
-+  const handleInstructionModeChange = useCallback(
-+    (mode: "fast" | "normal" | "orchestrator") => {
-+      const options = (selectedModelSelection.options ?? []).filter(
-+        (option) => option.id !== "instructionMode",
-+      );
-+      setProviderModelOptions(
-+        composerDraftTarget,
-+        selectedProvider,
-+        [...options, { id: "instructionMode", value: mode }],
-+        {
-+          instanceId: selectedInstanceId,
-+          model: selectedModel,
-+          persistSticky: true,
-+        },
-+      );
-+    },
-+    [
-+      composerDraftTarget,
-+      selectedInstanceId,
-+      selectedModel,
-+      selectedModelSelection.options,
-+      selectedProvider,
-+      setProviderModelOptions,
-+    ],
-+  );
-   const selectedModelForPicker = selectedModel;
-   // Instance-keyed option list so the picker can show each configured
-   // instance (built-in + custom) as a first-class sidebar entry. The
-@@ -4861,6 +4930,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
-           showInteractionModeToggle={planModeUiEnabled}
-           interactionMode={interactionMode}
-           runtimeMode={runtimeMode}
-+          dieMode={instructionMode}
-+          showDieMode={showDieMode}
-+          onDieModeChange={handleInstructionModeChange}
-           size={composerControlsInStrip ? "xs" : "sm"}
-           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
-           onToggleInteractionMode={toggleInteractionMode}
-@@ -4948,6 +5020,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
-         <CompactComposerControlsMenu
-           interactionMode={interactionMode}
-           runtimeMode={runtimeMode}
-+          showDieMode={showDieMode}
-           showInteractionModeToggle={planModeUiEnabled}
-           traitsMenuContent={providerTraitsMenuContent}
-           onToggleInteractionMode={toggleInteractionMode}
-diff --git a/apps/web/src/components/chat/CompactComposerControlsMenu.tsx b/apps/web/src/components/chat/CompactComposerControlsMenu.tsx
-index 039f12d4..1b9c1b94 100644
---- a/apps/web/src/components/chat/CompactComposerControlsMenu.tsx
-+++ b/apps/web/src/components/chat/CompactComposerControlsMenu.tsx
-@@ -16,6 +16,7 @@ import { useComposerMenuState } from "./useComposerMenuState";
- export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
-   interactionMode: ProviderInteractionMode;
-   runtimeMode: RuntimeMode;
-+  showDieMode?: boolean;
-   showInteractionModeToggle: boolean;
-   traitsMenuContent?: ReactNode;
-   size?: "sm" | "xs";
-@@ -68,19 +69,23 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
-             <MenuDivider />
-           </>
-         ) : null}
--        <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
--        <MenuRadioGroup
--          value={props.runtimeMode}
--          onValueChange={(value) => {
--            if (!value || value === props.runtimeMode) return;
--            props.onRuntimeModeChange(value as RuntimeMode);
--          }}
--        >
--          <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
--          <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
--          <MenuRadioItem value="auto">Auto</MenuRadioItem>
--          <MenuRadioItem value="full-access">Full access</MenuRadioItem>
--        </MenuRadioGroup>
-+        {props.showDieMode ? null : (
-+          <>
-+            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
-+            <MenuRadioGroup
-+              value={props.runtimeMode}
-+              onValueChange={(value) => {
-+                if (!value || value === props.runtimeMode) return;
-+                props.onRuntimeModeChange(value as RuntimeMode);
-+              }}
-+            >
-+              <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
-+              <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
-+              <MenuRadioItem value="auto">Auto</MenuRadioItem>
-+              <MenuRadioItem value="full-access">Full access</MenuRadioItem>
-+            </MenuRadioGroup>
-+          </>
-+        )}
-       </MenuPopup>
-     </Menu>
-   );
-diff --git a/apps/web/src/components/chat/TraitsPicker.tsx b/apps/web/src/components/chat/TraitsPicker.tsx
-index 47ce59ef..6998a1de 100644
---- a/apps/web/src/components/chat/TraitsPicker.tsx
-+++ b/apps/web/src/components/chat/TraitsPicker.tsx
-@@ -270,6 +270,7 @@ export function shouldRenderTraitsControls(input: {
- }
- 
- export interface TraitsMenuContentProps {
-+  hideInstructionMode?: boolean;
-   provider: ProviderDriverKind;
-   instanceId?: ProviderInstanceId;
-   models: ReadonlyArray<ServerProviderModel>;
-@@ -285,6 +286,7 @@ export interface TraitsMenuContentProps {
- }
- 
- export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
-+  hideInstructionMode = false,
-   provider,
-   instanceId,
-   models,
-@@ -386,64 +388,68 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
- 
-   return (
-     <>
--      {selectDescriptors.map((descriptor, index) => {
--        const selectedValue =
--          ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
--            ? "ultrathink"
--            : (getDescriptorStringValue(descriptor) ?? "");
-+      {selectDescriptors
-+        .filter((descriptor) => !hideInstructionMode || descriptor.id !== "instructionMode")
-+        .map((descriptor, index) => {
-+          const selectedValue =
-+            ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
-+              ? "ultrathink"
-+              : (getDescriptorStringValue(descriptor) ?? "");
- 
--        return (
--          <div key={descriptor.id}>
--            {index > 0 ? <MenuDivider /> : null}
--            <MenuGroup>
--              <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
--                {descriptor.label}
--              </div>
--              {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
--                <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
--                  Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change this
--                  option.
-+          return (
-+            <div key={descriptor.id}>
-+              {index > 0 ? <MenuDivider /> : null}
-+              <MenuGroup>
-+                <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
-+                  {descriptor.label}
-                 </div>
--              ) : null}
--              <MenuRadioGroup
--                value={selectedValue}
--                onValueChange={(value) => handleSelectChange(descriptor, value)}
--              >
--                {descriptor.options.map((option) => (
--                  <MenuRadioItem
--                    key={option.id}
--                    value={option.id}
--                    hideIndicator
--                    // Base UI keeps radio menus open by default. Close on pick so
--                    // the traits menu behaves like the model picker.
--                    closeOnClick
--                    disabled={ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id}
--                  >
--                    <span className="flex w-full min-w-0 flex-col">
--                      <span className="flex w-full min-w-0 items-center justify-between gap-3">
--                        <span className="min-w-0 truncate">
--                          {option.label}
--                          {option.isDefault ? (
--                            <>
--                              {" "}
--                              <DefaultBadge />
--                            </>
--                          ) : null}
-+                {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
-+                  <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
-+                    Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change
-+                    this option.
-+                  </div>
-+                ) : null}
-+                <MenuRadioGroup
-+                  value={selectedValue}
-+                  onValueChange={(value) => handleSelectChange(descriptor, value)}
-+                >
-+                  {descriptor.options.map((option) => (
-+                    <MenuRadioItem
-+                      key={option.id}
-+                      value={option.id}
-+                      hideIndicator
-+                      // Base UI keeps radio menus open by default. Close on pick so
-+                      // the traits menu behaves like the model picker.
-+                      closeOnClick
-+                      disabled={
-+                        ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id
-+                      }
-+                    >
-+                      <span className="flex w-full min-w-0 flex-col">
-+                        <span className="flex w-full min-w-0 items-center justify-between gap-3">
-+                          <span className="min-w-0 truncate">
-+                            {option.label}
-+                            {option.isDefault ? (
-+                              <>
-+                                {" "}
-+                                <DefaultBadge />
-+                              </>
-+                            ) : null}
-+                          </span>
-                         </span>
-+                        {option.description ? (
-+                          <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
-+                            {option.description}
-+                          </span>
-+                        ) : null}
-                       </span>
--                      {option.description ? (
--                        <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
--                          {option.description}
--                        </span>
--                      ) : null}
--                    </span>
--                  </MenuRadioItem>
--                ))}
--              </MenuRadioGroup>
--            </MenuGroup>
--          </div>
--        );
--      })}
-+                    </MenuRadioItem>
-+                  ))}
-+                </MenuRadioGroup>
-+              </MenuGroup>
-+            </div>
-+          );
-+        })}
-       {booleanDescriptors.map((descriptor, index) => {
-         const selectedValue = descriptor.currentValue === true ? "on" : "off";
- 
-@@ -582,9 +588,14 @@ export const TraitsPicker = memo(function TraitsPicker({
-     return null;
-   }
- 
-+  const visibleDescriptors =
-+    provider === "pi" && isComposerOwned
-+      ? descriptors.filter((descriptor) => descriptor.id !== "instructionMode")
-+      : descriptors;
-+  if (visibleDescriptors.length === 0) return null;
-   const { label: triggerLabel, showFastModeIcon } = buildTraitsTriggerDisplay({
-     provider,
--    descriptors,
-+    descriptors: visibleDescriptors,
-     primarySelectDescriptorId: primarySelectDescriptor?.id ?? null,
-     ultrathinkPromptControlled,
-   });
-@@ -649,6 +660,7 @@ export const TraitsPicker = memo(function TraitsPicker({
-       </MenuTrigger>
-       <MenuPopup align="start" {...(isComposerOwned ? composerFloatingLayerProps : {})}>
-         <TraitsMenuContent
-+          hideInstructionMode={provider === "pi" && isComposerOwned === true}
-           provider={provider}
-           {...(instanceId ? { instanceId } : {})}
-           models={models}
-diff --git a/apps/web/src/components/chat/providerIconUtils.ts b/apps/web/src/components/chat/providerIconUtils.ts
-index db0e5ca2..c344a6d9 100644
---- a/apps/web/src/components/chat/providerIconUtils.ts
-+++ b/apps/web/src/components/chat/providerIconUtils.ts
-@@ -7,6 +7,7 @@ import {
-   Icon,
-   OpenAI,
-   OpenCodeIcon,
-+  PiAgentIcon,
- } from "../Icons";
- 
- export const PROVIDER_ICON_BY_PROVIDER: Partial<Record<ProviderDriverKind, Icon>> = {
-@@ -16,6 +17,7 @@ export const PROVIDER_ICON_BY_PROVIDER: Partial<Record<ProviderDriverKind, Icon>
-   [ProviderDriverKind.make("cursor")]: CursorIcon,
-   [ProviderDriverKind.make("grok")]: GrokIcon,
-   [ProviderDriverKind.make("antigravity")]: AntigravityIcon,
-+  [ProviderDriverKind.make("pi")]: PiAgentIcon,
- };
- 
- export type ModelEsque = {
-diff --git a/apps/web/src/components/settings/ProviderSettingsForm.test.ts b/apps/web/src/components/settings/ProviderSettingsForm.test.ts
-index 4bb8cf11..47427bdb 100644
---- a/apps/web/src/components/settings/ProviderSettingsForm.test.ts
-+++ b/apps/web/src/components/settings/ProviderSettingsForm.test.ts
-@@ -20,6 +20,13 @@ describe("ProviderSettingsForm helpers", () => {
-     ]);
-   });
- 
-+  it("recognizes Pi and exposes only its binary path setting", () => {
-+    const pi = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("pi")];
-+
-+    expect(pi?.label).toBe("Pi");
-+    expect(deriveProviderSettingsFields(pi!).map((field) => field.key)).toEqual(["binaryPath"]);
-+  });
-+
-   it("sources labels and descriptions from schema annotations", () => {
-     const opencode = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("opencode")];
-     expect(opencode).toBeDefined();
-diff --git a/apps/web/src/components/settings/providerDriverMeta.ts b/apps/web/src/components/settings/providerDriverMeta.ts
-index 4bf4da39..f4a6b4b9 100644
---- a/apps/web/src/components/settings/providerDriverMeta.ts
-+++ b/apps/web/src/components/settings/providerDriverMeta.ts
-@@ -5,6 +5,7 @@ import {
-   CursorSettings,
-   GrokSettings,
-   OpenCodeSettings,
-+  PiSettings,
-   ProviderDriverKind,
- } from "@t3tools/contracts";
- import type * as Schema from "effect/Schema";
-@@ -16,6 +17,7 @@ import {
-   type Icon,
-   OpenAI,
-   OpenCodeIcon,
-+  PiAgentIcon,
- } from "../Icons";
- 
- type ProviderSettingsSchema = {
-@@ -82,6 +84,12 @@ const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
-     icon: AntigravityIcon,
-     settingsSchema: AntigravitySettings,
-   },
-+  {
-+    value: ProviderDriverKind.make("pi"),
-+    label: "Pi",
-+    icon: PiAgentIcon,
-+    settingsSchema: PiSettings,
-+  },
- ];
- 
- const PROVIDER_CLIENT_DEFINITION_BY_VALUE: Partial<
-diff --git a/apps/web/src/providerInstances.test.ts b/apps/web/src/providerInstances.test.ts
-index 3e809e17..45ff4fb1 100644
---- a/apps/web/src/providerInstances.test.ts
-+++ b/apps/web/src/providerInstances.test.ts
-@@ -580,3 +580,20 @@ describe("resolveDefaultProviderModelSelection", () => {
-     ).toBeNull();
-   });
- });
-+
-+describe("Pi provider instances", () => {
-+  it("uses Pi branding and participates in native model selection", () => {
-+    const pi = provider({
-+      provider: ProviderDriverKind.make("pi"),
-+      instanceId: "pi",
-+      models: [model("anthropic/claude-sonnet-4", false, true)],
-+    });
-+    const [entry] = deriveProviderInstanceEntries([pi]);
-+
-+    expect(entry).toMatchObject({ displayName: "Pi", driverKind: "pi", instanceId: "pi" });
-+    expect(resolveDefaultProviderModelSelection([pi], null)).toEqual({
-+      instanceId: "pi",
-+      model: "anthropic/claude-sonnet-4",
-+    });
-+  });
-+});
-diff --git a/packages/contracts/src/model.ts b/packages/contracts/src/model.ts
-index 0882aef5..41280ea3 100644
---- a/packages/contracts/src/model.ts
-+++ b/packages/contracts/src/model.ts
-@@ -222,4 +222,5 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderDriverKind, string>>
-   [CURSOR_DRIVER_KIND]: "Cursor",
-   [GROK_DRIVER_KIND]: "Grok",
-   [OPENCODE_DRIVER_KIND]: "OpenCode",
-+  [ProviderDriverKind.make("pi")]: "Pi",
- };
-diff --git a/packages/contracts/src/providerRuntime.test.ts b/packages/contracts/src/providerRuntime.test.ts
-index 9ba30b23..e68858a1 100644
---- a/packages/contracts/src/providerRuntime.test.ts
-+++ b/packages/contracts/src/providerRuntime.test.ts
-@@ -4,10 +4,24 @@ import * as Schema from "effect/Schema";
- import {
-   classifyTaskAgentKind,
-   ProviderRuntimeEvent,
-+  RuntimeEventRaw,
-   type ProviderRuntimeEventType,
- } from "./providerRuntime.ts";
- 
- const decodeRuntimeEvent = Schema.decodeUnknownSync(ProviderRuntimeEvent);
-+const decodeRuntimeEventRaw = Schema.decodeUnknownSync(RuntimeEventRaw);
-+
-+describe("RuntimeEventRaw", () => {
-+  it("accepts Pi RPC notifications", () => {
-+    expect(
-+      decodeRuntimeEventRaw({
-+        source: "pi.rpc.notification",
-+        method: "agent_start",
-+        payload: { agentId: "agent-1" },
-+      }).source,
-+    ).toBe("pi.rpc.notification");
-+  });
-+});
- 
- describe("ProviderRuntimeEvent", () => {
-   it("includes every runtime event in the public event type", () => {
-diff --git a/packages/contracts/src/providerRuntime.ts b/packages/contracts/src/providerRuntime.ts
-index af1baac7..ab9fc826 100644
---- a/packages/contracts/src/providerRuntime.ts
-+++ b/packages/contracts/src/providerRuntime.ts
-@@ -28,6 +28,7 @@ const RuntimeEventRawSource = Schema.Union([
-   Schema.Literal("claude.sdk.permission"),
-   Schema.Literal("codex.sdk.thread-event"),
-   Schema.Literal("opencode.sdk.event"),
-+  Schema.Literal("pi.rpc.notification"),
-   Schema.Literal("acp.jsonrpc"),
-   Schema.TemplateLiteral(["acp.", Schema.String, ".extension"]),
- ]);
-diff --git a/packages/contracts/src/settings.test.ts b/packages/contracts/src/settings.test.ts
-index b090b47f..9138b2cc 100644
---- a/packages/contracts/src/settings.test.ts
-+++ b/packages/contracts/src/settings.test.ts
-@@ -7,6 +7,7 @@ import {
-   ClientSettingsPatch,
-   ClaudeSettings,
-   DEFAULT_SERVER_SETTINGS,
-+  PiSettings,
-   resolveProviderInstanceEnabled,
-   ServerSettings,
-   ServerSettingsPatch,
-@@ -19,6 +20,7 @@ const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
- const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
- const encodeServerSettings = Schema.encodeSync(ServerSettings);
- const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
-+const decodePiSettings = Schema.decodeUnknownSync(PiSettings);
- 
- describe("ServerSettings default permissions", () => {
-   it("keeps full access for settings saved before a default was configured", () => {
-@@ -101,6 +103,26 @@ describe("ServerSettings usage price overrides", () => {
-   });
- });
- 
-+describe("PiSettings", () => {
-+  it("defaults to an enabled Pi CLI with automatic binary discovery", () => {
-+    expect(decodePiSettings({})).toEqual({ enabled: true, binaryPath: "pi", customModels: [] });
-+    expect(DEFAULT_SERVER_SETTINGS.providers.pi).toEqual({
-+      enabled: true,
-+      binaryPath: "pi",
-+      customModels: [],
-+    });
-+  });
-+
-+  it("accepts modern custom model entries through settings and patch boundaries", () => {
-+    const customModels = ["provider/model", { slug: "provider/named", name: "Named" }];
-+    expect(decodePiSettings({ customModels }).customModels).toEqual(customModels);
-+    expect(
-+      decodeServerSettingsPatch({ providers: { pi: { binaryPath: "/opt/pi", customModels } } })
-+        .providers?.pi,
-+    ).toEqual({ binaryPath: "/opt/pi", customModels });
-+  });
-+});
-+
- describe("custom model settings", () => {
-   const capabilities = {
-     optionDescriptors: [
-diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index 7b3715d7..5bb12dec 100644
---- a/packages/contracts/src/settings.ts
-+++ b/packages/contracts/src/settings.ts
-@@ -863,6 +863,28 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
- );
- export type OpenCodeSettings = typeof OpenCodeSettings.Type;
- 
-+export const PiSettings = makeProviderSettingsSchema(
-+  {
-+    enabled: Schema.Boolean.pipe(
-+      Schema.withDecodingDefault(Effect.succeed(true)),
-+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
-+    ),
-+    binaryPath: makeBinaryPathSetting("pi").pipe(
-+      Schema.annotateKey({
-+        title: "Binary path",
-+        description: "Path to the Pi CLI binary.",
-+        providerSettingsForm: { placeholder: "pi", clearWhenEmpty: "omit" },
-+      }),
-+    ),
-+    customModels: Schema.Array(CustomModelSetting).pipe(
-+      Schema.withDecodingDefault(Effect.succeed([])),
-+      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
-+    ),
-+  },
-+  { order: ["binaryPath"] },
-+);
-+export type PiSettings = typeof PiSettings.Type;
-+
- /**
-  * A read-only quota source outside this environment's provider CLIs. The
-  * only kind today is a CLIProxyAPI hub, whose management API reports the
-@@ -1170,6 +1192,7 @@ export const ServerSettings = Schema.Struct({
-     grok: GrokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
-     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
-     antigravity: AntigravitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
-+    pi: PiSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
-   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
-   // New driver-agnostic instance map. Keyed by `ProviderInstanceId`; values
-   // are `ProviderInstanceConfig` envelopes. The driver-specific config blob
-@@ -1343,6 +1366,12 @@ const OpenCodeSettingsPatch = Schema.Struct({
-   customModels: Schema.optionalKey(Schema.Array(CustomModelSetting)),
- });
- 
-+const PiSettingsPatch = Schema.Struct({
-+  enabled: Schema.optionalKey(Schema.Boolean),
-+  binaryPath: Schema.optionalKey(TrimmedString),
-+  customModels: Schema.optionalKey(Schema.Array(CustomModelSetting)),
-+});
-+
- export const ServerSettingsPatch = Schema.Struct({
-   // Server settings
-   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
-@@ -1417,6 +1446,7 @@ export const ServerSettingsPatch = Schema.Struct({
-       grok: Schema.optionalKey(GrokSettingsPatch),
-       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
-       antigravity: Schema.optionalKey(AntigravitySettingsPatch),
-+      pi: Schema.optionalKey(PiSettingsPatch),
-     }),
-   ),
-   // Whole-map replacement for the new instance config. Patching individual
-diff --git a/packages/shared/src/hostProcess.ts b/packages/shared/src/hostProcess.ts
-index 9bd41a82..ca69bb15 100644
---- a/packages/shared/src/hostProcess.ts
-+++ b/packages/shared/src/hostProcess.ts
-@@ -2,7 +2,6 @@ import * as Context from "effect/Context";
- import * as Effect from "effect/Effect";
- import * as NodeDns from "node:dns";
- import * as NodeOS from "node:os";
--import * as NodeSea from "node:sea";
- 
- export const HostProcessPlatform = Context.Reference<NodeJS.Platform>(
-   "@t3tools/shared/hostProcess/HostProcessPlatform",
-@@ -71,13 +70,46 @@ export const HostProcessInvokedAs = Context.Reference<string>(
-  * one branches on this: an executable hosts such things as hidden
-  * subcommands of itself.
-  */
-+export const HostProcessIsBun = Context.Reference<boolean>(
-+  "@t3tools/shared/hostProcess/HostProcessIsBun",
-+  {
-+    defaultValue: () => typeof process.versions.bun === "string",
-+  },
-+);
-+
-+export const isHostProcessExecutable = (input: { readonly isSea: boolean }): boolean => input.isSea;
-+
- export const HostProcessIsExecutable = Context.Reference<boolean>(
-   "@t3tools/shared/hostProcess/HostProcessIsExecutable",
-   {
--    defaultValue: () => NodeSea.isSea(),
-+    defaultValue: () =>
-+      isHostProcessExecutable({
-+        isSea: process.getBuiltinModule("node:sea")?.isSea() ?? false,
-+      }),
-   },
- );
- 
-+/** Mark only a deliberate Bun-as-interpreter child; never inherit the marker accidentally. */
-+export const withBunSelfExecEnvironment = (
-+  environment: NodeJS.ProcessEnv,
-+  isBun: boolean,
-+): NodeJS.ProcessEnv => {
-+  const next = { ...environment };
-+  delete next.BUN_BE_BUN;
-+  if (isBun) next.BUN_BE_BUN = "1";
-+  return next;
-+};
-+
-+/** A normal CLI or RPC child must execute the compiled application, not Bun's interpreter mode. */
-+export const withoutBunSelfExecEnvironment = (
-+  environment: NodeJS.ProcessEnv,
-+): NodeJS.ProcessEnv => {
-+  if (!("BUN_BE_BUN" in environment)) return environment;
-+  const next = { ...environment };
-+  delete next.BUN_BE_BUN;
-+  return next;
-+};
-+
- /**
-  * Every IP address this machine answers to: the interface addresses, plus
-  * whatever the resolver returns for the machine's own hostname. The latter
-diff --git a/apps/server/src/auth/DieWebAuth.test.ts b/apps/server/src/auth/DieWebAuth.test.ts
-new file mode 100644
-index 00000000..3e8a4048
---- /dev/null
-+++ b/apps/server/src/auth/DieWebAuth.test.ts
-@@ -0,0 +1,97 @@
-+import { describe, expect, it } from "@effect/vitest";
-+
-+import { dieWebPrincipal, isAllowedDieWebRequest, isDieWebNoAuthEnabled } from "./DieWebAuth.ts";
-+
-+describe("DieWebAuth", () => {
-+  it("only enables no-auth for explicit web-mode loopback listeners", () => {
-+    expect(
-+      isDieWebNoAuthEnabled({
-+        requested: true,
-+        mode: "web",
-+        host: "127.0.0.1",
-+        tailscaleServeEnabled: false,
-+      }),
-+    ).toBe(true);
-+    expect(
-+      isDieWebNoAuthEnabled({
-+        requested: false,
-+        mode: "web",
-+        host: "127.0.0.1",
-+        tailscaleServeEnabled: false,
-+      }),
-+    ).toBe(false);
-+    expect(
-+      isDieWebNoAuthEnabled({
-+        requested: true,
-+        mode: "desktop",
-+        host: "127.0.0.1",
-+        tailscaleServeEnabled: false,
-+      }),
-+    ).toBe(false);
-+    expect(
-+      isDieWebNoAuthEnabled({
-+        requested: true,
-+        mode: "web",
-+        host: "0.0.0.0",
-+        tailscaleServeEnabled: false,
-+      }),
-+    ).toBe(false);
-+    expect(
-+      isDieWebNoAuthEnabled({
-+        requested: true,
-+        mode: "web",
-+        host: undefined,
-+        tailscaleServeEnabled: false,
-+      }),
-+    ).toBe(false);
-+    expect(
-+      isDieWebNoAuthEnabled({
-+        requested: true,
-+        mode: "web",
-+        host: "::1",
-+        tailscaleServeEnabled: true,
-+      }),
-+    ).toBe(false);
-+  });
-+
-+  it("allows exact same-origin loopback browser HTTP and WebSocket requests", () => {
-+    const requestUrl = new URL("http://127.0.0.1:3773/ws");
-+    expect(
-+      isAllowedDieWebRequest({
-+        requestUrl,
-+        origin: "http://127.0.0.1:3773",
-+        secFetchSite: "same-origin",
-+      }),
-+    ).toBe(true);
-+    expect(isAllowedDieWebRequest({ requestUrl, origin: undefined, secFetchSite: undefined })).toBe(
-+      true,
-+    );
-+    expect(dieWebPrincipal.scopes).toContain("terminal:operate");
-+    expect(dieWebPrincipal.scopes).toContain("orchestration:operate");
-+  });
-+
-+  it.each([
-+    ["external origin", "https://evil.example", "cross-site"],
-+    ["wrong loopback port", "http://127.0.0.1:9999", "same-origin"],
-+    ["opaque origin", "null", "cross-site"],
-+    ["different loopback host", "http://localhost:3773", "same-origin"],
-+  ])("rejects %s", (_label, origin, secFetchSite) => {
-+    expect(
-+      isAllowedDieWebRequest({
-+        requestUrl: new URL("http://127.0.0.1:3773/api"),
-+        origin,
-+        secFetchSite,
-+      }),
-+    ).toBe(false);
-+  });
-+
-+  it("rejects DNS-rebinding style nonloopback Host URLs", () => {
-+    expect(
-+      isAllowedDieWebRequest({
-+        requestUrl: new URL("http://evil.example:3773/api"),
-+        origin: "http://evil.example:3773",
-+        secFetchSite: "same-origin",
-+      }),
-+    ).toBe(false);
-+  });
-+});
-diff --git a/apps/server/src/auth/DieWebAuth.ts b/apps/server/src/auth/DieWebAuth.ts
-new file mode 100644
-index 00000000..56eda5fd
---- /dev/null
-+++ b/apps/server/src/auth/DieWebAuth.ts
-@@ -0,0 +1,66 @@
-+import {
-+  AuthAdministrativeScopes,
-+  AuthSessionId,
-+  type AuthEnvironmentScope,
-+} from "@t3tools/contracts";
-+
-+import type { AuthenticatedSession } from "./EnvironmentAuth.ts";
-+
-+const LOOPBACK_BIND_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
-+export const DIE_WEB_SESSION_ID = AuthSessionId.make("die-web-loopback");
-+
-+export function isLoopbackBindHost(host: string | undefined): boolean {
-+  if (host === undefined) return false;
-+  const normalized = host
-+    .trim()
-+    .toLowerCase()
-+    .replace(/^\[(.*)\]$/, "$1");
-+  return LOOPBACK_BIND_HOSTS.has(normalized);
-+}
-+
-+export function isDieWebNoAuthEnabled(input: {
-+  readonly requested: boolean;
-+  readonly mode: "web" | "desktop";
-+  readonly host: string | undefined;
-+  readonly tailscaleServeEnabled: boolean;
-+}): boolean {
-+  return (
-+    input.requested &&
-+    input.mode === "web" &&
-+    isLoopbackBindHost(input.host) &&
-+    !input.tailscaleServeEnabled
-+  );
-+}
-+
-+/**
-+ * Browser requests in loopback no-auth mode must come from the exact server
-+ * origin. This blocks cross-site fetches, forms, and WebSocket upgrades. Calls
-+ * from local non-browser clients may omit browser origin metadata.
-+ */
-+export function isAllowedDieWebRequest(input: {
-+  readonly requestUrl: URL | undefined;
-+  readonly origin: string | undefined;
-+  readonly secFetchSite: string | undefined;
-+}): boolean {
-+  const requestUrl = input.requestUrl;
-+  if (requestUrl === undefined || !isLoopbackBindHost(requestUrl.hostname)) return false;
-+
-+  const fetchSite = input.secFetchSite?.trim().toLowerCase();
-+  if (fetchSite !== undefined && fetchSite !== "same-origin" && fetchSite !== "none") return false;
-+
-+  if (input.origin === undefined) return true;
-+  if (input.origin.trim().toLowerCase() === "null") return false;
-+  try {
-+    const origin = new URL(input.origin);
-+    return isLoopbackBindHost(origin.hostname) && origin.origin === requestUrl.origin;
-+  } catch {
-+    return false;
-+  }
-+}
-+
-+export const dieWebPrincipal: AuthenticatedSession = {
-+  sessionId: DIE_WEB_SESSION_ID,
-+  subject: "die-web-loopback",
-+  method: "browser-session-cookie",
-+  scopes: [...AuthAdministrativeScopes] as ReadonlyArray<AuthEnvironmentScope>,
-+};
 diff --git a/apps/server/src/provider/Drivers/PiDriver.test.ts b/apps/server/src/provider/Drivers/PiDriver.test.ts
 new file mode 100644
 index 00000000..2502f843
@@ -2339,6 +901,51 @@ index 00000000..91882f4d
 +      } satisfies ProviderInstance;
 +    }),
 +};
+diff --git a/apps/server/src/provider/Layers/ClaudeAdapter.ts b/apps/server/src/provider/Layers/ClaudeAdapter.ts
+index 3afde2b3..3e2b8333 100644
+--- a/apps/server/src/provider/Layers/ClaudeAdapter.ts
++++ b/apps/server/src/provider/Layers/ClaudeAdapter.ts
+@@ -69,7 +69,11 @@ import {
+   CLAUDE_RESUME_COMPACTION_NEVER_ANSWER,
+   formatClaudeResumeCompactionQuestion,
+ } from "@t3tools/shared/claudeCompaction";
+-import { HostProcessIsExecutable } from "@t3tools/shared/hostProcess";
++import {
++  HostProcessIsBun,
++  HostProcessIsExecutable,
++  withBunSelfExecEnvironment,
++} from "@t3tools/shared/hostProcess";
+ import * as Cause from "effect/Cause";
+ import * as Crypto from "effect/Crypto";
+ import * as DateTime from "effect/DateTime";
+@@ -5133,7 +5137,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
+       }
+       // The single-executable has no sibling script and no Node to run one
+       // with, so it hosts the worker as a hidden subcommand of itself.
+-      const historyWorkerArguments = (yield* HostProcessIsExecutable)
++      const hostProcessIsExecutable = yield* HostProcessIsExecutable;
++      const hostProcessIsBun = yield* HostProcessIsBun;
++      const historyWorkerArguments = hostProcessIsExecutable
+         ? ["__claude-history"]
+         : [
+             yield* path
+@@ -5160,7 +5166,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
+             ChildProcess.make(
+               process.execPath,
+               [...historyWorkerArguments, method, historySessionId, encodeHistoryArgs(args)],
+-              { env: { ...claudeEnvironment, ELECTRON_RUN_AS_NODE: "1" } },
++              {
++                env: {
++                  ...withBunSelfExecEnvironment(
++                    claudeEnvironment,
++                    hostProcessIsBun && !hostProcessIsExecutable,
++                  ),
++                  ELECTRON_RUN_AS_NODE: "1",
++                },
++              },
+             ),
+           ).pipe(
+             Effect.timeout("30 seconds"),
 diff --git a/apps/server/src/provider/Layers/PiAdapter.test.ts b/apps/server/src/provider/Layers/PiAdapter.test.ts
 new file mode 100644
 index 00000000..aaa9d9e9
@@ -8882,6 +7489,120 @@ index 00000000..e19d5909
 +    },
 +  });
 +});
+diff --git a/apps/server/src/provider/Layers/ProviderRegistry.test.ts b/apps/server/src/provider/Layers/ProviderRegistry.test.ts
+index caee1981..fa76d07e 100644
+--- a/apps/server/src/provider/Layers/ProviderRegistry.test.ts
++++ b/apps/server/src/provider/Layers/ProviderRegistry.test.ts
+@@ -2443,7 +2443,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
+               currentCodex?.status === "error" ? currentCodex : (yield* firstError)[0];
+             assert.strictEqual(initialCodex?.status, "error");
+             assert.strictEqual(initialCodex?.installed, false);
+-            assert.deepStrictEqual(spawnedCommands, [firstMissing]);
++            assert.deepStrictEqual(spawnedCommands, [firstMissing, "pi"]);
+ 
+             const pendingRebuild = yield* Stream.toPull(
+               codexSnapshots.pipe(
+@@ -2468,7 +2468,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
+             );
+             yield* Deferred.succeed(releaseSecondProbe, undefined);
+             const [reprobedCodex] = yield* rebuiltError;
+-            assert.deepStrictEqual(spawnedCommands, [firstMissing, secondMissing]);
++            assert.deepStrictEqual(spawnedCommands, [firstMissing, "pi", secondMissing]);
+             assert.strictEqual(reprobedCodex?.status, "error");
+             assert.strictEqual(reprobedCodex?.installed, false);
+           }).pipe(Effect.provide(runtimeServices));
+@@ -2630,6 +2630,7 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
+                 "cursor",
+                 "grok",
+                 "opencode",
++                "pi",
+               ]);
+               assert.strictEqual(cursorProvider?.enabled, false);
+               assert.strictEqual(cursorProvider?.status, "disabled");
+diff --git a/apps/server/src/provider/ProviderInstanceEnvironment.test.ts b/apps/server/src/provider/ProviderInstanceEnvironment.test.ts
+index 7d6bbe61..a36fa2f0 100644
+--- a/apps/server/src/provider/ProviderInstanceEnvironment.test.ts
++++ b/apps/server/src/provider/ProviderInstanceEnvironment.test.ts
+@@ -50,6 +50,18 @@ describe("mergeProviderInstanceEnvironment", () => {
+     ).toEqual({ ...baseEnv, CUSTOM_VALUE: "~/.custom" });
+   });
+ 
++  it("never leaks Bun interpreter mode into provider children", () => {
++    const baseEnv = { PATH: "/bin", BUN_BE_BUN: "1" };
++    expect(mergeProviderInstanceEnvironment(undefined, baseEnv)).toEqual({ PATH: "/bin" });
++    expect(
++      mergeProviderInstanceEnvironment(
++        [{ name: "BUN_BE_BUN", value: "1", sensitive: false }],
++        baseEnv,
++      ),
++    ).toEqual({ PATH: "/bin" });
++    expect(baseEnv.BUN_BE_BUN).toBe("1");
++  });
++
+   it("overrides inherited environment values and preserves empty strings", () => {
+     expect(
+       mergeProviderInstanceEnvironment(
+diff --git a/apps/server/src/provider/ProviderInstanceEnvironment.ts b/apps/server/src/provider/ProviderInstanceEnvironment.ts
+index 77c0c6c2..e440f89b 100644
+--- a/apps/server/src/provider/ProviderInstanceEnvironment.ts
++++ b/apps/server/src/provider/ProviderInstanceEnvironment.ts
+@@ -1,4 +1,5 @@
+ import type { ProviderInstanceEnvironment } from "@t3tools/contracts";
++import { withoutBunSelfExecEnvironment } from "@t3tools/shared/hostProcess";
+ 
+ import { expandHomePath } from "../pathExpansion.ts";
+ 
+@@ -6,17 +7,17 @@ export function mergeProviderInstanceEnvironment(
+   environment: ProviderInstanceEnvironment | undefined,
+   baseEnv: NodeJS.ProcessEnv = process.env,
+ ): NodeJS.ProcessEnv {
+-  if (!environment || environment.length === 0) {
+-    return baseEnv;
+-  }
++  const next = withoutBunSelfExecEnvironment(baseEnv);
++  if (!environment || environment.length === 0) return next;
+ 
+-  const next: NodeJS.ProcessEnv = { ...baseEnv };
++  const merged: NodeJS.ProcessEnv = { ...next };
+   for (const variable of environment) {
+     // Child processes do not apply shell expansion to environment values.
+-    next[variable.name] =
++    merged[variable.name] =
+       variable.name === "CODEX_HOME" || variable.name === "CLAUDE_CONFIG_DIR"
+         ? expandHomePath(variable.value)
+         : variable.value;
+   }
+-  return next;
++  delete merged.BUN_BE_BUN;
++  return merged;
+ }
+diff --git a/apps/server/src/provider/builtInDrivers.ts b/apps/server/src/provider/builtInDrivers.ts
+index 60e3402e..947408e9 100644
+--- a/apps/server/src/provider/builtInDrivers.ts
++++ b/apps/server/src/provider/builtInDrivers.ts
+@@ -25,6 +25,7 @@ import { CodexDriver, type CodexDriverEnv } from "./Drivers/CodexDriver.ts";
+ import { CursorDriver, type CursorDriverEnv } from "./Drivers/CursorDriver.ts";
+ import { GrokDriver, type GrokDriverEnv } from "./Drivers/GrokDriver.ts";
+ import { OpenCodeDriver, type OpenCodeDriverEnv } from "./Drivers/OpenCodeDriver.ts";
++import { PiDriver, type PiDriverEnv } from "./Drivers/PiDriver.ts";
+ import { AntigravityDriver, type AntigravityDriverEnv } from "./Drivers/AntigravityDriver.ts";
+ import type { AnyProviderDriver } from "./ProviderDriver.ts";
+ 
+@@ -39,6 +40,7 @@ export type BuiltInDriversEnv =
+   | CursorDriverEnv
+   | GrokDriverEnv
+   | OpenCodeDriverEnv
++  | PiDriverEnv
+   | AntigravityDriverEnv;
+ 
+ /**
+@@ -52,5 +54,6 @@ export const BUILT_IN_DRIVERS: ReadonlyArray<AnyProviderDriver<BuiltInDriversEnv
+   CursorDriver,
+   GrokDriver,
+   OpenCodeDriver,
++  PiDriver,
+   AntigravityDriver,
+ ];
 diff --git a/apps/server/src/provider/pi/PiModel.test.ts b/apps/server/src/provider/pi/PiModel.test.ts
 new file mode 100644
 index 00000000..c9398c04
@@ -10327,6 +9048,592 @@ index 00000000..1275a796
 +): boolean {
 +  return state.sessionFile === cursor.sessionFile && state.sessionId === cursor.sessionId;
 +}
+diff --git a/apps/server/src/serverRuntimeStartup.test.ts b/apps/server/src/serverRuntimeStartup.test.ts
+index 4a8aca46..e02dddea 100644
+--- a/apps/server/src/serverRuntimeStartup.test.ts
++++ b/apps/server/src/serverRuntimeStartup.test.ts
+@@ -16,13 +16,147 @@ import * as PlatformError from "effect/PlatformError";
+ import * as Ref from "effect/Ref";
+ import * as Stream from "effect/Stream";
+ 
++import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
+ import * as ServerConfig from "./config.ts";
++import * as EnvironmentAuth from "./auth/EnvironmentAuth.ts";
+ import * as OrchestrationEngine from "./orchestration/Services/OrchestrationEngine.ts";
+ import * as ProjectionSnapshotQuery from "./orchestration/Services/ProjectionSnapshotQuery.ts";
+ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+ import * as ServerSettings from "./serverSettings.ts";
+ import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
+ 
++it.effect("uses the direct loopback URL for Die web no-auth startup", () =>
++  Effect.gen(function* () {
++    const target = yield* ServerRuntimeStartup.resolveStartupBrowserTarget.pipe(
++      Effect.provideService(ServerConfig.ServerConfig, {
++        mode: "web",
++        host: "127.0.0.1",
++        port: 3773,
++        dieWebNoAuth: true,
++        devUrl: undefined,
++      } as never),
++      Effect.provideService(EnvironmentAuth.EnvironmentAuth, {
++        issueStartupPairingUrl: () => Effect.die("No-auth startup must not issue pairing credentials"),
++      } as never),
++    );
++
++    assert.equal(target, "http://127.0.0.1:3773");
++  }),
++);
++
++it.effect("uses pairing URL for ordinary web startup", () =>
++  Effect.gen(function* () {
++    const target = yield* ServerRuntimeStartup.resolveStartupBrowserTarget.pipe(
++      Effect.provideService(ServerConfig.ServerConfig, {
++        mode: "web",
++        host: "127.0.0.1",
++        port: 3773,
++        dieWebNoAuth: false,
++        devUrl: undefined,
++      } as never),
++      Effect.provideService(EnvironmentAuth.EnvironmentAuth, {
++        issueStartupPairingUrl: (baseUrl: string) => Effect.succeed(`paired:${baseUrl}`),
++      } as never),
++    );
++
++    assert.equal(target, "paired:http://127.0.0.1:3773");
++  }),
++);
++
++it("uses the canonical Codex default for auto-bootstrapped model selection", () => {
++  assert.deepStrictEqual(ServerRuntimeStartup.getAutoBootstrapDefaultModelSelection(), {
++    instanceId: ProviderInstanceId.make("codex"),
++    model: DEFAULT_MODEL,
++  });
++});
++
++it.effect("preserves the Codex auto-bootstrap default outside Die web", () =>
++  Effect.gen(function* () {
++    const selection = yield* ServerRuntimeStartup.resolveAutoBootstrapDefaultModelSelection(
++      {},
++    ).pipe(
++      Effect.provideService(ProviderRegistry.ProviderRegistry, {
++        refreshInstance: () => Effect.die("Pi inventory must not be read"),
++      } as never),
++    );
++
++    assert.deepStrictEqual(selection, {
++      instanceId: ProviderInstanceId.make("codex"),
++      model: DEFAULT_MODEL,
++    });
++  }),
++);
++
++it.effect("uses the discovered Pi default for Die web auto-bootstrap", () =>
++  Effect.gen(function* () {
++    const refreshCalls = yield* Ref.make<ReadonlyArray<string>>([]);
++    const selection = yield* ServerRuntimeStartup.resolveAutoBootstrapDefaultModelSelection({
++      DIE_WEB_DIE_BINARY: "/tmp/fake-die",
++    }).pipe(
++      Effect.provideService(ProviderRegistry.ProviderRegistry, {
++        refreshInstance: (instanceId: ProviderInstanceId) =>
++          Ref.update(refreshCalls, (calls) => [...calls, instanceId]).pipe(
++            Effect.as([
++              {
++                instanceId: ProviderInstanceId.make("pi"),
++                driver: "pi",
++                enabled: true,
++                availability: "available",
++                models: [
++                  {
++                    slug: "other/model",
++                    name: "Other",
++                    isCustom: false,
++                    capabilities: null,
++                  },
++                  {
++                    slug: "die/default-model",
++                    name: "Die default",
++                    isCustom: false,
++                    isDefault: true,
++                    capabilities: {
++                      optionDescriptors: [
++                        {
++                          id: "thinkingLevel",
++                          label: "Thinking level",
++                          type: "select",
++                          currentValue: "high",
++                          options: [{ id: "high", label: "high" }],
++                        },
++                      ],
++                    },
++                  },
++                ],
++              },
++            ] as never),
++          ),
++      } as never),
++    );
++
++    assert.deepStrictEqual(selection, {
++      instanceId: ProviderInstanceId.make("pi"),
++      model: "die/default-model",
++      options: [{ id: "thinkingLevel", value: "high" }],
++    });
++    assert.deepStrictEqual(yield* Ref.get(refreshCalls), [ProviderInstanceId.make("pi")]);
++  }),
++);
++
++it("does not disguise Codex as Die when Pi has no model inventory", () => {
++  assert.equal(
++    ServerRuntimeStartup.getDieWebAutoBootstrapModelSelection([
++      {
++        instanceId: ProviderInstanceId.make("pi"),
++        driver: "pi",
++        enabled: true,
++        availability: "available",
++        models: [],
++      } as never,
++    ]),
++    undefined,
++  );
++});
++
+ it.effect("automatic pull only updates enabled, behind, clean default-branch checkouts", () =>
+   Effect.gen(function* () {
+     const pulled: string[] = [];
+@@ -138,6 +272,9 @@ it.effect("enqueueCommand fails queued work when readiness fails", () =>
+ it.effect("resolveWelcomeBase derives cwd and project name from server config", () =>
+   Effect.gen(function* () {
+     const welcome = yield* ServerRuntimeStartup.resolveWelcomeBase.pipe(
++      Effect.provideService(ProviderRegistry.ProviderRegistry, {
++        refreshInstance: () => Effect.succeed([]),
++      } as never),
+       Effect.provideService(ServerConfig.ServerConfig, {
+         cwd: "/tmp/startup-project",
+       } as never),
+@@ -158,6 +295,9 @@ it.effect("resolveAutoBootstrapWelcomeTargets returns existing project and threa
+     const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
+     const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
+       Effect.provide(ServerSettings.layerTest()),
++      Effect.provideService(ProviderRegistry.ProviderRegistry, {
++        refreshInstance: () => Effect.succeed([]),
++      } as never),
+       Effect.provideService(ServerConfig.ServerConfig, {
+         cwd: "/tmp/startup-project",
+         autoBootstrapProjectFromCwd: true,
+@@ -288,6 +428,9 @@ it.effect.each([
+               : {},
+         }),
+       ),
++      Effect.provideService(ProviderRegistry.ProviderRegistry, {
++        refreshInstance: () => Effect.succeed([]),
++      } as never),
+       Effect.provideService(ServerConfig.ServerConfig, {
+         cwd: "/tmp/startup-project",
+         autoBootstrapProjectFromCwd: true,
+@@ -374,6 +517,9 @@ it.effect(
+       const dispatchCalls = yield* Ref.make<ReadonlyArray<string>>([]);
+       const targets = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
+         Effect.provide(ServerSettings.layerTest()),
++        Effect.provideService(ProviderRegistry.ProviderRegistry, {
++          refreshInstance: () => Effect.succeed([]),
++        } as never),
+         Effect.provideService(ServerConfig.ServerConfig, {
+           cwd: "/tmp/startup-project",
+           autoBootstrapProjectFromCwd: true,
+@@ -438,6 +584,9 @@ it.effect("resolveAutoBootstrapWelcomeTargets preserves typed UUID generation fa
+ 
+     const error = yield* ServerRuntimeStartup.resolveAutoBootstrapWelcomeTargets.pipe(
+       Effect.provide(ServerSettings.layerTest()),
++      Effect.provideService(ProviderRegistry.ProviderRegistry, {
++        refreshInstance: () => Effect.succeed([]),
++      } as never),
+       Effect.provideService(ServerConfig.ServerConfig, {
+         cwd: "/tmp/startup-project",
+         autoBootstrapProjectFromCwd: true,
+@@ -517,3 +666,50 @@ it.effect("completeAutoBootstrapWelcome settles an empty bootstrap result", () =
+     assert.deepStrictEqual(completion, { bootstrapStatus: "complete" });
+   }),
+ );
++
++it.effect(
++  "Die bootstrap seeds project metadata and first thread with the discovered actual model",
++  () =>
++    Effect.gen(function* () {
++      const commands: Array<any> = [];
++      const modelSelection = { instanceId: ProviderInstanceId.make("pi"), model: "fixture/actual" };
++      yield* ServerRuntimeStartup.makeResolveAutoBootstrapWelcomeTargets({
++        DIE_WEB_DIE_BINARY: "/fixture/die",
++      }).pipe(
++        Effect.provide(ServerSettings.layerTest()),
++        Effect.provideService(ProviderRegistry.ProviderRegistry, {
++          refreshInstance: () =>
++            Effect.succeed([
++              {
++                instanceId: ProviderInstanceId.make("pi"),
++                driver: "pi",
++                enabled: true,
++                models: [{ slug: "fixture/actual", isDefault: true }],
++              },
++            ]),
++        } as never),
++        Effect.provideService(ServerConfig.ServerConfig, {
++          cwd: "/fixture/workspace",
++          autoBootstrapProjectFromCwd: true,
++        } as never),
++        Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, {
++          getActiveProjectByWorkspaceRoot: () => Effect.succeed(Option.none()),
++          getFirstActiveThreadIdByProjectId: () => Effect.succeed(Option.none()),
++        } as never),
++        Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
++          dispatch: (command: any) =>
++            Effect.sync(() => {
++              commands.push(command);
++              return { sequence: commands.length };
++            }),
++        } as never),
++        Effect.provide(NodeServices.layer),
++      );
++      assert.deepStrictEqual(
++        commands.map((command) => command.type),
++        ["project.create", "project.meta.update", "thread.create"],
++      );
++      assert.deepStrictEqual(commands[1].defaultModelSelection, modelSelection);
++      assert.deepStrictEqual(commands[2].modelSelection, modelSelection);
++    }),
++);
+diff --git a/apps/server/src/serverRuntimeStartup.ts b/apps/server/src/serverRuntimeStartup.ts
+index 1468e1ef..0afb859d 100644
+--- a/apps/server/src/serverRuntimeStartup.ts
++++ b/apps/server/src/serverRuntimeStartup.ts
+@@ -6,6 +6,7 @@ import {
+   DEFAULT_SERVER_SETTINGS,
+   type ServerSettings as ServerSettingsValue,
+   type ModelSelection,
++  type ServerProvider,
+   type OrchestrationProjectShell,
+   ProjectId,
+   ProviderInstanceId,
+@@ -15,6 +16,11 @@ import {
+   WorktreeSetupSnapshot,
+   worktreeSetupActivityId,
+ } from "@t3tools/contracts";
++import {
++  buildProviderOptionSelectionsFromDescriptors,
++  createModelSelection,
++} from "@t3tools/shared/model";
++import * as ProviderRegistry from "./provider/Services/ProviderRegistry.ts";
+ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+ import * as Cause from "effect/Cause";
+ import * as Console from "effect/Console";
+@@ -175,11 +181,47 @@ const recordStartupHeartbeat = Effect.gen(function* () {
+   });
+ });
+ 
+-const getAutoBootstrapThreadModelSelection = (): ModelSelection => ({
++export const getAutoBootstrapDefaultModelSelection = (): ModelSelection => ({
+   instanceId: ProviderInstanceId.make("codex"),
+   model: DEFAULT_MODEL,
+ });
+ 
++const DIE_WEB_PI_INSTANCE_ID = ProviderInstanceId.make("pi");
++
++export const getDieWebAutoBootstrapModelSelection = (
++  providers: ReadonlyArray<ServerProvider>,
++): ModelSelection | undefined => {
++  const pi = providers.find(
++    (provider) =>
++      provider.instanceId === DIE_WEB_PI_INSTANCE_ID &&
++      provider.driver === "pi" &&
++      provider.enabled &&
++      provider.availability !== "unavailable",
++  );
++  if (!pi) return undefined;
++  const model = pi.models.find((candidate) => candidate.isDefault) ?? pi.models[0];
++  if (!model) return undefined;
++
++  return createModelSelection(
++    pi.instanceId,
++    model.slug,
++    buildProviderOptionSelectionsFromDescriptors(model.capabilities?.optionDescriptors),
++  );
++};
++
++export const resolveAutoBootstrapDefaultModelSelection = (
++  environment: NodeJS.ProcessEnv = process.env,
++) =>
++  Effect.gen(function* () {
++    if (!environment.DIE_WEB_DIE_BINARY?.trim()) {
++      return getAutoBootstrapDefaultModelSelection();
++    }
++
++    const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
++    const providers = yield* providerRegistry.refreshInstance(DIE_WEB_PI_INSTANCE_ID);
++    return getDieWebAutoBootstrapModelSelection(providers);
++  });
++
+ export const resolveWelcomeBase = Effect.gen(function* () {
+   const serverConfig = yield* ServerConfig.ServerConfig;
+   const segments = serverConfig.cwd.split(/[/\\]/).filter(Boolean);
+@@ -191,98 +233,118 @@ export const resolveWelcomeBase = Effect.gen(function* () {
+   } as const;
+ });
+ 
+-export const resolveAutoBootstrapWelcomeTargets = Effect.gen(function* () {
+-  const crypto = yield* Crypto.Crypto;
+-  const randomUUID = crypto.randomUUIDv4;
+-  const serverConfig = yield* ServerConfig.ServerConfig;
+-  const projectionReadModelQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+-  const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
+-  const path = yield* Path.Path;
+-
+-  let bootstrapProjectId: ProjectId | undefined;
+-  let bootstrapThreadId: ThreadId | undefined;
+-  let bootstrapProjectCreated = false;
+-  let bootstrapThreadCreated = false;
+-
+-  if (serverConfig.autoBootstrapProjectFromCwd) {
+-    const settings = yield* (yield* ServerSettings.ServerSettingsService).getSettings;
+-    const defaultModelSelection =
+-      settings.defaultModelSelection ?? getAutoBootstrapThreadModelSelection();
+-    yield* Effect.gen(function* () {
+-      const existingProject = yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(
+-        serverConfig.cwd,
+-      );
+-      let nextProjectId: ProjectId;
+-      let nextThreadModelSelection: ModelSelection;
+-
+-      if (Option.isNone(existingProject)) {
+-        const createdAt = DateTime.formatIso(yield* DateTime.now);
+-        nextProjectId = ProjectId.make(yield* randomUUID);
+-        const bootstrapProjectTitle = path.basename(serverConfig.cwd) || "project";
+-        nextThreadModelSelection = defaultModelSelection;
+-        yield* orchestrationEngine.dispatch({
+-          type: "project.create",
+-          commandId: CommandId.make(yield* randomUUID),
+-          projectId: nextProjectId,
+-          title: bootstrapProjectTitle,
+-          workspaceRoot: serverConfig.cwd,
+-          createdAt,
+-        });
+-        bootstrapProjectId = nextProjectId;
+-        bootstrapProjectCreated = true;
+-      } else {
+-        nextProjectId = existingProject.value.id;
+-        bootstrapProjectId = nextProjectId;
+-        nextThreadModelSelection =
+-          resolveProjectSettings(settings, nextProjectId, existingProject.value).settings
+-            .defaultModelSelection ?? defaultModelSelection;
+-      }
++export const makeResolveAutoBootstrapWelcomeTargets = (
++  environment: NodeJS.ProcessEnv = process.env,
++) =>
++  Effect.gen(function* () {
++    const crypto = yield* Crypto.Crypto;
++    const randomUUID = crypto.randomUUIDv4;
++    const serverConfig = yield* ServerConfig.ServerConfig;
++    const projectionReadModelQuery = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
++    const orchestrationEngine = yield* OrchestrationEngine.OrchestrationEngineService;
++    const path = yield* Path.Path;
+ 
++    let bootstrapProjectId: ProjectId | undefined;
++    let bootstrapThreadId: ThreadId | undefined;
++    let bootstrapProjectCreated = false;
++    let bootstrapThreadCreated = false;
++
++    if (serverConfig.autoBootstrapProjectFromCwd) {
++      const settings = yield* (yield* ServerSettings.ServerSettingsService).getSettings;
+       yield* Effect.gen(function* () {
+-        const existingThreadId =
+-          yield* projectionReadModelQuery.getFirstActiveThreadIdByProjectId(nextProjectId);
+-        if (Option.isNone(existingThreadId)) {
++        const defaultModelSelection =
++          settings.defaultModelSelection ??
++          (yield* resolveAutoBootstrapDefaultModelSelection(environment));
++        if (!defaultModelSelection) {
++          yield* Effect.logWarning(
++            "skipping workspace auto-bootstrap because the Die Pi provider reported no models",
++          );
++          return;
++        }
++        const existingProject = yield* projectionReadModelQuery.getActiveProjectByWorkspaceRoot(
++          serverConfig.cwd,
++        );
++        let nextProjectId: ProjectId;
++        let nextThreadModelSelection: ModelSelection;
++
++        if (Option.isNone(existingProject)) {
+           const createdAt = DateTime.formatIso(yield* DateTime.now);
+-          const createdThreadId = ThreadId.make(yield* randomUUID);
++          nextProjectId = ProjectId.make(yield* randomUUID);
++          const bootstrapProjectTitle = path.basename(serverConfig.cwd) || "project";
++          nextThreadModelSelection = defaultModelSelection;
+           yield* orchestrationEngine.dispatch({
+-            type: "thread.create",
++            type: "project.create",
+             commandId: CommandId.make(yield* randomUUID),
+-            threadId: createdThreadId,
+             projectId: nextProjectId,
+-            title: "New thread",
+-            modelSelection: nextThreadModelSelection,
+-            interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+-            runtimeMode: resolveProjectSettings(settings, nextProjectId).settings
+-              .defaultRuntimeMode,
+-            branch: null,
+-            worktreePath: null,
++            title: bootstrapProjectTitle,
++            workspaceRoot: serverConfig.cwd,
+             createdAt,
+           });
+-          bootstrapThreadId = createdThreadId;
+-          bootstrapThreadCreated = true;
++          if (environment.DIE_WEB_DIE_BINARY?.trim()) {
++            yield* orchestrationEngine.dispatch({
++              type: "project.meta.update",
++              commandId: CommandId.make(yield* randomUUID),
++              projectId: nextProjectId,
++              defaultModelSelection: nextThreadModelSelection,
++            });
++          }
++          bootstrapProjectId = nextProjectId;
++          bootstrapProjectCreated = true;
+         } else {
+-          bootstrapThreadId = existingThreadId.value;
++          nextProjectId = existingProject.value.id;
++          bootstrapProjectId = nextProjectId;
++          nextThreadModelSelection =
++            resolveProjectSettings(settings, nextProjectId, existingProject.value).settings
++              .defaultModelSelection ?? defaultModelSelection;
+         }
+-      }).pipe(
+-        Effect.catchCause((cause) =>
+-          Cause.hasInterrupts(cause)
+-            ? Effect.failCause(cause)
+-            : Effect.logWarning("startup thread auto-bootstrap failed", {
+-                bootstrapProjectId: nextProjectId,
+-                cause,
+-              }),
+-        ),
+-      );
+-    });
+-  }
+ 
+-  return {
+-    ...(bootstrapProjectId ? { bootstrapProjectId } : {}),
+-    ...(bootstrapThreadId ? { bootstrapThreadId } : {}),
+-    ...(bootstrapProjectId ? { bootstrapProjectCreated } : {}),
+-    ...(bootstrapThreadId ? { bootstrapThreadCreated } : {}),
+-  } as const;
+-});
++        yield* Effect.gen(function* () {
++          const existingThreadId =
++            yield* projectionReadModelQuery.getFirstActiveThreadIdByProjectId(nextProjectId);
++          if (Option.isNone(existingThreadId)) {
++            const createdAt = DateTime.formatIso(yield* DateTime.now);
++            const createdThreadId = ThreadId.make(yield* randomUUID);
++            yield* orchestrationEngine.dispatch({
++              type: "thread.create",
++              commandId: CommandId.make(yield* randomUUID),
++              threadId: createdThreadId,
++              projectId: nextProjectId,
++              title: "New thread",
++              modelSelection: nextThreadModelSelection,
++              interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
++              runtimeMode: resolveProjectSettings(settings, nextProjectId).settings
++                .defaultRuntimeMode,
++              branch: null,
++              worktreePath: null,
++              createdAt,
++            });
++            bootstrapThreadId = createdThreadId;
++            bootstrapThreadCreated = true;
++          } else {
++            bootstrapThreadId = existingThreadId.value;
++          }
++        }).pipe(
++          Effect.catchCause((cause) =>
++            Cause.hasInterrupts(cause)
++              ? Effect.failCause(cause)
++              : Effect.logWarning("startup thread auto-bootstrap failed", {
++                  bootstrapProjectId: nextProjectId,
++                  cause,
++                }),
++          ),
++        );
++      });
++    }
++
++    return {
++      ...(bootstrapProjectId ? { bootstrapProjectId } : {}),
++      ...(bootstrapThreadId ? { bootstrapThreadId } : {}),
++      ...(bootstrapProjectId ? { bootstrapProjectCreated } : {}),
++      ...(bootstrapThreadId ? { bootstrapThreadCreated } : {}),
++    } as const;
++  });
++
++export const resolveAutoBootstrapWelcomeTargets = makeResolveAutoBootstrapWelcomeTargets();
+ 
+ export const completeAutoBootstrapWelcome = <A extends object, E, R>(
+   bootstrap: Effect.Effect<A, E, R>,
+@@ -303,20 +365,22 @@ export const completeAutoBootstrapWelcome = <A extends object, E, R>(
+     }),
+   );
+ 
+-const resolveStartupBrowserTarget = Effect.gen(function* () {
++export const resolveStartupBrowserTarget = Effect.gen(function* () {
+   const serverConfig = yield* ServerConfig.ServerConfig;
+-  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+   const localUrl = `http://localhost:${serverConfig.port}`;
+   const bindUrl =
+     serverConfig.host && !isWildcardHost(serverConfig.host)
+       ? `http://${formatHostForUrl(serverConfig.host)}:${serverConfig.port}`
+       : localUrl;
+   const baseTarget = serverConfig.devUrl?.toString() ?? bindUrl;
+-  return yield* Effect.succeed(serverConfig.mode === "desktop" ? baseTarget : undefined).pipe(
+-    Effect.flatMap((target) =>
+-      target ? Effect.succeed(target) : serverAuth.issueStartupPairingUrl(baseTarget),
+-    ),
+-  );
++  if (serverConfig.dieWebNoAuth === true) {
++    return baseTarget;
++  }
++  if (serverConfig.mode === "desktop") {
++    return baseTarget;
++  }
++  const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
++  return yield* serverAuth.issueStartupPairingUrl(baseTarget);
+ });
+ 
+ const maybeOpenBrowser = (target: string) =>
+@@ -1022,14 +1086,23 @@ export const make = (options?: StartupOptions) =>
+             Effect.ignoreCause({ log: true }),
+           );
+           if (serverConfig.startupPresentation === "headless") {
+-            const accessInfo = yield* issueHeadlessServeAccessInfo();
+-            yield* runStartupPhase(
+-              "headless.output",
+-              Console.log(formatHeadlessServeOutput(accessInfo)),
+-            );
++            if (serverConfig.dieWebNoAuth === true) {
++              yield* runStartupPhase(
++                "headless.output",
++                Console.log(
++                  `T3 Code server is ready.\nConnection string: ${yield* resolveStartupBrowserTarget}`,
++                ),
++              );
++            } else {
++              const accessInfo = yield* issueHeadlessServeAccessInfo();
++              yield* runStartupPhase(
++                "headless.output",
++                Console.log(formatHeadlessServeOutput(accessInfo)),
++              );
++            }
+           } else {
+             const startupBrowserTarget = yield* resolveStartupBrowserTarget;
+-            if (serverConfig.mode !== "desktop") {
++            if (serverConfig.mode !== "desktop" && serverConfig.dieWebNoAuth !== true) {
+               yield* Effect.logInfo(
+                 "Authentication required. Open T3 Code using the pairing URL.",
+               ).pipe(Effect.annotateLogs({ pairingUrl: startupBrowserTarget }));
 diff --git a/apps/server/src/terminal/BunPtyAdapter.test.ts b/apps/server/src/terminal/BunPtyAdapter.test.ts
 new file mode 100644
 index 00000000..26c2f6cf
@@ -10754,6 +10061,46 @@ index 00000000..350de371
 +      return adapterProcess;
 +    }),
 +  });
+diff --git a/apps/server/src/terminal/NodePtyAdapter.test.ts b/apps/server/src/terminal/NodePtyAdapter.test.ts
+index e6650025..11df4fe3 100644
+--- a/apps/server/src/terminal/NodePtyAdapter.test.ts
++++ b/apps/server/src/terminal/NodePtyAdapter.test.ts
+@@ -28,6 +28,7 @@ const makeTestLayer = (platform: NodeJS.Platform = "win32") =>
+         NodeServices.layer,
+         Layer.succeed(HostProcessPlatform, platform),
+         Layer.succeed(HostProcessArchitecture, "x64"),
++        Layer.succeed(NodePtyAdapter.BunTerminalRuntimeRef, undefined),
+         Layer.succeed(NodePtyAdapter.NodePtyModuleLoaderRef, () => Promise.resolve(fakeNodePty)),
+       ),
+     ),
+diff --git a/apps/server/src/terminal/NodePtyAdapter.ts b/apps/server/src/terminal/NodePtyAdapter.ts
+index 67cdcecd..a8621acf 100644
+--- a/apps/server/src/terminal/NodePtyAdapter.ts
++++ b/apps/server/src/terminal/NodePtyAdapter.ts
+@@ -8,6 +8,7 @@ import * as Path from "effect/Path";
+ import * as Schema from "effect/Schema";
+ import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+ 
++import * as BunPtyAdapter from "./BunPtyAdapter.ts";
+ import * as PtyAdapter from "./PtyAdapter.ts";
+ 
+ export class NodePtyModuleLoadError extends Schema.TaggedError<NodePtyModuleLoadError>()(
+@@ -129,6 +130,9 @@ class NodePtyProcess implements PtyAdapter.PtyProcess {
+ }
+ 
+ export const make = Effect.fn("NodePtyAdapter.make")(function* () {
++  const bunRuntime = yield* BunPtyAdapter.BunTerminalRuntimeRef;
++  if (bunRuntime !== undefined) return BunPtyAdapter.make(bunRuntime);
++
+   const loadNodePtyModule = yield* NodePtyModuleLoaderRef;
+   const fs = yield* FileSystem.FileSystem;
+   const path = yield* Path.Path;
+@@ -187,3 +191,5 @@ export const make = Effect.fn("NodePtyAdapter.make")(function* () {
+ });
+ 
+ export const layer = Layer.effect(PtyAdapter.PtyAdapter, make());
++
++export { BunTerminalRuntimeRef } from "./BunPtyAdapter.ts";
 diff --git a/apps/server/src/textGeneration/PiTextGeneration.test.ts b/apps/server/src/textGeneration/PiTextGeneration.test.ts
 new file mode 100644
 index 00000000..1d64dbf1
@@ -11294,6 +10641,946 @@ index 00000000..0eecdd90
 +    generateThreadTitle,
 +  } satisfies TextGeneration.TextGeneration["Service"];
 +});
+diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
+index f7d3ac54..54152b2b 100644
+--- a/apps/web/src/components/chat/ChatComposer.tsx
++++ b/apps/web/src/components/chat/ChatComposer.tsx
+@@ -1033,6 +1033,9 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
+   showInteractionModeToggle: boolean;
+   interactionMode: ProviderInteractionMode;
+   runtimeMode: RuntimeMode;
++  dieMode?: "fast" | "normal" | "orchestrator";
++  showDieMode?: boolean;
++  onDieModeChange?: (mode: "fast" | "normal" | "orchestrator") => void;
+   size?: "sm" | "xs";
+   hidden?: boolean;
+   onToggleInteractionMode: () => void;
+@@ -1094,54 +1097,81 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
+ 
+   return (
+     <>
+-      <ComposerControlSeparator size={size} />
+-
+-      <Tooltip>
+-        <Select
+-          open={open}
+-          onOpenChange={setOpen}
+-          value={props.runtimeMode}
+-          onValueChange={(value) => props.onRuntimeModeChange(value!)}
+-        >
+-          <TooltipTrigger
+-            render={
+-              <ComposerSelectControl
+-                data-composer-shortcut="composer.mode"
+-                size={size}
+-                className={size === "xs" ? undefined : "font-medium"}
+-                aria-label="Runtime mode"
+-              />
+-            }
++      {props.showDieMode ? (
++        <>
++          <ComposerControlSeparator size={size} />
++          <Select
++            open={open}
++            onOpenChange={setOpen}
++            value={props.dieMode ?? "orchestrator"}
++            onValueChange={(value) => {
++              if (value === "fast" || value === "normal" || value === "orchestrator") {
++                props.onDieModeChange?.(value);
++              }
++            }}
+           >
+-            <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
+-            <SelectValue>{runtimeModeOption.label}</SelectValue>
+-          </TooltipTrigger>
+-          <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
+-            {runtimeModeOptions.map((mode) => {
+-              const option = runtimeModeConfig[mode];
+-              const OptionIcon = option.icon;
+-              return (
+-                <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
+-                  <div className="flex min-w-0 items-center gap-3">
+-                    <div className="grid min-w-0 flex-1 gap-0.5">
+-                      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+-                        <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
+-                        {option.label}
+-                      </span>
+-                      <span className="text-muted-foreground text-xs leading-4">
+-                        {option.description}
+-                      </span>
+-                    </div>
+-                  </div>
+-                </SelectItem>
+-              );
+-            })}
+-          </SelectPopup>
+-        </Select>
+-        <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
+-      </Tooltip>
+-
+-      {interactionModeToggle}
++            <ComposerSelectControl size={size} aria-label="Die mode">
++              <SelectValue>{props.dieMode ?? "orchestrator"}</SelectValue>
++            </ComposerSelectControl>
++            <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
++              <SelectItem value="fast">Fast</SelectItem>
++              <SelectItem value="normal">Normal</SelectItem>
++              <SelectItem value="orchestrator">Orchestrator</SelectItem>
++            </SelectPopup>
++          </Select>
++        </>
++      ) : (
++        <>
++          <ComposerControlSeparator size={size} />
++
++          <Tooltip>
++            <Select
++              open={open}
++              onOpenChange={setOpen}
++              value={props.runtimeMode}
++              onValueChange={(value) => props.onRuntimeModeChange(value!)}
++            >
++              <TooltipTrigger
++                render={
++                  <ComposerSelectControl
++                    data-composer-shortcut="composer.mode"
++                    size={size}
++                    className={size === "xs" ? undefined : "font-medium"}
++                    aria-label="Runtime mode"
++                  />
++                }
++              >
++                <ComposerControlIcon icon={RuntimeModeIcon} size={size} />
++                <SelectValue>{runtimeModeOption.label}</SelectValue>
++              </TooltipTrigger>
++              <SelectPopup alignItemWithTrigger={false} {...composerFloatingLayerProps}>
++                {runtimeModeOptions.map((mode) => {
++                  const option = runtimeModeConfig[mode];
++                  const OptionIcon = option.icon;
++                  return (
++                    <SelectItem key={mode} value={mode} hideIndicator className="min-w-64 py-2">
++                      <div className="flex min-w-0 items-center gap-3">
++                        <div className="grid min-w-0 flex-1 gap-0.5">
++                          <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
++                            <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
++                            {option.label}
++                          </span>
++                          <span className="text-muted-foreground text-xs leading-4">
++                            {option.description}
++                          </span>
++                        </div>
++                      </div>
++                    </SelectItem>
++                  );
++                })}
++              </SelectPopup>
++            </Select>
++            <TooltipPopup side="top">{runtimeModeOption.description}</TooltipPopup>
++          </Tooltip>
++
++          {interactionModeToggle}
++        </>
++      )}
+     </>
+   );
+ });
+@@ -1977,6 +2007,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+ 
+   const selectedPromptEffort = composerProviderState.promptEffort;
+   const selectedModelOptionsForDispatch = composerProviderState.modelOptionsForDispatch;
++  const showDieMode =
++    selectedProvider === "pi" &&
++    selectedProviderModels.some((model) =>
++      model.capabilities?.optionDescriptors?.some((option) => option.id === "instructionMode"),
++    );
+   const { enabled: planModeUiEnabled, interactionMode } = resolveComposerInteractionMode({
+     planModeEnabled: settings.planModeEnabled,
+     provider: selectedProviderStatus,
+@@ -1986,6 +2021,40 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+     () => createModelSelection(selectedInstanceId, selectedModel, selectedModelOptionsForDispatch),
+     [selectedInstanceId, selectedModel, selectedModelOptionsForDispatch],
+   );
++  const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
++  const instructionMode = useMemo<"fast" | "normal" | "orchestrator">(() => {
++    const value = selectedModelSelection.options?.find(
++      (option) => option.id === "instructionMode",
++    )?.value;
++    return value === "fast" || value === "normal" || value === "orchestrator"
++      ? value
++      : "orchestrator";
++  }, [selectedModelSelection.options]);
++  const handleInstructionModeChange = useCallback(
++    (mode: "fast" | "normal" | "orchestrator") => {
++      const options = (selectedModelSelection.options ?? []).filter(
++        (option) => option.id !== "instructionMode",
++      );
++      setProviderModelOptions(
++        composerDraftTarget,
++        selectedProvider,
++        [...options, { id: "instructionMode", value: mode }],
++        {
++          instanceId: selectedInstanceId,
++          model: selectedModel,
++          persistSticky: true,
++        },
++      );
++    },
++    [
++      composerDraftTarget,
++      selectedInstanceId,
++      selectedModel,
++      selectedModelSelection.options,
++      selectedProvider,
++      setProviderModelOptions,
++    ],
++  );
+   const selectedModelForPicker = selectedModel;
+   // Instance-keyed option list so the picker can show each configured
+   // instance (built-in + custom) as a first-class sidebar entry. The
+@@ -4864,6 +4933,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+           showInteractionModeToggle={planModeUiEnabled}
+           interactionMode={interactionMode}
+           runtimeMode={runtimeMode}
++          dieMode={instructionMode}
++          showDieMode={showDieMode}
++          onDieModeChange={handleInstructionModeChange}
+           size={composerControlsInStrip ? "xs" : "sm"}
+           hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+           onToggleInteractionMode={toggleInteractionMode}
+@@ -4951,6 +5023,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+         <CompactComposerControlsMenu
+           interactionMode={interactionMode}
+           runtimeMode={runtimeMode}
++          showDieMode={showDieMode}
+           showInteractionModeToggle={planModeUiEnabled}
+           traitsMenuContent={providerTraitsMenuContent}
+           onToggleInteractionMode={toggleInteractionMode}
+diff --git a/apps/web/src/components/chat/CompactComposerControlsMenu.tsx b/apps/web/src/components/chat/CompactComposerControlsMenu.tsx
+index 1969e2e9..e52bb7c6 100644
+--- a/apps/web/src/components/chat/CompactComposerControlsMenu.tsx
++++ b/apps/web/src/components/chat/CompactComposerControlsMenu.tsx
+@@ -16,6 +16,7 @@ import { useComposerMenuState } from "./useComposerMenuState";
+ export const CompactComposerControlsMenu = memo(function CompactComposerControlsMenu(props: {
+   interactionMode: ProviderInteractionMode;
+   runtimeMode: RuntimeMode;
++  showDieMode?: boolean;
+   showInteractionModeToggle: boolean;
+   traitsMenuContent?: ReactNode;
+   size?: "sm" | "xs";
+@@ -72,19 +73,23 @@ export const CompactComposerControlsMenu = memo(function CompactComposerControls
+             <MenuDivider />
+           </>
+         ) : null}
+-        <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
+-        <MenuRadioGroup
+-          value={props.runtimeMode}
+-          onValueChange={(value) => {
+-            if (!value || value === props.runtimeMode) return;
+-            props.onRuntimeModeChange(value as RuntimeMode);
+-          }}
+-        >
+-          <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
+-          <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
+-          <MenuRadioItem value="auto">Auto</MenuRadioItem>
+-          <MenuRadioItem value="full-access">Full access</MenuRadioItem>
+-        </MenuRadioGroup>
++        {props.showDieMode ? null : (
++          <>
++            <div className="px-2 py-1.5 font-medium text-muted-foreground text-xs">Access</div>
++            <MenuRadioGroup
++              value={props.runtimeMode}
++              onValueChange={(value) => {
++                if (!value || value === props.runtimeMode) return;
++                props.onRuntimeModeChange(value as RuntimeMode);
++              }}
++            >
++              <MenuRadioItem value="approval-required">Supervised</MenuRadioItem>
++              <MenuRadioItem value="auto-accept-edits">Auto-accept edits</MenuRadioItem>
++              <MenuRadioItem value="auto">Auto</MenuRadioItem>
++              <MenuRadioItem value="full-access">Full access</MenuRadioItem>
++            </MenuRadioGroup>
++          </>
++        )}
+       </MenuPopup>
+     </Menu>
+   );
+diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
+index 983e49df..0310e68f 100644
+--- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
++++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
+@@ -1083,6 +1083,7 @@ export function deriveMessagesTimelineRows(input: {
+       if (
+         timelineEntry.entry.agentSpawn !== undefined ||
+         timelineEntry.entry.questionAnswer !== undefined ||
++        timelineEntry.entry.handoffText !== undefined ||
+         timelineEntry.entry.tone === "error"
+       ) {
+         const spawn = timelineEntry.entry.agentSpawn;
+@@ -1109,6 +1110,7 @@ export function deriveMessagesTimelineRows(input: {
+           nextEntry.kind !== "work" ||
+           nextEntry.entry.agentSpawn !== undefined ||
+           nextEntry.entry.questionAnswer !== undefined ||
++          nextEntry.entry.handoffText !== undefined ||
+           nextEntry.entry.sourceActivityKind === "context-compaction" ||
+           nextEntry.entry.tone === "error" ||
+           activeWorkEntryIds.has(nextEntry.id) ||
+diff --git a/apps/web/src/components/chat/MessagesTimeline.test.tsx b/apps/web/src/components/chat/MessagesTimeline.test.tsx
+index 0987b852..7525dd61 100644
+--- a/apps/web/src/components/chat/MessagesTimeline.test.tsx
++++ b/apps/web/src/components/chat/MessagesTimeline.test.tsx
+@@ -1445,6 +1445,37 @@ describe("MessagesTimeline", () => {
+     expect(markup).toContain("tool call failed");
+   });
+ 
++  it("renders completed Die handoff text once as prose without tool chrome", () => {
++    const markup = renderToStaticMarkup(
++      <MessagesTimeline
++        {...buildProps()}
++        timelineEntries={[
++          {
++            id: "handoff-entry",
++            kind: "work",
++            createdAt: "2026-03-17T19:12:28.000Z",
++            entry: {
++              id: "handoff-work",
++              createdAt: "2026-03-17T19:12:28.000Z",
++              label: "handoff",
++              handoffText: "Please choose **A or B**.",
++              tone: "tool",
++              itemType: "dynamic_tool_call",
++              toolLifecycleStatus: "completed",
++              sourceActivityKind: "tool.completed",
++            },
++          },
++        ]}
++      />,
++    );
++
++    expect(markup.match(/data-handoff-output/gu)).toHaveLength(1);
++    expect(markup).toContain("Please choose ");
++    expect(markup).toContain("A or B");
++    expect(markup).not.toContain("lucide-hammer");
++    expect(markup).not.toContain('aria-label="handoff"');
++  });
++
+   it("renders trailing tool calls as part of the terminal assistant block", () => {
+     const turnId = TurnId.make("turn-trailing-tools");
+     const assistantMessageId = MessageId.make("assistant-trailing-tools");
+diff --git a/apps/web/src/components/chat/MessagesTimeline.tsx b/apps/web/src/components/chat/MessagesTimeline.tsx
+index 307a8933..c2f28339 100644
+--- a/apps/web/src/components/chat/MessagesTimeline.tsx
++++ b/apps/web/src/components/chat/MessagesTimeline.tsx
+@@ -4132,6 +4132,24 @@ function AgentSpawnMemberRow({
+   );
+ }
+ 
++function HandoffOutputRow({ text }: { text: string }) {
++  const ctx = use(TimelineRowCtx);
++  return (
++    <div className="py-1 text-sm" data-handoff-output>
++      <ChatMarkdown
++        text={text}
++        cwd={ctx.markdownCwd}
++        threadRef={ctx.threadRef ?? undefined}
++        lineBreaks={shouldPreserveAssistantLineBreaks(text)}
++        skills={ctx.skills}
++        headingLevelOffset={MESSAGE_HEADING_LEVEL}
++        onUseArtifactTemplate={ctx.onUseArtifactTemplate}
++        onImageExpand={ctx.onImageExpand}
++      />
++    </div>
++  );
++}
++
+ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
+   workEntry: TimelineWorkEntry;
+   workspaceRoot: string | undefined;
+@@ -4140,7 +4158,10 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
+   onToggleEntry?: ((collapsed: boolean) => void) | undefined;
+ }) {
+   const { workEntry, workspaceRoot, isExpandedToolGroupEntry, displayLabel } = props;
+-  // Before any hooks: spawn rows render their own component.
++  // Before any hooks: handoff prose and spawn rows render their own components.
++  if (workEntry.handoffText) {
++    return <HandoffOutputRow text={workEntry.handoffText} />;
++  }
+   if (workEntry.agentSpawn) {
+     return (
+       <AgentSpawnRow
+diff --git a/apps/web/src/components/chat/TraitsPicker.tsx b/apps/web/src/components/chat/TraitsPicker.tsx
+index da293c38..fd1d4597 100644
+--- a/apps/web/src/components/chat/TraitsPicker.tsx
++++ b/apps/web/src/components/chat/TraitsPicker.tsx
+@@ -270,6 +270,7 @@ export function shouldRenderTraitsControls(input: {
+ }
+ 
+ export interface TraitsMenuContentProps {
++  hideInstructionMode?: boolean;
+   provider: ProviderDriverKind;
+   instanceId?: ProviderInstanceId;
+   models: ReadonlyArray<ServerProviderModel>;
+@@ -285,6 +286,7 @@ export interface TraitsMenuContentProps {
+ }
+ 
+ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
++  hideInstructionMode = false,
+   provider,
+   instanceId,
+   models,
+@@ -386,64 +388,68 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
+ 
+   return (
+     <>
+-      {selectDescriptors.map((descriptor, index) => {
+-        const selectedValue =
+-          ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
+-            ? "ultrathink"
+-            : (getDescriptorStringValue(descriptor) ?? "");
++      {selectDescriptors
++        .filter((descriptor) => !hideInstructionMode || descriptor.id !== "instructionMode")
++        .map((descriptor, index) => {
++          const selectedValue =
++            ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id
++              ? "ultrathink"
++              : (getDescriptorStringValue(descriptor) ?? "");
+ 
+-        return (
+-          <div key={descriptor.id}>
+-            {index > 0 ? <MenuDivider /> : null}
+-            <MenuGroup>
+-              <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
+-                {descriptor.label}
+-              </div>
+-              {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
+-                <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
+-                  Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change this
+-                  option.
++          return (
++            <div key={descriptor.id}>
++              {index > 0 ? <MenuDivider /> : null}
++              <MenuGroup>
++                <div className="px-2 pt-1.5 pb-1 font-medium text-muted-foreground text-xs">
++                  {descriptor.label}
+                 </div>
+-              ) : null}
+-              <MenuRadioGroup
+-                value={selectedValue}
+-                onValueChange={(value) => handleSelectChange(descriptor, value)}
+-              >
+-                {descriptor.options.map((option) => (
+-                  <MenuRadioItem
+-                    key={option.id}
+-                    value={option.id}
+-                    hideIndicator
+-                    // Base UI keeps radio menus open by default. Close on pick so
+-                    // the traits menu behaves like the model picker.
+-                    closeOnClick
+-                    disabled={ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id}
+-                  >
+-                    <span className="flex w-full min-w-0 flex-col">
+-                      <span className="flex w-full min-w-0 items-center justify-between gap-3">
+-                        <span className="min-w-0 truncate">
+-                          {option.label}
+-                          {option.isDefault ? (
+-                            <>
+-                              {" "}
+-                              <DefaultBadge />
+-                            </>
+-                          ) : null}
++                {ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id ? (
++                  <div className="px-2 pb-1.5 text-muted-foreground/80 text-xs">
++                    Your prompt contains &quot;ultrathink&quot; in the text. Remove it to change
++                    this option.
++                  </div>
++                ) : null}
++                <MenuRadioGroup
++                  value={selectedValue}
++                  onValueChange={(value) => handleSelectChange(descriptor, value)}
++                >
++                  {descriptor.options.map((option) => (
++                    <MenuRadioItem
++                      key={option.id}
++                      value={option.id}
++                      hideIndicator
++                      // Base UI keeps radio menus open by default. Close on pick so
++                      // the traits menu behaves like the model picker.
++                      closeOnClick
++                      disabled={
++                        ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id
++                      }
++                    >
++                      <span className="flex w-full min-w-0 flex-col">
++                        <span className="flex w-full min-w-0 items-center justify-between gap-3">
++                          <span className="min-w-0 truncate">
++                            {option.label}
++                            {option.isDefault ? (
++                              <>
++                                {" "}
++                                <DefaultBadge />
++                              </>
++                            ) : null}
++                          </span>
+                         </span>
++                        {option.description ? (
++                          <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
++                            {option.description}
++                          </span>
++                        ) : null}
+                       </span>
+-                      {option.description ? (
+-                        <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
+-                          {option.description}
+-                        </span>
+-                      ) : null}
+-                    </span>
+-                  </MenuRadioItem>
+-                ))}
+-              </MenuRadioGroup>
+-            </MenuGroup>
+-          </div>
+-        );
+-      })}
++                    </MenuRadioItem>
++                  ))}
++                </MenuRadioGroup>
++              </MenuGroup>
++            </div>
++          );
++        })}
+       {booleanDescriptors.map((descriptor, index) => {
+         const selectedValue = descriptor.currentValue === true ? "on" : "off";
+ 
+@@ -583,9 +589,14 @@ export const TraitsPicker = memo(function TraitsPicker({
+     return null;
+   }
+ 
++  const visibleDescriptors =
++    provider === "pi" && isComposerOwned
++      ? descriptors.filter((descriptor) => descriptor.id !== "instructionMode")
++      : descriptors;
++  if (visibleDescriptors.length === 0) return null;
+   const { label: triggerLabel, showFastModeIcon } = buildTraitsTriggerDisplay({
+     provider,
+-    descriptors,
++    descriptors: visibleDescriptors,
+     primarySelectDescriptorId: primarySelectDescriptor?.id ?? null,
+     ultrathinkPromptControlled,
+   });
+@@ -651,6 +662,7 @@ export const TraitsPicker = memo(function TraitsPicker({
+       </MenuTrigger>
+       <MenuPopup align="start" {...(isComposerOwned ? composerFloatingLayerProps : {})}>
+         <TraitsMenuContent
++          hideInstructionMode={provider === "pi" && isComposerOwned === true}
+           provider={provider}
+           {...(instanceId ? { instanceId } : {})}
+           models={models}
+diff --git a/apps/web/src/components/chat/providerIconUtils.ts b/apps/web/src/components/chat/providerIconUtils.ts
+index db0e5ca2..c344a6d9 100644
+--- a/apps/web/src/components/chat/providerIconUtils.ts
++++ b/apps/web/src/components/chat/providerIconUtils.ts
+@@ -7,6 +7,7 @@ import {
+   Icon,
+   OpenAI,
+   OpenCodeIcon,
++  PiAgentIcon,
+ } from "../Icons";
+ 
+ export const PROVIDER_ICON_BY_PROVIDER: Partial<Record<ProviderDriverKind, Icon>> = {
+@@ -16,6 +17,7 @@ export const PROVIDER_ICON_BY_PROVIDER: Partial<Record<ProviderDriverKind, Icon>
+   [ProviderDriverKind.make("cursor")]: CursorIcon,
+   [ProviderDriverKind.make("grok")]: GrokIcon,
+   [ProviderDriverKind.make("antigravity")]: AntigravityIcon,
++  [ProviderDriverKind.make("pi")]: PiAgentIcon,
+ };
+ 
+ export type ModelEsque = {
+diff --git a/apps/web/src/components/settings/ProviderSettingsForm.test.ts b/apps/web/src/components/settings/ProviderSettingsForm.test.ts
+index 4bb8cf11..47427bdb 100644
+--- a/apps/web/src/components/settings/ProviderSettingsForm.test.ts
++++ b/apps/web/src/components/settings/ProviderSettingsForm.test.ts
+@@ -20,6 +20,13 @@ describe("ProviderSettingsForm helpers", () => {
+     ]);
+   });
+ 
++  it("recognizes Pi and exposes only its binary path setting", () => {
++    const pi = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("pi")];
++
++    expect(pi?.label).toBe("Pi");
++    expect(deriveProviderSettingsFields(pi!).map((field) => field.key)).toEqual(["binaryPath"]);
++  });
++
+   it("sources labels and descriptions from schema annotations", () => {
+     const opencode = DRIVER_OPTION_BY_VALUE[ProviderDriverKind.make("opencode")];
+     expect(opencode).toBeDefined();
+diff --git a/apps/web/src/components/settings/providerDriverMeta.ts b/apps/web/src/components/settings/providerDriverMeta.ts
+index 4bf4da39..f4a6b4b9 100644
+--- a/apps/web/src/components/settings/providerDriverMeta.ts
++++ b/apps/web/src/components/settings/providerDriverMeta.ts
+@@ -5,6 +5,7 @@ import {
+   CursorSettings,
+   GrokSettings,
+   OpenCodeSettings,
++  PiSettings,
+   ProviderDriverKind,
+ } from "@t3tools/contracts";
+ import type * as Schema from "effect/Schema";
+@@ -16,6 +17,7 @@ import {
+   type Icon,
+   OpenAI,
+   OpenCodeIcon,
++  PiAgentIcon,
+ } from "../Icons";
+ 
+ type ProviderSettingsSchema = {
+@@ -82,6 +84,12 @@ const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
+     icon: AntigravityIcon,
+     settingsSchema: AntigravitySettings,
+   },
++  {
++    value: ProviderDriverKind.make("pi"),
++    label: "Pi",
++    icon: PiAgentIcon,
++    settingsSchema: PiSettings,
++  },
+ ];
+ 
+ const PROVIDER_CLIENT_DEFINITION_BY_VALUE: Partial<
+diff --git a/apps/web/src/providerInstances.test.ts b/apps/web/src/providerInstances.test.ts
+index 3e809e17..45ff4fb1 100644
+--- a/apps/web/src/providerInstances.test.ts
++++ b/apps/web/src/providerInstances.test.ts
+@@ -580,3 +580,20 @@ describe("resolveDefaultProviderModelSelection", () => {
+     ).toBeNull();
+   });
+ });
++
++describe("Pi provider instances", () => {
++  it("uses Pi branding and participates in native model selection", () => {
++    const pi = provider({
++      provider: ProviderDriverKind.make("pi"),
++      instanceId: "pi",
++      models: [model("anthropic/claude-sonnet-4", false, true)],
++    });
++    const [entry] = deriveProviderInstanceEntries([pi]);
++
++    expect(entry).toMatchObject({ displayName: "Pi", driverKind: "pi", instanceId: "pi" });
++    expect(resolveDefaultProviderModelSelection([pi], null)).toEqual({
++      instanceId: "pi",
++      model: "anthropic/claude-sonnet-4",
++    });
++  });
++});
+diff --git a/apps/web/src/session-logic.test.ts b/apps/web/src/session-logic.test.ts
+index 2dbcaeeb..476780e2 100644
+--- a/apps/web/src/session-logic.test.ts
++++ b/apps/web/src/session-logic.test.ts
+@@ -1360,6 +1360,99 @@ describe("deriveWorkLogEntries", () => {
+     });
+   });
+ 
++  it("retains completed Die handoff output as user-facing prose", () => {
++    const activities: OrchestrationThreadActivity[] = [
++      makeActivity({
++        id: "handoff-update",
++        createdAt: "2026-02-23T00:00:01.000Z",
++        kind: "tool.updated",
++        summary: "handoff",
++        payload: {
++          itemType: "dynamic_tool_call",
++          title: "handoff",
++          status: "running",
++          data: { toolCallId: "tool-handoff-1", toolName: "handoff", rawInput: {} },
++        },
++      }),
++      makeActivity({
++        id: "handoff-complete",
++        createdAt: "2026-02-23T00:00:02.000Z",
++        kind: "tool.completed",
++        summary: "handoff",
++        payload: {
++          itemType: "dynamic_tool_call",
++          title: "handoff",
++          status: "completed",
++          data: {
++            toolCallId: "tool-handoff-1",
++            toolName: "handoff",
++            rawOutput: {
++              content: "I need your choice. **A or B?**",
++              handoff: "I need your choice. **A or B?**",
++            },
++          },
++        },
++      }),
++    ];
++
++    expect(deriveWorkLogEntries(activities)).toEqual([
++      expect.objectContaining({
++        id: "handoff-complete",
++        handoffText: "I need your choice. **A or B?**",
++        itemType: "dynamic_tool_call",
++        toolLifecycleStatus: "completed",
++      }),
++    ]);
++  });
++
++  it.each(["yield", "background"])(
++    "does not reinterpret %s tool output as handoff prose",
++    (toolName) => {
++      const [entry] = deriveWorkLogEntries([
++        makeActivity({
++          id: `${toolName}-complete`,
++          kind: "tool.completed",
++          summary: toolName,
++          payload: {
++            itemType: "dynamic_tool_call",
++            title: toolName,
++            status: "completed",
++            data: {
++              toolName,
++              rawOutput: { content: `${toolName} result`, handoff: "metadata only" },
++            },
++          },
++        }),
++      ]);
++
++      expect(entry?.handoffText).toBeUndefined();
++      expect(entry?.detail).toBe(`${toolName} result`);
++    },
++  );
++
++  it("keeps failed Die handoffs in ordinary tool error presentation", () => {
++    const [entry] = deriveWorkLogEntries([
++      makeActivity({
++        id: "handoff-failed",
++        kind: "tool.completed",
++        summary: "handoff",
++        payload: {
++          itemType: "dynamic_tool_call",
++          title: "handoff",
++          status: "failed",
++          data: {
++            toolName: "handoff",
++            rawOutput: { content: "handoff transport failed", handoff: "Not user prose" },
++          },
++        },
++      }),
++    ]);
++
++    expect(entry?.handoffText).toBeUndefined();
++    expect(entry?.detail).toBe("handoff transport failed");
++    expect(entry?.toolLifecycleStatus).toBe("failed");
++  });
++
+   it("keeps viewed image metadata while collapsing a streamed Claude Read", () => {
+     const imagePath = `/workspace/${"nested folder/".repeat(16)}reference image.webp`;
+     const activities: OrchestrationThreadActivity[] = [
+diff --git a/apps/web/src/session-logic.ts b/apps/web/src/session-logic.ts
+index 20a5671d..9b2415b0 100644
+--- a/apps/web/src/session-logic.ts
++++ b/apps/web/src/session-logic.ts
+@@ -74,6 +74,8 @@ export interface WorkLogEntry {
+   toolData?: unknown;
+   itemType?: ToolLifecycleItemType;
+   requestKind?: PendingApproval["requestKind"];
++  /** Final user-facing prose returned by the Die handoff tool. */
++  handoffText?: string;
+   /** From runtime item / task payload `status` when present (e.g. tool.updated). */
+   toolLifecycleStatus?: WorkLogToolLifecycleStatus;
+   /** Originating orchestration activity kind (e.g. `user-input.requested`) for row chrome. */
+@@ -539,6 +541,19 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
+ 
+ const decodeQuestionAttachmentAnswer = Schema.decodeUnknownOption(UserInputAttachmentAnswerPayload);
+ 
++function extractCompletedHandoffText(
++  activity: OrchestrationThreadActivity,
++  payload: Record<string, unknown> | null,
++): string | null {
++  if (activity.kind !== "tool.completed") return null;
++  const data = asRecord(payload?.data);
++  if (asTrimmedString(data?.toolName)?.toLowerCase() !== "handoff") return null;
++  const lifecycleStatus = extractWorkLogToolLifecycleStatus(payload);
++  if (lifecycleStatus !== undefined && lifecycleStatus !== "completed") return null;
++  const rawOutput = asRecord(data?.rawOutput);
++  return asTrimmedString(rawOutput?.handoff) ?? asTrimmedString(rawOutput?.content);
++}
++
+ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
+   const cachedEntry = derivedWorkLogEntryByActivity.get(activity);
+   if (cachedEntry) {
+@@ -595,8 +610,13 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
+     if (Option.isSome(answer)) entry.questionAnswer = answer.value;
+   }
+   const itemType = extractWorkLogItemType(payload);
++  const handoffText =
++    itemType === "dynamic_tool_call" ? extractCompletedHandoffText(activity, payload) : null;
+   const requestKind = extractWorkLogRequestKind(payload);
+   const viewedImagePath = asTrimmedString(asRecord(payload?.data)?.imagePath);
++  if (handoffText) {
++    entry.handoffText = handoffText;
++  }
+   if (detail) {
+     entry.detail = detail;
+   } else if (activity.kind === "runtime.error" || activity.kind === "runtime.warning") {
+diff --git a/packages/contracts/src/model.ts b/packages/contracts/src/model.ts
+index 0882aef5..41280ea3 100644
+--- a/packages/contracts/src/model.ts
++++ b/packages/contracts/src/model.ts
+@@ -222,4 +222,5 @@ export const PROVIDER_DISPLAY_NAMES: Partial<Record<ProviderDriverKind, string>>
+   [CURSOR_DRIVER_KIND]: "Cursor",
+   [GROK_DRIVER_KIND]: "Grok",
+   [OPENCODE_DRIVER_KIND]: "OpenCode",
++  [ProviderDriverKind.make("pi")]: "Pi",
+ };
+diff --git a/packages/contracts/src/providerRuntime.test.ts b/packages/contracts/src/providerRuntime.test.ts
+index 9ba30b23..e68858a1 100644
+--- a/packages/contracts/src/providerRuntime.test.ts
++++ b/packages/contracts/src/providerRuntime.test.ts
+@@ -4,10 +4,24 @@ import * as Schema from "effect/Schema";
+ import {
+   classifyTaskAgentKind,
+   ProviderRuntimeEvent,
++  RuntimeEventRaw,
+   type ProviderRuntimeEventType,
+ } from "./providerRuntime.ts";
+ 
+ const decodeRuntimeEvent = Schema.decodeUnknownSync(ProviderRuntimeEvent);
++const decodeRuntimeEventRaw = Schema.decodeUnknownSync(RuntimeEventRaw);
++
++describe("RuntimeEventRaw", () => {
++  it("accepts Pi RPC notifications", () => {
++    expect(
++      decodeRuntimeEventRaw({
++        source: "pi.rpc.notification",
++        method: "agent_start",
++        payload: { agentId: "agent-1" },
++      }).source,
++    ).toBe("pi.rpc.notification");
++  });
++});
+ 
+ describe("ProviderRuntimeEvent", () => {
+   it("includes every runtime event in the public event type", () => {
+diff --git a/packages/contracts/src/providerRuntime.ts b/packages/contracts/src/providerRuntime.ts
+index af1baac7..ab9fc826 100644
+--- a/packages/contracts/src/providerRuntime.ts
++++ b/packages/contracts/src/providerRuntime.ts
+@@ -28,6 +28,7 @@ const RuntimeEventRawSource = Schema.Union([
+   Schema.Literal("claude.sdk.permission"),
+   Schema.Literal("codex.sdk.thread-event"),
+   Schema.Literal("opencode.sdk.event"),
++  Schema.Literal("pi.rpc.notification"),
+   Schema.Literal("acp.jsonrpc"),
+   Schema.TemplateLiteral(["acp.", Schema.String, ".extension"]),
+ ]);
+diff --git a/packages/contracts/src/settings.test.ts b/packages/contracts/src/settings.test.ts
+index ba612eda..518f81eb 100644
+--- a/packages/contracts/src/settings.test.ts
++++ b/packages/contracts/src/settings.test.ts
+@@ -7,6 +7,7 @@ import {
+   ClientSettingsPatch,
+   ClaudeSettings,
+   DEFAULT_SERVER_SETTINGS,
++  PiSettings,
+   resolveProviderInstanceEnabled,
+   ServerSettings,
+   ServerSettingsPatch,
+@@ -19,6 +20,7 @@ const decodeServerSettings = Schema.decodeUnknownSync(ServerSettings);
+ const decodeServerSettingsPatch = Schema.decodeUnknownSync(ServerSettingsPatch);
+ const encodeServerSettings = Schema.encodeSync(ServerSettings);
+ const decodeClaudeSettings = Schema.decodeUnknownSync(ClaudeSettings);
++const decodePiSettings = Schema.decodeUnknownSync(PiSettings);
+ 
+ describe("ServerSettings default permissions", () => {
+   it("keeps full access for settings saved before a default was configured", () => {
+@@ -101,6 +103,26 @@ describe("ServerSettings usage price overrides", () => {
+   });
+ });
+ 
++describe("PiSettings", () => {
++  it("defaults to an enabled Pi CLI with automatic binary discovery", () => {
++    expect(decodePiSettings({})).toEqual({ enabled: true, binaryPath: "pi", customModels: [] });
++    expect(DEFAULT_SERVER_SETTINGS.providers.pi).toEqual({
++      enabled: true,
++      binaryPath: "pi",
++      customModels: [],
++    });
++  });
++
++  it("accepts modern custom model entries through settings and patch boundaries", () => {
++    const customModels = ["provider/model", { slug: "provider/named", name: "Named" }];
++    expect(decodePiSettings({ customModels }).customModels).toEqual(customModels);
++    expect(
++      decodeServerSettingsPatch({ providers: { pi: { binaryPath: "/opt/pi", customModels } } })
++        .providers?.pi,
++    ).toEqual({ binaryPath: "/opt/pi", customModels });
++  });
++});
++
+ describe("custom model settings", () => {
+   const capabilities = {
+     optionDescriptors: [
+diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
+index 1c53b360..a0aac5ac 100644
+--- a/packages/contracts/src/settings.ts
++++ b/packages/contracts/src/settings.ts
+@@ -866,6 +866,28 @@ export const OpenCodeSettings = makeProviderSettingsSchema(
+ );
+ export type OpenCodeSettings = typeof OpenCodeSettings.Type;
+ 
++export const PiSettings = makeProviderSettingsSchema(
++  {
++    enabled: Schema.Boolean.pipe(
++      Schema.withDecodingDefault(Effect.succeed(true)),
++      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
++    ),
++    binaryPath: makeBinaryPathSetting("pi").pipe(
++      Schema.annotateKey({
++        title: "Binary path",
++        description: "Path to the Pi CLI binary.",
++        providerSettingsForm: { placeholder: "pi", clearWhenEmpty: "omit" },
++      }),
++    ),
++    customModels: Schema.Array(CustomModelSetting).pipe(
++      Schema.withDecodingDefault(Effect.succeed([])),
++      Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
++    ),
++  },
++  { order: ["binaryPath"] },
++);
++export type PiSettings = typeof PiSettings.Type;
++
+ /**
+  * A read-only quota source outside this environment's provider CLIs. The
+  * only kind today is a CLIProxyAPI hub, whose management API reports the
+@@ -1173,6 +1195,7 @@ export const ServerSettings = Schema.Struct({
+     grok: GrokSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+     opencode: OpenCodeSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+     antigravity: AntigravitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
++    pi: PiSettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+   }).pipe(Schema.withDecodingDefault(Effect.succeed({}))),
+   // New driver-agnostic instance map. Keyed by `ProviderInstanceId`; values
+   // are `ProviderInstanceConfig` envelopes. The driver-specific config blob
+@@ -1346,6 +1369,12 @@ const OpenCodeSettingsPatch = Schema.Struct({
+   customModels: Schema.optionalKey(Schema.Array(CustomModelSetting)),
+ });
+ 
++const PiSettingsPatch = Schema.Struct({
++  enabled: Schema.optionalKey(Schema.Boolean),
++  binaryPath: Schema.optionalKey(TrimmedString),
++  customModels: Schema.optionalKey(Schema.Array(CustomModelSetting)),
++});
++
+ export const ServerSettingsPatch = Schema.Struct({
+   // Server settings
+   responseStreamingMode: Schema.optionalKey(ResponseStreamingMode),
+@@ -1420,6 +1449,7 @@ export const ServerSettingsPatch = Schema.Struct({
+       grok: Schema.optionalKey(GrokSettingsPatch),
+       opencode: Schema.optionalKey(OpenCodeSettingsPatch),
+       antigravity: Schema.optionalKey(AntigravitySettingsPatch),
++      pi: Schema.optionalKey(PiSettingsPatch),
+     }),
+   ),
+   // Whole-map replacement for the new instance config. Patching individual
 diff --git a/packages/shared/src/hostProcess.test.ts b/packages/shared/src/hostProcess.test.ts
 new file mode 100644
 index 00000000..2ba981e5
@@ -11325,3 +11612,63 @@ index 00000000..2ba981e5
 +    expect(parent.BUN_BE_BUN).toBe("stale");
 +  });
 +});
+diff --git a/packages/shared/src/hostProcess.ts b/packages/shared/src/hostProcess.ts
+index 9bd41a82..ca69bb15 100644
+--- a/packages/shared/src/hostProcess.ts
++++ b/packages/shared/src/hostProcess.ts
+@@ -2,7 +2,6 @@ import * as Context from "effect/Context";
+ import * as Effect from "effect/Effect";
+ import * as NodeDns from "node:dns";
+ import * as NodeOS from "node:os";
+-import * as NodeSea from "node:sea";
+ 
+ export const HostProcessPlatform = Context.Reference<NodeJS.Platform>(
+   "@t3tools/shared/hostProcess/HostProcessPlatform",
+@@ -71,13 +70,46 @@ export const HostProcessInvokedAs = Context.Reference<string>(
+  * one branches on this: an executable hosts such things as hidden
+  * subcommands of itself.
+  */
++export const HostProcessIsBun = Context.Reference<boolean>(
++  "@t3tools/shared/hostProcess/HostProcessIsBun",
++  {
++    defaultValue: () => typeof process.versions.bun === "string",
++  },
++);
++
++export const isHostProcessExecutable = (input: { readonly isSea: boolean }): boolean => input.isSea;
++
+ export const HostProcessIsExecutable = Context.Reference<boolean>(
+   "@t3tools/shared/hostProcess/HostProcessIsExecutable",
+   {
+-    defaultValue: () => NodeSea.isSea(),
++    defaultValue: () =>
++      isHostProcessExecutable({
++        isSea: process.getBuiltinModule("node:sea")?.isSea() ?? false,
++      }),
+   },
+ );
+ 
++/** Mark only a deliberate Bun-as-interpreter child; never inherit the marker accidentally. */
++export const withBunSelfExecEnvironment = (
++  environment: NodeJS.ProcessEnv,
++  isBun: boolean,
++): NodeJS.ProcessEnv => {
++  const next = { ...environment };
++  delete next.BUN_BE_BUN;
++  if (isBun) next.BUN_BE_BUN = "1";
++  return next;
++};
++
++/** A normal CLI or RPC child must execute the compiled application, not Bun's interpreter mode. */
++export const withoutBunSelfExecEnvironment = (
++  environment: NodeJS.ProcessEnv,
++): NodeJS.ProcessEnv => {
++  if (!("BUN_BE_BUN" in environment)) return environment;
++  const next = { ...environment };
++  delete next.BUN_BE_BUN;
++  return next;
++};
++
+ /**
+  * Every IP address this machine answers to: the interface addresses, plus
+  * whatever the resolver returns for the machine's own hostname. The latter

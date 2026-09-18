@@ -1,11 +1,11 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import {
   Box,
+  type Component,
   getKeybindings,
   stripTerminalSequences,
   truncateToWidth,
   wrapTextWithAnsi,
-  type Component,
 } from "@earendil-works/pi-tui";
 
 function plain(text: string): string {
@@ -148,9 +148,16 @@ export function executeOutputPreview(
   ]
     .filter(Boolean)
     .join(" · ");
+  const handoff = typeof details?.handoff === "string" ? details.handoff.trim() : "";
   return padded(
     component((width) => {
       if (width < 1) return [];
+      if (!expanded && handoff && status.color === "success") {
+        const prefix = "↪ ";
+        return foldedRows(handoff, Math.max(1, width - prefix.length), 0, 0, true).map((line, index) =>
+          truncateToWidth((index === 0 ? theme.fg("success", prefix) : " ".repeat(prefix.length)) + line, width),
+        );
+      }
       if (expanded) {
         const lines = [
           theme.fg("toolTitle", "Execute · TypeScript"),

@@ -8,6 +8,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { type Component, Container, Spacer, stripTerminalSequences, Text } from "@earendil-works/pi-tui";
 import { installConversationDensity } from "../src/ui/conversation-density";
+import { executeInputPreview, executeOutputPreview } from "../src/ui/execution-previews";
 
 beforeAll(() => {
   const packageDir = process.env.PI_PACKAGE_DIR;
@@ -59,6 +60,30 @@ function tool(label: string, expandedText?: string): ToolExecutionComponent {
     { requestRender() {} } as never,
     "/tmp",
   );
+}
+function handoffTool(message: string): ToolExecutionComponent {
+  const component = new ToolExecutionComponent(
+    "execute",
+    "handoff-call",
+    { code: 'await handoff("' + message + '")' },
+    { showImages: false },
+    {
+      renderShell: "self",
+      renderCall: (args: { code?: unknown }, theme: any, context: any) =>
+        executeInputPreview(args.code, context.expanded, theme, context.state, context.executionStarted),
+      renderResult: (result: any, options: { expanded: boolean }, theme: any, context: any) =>
+        executeOutputPreview(result, options.expanded, context.isError, theme, undefined, context.state),
+    },
+    { requestRender() {} } as never,
+    "/tmp",
+  );
+  component.markExecutionStarted();
+  component.updateResult({
+    content: [{ type: "text", text: "Execution handed off.\n\n" + message }],
+    details: { exitCode: 0, handoff: message, backgroundJobs: [], images: [] },
+    isError: false,
+  });
+  return component;
 }
 function status(type: "task-complete" | "task-attention", label: string, outputPad = 1): CustomMessageComponent {
   return new CustomMessageComponent(
@@ -215,6 +240,24 @@ describe("native conversation density adapter", () => {
       "",
       "history custom",
     ]);
+  });
+
+  test("keeps one visible handoff message through invisible tool carriers and density rendering", () => {
+    restores.push(installConversationDensity());
+    const chat = new Container();
+    const message = "Work is continuing while the background job finishes.";
+    const carrier = new AssistantMessageComponent({
+      role: "assistant",
+      content: [{ type: "toolCall", id: "handoff-call", name: "execute", arguments: { code: "handoff" } }],
+    } as never);
+    add(chat, carrier, handoffTool(message), thinking(["Waiting for completion"]));
+
+    const rendered = plain(chat.render(36)).join("\n");
+    expect(rendered).toContain("Work is continuing");
+    expect(rendered.split("Work is continuing")).toHaveLength(2);
+    expect(rendered).not.toContain("Execution handed off");
+    expect(rendered).not.toContain("executing");
+    expect(rendered).toContain("Waiting for completion");
   });
 
   test("compacts displayed thinking prose gaps while preserving normal answer Markdown", () => {
