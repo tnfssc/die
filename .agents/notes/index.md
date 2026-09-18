@@ -46,4 +46,4 @@
 
 - [v0.3.0 release](release-v030.md): user authorized install/push/release; 635 core +121 backend tests and browser checks passed, release preparation underway.
 
-- [Dependency update and v0.3.3](deps-release-v033.md): npm and T3 v0.0.42 updates plus user-reported handoff visibility fix, validation/release in progress.
+- [Dependency update and v0.3.3](deps-release-v033.md): npm and T3 v0.0.42 updates plus terminal/web handoff visibility fixes; v0.3.3 published and official Linux binary verified.
