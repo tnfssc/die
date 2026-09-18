@@ -708,6 +708,92 @@ index 5a18d6e8..7534be13 100644
          timeout: Duration.millis(options?.timeoutMs ?? 20_000),
          timeoutBehavior: "timedOutResult",
          ...(options?.stdin === undefined ? {} : { stdin: options.stdin }),
+diff --git a/apps/server/src/orchestration/ActivityPayloadProjection.test.ts b/apps/server/src/orchestration/ActivityPayloadProjection.test.ts
+index e6468ff8..cd513f21 100644
+--- a/apps/server/src/orchestration/ActivityPayloadProjection.test.ts
++++ b/apps/server/src/orchestration/ActivityPayloadProjection.test.ts
+@@ -86,6 +86,37 @@ describe("projectActivityPayload", () => {
+     });
+   });
+ 
++  it("keeps Pi execute handoff details in the projected activity payload", () => {
++    const handoff = "Choose **A** or **B** before I continue.";
++    const projected = projectActivityPayload(
++      activity({
++        itemType: "dynamic_tool_call",
++        title: "execute",
++        status: "completed",
++        data: {
++          toolCallId: "handoff-browser-call",
++          toolName: "execute",
++          kind: "other",
++          rawOutput: { handoff },
++        },
++      }),
++    );
++    const projectedAgain = projectActivityPayload(projected);
++
++    expect(projected.payload).toMatchObject({
++      itemType: "dynamic_tool_call",
++      status: "completed",
++      data: {
++        toolCallId: "handoff-browser-call",
++        toolName: "execute",
++        rawOutput: { handoff },
++      },
++    });
++    expect(projectedAgain.payload).toMatchObject({
++      data: { rawOutput: { handoff } },
++    });
++  });
++
+   it("keeps bounded Claude and ACP command output summaries", () => {
+     const claude = projectActivityPayload(
+       activity({
+diff --git a/apps/server/src/orchestration/ActivityPayloadProjection.ts b/apps/server/src/orchestration/ActivityPayloadProjection.ts
+index 0525aae7..a72fadca 100644
+--- a/apps/server/src/orchestration/ActivityPayloadProjection.ts
++++ b/apps/server/src/orchestration/ActivityPayloadProjection.ts
+@@ -371,8 +371,12 @@ function projectRawOutput(value: unknown): Record<string, unknown> | undefined {
+     return undefined;
+   }
+ 
++  const handoff = asTrimmedString(rawOutput.handoff);
++  const handoffOutput = handoff ? { handoff } : {};
++
+   if (typeof rawOutput.totalFiles === "number" && Number.isFinite(rawOutput.totalFiles)) {
+     return {
++      ...handoffOutput,
+       totalFiles: rawOutput.totalFiles,
+       ...(rawOutput.truncated === true ? { truncated: true } : {}),
+     };
+@@ -381,22 +385,22 @@ function projectRawOutput(value: unknown): Record<string, unknown> | undefined {
+   const content = asTrimmedString(rawOutput.content);
+   if (content) {
+     const summary = summarizeToolTextOutput(content);
+-    return summary ? { content: summary } : undefined;
++    return summary ? { ...handoffOutput, content: summary } : handoff ? handoffOutput : undefined;
+   }
+ 
+   const stdout = asTrimmedString(rawOutput.stdout);
+   if (stdout) {
+     const summary = summarizeToolTextOutput(stdout);
+-    return summary ? { content: summary } : undefined;
++    return summary ? { ...handoffOutput, content: summary } : handoff ? handoffOutput : undefined;
+   }
+ 
+   const stderr = asTrimmedString(rawOutput.stderr);
+   if (stderr) {
+     const summary = summarizeToolTextOutput(stderr);
+-    return summary ? { content: summary } : undefined;
++    return summary ? { ...handoffOutput, content: summary } : handoff ? handoffOutput : undefined;
+   }
+ 
+-  return undefined;
++  return handoff ? handoffOutput : undefined;
+ }
+ 
+ function projectAcpContent(value: unknown): Record<string, unknown> | undefined {
 diff --git a/apps/server/src/provider/Drivers/PiDriver.test.ts b/apps/server/src/provider/Drivers/PiDriver.test.ts
 new file mode 100644
 index 00000000..2502f843
@@ -10904,11 +10990,80 @@ index 1969e2e9..e52bb7c6 100644
        </MenuPopup>
      </Menu>
    );
+diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
+index 24078b5f..444776da 100644
+--- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
++++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
+@@ -2932,6 +2932,49 @@ describe("deriveMessagesTimelineRows", () => {
+     });
+   });
+ 
++  it("keeps handoff prose visible when its completed turn is folded", () => {
++    const turnId = TurnId.make("handoff-turn");
++    const time = (second: number) => new Date(Date.UTC(2026, 8, 8, 0, 0, second)).toISOString();
++    const tools: WorkLogEntry[] = [
++      {
++        id: "ordinary-tool",
++        createdAt: time(1),
++        turnId,
++        tone: "tool",
++        label: "Ran command",
++        toolCallId: "ordinary-call",
++        toolLifecycleStatus: "completed",
++        sourceActivityKind: "tool.completed",
++      },
++      {
++        id: "handoff-tool",
++        createdAt: time(2),
++        turnId,
++        tone: "tool",
++        label: "execute",
++        toolCallId: "handoff-call",
++        toolLifecycleStatus: "completed",
++        sourceActivityKind: "tool.completed",
++        handoffText: "Choose **A** or **B**.",
++      },
++    ];
++
++    const rows = deriveMessagesTimelineRows({
++      timelineEntries: deriveTimelineEntries([], [], tools),
++      latestTurn: { turnId, state: "completed", startedAt: time(0), completedAt: time(3) },
++      isWorking: false,
++      activeTurnStartedAt: null,
++      turnDiffSummaries: [],
++      supportsConversationRollback: false,
++    });
++
++    expect(rows.map((row) => row.kind)).toEqual(["turn-fold", "work"]);
++    expect(rows.at(-1)).toMatchObject({
++      kind: "work",
++      groupedEntries: [expect.objectContaining({ handoffText: "Choose **A** or **B**." })],
++    });
++  });
++
+   it("keeps user input in its own row through tool grouping and turn folding", () => {
+     const turnId = TurnId.make("answer-turn");
+     const time = (second: number) => new Date(Date.UTC(2026, 8, 8, 0, 0, second)).toISOString();
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 983e49df..0310e68f 100644
+index 983e49df..4a527ea5 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-@@ -1083,6 +1083,7 @@ export function deriveMessagesTimelineRows(input: {
+@@ -679,10 +679,12 @@ function deriveTurnFolds(input: {
+       if (!isCompaction && index > terminalEntryIndex && !isSingleTrailingActivity) {
+         continue;
+       }
+-      // User input and subagent batches stay visible after their turn settles.
++      // User input, handoff prose, and subagent batches stay visible after their turn settles.
+       if (
+         entry.kind === "work" &&
+-        (entry.entry.questionAnswer !== undefined || entry.entry.agentSpawn !== undefined)
++        (entry.entry.questionAnswer !== undefined ||
++          entry.entry.handoffText !== undefined ||
++          entry.entry.agentSpawn !== undefined)
+       ) {
+         continue;
+       }
+@@ -1083,6 +1085,7 @@ export function deriveMessagesTimelineRows(input: {
        if (
          timelineEntry.entry.agentSpawn !== undefined ||
          timelineEntry.entry.questionAnswer !== undefined ||
@@ -10916,7 +11071,7 @@ index 983e49df..0310e68f 100644
          timelineEntry.entry.tone === "error"
        ) {
          const spawn = timelineEntry.entry.agentSpawn;
-@@ -1109,6 +1110,7 @@ export function deriveMessagesTimelineRows(input: {
+@@ -1109,6 +1112,7 @@ export function deriveMessagesTimelineRows(input: {
            nextEntry.kind !== "work" ||
            nextEntry.entry.agentSpawn !== undefined ||
            nextEntry.entry.questionAnswer !== undefined ||
@@ -11271,59 +11426,93 @@ index 3e809e17..45ff4fb1 100644
 +  });
 +});
 diff --git a/apps/web/src/session-logic.test.ts b/apps/web/src/session-logic.test.ts
-index 2dbcaeeb..476780e2 100644
+index 2dbcaeeb..f93fa9db 100644
 --- a/apps/web/src/session-logic.test.ts
 +++ b/apps/web/src/session-logic.test.ts
-@@ -1360,6 +1360,99 @@ describe("deriveWorkLogEntries", () => {
+@@ -1360,6 +1360,133 @@ describe("deriveWorkLogEntries", () => {
      });
    });
  
-+  it("retains completed Die handoff output as user-facing prose", () => {
-+    const activities: OrchestrationThreadActivity[] = [
++  it("derives handoff prose from the exact projected Pi execute activity", () => {
++    const entries = deriveWorkLogEntries([
 +      makeActivity({
-+        id: "handoff-update",
-+        createdAt: "2026-02-23T00:00:01.000Z",
-+        kind: "tool.updated",
-+        summary: "handoff",
-+        payload: {
-+          itemType: "dynamic_tool_call",
-+          title: "handoff",
-+          status: "running",
-+          data: { toolCallId: "tool-handoff-1", toolName: "handoff", rawInput: {} },
-+        },
-+      }),
-+      makeActivity({
-+        id: "handoff-complete",
-+        createdAt: "2026-02-23T00:00:02.000Z",
++        id: "pi-execute-complete",
 +        kind: "tool.completed",
-+        summary: "handoff",
++        summary: "execute",
 +        payload: {
 +          itemType: "dynamic_tool_call",
-+          title: "handoff",
++          title: "execute",
 +          status: "completed",
 +          data: {
-+            toolCallId: "tool-handoff-1",
-+            toolName: "handoff",
++            toolCallId: "handoff_browser_call",
++            toolName: "execute",
++            kind: "other",
 +            rawOutput: {
-+              content: "I need your choice. **A or B?**",
-+              handoff: "I need your choice. **A or B?**",
++              handoff: "HANDOFF_BROWSER_VISIBLE_ONCE_7D4F",
++              content: "Execution handed off.",
 +            },
 +          },
 +        },
 +      }),
-+    ];
++    ]);
 +
-+    expect(deriveWorkLogEntries(activities)).toEqual([
++    expect(entries).toEqual([
 +      expect.objectContaining({
-+        id: "handoff-complete",
-+        handoffText: "I need your choice. **A or B?**",
-+        itemType: "dynamic_tool_call",
-+        toolLifecycleStatus: "completed",
++        id: "pi-execute-complete",
++        handoffText: "HANDOFF_BROWSER_VISIBLE_ONCE_7D4F",
 +      }),
 +    ]);
 +  });
 +
-+  it.each(["yield", "background"])(
++  it.each(["execute", "handoff"])(
++    "retains completed Die %s handoff output as user-facing prose",
++    (toolName) => {
++      const activities: OrchestrationThreadActivity[] = [
++        makeActivity({
++          id: "handoff-update",
++          createdAt: "2026-02-23T00:00:01.000Z",
++          kind: "tool.updated",
++          summary: "handoff",
++          payload: {
++            itemType: "dynamic_tool_call",
++            title: "handoff",
++            status: "running",
++            data: { toolCallId: "tool-handoff-1", toolName, rawInput: {} },
++          },
++        }),
++        makeActivity({
++          id: "handoff-complete",
++          createdAt: "2026-02-23T00:00:02.000Z",
++          kind: "tool.completed",
++          summary: "handoff",
++          payload: {
++            itemType: "dynamic_tool_call",
++            title: "handoff",
++            status: "completed",
++            data: {
++              toolCallId: "tool-handoff-1",
++              toolName,
++              rawOutput: {
++                content: "I need your choice. **A or B?**",
++                handoff: "I need your choice. **A or B?**",
++              },
++            },
++          },
++        }),
++      ];
++
++      expect(deriveWorkLogEntries(activities)).toEqual([
++        expect.objectContaining({
++          id: "handoff-complete",
++          handoffText: "I need your choice. **A or B?**",
++          itemType: "dynamic_tool_call",
++          toolLifecycleStatus: "completed",
++        }),
++      ]);
++    },
++  );
++
++  it.each(["execute", "yield", "background"])(
 +    "does not reinterpret %s tool output as handoff prose",
 +    (toolName) => {
 +      const [entry] = deriveWorkLogEntries([
@@ -11337,7 +11526,7 @@ index 2dbcaeeb..476780e2 100644
 +            status: "completed",
 +            data: {
 +              toolName,
-+              rawOutput: { content: `${toolName} result`, handoff: "metadata only" },
++              rawOutput: { content: `${toolName} result` },
 +            },
 +          },
 +        }),
@@ -11375,7 +11564,7 @@ index 2dbcaeeb..476780e2 100644
      const imagePath = `/workspace/${"nested folder/".repeat(16)}reference image.webp`;
      const activities: OrchestrationThreadActivity[] = [
 diff --git a/apps/web/src/session-logic.ts b/apps/web/src/session-logic.ts
-index 20a5671d..9b2415b0 100644
+index 20a5671d..a32b1028 100644
 --- a/apps/web/src/session-logic.ts
 +++ b/apps/web/src/session-logic.ts
 @@ -74,6 +74,8 @@ export interface WorkLogEntry {
@@ -11387,7 +11576,7 @@ index 20a5671d..9b2415b0 100644
    /** From runtime item / task payload `status` when present (e.g. tool.updated). */
    toolLifecycleStatus?: WorkLogToolLifecycleStatus;
    /** Originating orchestration activity kind (e.g. `user-input.requested`) for row chrome. */
-@@ -539,6 +541,19 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
+@@ -539,6 +541,23 @@ function isPlanBoundaryToolActivity(activity: OrchestrationThreadActivity): bool
  
  const decodeQuestionAttachmentAnswer = Schema.decodeUnknownOption(UserInputAttachmentAnswerPayload);
  
@@ -11397,17 +11586,21 @@ index 20a5671d..9b2415b0 100644
 +): string | null {
 +  if (activity.kind !== "tool.completed") return null;
 +  const data = asRecord(payload?.data);
-+  if (asTrimmedString(data?.toolName)?.toLowerCase() !== "handoff") return null;
++  const toolName = asTrimmedString(data?.toolName)?.toLowerCase();
++  if (toolName !== "execute" && toolName !== "handoff") return null;
 +  const lifecycleStatus = extractWorkLogToolLifecycleStatus(payload);
 +  if (lifecycleStatus !== undefined && lifecycleStatus !== "completed") return null;
 +  const rawOutput = asRecord(data?.rawOutput);
-+  return asTrimmedString(rawOutput?.handoff) ?? asTrimmedString(rawOutput?.content);
++  return (
++    asTrimmedString(rawOutput?.handoff) ??
++    (toolName === "handoff" ? asTrimmedString(rawOutput?.content) : null)
++  );
 +}
 +
  function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWorkLogEntry {
    const cachedEntry = derivedWorkLogEntryByActivity.get(activity);
    if (cachedEntry) {
-@@ -595,8 +610,13 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
+@@ -595,8 +614,13 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
      if (Option.isSome(answer)) entry.questionAnswer = answer.value;
    }
    const itemType = extractWorkLogItemType(payload);
