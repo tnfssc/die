@@ -1,6 +1,6 @@
 # die
 
-A small terminal coding agent built on [Pi](https://pi.dev). It runs as one standalone executable and supports background jobs, sub-agents, and project-local memory.
+A coding agent built on [Pi](https://pi.dev), with a terminal interface, a bundled web UI, and first-class Herdr integration. One standalone executable includes background jobs, sub-agents, and project-local memory.
 
 ## Install
 
@@ -26,12 +26,25 @@ die update
 
 ```sh
 die                         # Start the interactive TUI
+die web                     # Start the web UI
 die -p "Describe this tree" # Run one prompt and exit
 die -c                      # Continue the latest session
 die -r                      # Pick a saved session to resume
 ```
 
 Inside `die`, type `/` to see available commands.
+
+## Web UI
+
+Run `die web` and open the local URL it prints. The browser interface is built on [T3 Code](https://github.com/pingdotgg/t3code) and is bundled in the executable—no separate Node or Bun installation needed.
+
+Chat with die, switch models and agent modes, follow background agents, review changes, and use the integrated terminal. The server binds to `127.0.0.1` by default. Run `die web --help` for options.
+
+## Herdr integration
+
+Run die in a Herdr-managed terminal pane and it automatically reports whether it is working, idle, or waiting for input. Background jobs and sub-agents keep the pane marked as working even after the foreground turn ends.
+
+The integration is built in: no extra extension or configuration needed. Herdr is optional; die works on its own too. See [Herdr integration](docs/herdr.md) for lifecycle and compatibility details.
 
 ## Build from source
 
