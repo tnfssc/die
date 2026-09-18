@@ -52,4 +52,4 @@
 
 - [Blacksmith CI request](blacksmith-ci.md): blocked by personal-repository ownership; no workflow changes or new release. Needs user decision.
 
-- [v0.3.4 release](release-v034.md): shared-memory value, GitHub runners retained; release preparation and validation.
+- [v0.3.4 release](release-v034.md): shared-memory value, GitHub runners retained; published and official binary verified. README now advertises web UI and Herdr.
