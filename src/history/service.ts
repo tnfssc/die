@@ -1,8 +1,9 @@
-import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { resolve } from "node:path";
+import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 import { InvalidShakeRecordError, isShakeRecord, MANUAL_SHAKE_ENTRY } from "../tasks/manual-shake";
+import { getDiskBackedBranch } from "./session-manager";
 import type { HistoryProvenance, HistoryReadResult, HistorySearchMatch, HistorySearchResult } from "./types";
 
 const MAX_QUERY_CHARS = 500;
@@ -26,7 +27,8 @@ const MAX_TEXT_PART_BYTES = 4 * 1024 * 1024;
 const REF_PREFIX = "die-history-v1";
 const CURSOR_PREFIX = "dhc1.";
 
-type Manager = Pick<SessionManager, "getSessionId" | "getSessionFile" | "getCwd" | "getLeafId" | "getBranch">;
+type Manager = Pick<SessionManager, "getSessionId" | "getSessionFile" | "getCwd" | "getLeafId" | "getBranch"> &
+  Partial<Pick<SessionManager, "getEntry">>;
 type Context = { sessionManager: Manager };
 type ScopeInput = { sessionFile?: string; allowCrossSession?: boolean };
 type TextItem = { text: string; provenance: HistoryProvenance; rank: number };
@@ -159,16 +161,22 @@ async function openReadonlySession(path: string): Promise<Manager> {
 }
 
 function boundedBranch(manager: Manager, fromId?: string): SessionEntry[] {
-  const branch = manager.getBranch(fromId);
+  const branch = getDiskBackedBranch(manager, fromId, MAX_ACTIVE_BRANCH_ENTRIES) ?? manager.getBranch(fromId);
   if (branch.length > MAX_ACTIVE_BRANCH_ENTRIES)
     throw new Error(`Active history branch exceeds the ${MAX_ACTIVE_BRANCH_ENTRIES}-entry limit`);
   return branch;
 }
 
-function retrievalExcludedResults(entries: readonly SessionEntry[]): Set<string> {
+function entryBody(manager: Manager, entry: SessionEntry): SessionEntry {
+  return manager.getEntry?.(entry.id) ?? entry;
+}
+
+function retrievalExcludedResults(manager: Manager, entries: readonly SessionEntry[]): Set<string> {
   const excluded = new Set<string>();
   let work = 0;
-  for (const entry of entries) {
+  for (const metadata of entries) {
+    if (metadata.type !== "custom") continue;
+    const entry = entryBody(manager, metadata);
     if (entry.type !== "custom" || entry.customType !== MANUAL_SHAKE_ENTRY) continue;
     // Validate before using any subset: truncating exclusion data could leak a
     // result the transcript explicitly removed.
@@ -222,10 +230,17 @@ function parseRef(value: unknown): { sessionId: string; entryId: string; part: n
   if (!Number.isSafeInteger(part)) throw new Error("Invalid history ref");
   return { sessionId: match[1], entryId: match[2], part };
 }
+// Return owned UTF-16 data: a tiny excerpt/page must not keep a much larger
+// original alive through an engine substring backing store. UTF-16 preserves
+// exact code units, including lone surrogates, unlike a UTF-8 round trip.
+function ownedRange(text: string, start: number, end: number): string {
+  return Buffer.from(text.slice(start, end), "utf16le").toString("utf16le");
+}
+
 function excerpt(text: string, match: number, limit: number): string {
   if (text.length <= limit) return text;
   const start = Math.max(0, Math.min(match - Math.floor(limit / 3), text.length - limit));
-  return (start ? "…" : "") + text.slice(start, start + limit) + (start + limit < text.length ? "…" : "");
+  return (start ? "…" : "") + ownedRange(text, start, start + limit) + (start + limit < text.length ? "…" : "");
 }
 
 export class HistoryService {
@@ -302,9 +317,13 @@ export class HistoryService {
     this.#validateCursor(cursor, manager, key);
     const snapshotLeaf = cursor?.leafId ?? manager.getLeafId();
     const items = this.#items(manager, scope, snapshotLeaf);
-    const item = items.values.find(
-      (candidate) => candidate.provenance.entryId === parsed.entryId && candidate.provenance.part === parsed.part,
-    );
+    let item: TextItem | undefined;
+    // Consume the bounded scan even after finding a ref so work-limit validation
+    // remains fail-closed, without retaining every other original text part.
+    for (const candidate of items.values) {
+      if (candidate.provenance.entryId === parsed.entryId && candidate.provenance.part === parsed.part)
+        item = candidate;
+    }
     if (!item)
       throw new Error("History ref is unavailable on the selected active branch or is excluded from retrieval");
     const start = cursor?.offset ?? 0;
@@ -316,7 +335,7 @@ export class HistoryService {
         : undefined;
     return {
       ref: key,
-      text: item.text.slice(start, end),
+      text: ownedRange(item.text, start, end),
       range: { start, end, total: item.text.length },
       ...(next ? { nextCursor: next } : {}),
       provenance: item.provenance,
@@ -355,64 +374,67 @@ export class HistoryService {
     manager: Manager,
     scope: HistoryProvenance["scope"],
     leafId: string | null = manager.getLeafId(),
-  ): { values: TextItem[]; rankByRef: Map<string, number>; scannedEntries: number; scanLimited: boolean } {
+  ): { values: Iterable<TextItem>; rankByRef: Map<string, number>; scannedEntries: number; scanLimited: boolean } {
     const branch = leafId === null ? [] : boundedBranch(manager, leafId);
     const scanLimited = branch.length > MAX_SCAN_ENTRIES;
     const selected = scanLimited ? branch.slice(-MAX_SCAN_ENTRIES) : branch;
     // Cursor data remains pinned to its snapshot, but exclusion policy is live.
-    const excludedResults = retrievalExcludedResults(boundedBranch(manager));
-    const values: TextItem[] = [];
-    let indexedParts = 0;
-    let indexedBytes = 0;
-    for (const entry of selected) {
-      if (entry.type !== "message" || excludedResults.has(entry.id)) continue;
-      const message = entry.message as unknown;
-      if (!record(message) || typeof message.role !== "string") continue;
-      let parts: Array<{ part: number; text: string }> = [];
-      let rank = 9;
-      if (message.role === "user") {
-        parts = textParts(message.content);
-        rank = 0;
-      } else if (message.role === "assistant") {
-        parts = textParts(message.content);
-        rank = 1;
-      } else if (message.role === "toolResult") {
-        parts = textParts(message.content);
-        rank = 3;
-      } else if (message.role === "bashExecution" && message.excludeFromContext !== true) {
-        parts = [
-          typeof message.command === "string" ? { part: 0, text: message.command } : undefined,
-          typeof message.output === "string" ? { part: 1, text: message.output } : undefined,
-        ].filter((part): part is { part: number; text: string } => !!part);
-        rank = 2;
-      } else continue;
-      indexedParts += Array.isArray(message.content) ? message.content.length : parts.length;
-      if (indexedParts > MAX_INDEXED_PARTS) throw new Error(`History scan exceeds the ${MAX_INDEXED_PARTS}-part limit`);
-      for (const part of parts) {
-        const bytes = Buffer.byteLength(part.text);
-        if (bytes > MAX_TEXT_PART_BYTES)
-          throw new Error(`History text part exceeds the ${MAX_TEXT_PART_BYTES}-byte limit`);
-        indexedBytes += bytes;
-        if (indexedBytes > MAX_INDEXED_TEXT_BYTES)
-          throw new Error(`History scan exceeds the ${MAX_INDEXED_TEXT_BYTES}-byte text limit`);
-        const provenance: HistoryProvenance = {
-          source: "original-transcript",
-          scope,
-          sessionId: manager.getSessionId(),
-          ...(manager.getSessionFile() ? { sessionFile: manager.getSessionFile() } : {}),
-          cwd: manager.getCwd(),
-          branchLeafId: leafId,
-          entryId: entry.id,
-          timestamp: entry.timestamp,
-          role: message.role as HistoryProvenance["role"],
-          part: part.part,
-        };
-        values.push({ text: part.text, provenance, rank });
+    const excludedResults = retrievalExcludedResults(manager, boundedBranch(manager));
+    const rankByRef = new Map<string, number>();
+    function* scan(): Generator<TextItem> {
+      let indexedParts = 0;
+      let indexedBytes = 0;
+      for (const metadata of selected) {
+        if (metadata.type !== "message" || excludedResults.has(metadata.id)) continue;
+        const entry = entryBody(manager, metadata);
+        if (entry.type !== "message") continue;
+        const message = entry.message as unknown;
+        if (!record(message) || typeof message.role !== "string") continue;
+        let parts: Array<{ part: number; text: string }> = [];
+        let rank = 9;
+        if (message.role === "user") {
+          parts = textParts(message.content);
+          rank = 0;
+        } else if (message.role === "assistant") {
+          parts = textParts(message.content);
+          rank = 1;
+        } else if (message.role === "toolResult") {
+          parts = textParts(message.content);
+          rank = 3;
+        } else if (message.role === "bashExecution" && message.excludeFromContext !== true) {
+          parts = [
+            typeof message.command === "string" ? { part: 0, text: message.command } : undefined,
+            typeof message.output === "string" ? { part: 1, text: message.output } : undefined,
+          ].filter((part): part is { part: number; text: string } => !!part);
+          rank = 2;
+        } else continue;
+        indexedParts += Array.isArray(message.content) ? message.content.length : parts.length;
+        if (indexedParts > MAX_INDEXED_PARTS)
+          throw new Error(`History scan exceeds the ${MAX_INDEXED_PARTS}-part limit`);
+        for (const part of parts) {
+          const bytes = Buffer.byteLength(part.text);
+          if (bytes > MAX_TEXT_PART_BYTES)
+            throw new Error(`History text part exceeds the ${MAX_TEXT_PART_BYTES}-byte limit`);
+          indexedBytes += bytes;
+          if (indexedBytes > MAX_INDEXED_TEXT_BYTES)
+            throw new Error(`History scan exceeds the ${MAX_INDEXED_TEXT_BYTES}-byte text limit`);
+          const provenance: HistoryProvenance = {
+            source: "original-transcript",
+            scope,
+            sessionId: manager.getSessionId(),
+            ...(manager.getSessionFile() ? { sessionFile: manager.getSessionFile() } : {}),
+            cwd: manager.getCwd(),
+            branchLeafId: leafId,
+            entryId: entry.id,
+            timestamp: entry.timestamp,
+            role: message.role as HistoryProvenance["role"],
+            part: part.part,
+          };
+          rankByRef.set(ref(provenance.sessionId, provenance.entryId, provenance.part), rank);
+          yield { text: part.text, provenance, rank };
+        }
       }
     }
-    const rankByRef = new Map(
-      values.map((item) => [ref(item.provenance.sessionId, item.provenance.entryId, item.provenance.part), item.rank]),
-    );
-    return { values, rankByRef, scannedEntries: selected.length, scanLimited };
+    return { values: scan(), rankByRef, scannedEntries: selected.length, scanLimited };
   }
 }

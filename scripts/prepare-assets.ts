@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,6 +8,20 @@ const piRoot = join(root, "node_modules/@earendil-works/pi-coding-agent");
 const photonRoot = join(root, "node_modules/@silvia-odwyer/photon-node");
 const output = join(root, "runtime-assets");
 const { version } = (await Bun.file(join(root, "package.json")).json()) as { version: string };
+
+// The owned lazy-journal adapter relies on Pi's synchronous private seams.
+// Refuse dependency drift at build/check time; upgrades need explicit review
+// and parity tests, rather than silently falling back to full resident history.
+const piPackage = JSON.parse(await readFile(join(piRoot, "package.json"), "utf8")) as { version: string };
+const sessionManagerHash = createHash("sha256")
+  .update(await readFile(join(piRoot, "dist/core/session-manager.js")))
+  .digest("hex");
+if (
+  piPackage.version !== "0.85.1" ||
+  sessionManagerHash !== "ccace64949db25379a43971ecea750c1b7ec6344e1bc31b9d5fe596ac2f1c9f3"
+) {
+  throw new Error("Unsupported Pi SessionManager: review the disk-backed history adapter before updating Pi");
+}
 
 const assets: Array<[string, string]> = [
   ["dist/modes/interactive/theme/dark.json", "theme/dark.json"],

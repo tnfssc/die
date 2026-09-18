@@ -1,0 +1,254 @@
+{
+  "version": 2,
+  "provenance": {
+    "expectedHead": "719a76ca1dbf5490f1aa33ffb9966301e02be9a9",
+    "actualHead": "719a76ca1dbf5490f1aa33ffb9966301e02be9a9",
+    "reverseCheck": "passed",
+    "tree": "/home/tnfssc/Code/die/.cache/die-t3code-v0042",
+    "server": "/home/tnfssc/Code/die/.cache/die-t3code-v0042/apps/server/dist/bin.mjs",
+    "serverSha256": "6f34a3aed25784878e3c7bb9b46add628adbbfbb1b83a3af949d8fd6be5bbae2"
+  },
+  "options": {
+    "sequential": 3000,
+    "concurrentRounds": 0,
+    "concurrentWidth": 0,
+    "held": 0,
+    "http": 0,
+    "subscribe": true
+  },
+  "state": "/tmp/t3-current-web-server-audit-gLHwrr",
+  "port": 37347,
+  "pid": 2054460,
+  "inspectorUrl": "ws://127.0.0.1:36193/20554673-4112-4d99-a44b-f15130cc7295",
+  "subscriptionFrames": 3010,
+  "firstFrame": "{\"_tag\":\"Chunk\",\"requestId\":1,\"values\":[{\"version\":1,\"type\":\"snapshot\",\"config\":{\"environment\":{\"environmentId\":\"e5b181cb-3617-4534-8055-55643955e4b1\",\"label\":\"z14\",\"platform\":{\"os\":\"linux\",\"arch\":\"x64\",\"machine\":\"laptop\"},\"serverVersion\":\"0.0.40\",\"capabilities\":{\"repositoryIdentity\":true,\"connectionProbe\":true,\"attachmentUploads\":true,\"questionAttachments\":true,\"fileAttachments\":{\"maxUploadBytes\":52428800},\"pullRequests\":true,\"inlineMessageContext\":true,\"threadSettlement\":true,\"threadAutoSettle",
+  "errors": [],
+  "samples": [
+    {
+      "label": "baseline-after-warmup",
+      "at": "2026-09-18T18:51:47.305Z",
+      "memory": {
+        "rss": 251121664,
+        "heapTotal": 83460096,
+        "heapUsed": 81066224,
+        "external": 26267605,
+        "arrayBuffers": 112046
+      },
+      "handles": [["Socket", 3], ["Server", 1], ["FSWatcher", 3], ["TLSSocket", 1]],
+      "requests": [["TCPConnectWrap", 1]],
+      "resources": {
+        "ConnectWrap": 1,
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 2,
+        "Timeout": 20
+      },
+      "proc": {
+        "fd": 39,
+        "tasks": 12,
+        "rssKb": 246508,
+        "pssKb": 186952,
+        "privateDirtyKb": 174932,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-http-0",
+      "at": "2026-09-18T18:51:47.723Z",
+      "memory": {
+        "rss": 251158528,
+        "heapTotal": 83460096,
+        "heapUsed": 81000336,
+        "external": 26267645,
+        "arrayBuffers": 112046
+      },
+      "handles": [["Socket", 3], ["Server", 1], ["FSWatcher", 3], ["TLSSocket", 1]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 2,
+        "Timeout": 19
+      },
+      "proc": {
+        "fd": 39,
+        "tasks": 12,
+        "rssKb": 246520,
+        "pssKb": 186555,
+        "privateDirtyKb": 174944,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-sequential-ws-1500",
+      "at": "2026-09-18T18:52:16.080Z",
+      "memory": {
+        "rss": 262582272,
+        "heapTotal": 87011328,
+        "heapUsed": 83386648,
+        "external": 26264584,
+        "arrayBuffers": 108985
+      },
+      "handles": [["Socket", 3], ["Server", 1], ["FSWatcher", 3]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 1,
+        "Timeout": 19
+      },
+      "proc": {
+        "fd": 37,
+        "tasks": 12,
+        "rssKb": 257252,
+        "pssKb": 197760,
+        "privateDirtyKb": 185684,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-sequential-ws-3000",
+      "at": "2026-09-18T18:52:45.634Z",
+      "memory": {
+        "rss": 262488064,
+        "heapTotal": 87535616,
+        "heapUsed": 83597536,
+        "external": 26264584,
+        "arrayBuffers": 108985
+      },
+      "handles": [["Socket", 3], ["Server", 1], ["FSWatcher", 3]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 1,
+        "Timeout": 19
+      },
+      "proc": {
+        "fd": 37,
+        "tasks": 12,
+        "rssKb": 257592,
+        "pssKb": 198101,
+        "privateDirtyKb": 186024,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-concurrent-ws-0",
+      "at": "2026-09-18T18:52:46.163Z",
+      "memory": {
+        "rss": 262717440,
+        "heapTotal": 87273472,
+        "heapUsed": 83639592,
+        "external": 26264584,
+        "arrayBuffers": 108985
+      },
+      "handles": [["Socket", 3], ["Server", 1], ["FSWatcher", 3]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 1,
+        "Timeout": 19
+      },
+      "proc": {
+        "fd": 37,
+        "tasks": 12,
+        "rssKb": 257636,
+        "pssKb": 198145,
+        "privateDirtyKb": 186068,
+        "descendants": []
+      }
+    },
+    {
+      "label": "while-held-ws-0",
+      "at": "2026-09-18T18:52:46.672Z",
+      "memory": {
+        "rss": 262762496,
+        "heapTotal": 87273472,
+        "heapUsed": 83616016,
+        "external": 26264584,
+        "arrayBuffers": 108985
+      },
+      "handles": [["Socket", 3], ["Server", 1], ["FSWatcher", 3]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 1,
+        "Timeout": 19
+      },
+      "proc": {
+        "fd": 37,
+        "tasks": 12,
+        "rssKb": 257628,
+        "pssKb": 198137,
+        "privateDirtyKb": 186060,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-held-ws-close-0",
+      "at": "2026-09-18T18:52:47.193Z",
+      "memory": {
+        "rss": 262762496,
+        "heapTotal": 87535616,
+        "heapUsed": 83609856,
+        "external": 26264584,
+        "arrayBuffers": 108985
+      },
+      "handles": [["Socket", 3], ["Server", 1], ["FSWatcher", 3]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 1,
+        "Timeout": 19
+      },
+      "proc": {
+        "fd": 37,
+        "tasks": 12,
+        "rssKb": 257644,
+        "pssKb": 198154,
+        "privateDirtyKb": 186076,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-quiescence-5s",
+      "at": "2026-09-18T18:52:52.741Z",
+      "memory": {
+        "rss": 262672384,
+        "heapTotal": 87273472,
+        "heapUsed": 83396016,
+        "external": 26254613,
+        "arrayBuffers": 99014
+      },
+      "handles": [["Socket", 2], ["Server", 1], ["FSWatcher", 3]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "Timeout": 19
+      },
+      "proc": {
+        "fd": 34,
+        "tasks": 12,
+        "rssKb": 257616,
+        "pssKb": 202705,
+        "privateDirtyKb": 186048,
+        "descendants": []
+      }
+    }
+  ],
+  "serverStdoutTail": "T3 Code server is ready.\nConnection string: http://127.0.0.1:37347\nToken: KSW8LE73AFFU\nPairing URL: http://127.0.0.1:37347/pair#token=<redacted>\n\n                                     \n  █▀▀▀▀▀█ ▄▄ ▄█▀██▄ ▄▀▄███▀ █▀▀▀▀▀█  \n  █ ███ █ ▀▀█ ▀██▄█  ▀▀  █▀ █ ███ █  \n  █ ▀▀▀ █  ▀█ ▄▄ ▀▄██▄  █▀█ █ ▀▀▀ █  \n  ▀▀▀▀▀▀▀ ▀ █▄▀ █ █▄█▄▀ ▀ ▀ ▀▀▀▀▀▀▀  \n  ▄██▀▄▀▀▄ ▄ ▄█▀█▀▄▀▄█▀▀▀▄▄▄▄▄ ▄█▀▄  \n  ▀▀▄▄█▄▀ █   ▀▀█ █▀█   ▄▀  ▄█▀█ ▀▀  \n  █ ▀  █▀██   █▀▄ ▄ ▀  █▀▄▄▀ █▀█▄▄   \n  ▄▄█▄ ▀▀ ██ ▄ █▄▀ ▀▄▀▀█ ▄██ ▀▄█▄    \n  ▀▄▄▀ ▀▀▀ █▄█████▄▄█  █ ▄▀ █ █▄▀▄▄  \n  ▄▀  █▄▀▄█▄▄▄▄ ▀█▄▄▀▄▀▀▀ ██▄▄█ ▀▀▄  \n  ▄▀█▄ █▀ ▀██▀█  ▄█ ▄▀▄▄ ▀  ▄  ▀█▀▄  \n   ▄▀▀ ▄▀█▄█  ██    █    ▀█▄█▄▄▀▀██  \n  ▀  ▀ ▀▀▀▄▄▄▄▄▀▀▄ ▀▀▄█ ▄██▀▀▀█▄ █▀  \n  █▀▀▀▀▀█ ▄ ▀▀██ ▄ ▄▄█▀▄▄▀█ ▀ █ ▄▄▄  \n  █ ███ █ ▄█▄▄██▀ █▀   █ ███▀▀▀ ▀█▄  \n  █ ▀▀▀ █ █ ▄ ▀▀▄ █▀█▄▀  ▀██▀▀▄▀  ▄  \n  ▀▀▀▀▀▀▀   ▀  ▀▀▀   ▀▀▀▀  ▀▀  ▀▀    \n                                     \n\n",
+  "serverStderrTail": "Debugger listening on ws://127.0.0.1:36193/20554673-4112-4d99-a44b-f15130cc7295\nFor help, see: https://nodejs.org/en/docs/inspector\nDebugger attached.\n"
+}

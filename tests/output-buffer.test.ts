@@ -57,4 +57,15 @@ describe("bounded task output buffer", () => {
     expect(output.baseOffset).toBe(6);
     expect(output.read(6, 4).buffer.toString()).toBe("6789");
   });
+  test("can release retained prefixes while preserving logical offsets", () => {
+    const output = new BoundedOutputBuffer(20);
+    output.append("A😀BC");
+
+    expect(output.discardPrefix(2)).toBe(2);
+    expect(output.baseOffset).toBe(2);
+    expect(output.endOffset).toBe(7);
+    const result = output.read(0, 20);
+    expect(result.outputLost).toBe(true);
+    expect(result.nextOffset).toBe(7);
+  });
 });

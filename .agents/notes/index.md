@@ -53,3 +53,9 @@
 - [Blacksmith CI request](blacksmith-ci.md): blocked by personal-repository ownership; no workflow changes or new release. Needs user decision.
 
 - [v0.3.4 release](release-v034.md): shared-memory value, GitHub runners retained; published and official binary verified. README now advertises web UI and Herdr.
+
+- [Deep memory/resource audit](leak-audit.md): completed deep CLI/web source and isolated runtime investigation; integrated report docs/memory-resource-audit.md, reproducible probes; no product fixes applied.
+
+- [Audit judgment](leak-audit-judgment.md): follow-up merit-based fix decisions, independent challenges, desktop reachability correction; no implementation. See docs/memory-resource-judgment.md.
+
+- [Resource fixes and upcoming release](resource-fixes-release.md): user authorized implementation and publication; parallel core/history/web fixes underway, no install requested.

@@ -95,8 +95,9 @@ test("standalone executable opens embedded web CLI without Node, Bun, or sidecar
     const timeout = setTimeout(() => child.kill("SIGKILL"), 60000);
     let code: number;
     let stdout: string;
+    let stderr: string;
     try {
-      [code, stdout] = await Promise.all([
+      [code, stdout, stderr] = await Promise.all([
         child.exited,
         new Response(child.stdout).text(),
         new Response(child.stderr).text(),
@@ -108,6 +109,7 @@ test("standalone executable opens embedded web CLI without Node, Bun, or sidecar
         await child.exited;
       }
     }
+    if (code! !== 0) throw new Error(`Standalone web help exited ${code!}: ${stderr!}\n${stdout!}`);
     expect(code!).toBe(0);
     expect(stdout!).toContain("Run the T3 Code server");
     const markers = await Array.fromAsync(new Bun.Glob("*/.complete").scan(join(temporary, ".cache/die/web-runtime")));

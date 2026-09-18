@@ -7,6 +7,11 @@ import type { Readable } from "node:stream";
 import { StringDecoder } from "node:string_decoder";
 
 export const EXECUTE_INLINE_OUTPUT_CHARS = 4_000;
+/**
+ * Default cap for the complete, byte-for-byte stdout/stderr artifacts from one
+ * execution. Inline previews have their own small, fixed character cap.
+ */
+export const DEFAULT_EXECUTE_OUTPUT_BYTE_LIMIT = 10 * 1024 * 1024;
 const EXECUTE_INLINE_OUTPUT_LINES_PER_STREAM = 900;
 
 type StreamName = "stdout" | "stderr";
@@ -25,6 +30,16 @@ export interface CapturedOutput {
   stdoutPath?: string;
   stderrPath?: string;
   outputArtifactErrors?: OutputArtifactErrors;
+  /** Combined stdout/stderr bytes observed, including bytes over the limit. */
+  outputBytes: number;
+  /** Combined bytes retained in complete-output artifacts/prefixes. */
+  capturedOutputBytes: number;
+  outputByteLimit: number;
+  outputTruncated: boolean;
+  stdoutBytes: number;
+  stderrBytes: number;
+  stdoutCapturedBytes: number;
+  stderrCapturedBytes: number;
 }
 
 interface StreamState {
@@ -32,10 +47,13 @@ interface StreamState {
   prefix: Buffer[];
   preview: string;
   previewTrimmed: boolean;
-  hadBytes: boolean;
   handle?: FileHandle;
   path?: string;
   writeError?: string;
+  readError?: string;
+  bytes: number;
+  capturedBytes: number;
+  writtenBytes: number;
 }
 
 function safeTail(text: string, limit: number): string {
@@ -59,33 +77,68 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * Captures execute's two text streams with one shared character budget. Output
- * stays in memory while it is small. Crossing the budget atomically promotes
- * both streams to files and flushes every byte retained before promotion.
+ * Captures execute's text streams with a shared byte budget and a separate
+ * bounded inline preview. Crossing the preview character budget promotes both
+ * streams to files and flushes the bytes retained within the capture budget.
+ * Excess bytes are drained for process liveness and counted, never persisted.
  */
 export class ExecuteOutputCapture {
   readonly #states: Record<StreamName, StreamState> = {
-    stdout: { decoder: new StringDecoder("utf8"), prefix: [], preview: "", previewTrimmed: false, hadBytes: false },
-    stderr: { decoder: new StringDecoder("utf8"), prefix: [], preview: "", previewTrimmed: false, hadBytes: false },
+    stdout: {
+      decoder: new StringDecoder("utf8"),
+      prefix: [],
+      preview: "",
+      previewTrimmed: false,
+      bytes: 0,
+      capturedBytes: 0,
+      writtenBytes: 0,
+    },
+    stderr: {
+      decoder: new StringDecoder("utf8"),
+      prefix: [],
+      preview: "",
+      previewTrimmed: false,
+      bytes: 0,
+      capturedBytes: 0,
+      writtenBytes: 0,
+    },
   };
   readonly #sessionFile?: string;
+  readonly #outputByteLimit: number;
+  // Budget-selected bytes; failed storage must not refund the capture allowance.
+  #capturedOutputBytes = 0;
+  #outputBytes = 0;
   #characterCount = 0;
   #spilled = false;
   #directory?: string;
   #directoryError?: string;
   #operations = Promise.resolve();
 
-  constructor(options: { sessionFile?: string } = {}) {
+  constructor(options: { sessionFile?: string; outputByteLimit?: number } = {}) {
+    const limit = options.outputByteLimit ?? DEFAULT_EXECUTE_OUTPUT_BYTE_LIMIT;
+    if (!Number.isSafeInteger(limit) || limit < 0)
+      throw new RangeError("outputByteLimit must be a non-negative safe integer");
+    this.#outputByteLimit = limit;
     this.#sessionFile =
       typeof options.sessionFile === "string" && options.sessionFile.length ? resolve(options.sessionFile) : undefined;
   }
 
   async consume(name: StreamName, readable: Readable): Promise<void> {
-    for await (const value of readable) {
-      const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
-      await this.#enqueue(() => this.#append(name, chunk));
+    try {
+      for await (const value of readable) {
+        const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+        await this.#enqueue(() => this.#append(name, chunk));
+      }
+    } catch (error) {
+      await this.#enqueue(async () => {
+        this.#states[name].readError = `Could not read complete ${name} output: ${errorMessage(error)}`;
+      });
+      throw error;
+    } finally {
+      // Flush the decoder even when the stream pump rejects. result() will
+      // subsequently close any artifact handle opened before that rejection.
+      await this.#enqueue(() => this.#end(name));
     }
-    await this.#enqueue(() => this.#end(name));
   }
 
   async result(): Promise<CapturedOutput> {
@@ -125,14 +178,28 @@ export class ExecuteOutputCapture {
     const stderrLost = this.#states.stderr.previewTrimmed || stderr.length < stderrPreview.length;
     const errors: OutputArtifactErrors = {
       ...(this.#directoryError ? { directory: this.#directoryError } : {}),
-      ...(this.#states.stdout.writeError ? { stdout: this.#states.stdout.writeError } : {}),
-      ...(this.#states.stderr.writeError ? { stderr: this.#states.stderr.writeError } : {}),
+      ...(this.#states.stdout.writeError || this.#states.stdout.readError
+        ? { stdout: [this.#states.stdout.writeError, this.#states.stdout.readError].filter(Boolean).join("; ") }
+        : {}),
+      ...(this.#states.stderr.writeError || this.#states.stderr.readError
+        ? { stderr: [this.#states.stderr.writeError, this.#states.stderr.readError].filter(Boolean).join("; ") }
+        : {}),
     };
+    const capturedBytes = (name: StreamName) =>
+      this.#spilled ? this.#states[name].writtenBytes : this.#states[name].capturedBytes;
     return {
       stdout,
       stderr,
       stdoutLost,
       stderrLost,
+      outputBytes: this.#outputBytes,
+      capturedOutputBytes: capturedBytes("stdout") + capturedBytes("stderr"),
+      outputByteLimit: this.#outputByteLimit,
+      outputTruncated: this.#outputBytes > this.#capturedOutputBytes,
+      stdoutBytes: this.#states.stdout.bytes,
+      stderrBytes: this.#states.stderr.bytes,
+      stdoutCapturedBytes: capturedBytes("stdout"),
+      stderrCapturedBytes: capturedBytes("stderr"),
       ...(this.#states.stdout.path ? { stdoutPath: this.#states.stdout.path } : {}),
       ...(this.#states.stderr.path ? { stderrPath: this.#states.stderr.path } : {}),
       ...(Object.keys(errors).length ? { outputArtifactErrors: errors } : {}),
@@ -149,12 +216,21 @@ export class ExecuteOutputCapture {
 
   async #append(name: StreamName, chunk: Buffer): Promise<void> {
     const state = this.#states[name];
-    state.hadBytes ||= chunk.length > 0;
+    state.bytes += chunk.length;
+    this.#outputBytes += chunk.length;
+
+    // stdout and stderr share this allowance. Serialization through #enqueue
+    // makes the retained prefix deterministic in the order chunks arrive.
+    const allowance = Math.max(0, this.#outputByteLimit - this.#capturedOutputBytes);
+    const retained = chunk.subarray(0, Math.min(chunk.length, allowance));
+    state.capturedBytes += retained.length;
+    this.#capturedOutputBytes += retained.length;
+
     const wasSpilled = this.#spilled;
-    if (!wasSpilled && chunk.length) state.prefix.push(Buffer.from(chunk));
+    if (!wasSpilled && retained.length) state.prefix.push(Buffer.from(retained));
     this.#addDecoded(state, state.decoder.write(chunk));
     if (!this.#spilled && this.#characterCount > EXECUTE_INLINE_OUTPUT_CHARS) await this.#startSpill();
-    if (wasSpilled) await this.#write(name, chunk);
+    if (wasSpilled) await this.#write(name, retained);
   }
 
   async #end(name: StreamName): Promise<void> {
@@ -177,6 +253,8 @@ export class ExecuteOutputCapture {
 
   async #startSpill(): Promise<void> {
     this.#spilled = true;
+    // A preview-only capture needs no empty directory or misleading file path.
+    if (this.#capturedOutputBytes === 0) return;
     try {
       if (this.#sessionFile) {
         const root = join(dirname(this.#sessionFile), `${basename(this.#sessionFile)}.artifacts`);
@@ -193,7 +271,7 @@ export class ExecuteOutputCapture {
     }
     for (const name of ["stdout", "stderr"] as const) {
       const state = this.#states[name];
-      if (!state.hadBytes) continue;
+      if (state.capturedBytes === 0) continue;
       await this.#open(name);
       for (const chunk of state.prefix) await this.#write(name, chunk);
       state.prefix = [];
@@ -223,6 +301,7 @@ export class ExecuteOutputCapture {
         const written = await state.handle.write(chunk, offset, chunk.length - offset, null);
         if (written.bytesWritten <= 0) throw new Error("write returned zero bytes");
         offset += written.bytesWritten;
+        state.writtenBytes += written.bytesWritten;
       }
     } catch (error) {
       state.writeError = `Could not write complete ${name} output: ${errorMessage(error)}`;

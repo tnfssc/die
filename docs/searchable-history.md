@@ -28,4 +28,4 @@ Only returned search excerpts/read pages enter the model through the ordinary ex
 
 ## Runtime integration
 
-`HistoryService` in `src/history/service.ts` owns validation, scoping, search, reads and provenance. The central task extension now creates that service and routes `history.search` and `history.read` from execute before job dispatch, so both helpers are available in current source. This integration is newer than the installed v0.2.3 binary and is not claimed as released or installed.
+`HistoryService` in `src/history/service.ts` owns validation, scoping, search, reads and provenance. The central task extension now creates that service and routes `history.search` and `history.read` from execute before job dispatch, so both helpers are available in current source. Persistent CLI sessions use the owned disk-backed journal adapter described in [disk-backed history](disk-backed-history.md). Retrieval walks branch metadata before loading selected bodies, so compacted originals need not remain resident. The same privacy, stable-ref and live shake-exclusion rules apply. This source integration does not alter an already running or installed binary.

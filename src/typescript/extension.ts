@@ -1,8 +1,8 @@
-import { diagnosticRecorder, inspectDiagnostics } from "../diagnostics";
-import executeDescription from "../prompts/execute-description.md" with { type: "text" };
-import { executeGuidance, backgroundHandoff } from "../prompts";
-import { SettingsManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { type ExtensionAPI, type ExtensionContext, SettingsManager } from "@earendil-works/pi-coding-agent";
 import * as z from "zod/mini";
+import { diagnosticRecorder, inspectDiagnostics } from "../diagnostics";
+import { backgroundHandoff, executeGuidance } from "../prompts";
+import executeDescription from "../prompts/execute-description.md" with { type: "text" };
 import { toolParameters } from "../tool-schema";
 import { executeInputPreview, executeOutputPreview } from "../ui/execution-previews";
 import { executeIsolated, formatResult } from "./execution";
@@ -13,6 +13,7 @@ const HandoffParameters = z.object({ message: z.string().check(z.minLength(1), z
 const ExecuteParameters = z.object({
   code: z.string(),
   timeoutSeconds: z.optional(z.number().check(z.minimum(0.1))),
+  outputByteLimit: z.optional(z.number().check(z.int(), z.minimum(0), z.maximum(Number.MAX_SAFE_INTEGER))),
 });
 
 export function registerExecuteTool(
@@ -88,6 +89,7 @@ export function registerExecuteTool(
         {
           executablePath,
           sessionFile: owner?.getSessionFile?.(),
+          outputByteLimit: params.outputByteLimit,
           jobHandler: async (method, params, signal) => {
             if (method === "handoff") {
               const request = z.parse(HandoffParameters, params);

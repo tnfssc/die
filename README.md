@@ -68,3 +68,7 @@ bun run install:local
 - Credentials and model configuration are supplied at runtime, like Pi.
 - State is stored under `~/.die`.
 - See `docs/` for design notes and deeper documentation.
+
+## Resource limits
+
+Die bounds retained job output, execute capture, and persistent session-body caching without deleting original session history. See [resource limits](docs/resource-limits.md) for defaults, truncation semantics, storage ownership, and web shutdown behavior.

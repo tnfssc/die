@@ -1,0 +1,162 @@
+{
+  "native": {
+    "mode": "native",
+    "originalMiB": 136,
+    "fileMiB": 136.03,
+    "compactions": 17,
+    "contextKiB": 0.24,
+    "originalSurvived": true,
+    "heapGrowthMiB": 136.18,
+    "snapshots": [
+      {
+        "label": "baseline",
+        "entries": 1,
+        "metadataBytes": 162,
+        "retainedFullTextBytes": 0,
+        "configuredCacheLimitBytes": null,
+        "contextBytes": 50,
+        "heapMiB": 16.97,
+        "jscHeapMiB": 16.97,
+        "rssMiB": 100.56
+      },
+      {
+        "label": "after-compaction-1",
+        "entries": 12,
+        "metadataBytes": 1215,
+        "retainedFullTextBytes": 8388632,
+        "configuredCacheLimitBytes": null,
+        "contextBytes": 244,
+        "heapMiB": 25.01,
+        "jscHeapMiB": 25.01,
+        "rssMiB": 120.96
+      },
+      {
+        "label": "after-compaction-8",
+        "entries": 82,
+        "metadataBytes": 7956,
+        "retainedFullTextBytes": 67108965,
+        "configuredCacheLimitBytes": null,
+        "contextBytes": 245,
+        "heapMiB": 81.06,
+        "jscHeapMiB": 81.06,
+        "rssMiB": 207.74
+      },
+      {
+        "label": "after-compaction-17",
+        "entries": 172,
+        "metadataBytes": 16623,
+        "retainedFullTextBytes": 142606543,
+        "configuredCacheLimitBytes": null,
+        "contextBytes": 248,
+        "heapMiB": 153.1,
+        "jscHeapMiB": 153.1,
+        "rssMiB": 282.91
+      },
+      {
+        "label": "reopened",
+        "entries": 172,
+        "metadataBytes": 16623,
+        "retainedFullTextBytes": 142606543,
+        "configuredCacheLimitBytes": null,
+        "contextBytes": 248,
+        "heapMiB": 153.15,
+        "jscHeapMiB": 153.15,
+        "rssMiB": 344.36
+      },
+      {
+        "label": "after-original-read",
+        "entries": 172,
+        "metadataBytes": 16623,
+        "retainedFullTextBytes": 142606543,
+        "configuredCacheLimitBytes": null,
+        "contextBytes": 248,
+        "heapMiB": 153.17,
+        "jscHeapMiB": 153.17,
+        "rssMiB": 240.26
+      }
+    ]
+  },
+  "adapted": {
+    "mode": "adapted",
+    "originalMiB": 136,
+    "fileMiB": 136.03,
+    "compactions": 17,
+    "contextKiB": 0.24,
+    "originalSurvived": true,
+    "heapGrowthMiB": 0.3,
+    "snapshots": [
+      {
+        "label": "baseline",
+        "entries": 1,
+        "metadataBytes": 163,
+        "retainedFullTextBytes": 0,
+        "configuredCacheLimitBytes": 4194304,
+        "contextBytes": 50,
+        "heapMiB": 17.02,
+        "jscHeapMiB": 17.02,
+        "rssMiB": 100.42
+      },
+      {
+        "label": "after-compaction-1",
+        "entries": 12,
+        "metadataBytes": 1216,
+        "retainedFullTextBytes": 0,
+        "configuredCacheLimitBytes": 4194304,
+        "contextBytes": 244,
+        "heapMiB": 20.08,
+        "jscHeapMiB": 20.08,
+        "rssMiB": 112.07
+      },
+      {
+        "label": "after-compaction-8",
+        "entries": 82,
+        "metadataBytes": 7957,
+        "retainedFullTextBytes": 0,
+        "configuredCacheLimitBytes": 4194304,
+        "contextBytes": 245,
+        "heapMiB": 20.2,
+        "jscHeapMiB": 20.2,
+        "rssMiB": 230.44
+      },
+      {
+        "label": "after-compaction-17",
+        "entries": 172,
+        "metadataBytes": 16624,
+        "retainedFullTextBytes": 0,
+        "configuredCacheLimitBytes": 4194304,
+        "contextBytes": 248,
+        "heapMiB": 20.25,
+        "jscHeapMiB": 20.25,
+        "rssMiB": 202.34
+      },
+      {
+        "label": "reopened",
+        "entries": 172,
+        "metadataBytes": 16624,
+        "retainedFullTextBytes": 0,
+        "configuredCacheLimitBytes": 4194304,
+        "contextBytes": 248,
+        "heapMiB": 17.32,
+        "jscHeapMiB": 17.32,
+        "rssMiB": 216.84
+      },
+      {
+        "label": "after-original-read",
+        "entries": 172,
+        "metadataBytes": 16624,
+        "retainedFullTextBytes": 0,
+        "configuredCacheLimitBytes": 4194304,
+        "contextBytes": 248,
+        "heapMiB": 18.34,
+        "jscHeapMiB": 18.34,
+        "rssMiB": 101.43
+      }
+    ]
+  },
+  "comparison": {
+    "reopenedHeapReductionMiB": 135.88,
+    "originalMiB": 136,
+    "adaptedRetainedFullTextBytes": 0,
+    "contextKiB": 0.24
+  }
+}

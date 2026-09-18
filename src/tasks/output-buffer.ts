@@ -57,6 +57,14 @@ export class BoundedOutputBuffer {
     if (this.#chunks.length - this.#head > 1024) this.#compact();
   }
 
+  /** Release up to `bytes` from the retained prefix without changing logical offsets. */
+  discardPrefix(bytes: number): number {
+    const discard = Math.min(this.#retainedBytes, Math.max(0, Math.trunc(bytes)));
+    if (discard === 0) return 0;
+    this.#discard(discard);
+    return discard;
+  }
+
   read(offset: number, limit: number): { buffer: Buffer; nextOffset: number; outputLost: boolean; hasMore: boolean } {
     const requestedOffset = Math.max(0, Math.trunc(offset));
     const effectiveOffset = Math.max(requestedOffset, this.#baseOffset);
@@ -97,23 +105,27 @@ export class BoundedOutputBuffer {
   }
 
   #trim(): void {
-    let overflow = this.#retainedBytes - this.#maxBytes;
-    while (overflow > 0 && this.#head < this.#chunks.length) {
+    this.#discard(Math.max(0, this.#retainedBytes - this.#maxBytes));
+  }
+
+  #discard(bytes: number): void {
+    let remaining = bytes;
+    while (remaining > 0 && this.#head < this.#chunks.length) {
       const chunk = this.#chunks[this.#head];
-      if (chunk.length <= overflow) {
-        overflow -= chunk.length;
+      if (chunk.length <= remaining) {
+        remaining -= chunk.length;
         this.#retainedBytes -= chunk.length;
         this.#baseOffset += chunk.length;
         this.#chunks[this.#head] = EMPTY;
         this.#head++;
       } else {
-        this.#chunks[this.#head] = Buffer.from(chunk.subarray(overflow));
-        this.#retainedBytes -= overflow;
-        this.#baseOffset += overflow;
-        overflow = 0;
+        this.#chunks[this.#head] = Buffer.from(chunk.subarray(remaining));
+        this.#retainedBytes -= remaining;
+        this.#baseOffset += remaining;
+        remaining = 0;
       }
     }
-    if (this.#head > 512) this.#compact();
+    if (this.#head > 512 || this.#retainedBytes === 0) this.#compact();
   }
 
   #compact(): void {

@@ -1,7 +1,7 @@
+import { spawn } from "node:child_process";
 import { accessSync, constants } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { spawn } from "node:child_process";
-import { homedir } from "node:os";
+import { homedir, constants as osConstants } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 function expandHome(value: string): string {
@@ -77,6 +77,12 @@ export function webLaunch(args: string[], env: NodeJS.ProcessEnv = process.env, 
   };
 }
 
+const WEB_TERMINATION_GRACE_MS = 5_000;
+
+function signalExitCode(signal: NodeJS.Signals): number {
+  return 128 + (osConstants.signals[signal] ?? 0);
+}
+
 async function runExternal(server: string, args: string[], env: NodeJS.ProcessEnv): Promise<number> {
   try {
     accessSync(server, constants.X_OK);
@@ -85,21 +91,56 @@ async function runExternal(server: string, args: string[], env: NodeJS.ProcessEn
     return 1;
   }
   return new Promise<number>((done) => {
-    const child = spawn(server, args, { env, stdio: "inherit" });
-    const interrupt = () => child.kill("SIGINT");
-    const terminate = () => child.kill("SIGTERM");
+    const ownsProcessGroup = process.platform !== "win32";
+    const child = spawn(server, args, { env, stdio: "inherit", detached: ownsProcessGroup });
+    // detached makes the POSIX child the leader of a new process group. Capture
+    // that ID once: never infer or signal the launcher's (possibly live die
+    // session) process group.
+    const ownedGroup = ownsProcessGroup && child.pid && child.pid !== process.pid ? child.pid : undefined;
+    let requestedSignal: "SIGINT" | "SIGTERM" | undefined;
+    let killTimer: ReturnType<typeof setTimeout> | undefined;
+    let finished = false;
+
+    const signalOwnedBackend = (signal: NodeJS.Signals) => {
+      try {
+        if (ownedGroup !== undefined) process.kill(-ownedGroup, signal);
+        else if (!ownsProcessGroup) child.kill(signal);
+      } catch {
+        // The owned process or group may already have exited.
+      }
+    };
     const finish = (code: number) => {
+      if (finished) return;
+      finished = true;
       process.off("SIGINT", interrupt);
       process.off("SIGTERM", terminate);
+      if (killTimer) clearTimeout(killTimer);
       done(code);
     };
+    const forward = (signal: "SIGINT" | "SIGTERM") => {
+      requestedSignal ??= signal;
+      signalOwnedBackend(signal);
+      if (ownsProcessGroup && !killTimer) {
+        killTimer = setTimeout(() => signalOwnedBackend("SIGKILL"), WEB_TERMINATION_GRACE_MS);
+        killTimer.unref?.();
+      }
+    };
+    const interrupt = () => forward("SIGINT");
+    const terminate = () => forward("SIGTERM");
+
     process.on("SIGINT", interrupt);
     process.on("SIGTERM", terminate);
     child.once("error", (error) => {
       console.error("Cannot start die web: " + error.message);
       finish(1);
     });
-    child.once("exit", (code, signal) => finish(code ?? (signal === "SIGINT" ? 130 : 143)));
+    child.once("exit", (code, signal) => {
+      // A backend leader can exit while descendants continue. Since this is our
+      // dedicated POSIX group, synchronously terminate those remaining members
+      // before allowing the launcher to complete.
+      if (ownsProcessGroup) signalOwnedBackend("SIGKILL");
+      finish(requestedSignal ? signalExitCode(requestedSignal) : (code ?? (signal ? signalExitCode(signal) : 1)));
+    });
   });
 }
 

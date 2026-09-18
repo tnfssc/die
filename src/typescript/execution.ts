@@ -5,7 +5,12 @@ import { inspectDiagnostics, recordDiagnostic } from "../diagnostics";
 import { BoundedOutputBuffer } from "../tasks/output-buffer";
 import { decodeImageChannel, IMAGE_CHANNEL_ENV, MAX_IMAGE_CHANNEL_BYTES } from "./images";
 import { JOB_BRIDGE_ENV, openParentJobBridge, serveJobBridge } from "./job-bridge";
-import { ExecuteOutputCapture, type OutputArtifactErrors } from "./output-capture";
+import {
+  type CapturedOutput,
+  DEFAULT_EXECUTE_OUTPUT_BYTE_LIMIT,
+  ExecuteOutputCapture,
+  type OutputArtifactErrors,
+} from "./output-capture";
 import { INTERNAL_TYPESCRIPT_RUNNER_ARG } from "./runner";
 
 export const EXECUTION_DIAGNOSTIC_CODES = ["process_exit", "timeout", "caller_aborted", "shutdown"] as const;
@@ -22,6 +27,14 @@ export interface ExecutionResult {
   stdoutPath?: string;
   stderrPath?: string;
   outputArtifactErrors?: OutputArtifactErrors;
+  outputBytes?: number;
+  capturedOutputBytes?: number;
+  outputByteLimit?: number;
+  outputTruncated?: boolean;
+  stdoutBytes?: number;
+  stderrBytes?: number;
+  stdoutCapturedBytes?: number;
+  stderrCapturedBytes?: number;
   timedOut: boolean;
   cancelled: boolean;
   termination?: { cause: "timeout" | "execute-abort" | "session-shutdown"; requestedAt: string };
@@ -49,14 +62,29 @@ export async function executeIsolated(
     killGraceMs?: number;
     jobHandler?: (method: string, params: unknown, signal: AbortSignal) => Promise<unknown>;
     sessionFile?: string;
+    /** Combined byte cap for complete stdout/stderr capture. */
+    outputByteLimit?: number;
   } = {},
 ): Promise<ExecutionResult> {
+  if (
+    options.outputByteLimit !== undefined &&
+    (!Number.isSafeInteger(options.outputByteLimit) || options.outputByteLimit < 0)
+  )
+    throw new RangeError("outputByteLimit must be a non-negative safe integer");
   if (signal?.aborted) {
     const result: ExecutionResult = {
       stdout: "",
       stderr: "",
       stdoutLost: false,
       stderrLost: false,
+      outputBytes: 0,
+      capturedOutputBytes: 0,
+      outputByteLimit: options.outputByteLimit ?? DEFAULT_EXECUTE_OUTPUT_BYTE_LIMIT,
+      outputTruncated: false,
+      stdoutBytes: 0,
+      stderrBytes: 0,
+      stdoutCapturedBytes: 0,
+      stderrCapturedBytes: 0,
       timedOut: false,
       cancelled: true,
       termination: {
@@ -85,7 +113,10 @@ export async function executeIsolated(
     detached: process.platform !== "win32",
     stdio: ["pipe", "pipe", "pipe", "pipe", ...(options.jobHandler ? ["ipc" as const] : [])],
   });
-  const output = new ExecuteOutputCapture({ sessionFile: options.sessionFile });
+  const output = new ExecuteOutputCapture({
+    sessionFile: options.sessionFile,
+    outputByteLimit: options.outputByteLimit,
+  });
   const imageOutput = new BoundedOutputBuffer(MAX_IMAGE_CHANNEL_BYTES);
   const imagePipe = child.stdio[3] as Readable | undefined;
   const jobPipe = options.jobHandler ? openParentJobBridge(child) : undefined;
@@ -143,10 +174,10 @@ export async function executeIsolated(
     imageError = "Could not read image output channel";
     signalProcessGroup(child, "SIGKILL");
   });
-  const outputPumps = Promise.all([output.consume("stdout", child.stdout!), output.consume("stderr", child.stderr!)]);
-  // Avoid an unhandled rejection if spawning or cancellation fails before the
-  // main completion path gets to await the stream pumps.
-  void outputPumps.catch(() => {});
+  const outputPumps = Promise.allSettled([
+    output.consume("stdout", child.stdout!),
+    output.consume("stderr", child.stderr!),
+  ]);
   child.stdin!.on("error", () => {
     // Early exits (including EPIPE while sending source) are reported by status.
   });
@@ -159,8 +190,11 @@ export async function executeIsolated(
   child.stdin!.end(code);
 
   let completed: { exitCode: number | null; exitSignal: NodeJS.Signals | null } | undefined;
+  let captured: CapturedOutput | undefined;
   try {
     completed = await completion;
+    // Wait for both streams even if one pump rejects, so no writer can race
+    // artifact finalization. The capture records pump failures as metadata.
     await outputPumps;
   } finally {
     // Commit response ACKs only at clean worker completion. Until this point a
@@ -176,11 +210,15 @@ export async function executeIsolated(
     child.stderr!.destroy();
     imagePipe?.destroy();
     jobPipe?.destroy();
+    await outputPumps;
+    // Always close output artifacts, including exceptional stream-pump paths.
+    captured = await output.result();
   }
-  const { exitCode, exitSignal } = completed!;
+  if (!completed || !captured) throw new Error("Execution ended without a result");
+  const { exitCode, exitSignal } = completed;
 
   let images: ImageContent[] = [];
-  let imageResizeNotes: string[] = [];
+  const imageResizeNotes: string[] = [];
   // Images are atomic results: never attach partial output from failed,
   // cancelled, timed-out, or malformed executions.
   if (exitCode === 0 && !timedOut && !cancelled && !imageError) {
@@ -199,7 +237,6 @@ export async function executeIsolated(
       imageError = error instanceof Error ? error.message : "Invalid image output";
     }
   }
-  const captured = await output.result();
   const result: ExecutionResult = {
     exitCode: exitCode ?? undefined,
     signal: exitSignal ?? undefined,
@@ -243,13 +280,22 @@ export function formatResult(result: ExecutionResult): string {
     const lost = result[(name + "Lost") as "stdoutLost" | "stderrLost"];
     const path = result[(name + "Path") as "stdoutPath" | "stderrPath"];
     const error = directoryError ?? result.outputArtifactErrors?.[name];
-    if (path && error) return `${name} (${lost ? "truncated preview; " : ""}output file may be incomplete: ${path})`;
+    const byteTruncated =
+      result.outputTruncated === true &&
+      (result[(name + "CapturedBytes") as "stdoutCapturedBytes" | "stderrCapturedBytes"] ?? 0) <
+        (result[(name + "Bytes") as "stdoutBytes" | "stderrBytes"] ?? 0);
+    if (path && (error || byteTruncated))
+      return `${name} (${lost ? "truncated preview; " : ""}output file incomplete: ${path})`;
     if (path) return `${name} (${lost ? "truncated preview; complete output" : "complete output also saved"}: ${path})`;
     if (lost && error) return `${name} (truncated preview; full output could not be saved)`;
     return `${name}${lost ? " (truncated preview)" : ""}`;
   };
   if (result.stdout) sections.push(`${streamLabel("stdout")}:\n${result.stdout}`);
   if (result.stderr) sections.push(`${streamLabel("stderr")}:\n${result.stderr}`);
+  if (result.outputTruncated)
+    sections.push(
+      `Output capture limit reached: retained ${result.capturedOutputBytes} of ${result.outputBytes} stdout/stderr bytes (limit ${result.outputByteLimit}).`,
+    );
   if (result.outputArtifactErrors) {
     for (const [scope, message] of Object.entries(result.outputArtifactErrors))
       sections.push(`Output artifact error (${scope}): ${message}`);

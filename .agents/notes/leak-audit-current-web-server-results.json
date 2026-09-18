@@ -1,0 +1,255 @@
+{
+  "version": 2,
+  "provenance": {
+    "expectedHead": "719a76ca1dbf5490f1aa33ffb9966301e02be9a9",
+    "actualHead": "719a76ca1dbf5490f1aa33ffb9966301e02be9a9",
+    "reverseCheck": "passed",
+    "tree": "/home/tnfssc/Code/die/.cache/die-t3code-v0042",
+    "server": "/home/tnfssc/Code/die/.cache/die-t3code-v0042/apps/server/dist/bin.mjs",
+    "serverSha256": "6f34a3aed25784878e3c7bb9b46add628adbbfbb1b83a3af949d8fd6be5bbae2"
+  },
+  "options": {
+    "sequential": 600,
+    "concurrentRounds": 20,
+    "concurrentWidth": 20,
+    "held": 80,
+    "http": 300,
+    "subscribe": true
+  },
+  "state": "/tmp/t3-current-web-server-audit-W85O27",
+  "port": 42623,
+  "pid": 2021234,
+  "inspectorUrl": "ws://127.0.0.1:46479/880ddf23-cdf4-4963-b490-77a4b0a7a84c",
+  "subscriptionFrames": 1090,
+  "firstFrame": "{\"_tag\":\"Chunk\",\"requestId\":1,\"values\":[{\"version\":1,\"type\":\"snapshot\",\"config\":{\"environment\":{\"environmentId\":\"b2c4e043-fffb-42cf-a8d5-45dd09d7fd18\",\"label\":\"z14\",\"platform\":{\"os\":\"linux\",\"arch\":\"x64\",\"machine\":\"laptop\"},\"serverVersion\":\"0.0.40\",\"capabilities\":{\"repositoryIdentity\":true,\"connectionProbe\":true,\"attachmentUploads\":true,\"questionAttachments\":true,\"fileAttachments\":{\"maxUploadBytes\":52428800},\"pullRequests\":true,\"inlineMessageContext\":true,\"threadSettlement\":true,\"threadAutoSettle",
+  "errors": [],
+  "samples": [
+    {
+      "label": "baseline-after-warmup",
+      "at": "2026-09-18T18:50:53.534Z",
+      "memory": {
+        "rss": 231936000,
+        "heapTotal": 83722240,
+        "heapUsed": 81061064,
+        "external": 26267604,
+        "arrayBuffers": 112045
+      },
+      "handles": [["Socket", 3], ["Server", 1], ["FSWatcher", 3], ["TLSSocket", 1]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 2,
+        "Timeout": 19
+      },
+      "proc": {
+        "fd": 39,
+        "tasks": 12,
+        "rssKb": 227836,
+        "pssKb": 168559,
+        "privateDirtyKb": 156404,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-http-300",
+      "at": "2026-09-18T18:50:54.235Z",
+      "memory": {
+        "rss": 237498368,
+        "heapTotal": 84508672,
+        "heapUsed": 81871544,
+        "external": 26256391,
+        "arrayBuffers": 100792
+      },
+      "handles": [["Socket", 22], ["Server", 1], ["FSWatcher", 3]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 20,
+        "Timeout": 20
+      },
+      "proc": {
+        "fd": 58,
+        "tasks": 12,
+        "rssKb": 233520,
+        "pssKb": 173496,
+        "privateDirtyKb": 162088,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-sequential-ws-300",
+      "at": "2026-09-18T18:51:00.414Z",
+      "memory": {
+        "rss": 243838976,
+        "heapTotal": 86487040,
+        "heapUsed": 82302224,
+        "external": 26264583,
+        "arrayBuffers": 108984
+      },
+      "handles": [["Socket", 3], ["Server", 1], ["FSWatcher", 3]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 1,
+        "Timeout": 19
+      },
+      "proc": {
+        "fd": 37,
+        "tasks": 12,
+        "rssKb": 239452,
+        "pssKb": 179421,
+        "privateDirtyKb": 168028,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-sequential-ws-600",
+      "at": "2026-09-18T18:51:06.523Z",
+      "memory": {
+        "rss": 244936704,
+        "heapTotal": 87797760,
+        "heapUsed": 83449152,
+        "external": 26266278,
+        "arrayBuffers": 110679
+      },
+      "handles": [["Socket", 3], ["Server", 1], ["FSWatcher", 3], ["TLSSocket", 1]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 2,
+        "Timeout": 18
+      },
+      "proc": {
+        "fd": 37,
+        "tasks": 12,
+        "rssKb": 240380,
+        "pssKb": 180958,
+        "privateDirtyKb": 168956,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-concurrent-ws-400",
+      "at": "2026-09-18T18:51:11.625Z",
+      "memory": {
+        "rss": 247422976,
+        "heapTotal": 87797760,
+        "heapUsed": 83521032,
+        "external": 26286876,
+        "arrayBuffers": 131277
+      },
+      "handles": [["Socket", 10], ["Server", 1], ["FSWatcher", 3], ["TLSSocket", 1]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 9,
+        "Timeout": 18
+      },
+      "proc": {
+        "fd": 44,
+        "tasks": 12,
+        "rssKb": 242948,
+        "pssKb": 183528,
+        "privateDirtyKb": 171524,
+        "descendants": []
+      }
+    },
+    {
+      "label": "while-held-ws-80",
+      "at": "2026-09-18T18:51:12.952Z",
+      "memory": {
+        "rss": 274771968,
+        "heapTotal": 102215680,
+        "heapUsed": 99046072,
+        "external": 27653596,
+        "arrayBuffers": 1497997
+      },
+      "handles": [["Socket", 116], ["Server", 1], ["FSWatcher", 3], ["TLSSocket", 1]],
+      "requests": [["FSReqCallback", 1]],
+      "resources": {
+        "FSReqCallback": 1,
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 115,
+        "Timeout": 17
+      },
+      "proc": {
+        "fd": 150,
+        "tasks": 12,
+        "rssKb": 269296,
+        "pssKb": 209217,
+        "privateDirtyKb": 197872,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-held-ws-close-80",
+      "at": "2026-09-18T18:51:13.440Z",
+      "memory": {
+        "rss": 259846144,
+        "heapTotal": 87797760,
+        "heapUsed": 83728880,
+        "external": 26287254,
+        "arrayBuffers": 131655
+      },
+      "handles": [["Socket", 36], ["Server", 1], ["FSWatcher", 3], ["TLSSocket", 1]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "TCPSocketWrap": 35,
+        "Timeout": 18
+      },
+      "proc": {
+        "fd": 70,
+        "tasks": 12,
+        "rssKb": 255048,
+        "pssKb": 194937,
+        "privateDirtyKb": 183624,
+        "descendants": []
+      }
+    },
+    {
+      "label": "after-quiescence-5s",
+      "at": "2026-09-18T18:51:18.932Z",
+      "memory": {
+        "rss": 259629056,
+        "heapTotal": 87797760,
+        "heapUsed": 83277392,
+        "external": 26255438,
+        "arrayBuffers": 99839
+      },
+      "handles": [["Socket", 2], ["Server", 1], ["FSWatcher", 3]],
+      "requests": [],
+      "resources": {
+        "PipeWrap": 2,
+        "TCPServerWrap": 1,
+        "FSEventWrap": 3,
+        "Timeout": 17,
+        "Immediate": 1
+      },
+      "proc": {
+        "fd": 34,
+        "tasks": 12,
+        "rssKb": 254852,
+        "pssKb": 194831,
+        "privateDirtyKb": 183428,
+        "descendants": []
+      }
+    }
+  ],
+  "serverStdoutTail": "T3 Code server is ready.\nConnection string: http://127.0.0.1:42623\nToken: GYGWSV6NGVUQ\nPairing URL: http://127.0.0.1:42623/pair#token=<redacted>\n\n                                     \n  █▀▀▀▀▀█ █▄ ▄█▀   ▄▄█▀ ▄█▀ █▀▀▀▀▀█  \n  █ ███ █ █ ▀█ ▀▄▄ ▄▄██▄▄▀  █ ███ █  \n  █ ▀▀▀ █ ▀▀▄▄ █ █   ▄ ▄ ▄▄ █ ▀▀▀ █  \n  ▀▀▀▀▀▀▀ █ █ ▀▄█▄█▄█ █▄▀▄▀ ▀▀▀▀▀▀▀  \n  ▄█▀▄█▄▀▀▄ ▄▀ ██▄▄█▀  █▀▀▀ █▄▀▀▀██  \n  ▄▀█  █▀█▀█ ▄ ▀▀ ▀▄█ ██▄▄▀ ▄▀▄ ▀▀▀  \n  ▀  ▄██▀█▄█ ▀▄ ▄▄▀ ▀▄▄ ▄▄▄██  █▄ █  \n     ▀ ▄▀▄▀▄█   ▄▄▄ █ ▄█  ▄ ▀▀▄▀▀█▀  \n  ▄ ▄▄▀ ▀█▀▄██▀▀███▀   ██   █▄ ▀ ▄▄  \n  ▄▄ ▄██▀▄█▄▄ ██▄  █▀ ▀██ █▀▀▀▄ ▀█▀  \n   ▄  ▀ ▀▄█▄▄▄ ▄▀▀▀ ▄▄█▄▄████  █ ▄█  \n  ▀▄█▀█▀▀ ▀▄▀▀ ▀ ▄▀▀  █▄█▄▄▄█ ▀▄ ██  \n  ▀  ▀▀ ▀ █▄▀▀██▄ ▄ ▀▀ ████▀▀▀█▄ ▀▄  \n  █▀▀▀▀▀█ ▀▀▄██▀  █▀ ▄██ ██ ▀ █▄▀▀█  \n  █ ███ █ ▀██ █▀█ ▀▀ ▄█▀█ ██▀███ █▄  \n  █ ▀▀▀ █ ██ █▄█▀▀▄█  ██▀▀█▀▄▄█▀ ▄▀  \n  ▀▀▀▀▀▀▀   ▀▀▀     ▀  ▀▀ ▀    ▀ ▀▀  \n                                     \n\n",
+  "serverStderrTail": "Debugger listening on ws://127.0.0.1:46479/880ddf23-cdf4-4963-b490-77a4b0a7a84c\nFor help, see: https://nodejs.org/en/docs/inspector\nDebugger attached.\n"
+}

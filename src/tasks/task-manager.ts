@@ -12,6 +12,8 @@ const MAX_CAPTURE_BYTES = 1_000_000;
 const MAX_INSPECT_BYTES = 5_000;
 const DEFAULT_KILL_GRACE_MS = 5_000;
 const DEFAULT_SHUTDOWN_WATCHDOG_MS = 10_000;
+/** Aggregate RAM retained for output of finished jobs. Running jobs keep their own cap. */
+export const DEFAULT_COMPLETED_OUTPUT_BUDGET_BYTES = 8_000_000;
 
 function utf8SequenceLength(byte: number): number {
   if ((byte & 0x80) === 0) return 1;
@@ -65,6 +67,8 @@ export interface TaskManagerHooks {
   }) => void;
   onTaskChild?: (mapping: { taskId: string; kind: TaskLaunch["kind"]; sessionFile?: string }) => void;
   shutdownWatchdogMs?: number;
+  /** Aggregate bytes retained for completed output; defaults to 8 MB. */
+  completedOutputBudgetBytes?: number;
 }
 
 /** Lightweight lifecycle events. Payloads are snapshots; subscribers cannot mutate manager state. */
@@ -139,6 +143,9 @@ export class TaskManager {
   readonly #listeners = new Set<TaskEventListener>();
   readonly #hooks: TaskManagerHooks;
   readonly #shutdownWatchdogMs: number;
+  readonly #completedOutputBudgetBytes: number;
+  readonly #completedOutputOrder: ManagedTask[] = [];
+  #completedOutputBytes = 0;
   #shuttingDown = false;
   #shutdown?: Promise<void>;
   #diagnosticFailureReported = false;
@@ -153,6 +160,10 @@ export class TaskManager {
     this.#killGraceMs = killGraceMs;
     this.#hooks = hooks;
     this.#shutdownWatchdogMs = hooks.shutdownWatchdogMs ?? DEFAULT_SHUTDOWN_WATCHDOG_MS;
+    const completedBudget = hooks.completedOutputBudgetBytes ?? DEFAULT_COMPLETED_OUTPUT_BUDGET_BYTES;
+    if (!Number.isSafeInteger(completedBudget) || completedBudget < 0)
+      throw new Error("completedOutputBudgetBytes must be a non-negative safe integer");
+    this.#completedOutputBudgetBytes = completedBudget;
   }
 
   spawn(launch: TaskLaunch): TaskSummary {
@@ -248,6 +259,9 @@ export class TaskManager {
       task.process = undefined;
       task.completion = undefined;
       task.resolveCompletion = undefined;
+      // Delivery keeps its bounded snapshot, but observers must see the settled
+      // manager storage already within the completed-output budget.
+      this.#retainCompletedOutput(task);
       resolveTask?.(inspection);
       this.#emit({ type: "completed", task: this.#summary(task) });
       this.#diagnostic({
@@ -478,6 +492,30 @@ export class TaskManager {
       });
     })();
     return this.#shutdown;
+  }
+
+  #retainCompletedOutput(task: ManagedTask): void {
+    const completionBytes = task.completionOutput === undefined ? 0 : Buffer.byteLength(task.completionOutput);
+    if (task.output.retainedBytes === 0 && completionBytes === 0) return;
+    this.#completedOutputOrder.push(task);
+    this.#completedOutputBytes += task.output.retainedBytes + completionBytes;
+
+    while (this.#completedOutputBytes > this.#completedOutputBudgetBytes) {
+      const oldest = this.#completedOutputOrder[0];
+      if (!oldest) break;
+      const excess = this.#completedOutputBytes - this.#completedOutputBudgetBytes;
+      const discarded = oldest.output.discardPrefix(excess);
+      this.#completedOutputBytes -= discarded;
+      oldest.baseOffset = oldest.output.baseOffset;
+
+      if (this.#completedOutputBytes > this.#completedOutputBudgetBytes && oldest.completionOutput !== undefined) {
+        this.#completedOutputBytes -= Buffer.byteLength(oldest.completionOutput);
+        oldest.completionOutput = undefined;
+      }
+      if (oldest.output.retainedBytes === 0 && oldest.completionOutput === undefined)
+        this.#completedOutputOrder.shift();
+      else if (discarded === 0) break;
+    }
   }
 
   #diagnostic(input: Parameters<NonNullable<TaskManagerHooks["recordDiagnostic"]>>[0]): void {

@@ -450,3 +450,105 @@ test("foreground/background completion races deliver each result exactly once", 
   expect(inline.length + notifications.length).toBe(30);
   expect(new Set([...inline, ...notifications].map((job) => job.id)).size).toBe(30);
 });
+
+describe("completed output aggregate budget", () => {
+  test("bounds many completed jobs while retaining IDs, status, and honest cursors", async () => {
+    const manager = new TaskManager(() => {}, undefined, { completedOutputBudgetBytes: 25 });
+    managers.push(manager);
+    const jobs = [];
+    for (let index = 0; index < 12; index++) {
+      const task = manager.spawn({
+        kind: "command",
+        command: process.execPath,
+        args: ["-e", `process.stdout.write("${String(index).padStart(2, "0")}xxxxxxxx")`],
+        displayCommand: `output ${index}`,
+        cwd: process.cwd(),
+        notifyOnComplete: false,
+      });
+      jobs.push(task);
+      const completion = await manager.wait(task.id);
+      expect(completion.output).toBe(`${String(index).padStart(2, "0")}xxxxxxxx`);
+    }
+
+    const listed = manager.list();
+    expect(listed).toHaveLength(12);
+    expect(listed.every((task) => task.status === "completed" && task.completedAt)).toBe(true);
+    expect(listed.reduce((bytes, task) => bytes + task.outputEnd - task.baseOffset, 0)).toBeLessThanOrEqual(25);
+
+    const oldest = manager.inspect(jobs[0].id, 0);
+    expect(oldest.outputLost).toBe(true);
+    expect(oldest.output).toBe("");
+    expect(oldest.requestedOffset).toBe(0);
+    expect(oldest.nextOffset).toBe(oldest.outputEnd);
+    const newest = manager.inspect(jobs[jobs.length - 1].id, 0);
+    expect(newest.outputLost).toBe(false);
+    expect(newest.output).toBe("11xxxxxxxx");
+  });
+
+  test("keeps active output under its per-task cap, then applies a Unicode-safe completed budget", async () => {
+    const manager = new TaskManager(() => {}, undefined, { completedOutputBudgetBytes: 4 });
+    managers.push(manager);
+    const task = manager.spawn({
+      kind: "command",
+      command: process.execPath,
+      args: ["-e", "process.stdout.write('A😀B'); setTimeout(() => {}, 150)"],
+      displayCommand: "unicode transition",
+      cwd: process.cwd(),
+      notifyOnComplete: false,
+    });
+
+    const deadline = Date.now() + 2_000;
+    while (manager.inspect(task.id, 0).outputEnd < 6 && Date.now() < deadline) await Bun.sleep(5);
+    const active = manager.inspect(task.id, 0);
+    expect(active.status).toBe("running");
+    expect(active.output).toBe("A😀B");
+    expect(active.outputLost).toBe(false);
+
+    await manager.wait(task.id);
+    const completed = manager.inspect(task.id, 0);
+    expect(completed.status).toBe("completed");
+    expect(completed.baseOffset).toBe(2);
+    expect(completed.outputEnd).toBe(6);
+    expect(completed.outputLost).toBe(true);
+    expect(completed.output).toBe("B");
+    expect(completed.nextOffset).toBe(6);
+    expect(completed.hasMore).toBe(false);
+  });
+});
+
+test("completion observers see budgeted manager state while delivery preserves the final answer", async () => {
+  const observed: Array<{ source: string; output: string; lost: boolean }> = [];
+  let delivered = "";
+  const manager = new TaskManager(
+    (completion) => {
+      delivered = completion.output;
+      const retained = manager.inspect(completion.id, 0);
+      observed.push({ source: "notification", output: retained.output, lost: retained.outputLost });
+    },
+    undefined,
+    { completedOutputBudgetBytes: 0 },
+  );
+  managers.push(manager);
+  manager.subscribe((event) => {
+    if (event.type !== "completed") return;
+    const retained = manager.inspect(event.task.id, 0);
+    observed.push({ source: "event", output: retained.output, lost: retained.outputLost });
+  });
+  const task = manager.spawn({
+    kind: "agent",
+    command: process.execPath,
+    args: [
+      "-e",
+      'console.log(JSON.stringify({type:"message_end",message:{role:"assistant",stopReason:"stop",content:[{type:"text",text:"final answer"}]}})); console.log(JSON.stringify({type:"agent_end"}));',
+    ],
+    displayCommand: "agent budget observer",
+    cwd: process.cwd(),
+    agent: { type: "normal", model: "p/model", depth: 1, sessionFile: "/test.jsonl" },
+  });
+  const delivery = await manager.wait(task.id);
+  expect(delivery.output).toBe("final answer");
+  expect(delivered).toBe("final answer");
+  expect(observed.map((value) => value.source)).toEqual(["event", "notification"]);
+  expect(observed.every((value) => value.output === "" && value.lost)).toBe(true);
+  expect((await manager.wait(task.id)).output).toBe("");
+});

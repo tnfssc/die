@@ -390,4 +390,14 @@ describe("original history", () => {
       service.search({ query: "paged", limit: 1, cursor: page1.nextCursor }, { sessionManager: manager }),
     ).rejects.toThrow("active branch");
   });
+  test("owned read pages preserve exact UTF-16 code units", async () => {
+    const manager = SessionManager.inMemory("/project");
+    const text = "original \ud800 tail " + "x".repeat(2000);
+    manager.appendMessage(user(text));
+    const service = new HistoryService();
+    const result = await service.search({ query: "original", excerptChars: 40 }, { sessionManager: manager });
+    expect(result.matches[0]?.excerpt).toContain("\ud800");
+    const page = await service.read({ ref: result.matches[0]!.ref, maxChars: 10 }, { sessionManager: manager });
+    expect(page.text).toBe(text.slice(0, 10));
+  });
 });

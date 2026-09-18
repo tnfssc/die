@@ -1,0 +1,9 @@
+{"label":"baseline","heapMiB":18.02,"rssMiB":104.33,"fileMiB":0,"contextMessages":0,"compactions":0}
+{"label":"after real compaction 4","heapMiB":22.12,"rssMiB":264.3,"fileMiB":32.02,"contextMessages":2,"compactions":4}
+{"label":"after real compaction 8","heapMiB":22.34,"rssMiB":639.37,"fileMiB":64.05,"contextMessages":2,"compactions":8}
+{"label":"after real compaction 12","heapMiB":22.48,"rssMiB":684.52,"fileMiB":96.07,"contextMessages":2,"compactions":12}
+{"label":"after real compaction 16","heapMiB":22.78,"rssMiB":714.51,"fileMiB":128.09,"contextMessages":2,"compactions":16}
+{"label":"reset","heapMiB":18.68,"rssMiB":467.13,"fileMiB":0,"contextMessages":0,"compactions":16}
+{"label":"resume","heapMiB":18.85,"rssMiB":184.26,"fileMiB":128.09,"contextMessages":2,"compactions":16}
+{"label":"resume append","heapMiB":18.85,"rssMiB":219.5,"fileMiB":128.09,"contextMessages":3,"compactions":16}
+{"ok":true,"originals":512,"compactions":16,"heapGrowthMiB":0.83}

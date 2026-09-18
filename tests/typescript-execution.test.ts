@@ -66,6 +66,31 @@ describe("execute process lifecycle and output", () => {
     expect(failure.stderr).not.toContain("data:text/javascript;base64");
   });
 
+  test("applies a configurable combined output byte limit and reports truncation", async () => {
+    const result = await executeIsolated(
+      'process.stdout.write("x".repeat(5000)); process.stderr.write("y".repeat(5000));',
+      directory,
+      undefined,
+      3_000,
+      {
+        executablePath: binary,
+        sessionFile: join(directory, "limited-session.jsonl"),
+        outputByteLimit: 6_000,
+      },
+    );
+    expect(result.outputBytes).toBe(10_000);
+    expect(result.capturedOutputBytes).toBe(6_000);
+    expect(result.outputTruncated).toBe(true);
+    expect((result.stdoutCapturedBytes ?? 0) + (result.stderrCapturedBytes ?? 0)).toBe(6_000);
+    expect(formatResult(result)).toContain("Output capture limit reached: retained 6000 of 10000");
+    const capturedFiles = await Promise.all(
+      [result.stdoutPath, result.stderrPath]
+        .filter((path): path is string => path !== undefined)
+        .map((path) => readFile(path)),
+    );
+    expect(capturedFiles.reduce((bytes, file) => bytes + file.length, 0)).toBe(6_000);
+  });
+
   test("uses the concise no-output fallback", async () => {
     const result = await execute("void 0;");
     expect(formatResult(result)).toBe("Execution completed with exit code 0.\n\nNo output.");
@@ -382,4 +407,41 @@ test("execute shutdown cancellation is classified and a new session receives a f
     code: "process_exit",
     outcome: "success",
   });
+});
+
+test("registered execute exposes configurable capture limits and truncation details", async () => {
+  let tool!: ToolDefinition;
+  registerExecuteTool(
+    {
+      registerTool(value: ToolDefinition) {
+        tool = value;
+      },
+      on() {},
+    } as unknown as ExtensionAPI,
+    undefined,
+    binary,
+  );
+  expect(tool.description).toContain("10 MiB");
+  const result = await tool.execute(
+    "capture-budget",
+    {
+      code: 'process.stdout.write("x".repeat(6000))',
+      outputByteLimit: 1000,
+    },
+    undefined,
+    undefined,
+    {
+      cwd: directory,
+      sessionManager: { getSessionFile: () => join(directory, "budget-session.jsonl") },
+    } as unknown as ExtensionContext,
+  );
+  expect(result.details).toMatchObject({
+    outputByteLimit: 1000,
+    outputBytes: 6000,
+    capturedOutputBytes: 1000,
+    outputTruncated: true,
+  });
+  const content = result.content as Array<{ type: string; text?: string }>;
+  expect(content[0]!.text).toContain("Output capture limit reached");
+  expect(content[0]!.text).not.toContain("complete output:");
 });

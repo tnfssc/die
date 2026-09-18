@@ -1032,12 +1032,235 @@ index 3afde2b3..3e2b8333 100644
              ),
            ).pipe(
              Effect.timeout("30 seconds"),
+diff --git a/apps/server/src/provider/Layers/EventNdjsonLogger.test.ts b/apps/server/src/provider/Layers/EventNdjsonLogger.test.ts
+index 500f2815..b6d0de29 100644
+--- a/apps/server/src/provider/Layers/EventNdjsonLogger.test.ts
++++ b/apps/server/src/provider/Layers/EventNdjsonLogger.test.ts
+@@ -29,6 +29,19 @@ function ownedLogPath(basePath: string, segment: string): string {
+   return NodePath.join(NodePath.dirname(basePath), `${stem}.${segment}.log`);
+ }
+ 
++function ownedLogFiles(basePath: string): ReadonlyArray<string> {
++  const basename = NodePath.basename(basePath);
++  const extension = NodePath.extname(basename);
++  const stem = extension.length > 0 ? basename.slice(0, -extension.length) : basename;
++  return NodeFS.readdirSync(NodePath.dirname(basePath))
++    .filter((entry) => entry.startsWith(`${stem}.`) && /\.log(?:\.\d+)?$/u.test(entry))
++    .map((entry) => NodePath.join(NodePath.dirname(basePath), entry));
++}
++
++function totalFileBytes(filePaths: ReadonlyArray<string>): number {
++  return filePaths.reduce((total, filePath) => total + NodeFS.statSync(filePath).size, 0);
++}
++
+ function parseLogLine(line: string) {
+   const match = /^\[([^\]]+)\] ([A-Z]+): (.+)$/.exec(line);
+   assert.notEqual(match, null);
+@@ -590,28 +603,73 @@ describe("EventNdjsonLogger", () => {
+     }),
+   );
+ 
+-  it.effect("does not prune an active thread sink during an unrelated flush", () =>
++  it.effect("retires completed thread sinks so aggregate retention stays bounded", () =>
+     Effect.gen(function* () {
+       const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-provider-log-"));
+       const basePath = NodePath.join(tempDir, "events.log");
+-      const activePath = ownedLogPath(basePath, "active");
++      const maxTotalBytes = 1_024;
+ 
+       try {
+-        yield* TestClock.setTime(1_800_000_000_000);
+         const store = yield* makeEventNdjsonLogStore(basePath, {
+           batchWindowMs: 0,
+-          maxAgeMs: 1,
++          maxTotalBytes,
+           retentionCheckIntervalMs: 1,
+         });
+-        const logger = store.logger("native");
++        const logger = store.logger("canonical");
++
++        for (let index = 0; index < 100; index += 1) {
++          yield* TestClock.adjust("2 millis");
++          yield* logger.write(
++            { type: "turn.completed", id: `completed-${index}`, payload: "x".repeat(96) },
++            ThreadId.make(`completed-${index}`),
++          );
++        }
++
++        const files = ownedLogFiles(basePath);
++        assert.isBelow(files.length, 100);
++        assert.isAtMost(totalFileBytes(files), maxTotalBytes);
++        yield* store.close();
++      } finally {
++        NodeFS.rmSync(tempDir, { recursive: true, force: true });
++      }
++    }),
++  );
+ 
+-        yield* logger.write({ id: "active-before-retention" }, ThreadId.make("active"));
+-        assert.equal(NodeFS.existsSync(activePath), true);
++  it.effect("counts active thread files toward the aggregate byte quota", () =>
++    Effect.gen(function* () {
++      const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-provider-log-"));
++      const basePath = NodePath.join(tempDir, "events.log");
++      const firstPath = ownedLogPath(basePath, "first-active");
++      const secondPath = ownedLogPath(basePath, "second-active");
++      const maxTotalBytes = 220;
++
++      try {
++        const store = yield* makeEventNdjsonLogStore(basePath, {
++          batchWindowMs: 0,
++          maxTotalBytes,
++          retentionCheckIntervalMs: 1,
++        });
++        const logger = store.logger("native");
+ 
++        yield* logger.write(
++          { id: "first-active", payload: "x".repeat(80) },
++          ThreadId.make("first-active"),
++        );
+         yield* TestClock.adjust("2 millis");
+-        yield* logger.write({ id: "retention-trigger" }, ThreadId.make("other"));
++        yield* logger.write(
++          { id: "second-active", payload: "x".repeat(80) },
++          ThreadId.make("second-active"),
++        );
+ 
+-        assert.equal(NodeFS.existsSync(activePath), true);
++        assert.equal(NodeFS.existsSync(firstPath), false);
++        assert.equal(NodeFS.existsSync(secondPath), true);
++        assert.isAtMost(totalFileBytes(ownedLogFiles(basePath)), maxTotalBytes);
++
++        // A still-live thread can write again after retention removes its file.
++        yield* TestClock.adjust("2 millis");
++        yield* logger.write({ id: "first-reopened" }, ThreadId.make("first-active"));
++        assert.include(NodeFS.readFileSync(firstPath, "utf8"), "first-reopened");
++        assert.isAtMost(totalFileBytes(ownedLogFiles(basePath)), maxTotalBytes);
+         yield* store.close();
+       } finally {
+         NodeFS.rmSync(tempDir, { recursive: true, force: true });
+diff --git a/apps/server/src/provider/Layers/EventNdjsonLogger.ts b/apps/server/src/provider/Layers/EventNdjsonLogger.ts
+index de297ee0..5f207c76 100644
+--- a/apps/server/src/provider/Layers/EventNdjsonLogger.ts
++++ b/apps/server/src/provider/Layers/EventNdjsonLogger.ts
+@@ -139,7 +139,6 @@ export interface PendingRecord {
+ interface StoreState {
+   readonly pending: Array<PendingRecord>;
+   readonly pendingBytes: number;
+-  readonly sinks: ReadonlyMap<string, RotatingFileSink>;
+   readonly flushScheduled: boolean;
+   readonly closed: boolean;
+   readonly lastRetentionAt: number;
+@@ -295,7 +294,6 @@ function enforceRetention(input: {
+   readonly directory: string;
+   readonly maxTotalBytes: number;
+   readonly maxAgeMs: number;
+-  readonly activeFilePaths: ReadonlySet<string>;
+   readonly filePrefix: string;
+   readonly now: number;
+ }): RetentionResult {
+@@ -323,7 +321,6 @@ function enforceRetention(input: {
+ 
+   let totalBytes = files.reduce((total, file) => total + file.size, 0);
+   const remove = (file: (typeof files)[number]) => {
+-    if (input.activeFilePaths.has(file.filePath)) return false;
+     try {
+       NodeFS.rmSync(file.filePath, { force: true });
+       totalBytes -= file.size;
+@@ -407,7 +404,6 @@ function drainPending(input: {
+     return [{ attributions: [], failures: [] }, input.state];
+   }
+ 
+-  const sinks = new Map(input.state.sinks);
+   const failures: Array<FileOperationFailure> = [];
+   const attributionByStream = new Map<
+     EventNdjsonStream,
+@@ -423,20 +419,21 @@ function drainPending(input: {
+ 
+   for (const [threadSegment, records] of recordsBySegment) {
+     const filePath = providerLogPath(input.directory, input.filePrefix, threadSegment);
+-    let sink = sinks.get(threadSegment);
+-    if (!sink) {
+-      try {
+-        sink = new RotatingFileSink({
+-          filePath,
+-          maxBytes: input.options.maxBytes,
+-          maxFiles: input.options.maxFiles,
+-          throwOnError: true,
+-        });
+-        sinks.set(threadSegment, sink);
+-      } catch (cause) {
+-        failures.push({ filePath, cause });
+-        continue;
+-      }
++    // RotatingFileSink owns only cached rotation metadata, so keeping one per
++    // thread after this batch is drained adds unbounded server-lifetime state.
++    // Reconstructing it reads the current file size and preserves rotation while
++    // making every completed batch eligible for aggregate retention.
++    let sink: RotatingFileSink;
++    try {
++      sink = new RotatingFileSink({
++        filePath,
++        maxBytes: input.options.maxBytes,
++        maxFiles: input.options.maxFiles,
++        throwOnError: true,
++      });
++    } catch (cause) {
++      failures.push({ filePath, cause });
++      continue;
+     }
+ 
+     try {
+@@ -453,7 +450,6 @@ function drainPending(input: {
+         }
+       });
+     } catch (cause) {
+-      sinks.delete(threadSegment);
+       failures.push({ filePath, cause });
+     }
+   }
+@@ -465,11 +461,6 @@ function drainPending(input: {
+         directory: input.directory,
+         maxTotalBytes: input.options.maxTotalBytes,
+         maxAgeMs: input.options.maxAgeMs,
+-        activeFilePaths: new Set(
+-          Array.from(sinks.keys(), (threadSegment) =>
+-            providerLogPath(input.directory, input.filePrefix, threadSegment),
+-          ),
+-        ),
+         filePrefix: input.filePrefix,
+         now: input.now,
+       })
+@@ -486,7 +477,6 @@ function drainPending(input: {
+     {
+       pending: [],
+       pendingBytes: 0,
+-      sinks,
+       flushScheduled: input.timerFired ? false : input.state.flushScheduled,
+       closed: input.close,
+       lastRetentionAt: retentionDue ? input.now : input.state.lastRetentionAt,
+@@ -523,7 +513,6 @@ export const makeEventNdjsonLogStore = Effect.fnUntraced(function* (
+       directory,
+       maxTotalBytes: resolved.maxTotalBytes,
+       maxAgeMs: resolved.maxAgeMs,
+-      activeFilePaths: new Set(),
+       filePrefix,
+       now: initializedAt,
+     }),
+@@ -538,7 +527,6 @@ export const makeEventNdjsonLogStore = Effect.fnUntraced(function* (
+   const stateRef = yield* SynchronizedRef.make<StoreState>({
+     pending: [],
+     pendingBytes: 0,
+-    sinks: new Map(),
+     flushScheduled: false,
+     closed: false,
+     lastRetentionAt: initializedAt,
 diff --git a/apps/server/src/provider/Layers/PiAdapter.test.ts b/apps/server/src/provider/Layers/PiAdapter.test.ts
 new file mode 100644
-index 00000000..aaa9d9e9
+index 00000000..682a3d23
 --- /dev/null
 +++ b/apps/server/src/provider/Layers/PiAdapter.test.ts
-@@ -0,0 +1,3650 @@
+@@ -0,0 +1,3779 @@
 +// @effect-diagnostics nodeBuiltinImport:off
 +import * as NodeFS from "node:fs";
 +import * as NodeOS from "node:os";
@@ -1076,7 +1299,7 @@ index 00000000..aaa9d9e9
 +import type { PiRpcEvent, PiThinkingLevel } from "../pi/PiRpcSchema.ts";
 +import type { ProviderAdapterError } from "../Errors.ts";
 +import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
-+import { makePiAdapter, type PiRpcClientFactory } from "./PiAdapter.ts";
++import { makePiAdapter, makePiThreadLockRegistry, type PiRpcClientFactory } from "./PiAdapter.ts";
 +
 +const assert: typeof NodeAssert = NodeAssert;
 +const fs = NodeFS;
@@ -1342,6 +1565,84 @@ index 00000000..aaa9d9e9
 +  });
 +
 +describe("PiAdapter", () => {
++  it.effect("retires idle thread locks without splitting holders from queued waiters", () =>
++    Effect.gen(function* () {
++      const locks = yield* makePiThreadLockRegistry;
++      const threadId = ThreadId.make("serialized-thread");
++      const firstEntered = yield* Deferred.make<void>();
++      const secondEntered = yield* Deferred.make<void>();
++      const thirdEntered = yield* Deferred.make<void>();
++      const firstGate = yield* Deferred.make<void>();
++      const secondGate = yield* Deferred.make<void>();
++      const thirdGate = yield* Deferred.make<void>();
++      let active = 0;
++      let maximumActive = 0;
++      const run = (entered: Deferred.Deferred<void>, gate: Deferred.Deferred<void>) =>
++        locks.withLock(
++          threadId,
++          Effect.gen(function* () {
++            active += 1;
++            maximumActive = Math.max(maximumActive, active);
++            yield* Deferred.succeed(entered, undefined);
++            yield* Deferred.await(gate);
++            active -= 1;
++          }),
++        );
++
++      const first = yield* run(firstEntered, firstGate).pipe(Effect.forkChild);
++      yield* Deferred.await(firstEntered);
++      const second = yield* run(secondEntered, secondGate).pipe(Effect.forkChild);
++      while ((yield* locks.users(threadId)) < 2) yield* Effect.yieldNow;
++      assert.equal(yield* locks.size, 1);
++
++      yield* Deferred.succeed(firstGate, undefined);
++      yield* Deferred.await(secondEntered);
++      const third = yield* run(thirdEntered, thirdGate).pipe(Effect.forkChild);
++      while ((yield* locks.users(threadId)) < 2) yield* Effect.yieldNow;
++      assert.equal(Option.isNone(yield* Deferred.poll(thirdEntered)), true);
++      assert.equal(yield* locks.size, 1);
++
++      yield* Deferred.succeed(secondGate, undefined);
++      yield* Deferred.await(thirdEntered);
++      yield* Deferred.succeed(thirdGate, undefined);
++      yield* Fiber.join(first);
++      yield* Fiber.join(second);
++      yield* Fiber.join(third);
++      assert.equal(maximumActive, 1);
++      assert.equal(yield* locks.size, 0);
++    }),
++  );
++
++  it.effect("retires locks after unique failures and interrupted waiters", () =>
++    Effect.gen(function* () {
++      const locks = yield* makePiThreadLockRegistry;
++      for (let index = 0; index < 300; index += 1) {
++        yield* locks
++          .withLock(ThreadId.make("rejected-" + index), Effect.fail("rejected"))
++          .pipe(Effect.flip);
++        assert.equal(yield* locks.size, 0);
++      }
++      const threadId = ThreadId.make("interrupted-waiter");
++      const entered = yield* Deferred.make<void>();
++      const holder = yield* locks
++        .withLock(
++          threadId,
++          Effect.gen(function* () {
++            yield* Deferred.succeed(entered, undefined);
++            return yield* Effect.never;
++          }),
++        )
++        .pipe(Effect.forkChild);
++      yield* Deferred.await(entered);
++      const waiter = yield* locks.withLock(threadId, Effect.void).pipe(Effect.forkChild);
++      while ((yield* locks.users(threadId)) < 2) yield* Effect.yieldNow;
++      yield* Fiber.interrupt(waiter);
++      assert.equal(yield* locks.users(threadId), 1);
++      yield* Fiber.interrupt(holder);
++      assert.equal(yield* locks.size, 0);
++    }),
++  );
++
 +  it.effect("allocates an exact durable session and rejects non-full-access before spawn", () => {
 +    const h = makeHarness();
 +    return withAdapter(h, (adapter) =>
@@ -2584,6 +2885,57 @@ index 00000000..aaa9d9e9
 +      }),
 +    );
 +  });
++
++  it.effect(
++    "bounds finished optional extension task state while retaining recent deduplication",
++    () => {
++      const h = makeHarness();
++      return withAdapter(h, (adapter) =>
++        Effect.gen(function* () {
++          yield* start(adapter);
++          const stream = yield* collectThroughSentinel(adapter);
++          const turn = yield* adapter.sendTurn({
++            threadId: ThreadId.make("thread"),
++            input: "delegate repeatedly",
++            modelSelection,
++          });
++          stream.setSentinel(turn.turnId);
++          const completed = (index: number): PiRpcEvent => ({
++            type: "tool_execution_end",
++            toolCallId: `bounded-subagent-${index}`,
++            toolName: "subagent",
++            result: {
++              content: [{ type: "text", text: "done" }],
++              details: {
++                mode: "parallel",
++                agentScope: "user",
++                results: [
++                  {
++                    agent: "scout",
++                    task: `task-${index}`,
++                    exitCode: 0,
++                    usage: { input: 1, output: 1, cacheRead: 0 },
++                  },
++                ],
++              },
++            },
++            isError: false,
++          });
++          yield* Queue.offerAll(h.client.input, [
++            ...Array.from({ length: 60 }, (_, index) => completed(index)),
++            // The oldest record was evicted and is projected again; the newest remains deduplicated.
++            completed(0),
++            completed(59),
++            { type: "agent_settled" },
++          ]);
++
++          const events = Array.from(yield* Fiber.join(stream.collected));
++          assert.equal(events.filter((event) => event.type === "task.started").length, 61);
++          assert.equal(events.filter((event) => event.type === "task.completed").length, 61);
++        }),
++      );
++    },
++  );
 +
 +  it.effect("classifies pi-mcp-adapter proxy and direct calls as MCP tools", () => {
 +    const h = makeHarness();
@@ -4690,10 +5042,10 @@ index 00000000..aaa9d9e9
 +});
 diff --git a/apps/server/src/provider/Layers/PiAdapter.ts b/apps/server/src/provider/Layers/PiAdapter.ts
 new file mode 100644
-index 00000000..2ad1d069
+index 00000000..358a174c
 --- /dev/null
 +++ b/apps/server/src/provider/Layers/PiAdapter.ts
-@@ -0,0 +1,2420 @@
+@@ -0,0 +1,2474 @@
 +import {
 +  ApprovalRequestId,
 +  EventId,
@@ -4842,6 +5194,7 @@ index 00000000..2ad1d069
 +}
 +
 +const MAX_VISIBLE_DIE_TASKS = 50;
++const MAX_FINISHED_EXTENSION_TASKS = 50;
 +const MAX_DIE_TASK_DESCRIPTION_CHARS = 400;
 +const MAX_DIE_TASK_SUMMARY_CHARS = 2_000;
 +
@@ -5088,6 +5441,65 @@ index 00000000..2ad1d069
 +  };
 +};
 +
++interface PiThreadLockEntry {
++  readonly semaphore: Semaphore.Semaphore;
++  users: number;
++}
++
++/** A keyed lock registry that retires a key only after its holder and all waiters leave. */
++export const makePiThreadLockRegistry = Effect.gen(function* () {
++  const entries = yield* SynchronizedRef.make(new Map<ThreadId, PiThreadLockEntry>());
++  const acquire = (threadId: ThreadId) =>
++    SynchronizedRef.modifyEffect(entries, (current) => {
++      const existing = current.get(threadId);
++      if (existing) {
++        existing.users += 1;
++        return Effect.succeed([existing, current] as const);
++      }
++      return Semaphore.make(1).pipe(
++        Effect.map((semaphore) => {
++          const entry: PiThreadLockEntry = { semaphore, users: 1 };
++          return [entry, new Map(current).set(threadId, entry)] as const;
++        }),
++      );
++    });
++  const release = (threadId: ThreadId, entry: PiThreadLockEntry) =>
++    SynchronizedRef.update(entries, (current) => {
++      if (current.get(threadId) !== entry) return current;
++      entry.users -= 1;
++      if (entry.users > 0) return current;
++      const next = new Map(current);
++      next.delete(threadId);
++      return next;
++    });
++  const withLock = <A, E, R>(threadId: ThreadId, effect: Effect.Effect<A, E, R>) =>
++    Effect.acquireUseRelease(
++      acquire(threadId),
++      (entry) => entry.semaphore.withPermit(effect),
++      (entry) => release(threadId, entry),
++    );
++  return {
++    withLock,
++    size: SynchronizedRef.get(entries).pipe(Effect.map((current) => current.size)),
++    users: (threadId: ThreadId) =>
++      SynchronizedRef.get(entries).pipe(Effect.map((current) => current.get(threadId)?.users ?? 0)),
++  } as const;
++});
++
++const pruneFinishedExtensionTasks = <T extends { readonly state: string }>(
++  tasks: Map<string, T>,
++) => {
++  let finished = 0;
++  for (const task of tasks.values()) if (task.state !== "running") finished += 1;
++  if (finished <= MAX_FINISHED_EXTENSION_TASKS) return;
++  for (const [key, task] of tasks) {
++    if (task.state === "running") continue;
++    tasks.delete(key);
++    finished -= 1;
++    if (finished <= MAX_FINISHED_EXTENSION_TASKS) return;
++  }
++};
++
 +export const makePiAdapter = Effect.fn("makePiAdapter")(function* (options: PiAdapterOptions) {
 +  const crypto = yield* Crypto.Crypto;
 +  const fs = yield* FileSystem.FileSystem;
@@ -5106,17 +5518,8 @@ index 00000000..2ad1d069
 +  }).pipe(Effect.mapError((cause) => validation("startSession", "Invalid Pi state root.", cause)));
 +  const sessions = new Map<ThreadId, SessionContext>();
 +  const sessionFileLeases = new Map<string, SessionFileLease>();
-+  const threadLocks = yield* SynchronizedRef.make(new Map<ThreadId, Semaphore.Semaphore>());
-+  const getThreadLock = (threadId: ThreadId) =>
-+    SynchronizedRef.modifyEffect(threadLocks, (locks) => {
-+      const existing = locks.get(threadId);
-+      if (existing) return Effect.succeed([existing, locks] as const);
-+      return Semaphore.make(1).pipe(
-+        Effect.map((lock) => [lock, new Map(locks).set(threadId, lock)] as const),
-+      );
-+    });
-+  const withThreadLock = <A, E, R>(threadId: ThreadId, effect: Effect.Effect<A, E, R>) =>
-+    Effect.flatMap(getThreadLock(threadId), (lock) => lock.withPermit(effect));
++  const threadLocks = yield* makePiThreadLockRegistry;
++  const withThreadLock = threadLocks.withLock;
 +  const events = yield* Queue.unbounded<ProviderRuntimeEvent>();
 +  const now = Effect.map(DateTime.now, DateTime.formatIso);
 +  const uuid = crypto.randomUUIDv4.pipe(
@@ -5882,6 +6285,7 @@ index 00000000..2ad1d069
 +            raw: raw(native),
 +          });
 +        }
++        pruneFinishedExtensionTasks(ctx.extensionSubagentTasks);
 +        return;
 +      }
 +
@@ -5969,6 +6373,7 @@ index 00000000..2ad1d069
 +          raw: raw(native),
 +        });
 +      }
++      pruneFinishedExtensionTasks(ctx.extensionSubagentTasks);
 +    },
 +  );
 +
@@ -6120,6 +6525,7 @@ index 00000000..2ad1d069
 +        raw: raw(native),
 +      });
 +    }
++    pruneFinishedExtensionTasks(ctx.workflowTasks);
 +  });
 +
 +  const handleSubagentResultMessage = Effect.fn("PiAdapter.handleSubagentResultMessage")(function* (
@@ -10187,6 +10593,305 @@ index 67cdcecd..a8621acf 100644
  export const layer = Layer.effect(PtyAdapter.PtyAdapter, make());
 +
 +export { BunTerminalRuntimeRef } from "./BunPtyAdapter.ts";
+diff --git a/apps/server/src/terminal/SubscriberStream.test.ts b/apps/server/src/terminal/SubscriberStream.test.ts
+new file mode 100644
+index 00000000..d5839ea0
+--- /dev/null
++++ b/apps/server/src/terminal/SubscriberStream.test.ts
+@@ -0,0 +1,143 @@
++import { assert, describe, it } from "@effect/vitest";
++import * as Cause from "effect/Cause";
++import * as Deferred from "effect/Deferred";
++import * as Effect from "effect/Effect";
++import * as Exit from "effect/Exit";
++import * as Fiber from "effect/Fiber";
++import * as Stream from "effect/Stream";
++
++import {
++  boundedTerminalSubscriberStream,
++  TERMINAL_SUBSCRIBER_BUFFER_SIZE,
++  TerminalSubscriberOverflowError,
++} from "./SubscriberStream.ts";
++
++describe("bounded terminal subscriber stream", () => {
++  it.effect(
++    "disconnects a real slow consumer at the upstream bound without stalling a healthy one",
++    () =>
++      Effect.gen(function* () {
++        const listeners = new Set<(event: number) => Effect.Effect<void>>();
++        const bothRegistered = yield* Deferred.make<void>();
++        const releaseSlowConsumer = yield* Deferred.make<void>();
++
++        const subscribe = (listener: (event: number) => Effect.Effect<void>) =>
++          Effect.sync(() => {
++            listeners.add(listener);
++            return () => {
++              listeners.delete(listener);
++            };
++          }).pipe(
++            Effect.tap(() =>
++              listeners.size === 2 ? Deferred.succeed(bothRegistered, undefined) : Effect.void,
++            ),
++          );
++
++        const slowValues: number[] = [];
++        const slow = yield* boundedTerminalSubscriberStream(subscribe).pipe(
++          Stream.runForEach((value) =>
++            Effect.gen(function* () {
++              slowValues.push(value);
++              if (value === 0) yield* Deferred.await(releaseSlowConsumer);
++            }),
++          ),
++          Effect.forkScoped,
++        );
++
++        const healthyValues: number[] = [];
++        const healthy = yield* boundedTerminalSubscriberStream(subscribe).pipe(
++          Stream.runForEach((value) => Effect.sync(() => healthyValues.push(value))),
++          Effect.forkScoped,
++        );
++
++        yield* Deferred.await(bothRegistered);
++
++        const produced = TERMINAL_SUBSCRIBER_BUFFER_SIZE * 8;
++        for (let value = 0; value < produced; value += 1) {
++          // These are manager-side listener calls. The slow stream's RPC/downstream
++          // consumer is blocked above, so this saturates the upstream callback queue.
++          for (const listener of listeners) yield* listener(value);
++          yield* Effect.yieldNow;
++        }
++
++        // Saturation removes only the slow registration. If this were merely the
++        // downstream ACK window, both manager-side listeners would still be live.
++        assert.equal(listeners.size, 1);
++        assert.deepEqual(
++          healthyValues,
++          Array.from({ length: produced }, (_, index) => index),
++        );
++
++        yield* Deferred.succeed(releaseSlowConsumer, undefined);
++        const slowExit = yield* Fiber.await(slow);
++        assert.isTrue(Exit.isFailure(slowExit));
++        if (Exit.isFailure(slowExit)) {
++          const error = Cause.squash(slowExit.cause);
++          assert.instanceOf(error, TerminalSubscriberOverflowError);
++          assert.equal((error as TerminalSubscriberOverflowError).reason, "events");
++        }
++
++        assert.equal(slowValues.length, TERMINAL_SUBSCRIBER_BUFFER_SIZE + 1);
++        assert.deepEqual(
++          slowValues,
++          Array.from({ length: TERMINAL_SUBSCRIBER_BUFFER_SIZE + 1 }, (_, index) => index),
++        );
++
++        // The healthy stream remains attached and ordered after the slow stream's
++        // explicit completion.
++        for (let value = produced; value < produced + 10; value += 1) {
++          for (const listener of listeners) yield* listener(value);
++          yield* Effect.yieldNow;
++        }
++        assert.deepEqual(
++          healthyValues,
++          Array.from({ length: produced + 10 }, (_, index) => index),
++        );
++
++        yield* Fiber.interrupt(healthy);
++      }).pipe(Effect.scoped),
++  );
++
++  it.effect("bounds retained serialized bytes and reports byte overflow", () =>
++    Effect.gen(function* () {
++      const listeners = new Set<(event: string) => Effect.Effect<void>>();
++      const registered = yield* Deferred.make<void>();
++      const releaseConsumer = yield* Deferred.make<void>();
++      const stream = boundedTerminalSubscriberStream(
++        (listener: (event: string) => Effect.Effect<void>) =>
++          Effect.sync(() => {
++            listeners.add(listener);
++            return () => listeners.delete(listener);
++          }).pipe(Effect.tap(() => Deferred.succeed(registered, undefined))),
++        { maxBufferBytes: 10, sizeOf: (event) => Buffer.byteLength(event) },
++      );
++
++      const values: string[] = [];
++      const fiber = yield* stream.pipe(
++        Stream.runForEach((value) =>
++          Effect.gen(function* () {
++            values.push(value);
++            if (value === "x") yield* Deferred.await(releaseConsumer);
++          }),
++        ),
++        Effect.forkScoped,
++      );
++      yield* Deferred.await(registered);
++      for (const listener of listeners) yield* listener("x");
++      yield* Effect.yieldNow;
++      for (const listener of listeners) yield* listener("123456");
++      for (const listener of listeners) yield* listener("78901");
++
++      assert.equal(listeners.size, 0);
++      yield* Deferred.succeed(releaseConsumer, undefined);
++      const exit = yield* Fiber.await(fiber);
++      assert.isTrue(Exit.isFailure(exit));
++      if (Exit.isFailure(exit)) {
++        const error = Cause.squash(exit.cause);
++        assert.instanceOf(error, TerminalSubscriberOverflowError);
++        assert.equal((error as TerminalSubscriberOverflowError).reason, "bytes");
++      }
++      assert.deepEqual(values, ["x", "123456"]);
++    }).pipe(Effect.scoped),
++  );
++});
+diff --git a/apps/server/src/terminal/SubscriberStream.ts b/apps/server/src/terminal/SubscriberStream.ts
+new file mode 100644
+index 00000000..3f662777
+--- /dev/null
++++ b/apps/server/src/terminal/SubscriberStream.ts
+@@ -0,0 +1,144 @@
++import * as Cause from "effect/Cause";
++import * as Effect from "effect/Effect";
++import * as Queue from "effect/Queue";
++import * as Stream from "effect/Stream";
++
++/** Maximum number of terminal events retained between one subscriber and RPC. */
++export const TERMINAL_SUBSCRIBER_BUFFER_SIZE = 32;
++
++/**
++ * The attach snapshot can contain the bounded 8 MiB terminal history. Leave
++ * room for worst-case JSON escaping (up to 6x for control characters) plus
++ * queued output, while still bounding unusually large PTY writes independently
++ * of the event-count limit.
++ */
++export const TERMINAL_SUBSCRIBER_BUFFER_BYTES = 64 * 1024 * 1024;
++
++export class TerminalSubscriberOverflowError extends Error {
++  readonly _tag = "TerminalSubscriberOverflowError";
++  readonly reason: "events" | "bytes";
++  readonly pendingBytes: number;
++  readonly eventBytes: number;
++
++  constructor(reason: "events" | "bytes", pendingBytes: number, eventBytes: number) {
++    super(
++      `Terminal subscriber backlog exceeded its ${reason} limit (pending=${pendingBytes}, event=${eventBytes})`,
++    );
++    this.name = "TerminalSubscriberOverflowError";
++    this.reason = reason;
++    this.pendingBytes = pendingBytes;
++    this.eventBytes = eventBytes;
++  }
++}
++
++interface BufferedEvent<A> {
++  readonly event: A;
++  readonly release: () => void;
++}
++
++interface SubscriberStreamOptions<A> {
++  readonly maxBufferBytes?: number;
++  readonly sizeOf?: (event: A) => number;
++}
++
++const serializedSize = (event: unknown): number => {
++  // Terminal events are RPC JSON values. Measuring their serialized form also
++  // includes snapshot/history and envelope fields, unlike string-length caps.
++  const serialized = JSON.stringify(event);
++  return serialized === undefined ? 0 : Buffer.byteLength(serialized);
++};
++
++/**
++ * Adapt a terminal listener registration to a bounded stream.
++ *
++ * Overflow fails (rather than normally ending) the subscription after already
++ * accepted events. RPC therefore exposes a recognizable defect and terminal
++ * clients can reconnect and obtain a fresh snapshot instead of silently
++ * freezing on a live websocket.
++ */
++export function boundedTerminalSubscriberStream<A, E>(
++  subscribe: (listener: (event: A) => Effect.Effect<void>) => Effect.Effect<() => void, E>,
++  options: SubscriberStreamOptions<A> = {},
++): Stream.Stream<A, E> {
++  const maxBufferBytes = options.maxBufferBytes ?? TERMINAL_SUBSCRIBER_BUFFER_BYTES;
++  const sizeOf = options.sizeOf ?? serializedSize;
++
++  return Stream.callback<BufferedEvent<A>, E>(
++    (queue) => {
++      let unsubscribe: (() => void) | null = null;
++      let disconnected = false;
++      let pendingBytes = 0;
++
++      const disconnect = (error: TerminalSubscriberOverflowError) =>
++        Effect.sync(() => {
++          if (disconnected) return false;
++          disconnected = true;
++          unsubscribe?.();
++          unsubscribe = null;
++          return true;
++        }).pipe(
++          Effect.flatMap((shouldFail) =>
++            shouldFail ? Queue.failCause(queue, Cause.die(error)) : Effect.succeed(false),
++          ),
++          Effect.asVoid,
++        );
++
++      const offer = (event: A) =>
++        Effect.suspend(() => {
++          if (disconnected) return Effect.void;
++          const eventBytes = Math.max(0, sizeOf(event));
++          if (eventBytes > maxBufferBytes - pendingBytes) {
++            return disconnect(
++              new TerminalSubscriberOverflowError("bytes", pendingBytes, eventBytes),
++            );
++          }
++
++          pendingBytes += eventBytes;
++          let released = false;
++          const release = () => {
++            if (released) return;
++            released = true;
++            pendingBytes = Math.max(0, pendingBytes - eventBytes);
++          };
++          return Queue.offer(queue, { event, release }).pipe(
++            Effect.flatMap((accepted) => {
++              if (accepted) return Effect.void;
++              release();
++              return disconnect(
++                new TerminalSubscriberOverflowError("events", pendingBytes, eventBytes),
++              );
++            }),
++          );
++        });
++
++      return Effect.acquireRelease(
++        subscribe(offer).pipe(
++          Effect.map((release) => {
++            let released = false;
++            const releaseOnce = () => {
++              if (released) return;
++              released = true;
++              release();
++            };
++            if (disconnected) releaseOnce();
++            else unsubscribe = releaseOnce;
++            return releaseOnce;
++          }),
++        ),
++        (release) =>
++          Effect.sync(() => {
++            if (unsubscribe === release) unsubscribe = null;
++            release();
++          }),
++      );
++    },
++    { bufferSize: TERMINAL_SUBSCRIBER_BUFFER_SIZE, strategy: "dropping" },
++  ).pipe(
++    Stream.mapEffect(({ event, release }) =>
++      Effect.sync(() => {
++        release();
++        return event;
++      }),
++    ),
++  );
++}
 diff --git a/apps/server/src/textGeneration/PiTextGeneration.test.ts b/apps/server/src/textGeneration/PiTextGeneration.test.ts
 new file mode 100644
 index 00000000..1d64dbf1
@@ -10727,6 +11432,46 @@ index 00000000..0eecdd90
 +    generateThreadTitle,
 +  } satisfies TextGeneration.TextGeneration["Service"];
 +});
+diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
+index 707df778..8e3e93d8 100644
+--- a/apps/server/src/ws.ts
++++ b/apps/server/src/ws.ts
+@@ -120,6 +120,7 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
+ import * as ServerSettings from "./serverSettings.ts";
+ import * as TerminalManager from "./terminal/Manager.ts";
+ import { withTerminalOutputWindow } from "./terminal/OutputProtocol.ts";
++import { boundedTerminalSubscriberStream } from "./terminal/SubscriberStream.ts";
+ import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
+ import * as DeviceService from "./device/DeviceService.ts";
+ import { remoteSshDeviceHosts } from "./device/localSshDeviceHost.ts";
+@@ -3307,11 +3308,8 @@ const makeWsRpcLayer = (
+         [WS_METHODS.terminalAttach]: (input) =>
+           observeRpcStream(
+             WS_METHODS.terminalAttach,
+-            Stream.callback<TerminalAttachStreamEvent, TerminalError>((queue) =>
+-              Effect.acquireRelease(
+-                terminalManager.attachStream(input, (event) => Queue.offer(queue, event)),
+-                (unsubscribe) => Effect.sync(unsubscribe),
+-              ),
++            boundedTerminalSubscriberStream<TerminalAttachStreamEvent, TerminalError>((listener) =>
++              terminalManager.attachStream(input, listener),
+             ),
+             { "rpc.aggregate": "terminal" },
+           ),
+@@ -3338,11 +3336,8 @@ const makeWsRpcLayer = (
+         [WS_METHODS.subscribeTerminalEvents]: (_input) =>
+           observeRpcStream(
+             WS_METHODS.subscribeTerminalEvents,
+-            Stream.callback<TerminalEvent>((queue) =>
+-              Effect.acquireRelease(
+-                terminalManager.subscribe((event) => Queue.offer(queue, event)),
+-                (unsubscribe) => Effect.sync(unsubscribe),
+-              ),
++            boundedTerminalSubscriberStream<TerminalEvent, never>((listener) =>
++              terminalManager.subscribe(listener),
+             ),
+             { "rpc.aggregate": "terminal" },
+           ),
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
 index f7d3ac54..54152b2b 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
@@ -11349,6 +12094,106 @@ index db0e5ca2..c344a6d9 100644
  };
  
  export type ModelEsque = {
+diff --git a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx b/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
+index cbbfaf1f..5866b36e 100644
+--- a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
++++ b/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
+@@ -149,6 +149,7 @@ import {
+   pullRequestHandoffLabels,
+   PULL_REQUEST_MERGE_METHOD_LABELS,
+   readableFailure,
++  rememberHandoffPrompt,
+   readPullRequestDetailSnapshot,
+   resolveDisplayedPullRequestDetail,
+   resolvePullRequestPrimaryControl,
+@@ -1091,7 +1092,7 @@ export function PullRequestDetailPanel({
+       },
+       task.prompt,
+     );
+-    lastHandoffPromptByDraft.set(key, task.prompt);
++    rememberHandoffPrompt(lastHandoffPromptByDraft, key, task.prompt);
+     store.setPrompt(target, prompt);
+     store.setReviewComments(
+       target,
+diff --git a/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts b/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
+index ae5a5067..2441254e 100644
+--- a/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
++++ b/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
+@@ -22,6 +22,8 @@ import {
+   groupPullRequestTimelineConversations,
+   handoffPrompt,
+   handoffReviewComments,
++  HANDOFF_PROMPT_CACHE_LIMIT,
++  rememberHandoffPrompt,
+   stripPullRequestHandoffReferences,
+   isPullRequestVerdictStale,
+   isStackedPullRequestBase,
+@@ -1313,6 +1315,35 @@ describe("a second ask into the same composer", () => {
+   });
+ });
+ 
++describe("remembered handoff prompts", () => {
++  it("keeps recent replacement state while bounding retained full prompts", () => {
++    const prompts = new Map<string, string>();
++    for (let index = 0; index <= HANDOFF_PROMPT_CACHE_LIMIT; index += 1) {
++      rememberHandoffPrompt(prompts, `draft-${index}`, `full prompt ${index}`);
++    }
++
++    expect(prompts).toHaveLength(HANDOFF_PROMPT_CACHE_LIMIT);
++    expect(prompts.has("draft-0")).toBe(false);
++    expect(prompts.get(`draft-${HANDOFF_PROMPT_CACHE_LIMIT}`)).toBe(
++      `full prompt ${HANDOFF_PROMPT_CACHE_LIMIT}`,
++    );
++  });
++
++  it("refreshes a draft when another handoff updates it", () => {
++    const prompts = new Map<string, string>();
++    for (let index = 0; index < HANDOFF_PROMPT_CACHE_LIMIT; index += 1) {
++      rememberHandoffPrompt(prompts, `draft-${index}`, `prompt ${index}`);
++    }
++
++    rememberHandoffPrompt(prompts, "draft-0", "replacement prompt");
++    rememberHandoffPrompt(prompts, "new-draft", "new prompt");
++
++    expect(prompts.get("draft-0")).toBe("replacement prompt");
++    expect(prompts.has("draft-1")).toBe(false);
++    expect(prompts).toHaveLength(HANDOFF_PROMPT_CACHE_LIMIT);
++  });
++});
++
+ describe("how the branch stands against its base", () => {
+   const detail = (overrides: Record<string, unknown> = {}) =>
+     ({
+diff --git a/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts b/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
+index be71c95d..87bb5e15 100644
+--- a/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
++++ b/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
+@@ -625,6 +625,25 @@ export function stripPullRequestHandoffReferences(
+   return next;
+ }
+ 
++export const HANDOFF_PROMPT_CACHE_LIMIT = 128;
++
++export function rememberHandoffPrompt(
++  promptsByDraft: Map<string, string>,
++  draftKey: string,
++  prompt: string,
++): void {
++  // The panel can outlive many drafts. Keep recent handoffs for replacement semantics without
++  // retaining complete prompt strings for every draft seen during the page lifetime.
++  promptsByDraft.delete(draftKey);
++  promptsByDraft.set(draftKey, prompt);
++
++  while (promptsByDraft.size > HANDOFF_PROMPT_CACHE_LIMIT) {
++    const oldestDraftKey = promptsByDraft.keys().next().value;
++    if (oldestDraftKey === undefined) break;
++    promptsByDraft.delete(oldestDraftKey);
++  }
++}
++
+ /**
+  * The prompt the composer should hold once a hand-off lands there.
+  *
 diff --git a/apps/web/src/components/settings/ProviderSettingsForm.test.ts b/apps/web/src/components/settings/ProviderSettingsForm.test.ts
 index 4bb8cf11..47427bdb 100644
 --- a/apps/web/src/components/settings/ProviderSettingsForm.test.ts
@@ -11400,6 +12245,172 @@ index 4bf4da39..f4a6b4b9 100644
  ];
  
  const PROVIDER_CLIENT_DEFINITION_BY_VALUE: Partial<
+diff --git a/apps/web/src/lib/syntaxHighlighting.test.ts b/apps/web/src/lib/syntaxHighlighting.test.ts
+index 1f7ce756..7c27f589 100644
+--- a/apps/web/src/lib/syntaxHighlighting.test.ts
++++ b/apps/web/src/lib/syntaxHighlighting.test.ts
+@@ -9,10 +9,24 @@ vi.mock("@pierre/diffs", () => ({
+   getSharedHighlighter,
+ }));
+ 
+-import { getSyntaxHighlighterPromise } from "./syntaxHighlighting";
++import { getSyntaxHighlighterPromise, SYNTAX_HIGHLIGHTER_CACHE_LIMIT } from "./syntaxHighlighting";
+ 
+-it("caches the recovered text highlighter for unsupported languages", async () => {
++it("deduplicates requests for a supported language", async () => {
++  const highlighter = {} as DiffsHighlighter;
++  getSharedHighlighter.mockReset();
++  getSharedHighlighter.mockResolvedValue(highlighter);
++
++  const first = getSyntaxHighlighterPromise("supported-test-language");
++  const second = getSyntaxHighlighterPromise("supported-test-language");
++
++  expect(second).toBe(first);
++  await expect(first).resolves.toBe(highlighter);
++  expect(getSharedHighlighter).toHaveBeenCalledTimes(1);
++});
++
++it("retires unsupported labels after falling back to the canonical text entry", async () => {
+   const textHighlighter = {} as DiffsHighlighter;
++  getSharedHighlighter.mockReset();
+   getSharedHighlighter.mockImplementation(({ langs }: { langs: string[] }) =>
+     langs[0] === "text"
+       ? Promise.resolve(textHighlighter)
+@@ -21,8 +35,60 @@ it("caches the recovered text highlighter for unsupported languages", async () =
+ 
+   const first = getSyntaxHighlighterPromise("unsupported-test-language");
+   await expect(first).resolves.toBe(textHighlighter);
+-  const second = getSyntaxHighlighterPromise("unsupported-test-language");
++  expect(getSharedHighlighter).toHaveBeenCalledTimes(2);
+ 
+-  expect(second).toBe(first);
++  const canonicalText = getSyntaxHighlighterPromise("text");
++  await expect(canonicalText).resolves.toBe(textHighlighter);
+   expect(getSharedHighlighter).toHaveBeenCalledTimes(2);
++
++  const canonicalRetry = getSyntaxHighlighterPromise("unsupported-test-language");
++  expect(canonicalRetry).toBe(canonicalText);
++  await expect(canonicalRetry).resolves.toBe(textHighlighter);
++  expect(getSharedHighlighter).toHaveBeenCalledTimes(2);
++});
++
++it("bounds remembered unsupported labels", async () => {
++  const textHighlighter = {} as DiffsHighlighter;
++  getSharedHighlighter.mockReset();
++  getSharedHighlighter.mockImplementation(({ langs }: { langs: string[] }) =>
++    langs[0] === "text"
++      ? Promise.resolve(textHighlighter)
++      : Promise.reject(new Error("unsupported language")),
++  );
++  const languages = Array.from(
++    { length: SYNTAX_HIGHLIGHTER_CACHE_LIMIT + 1 },
++    (_, index) => `unsupported-bounded-test-language-${index}`,
++  );
++
++  for (const language of languages) {
++    await getSyntaxHighlighterPromise(language);
++  }
++  const callsAfterPopulation = getSharedHighlighter.mock.calls.length;
++
++  await getSyntaxHighlighterPromise(languages.at(-1)!);
++  expect(getSharedHighlighter).toHaveBeenCalledTimes(callsAfterPopulation);
++
++  await getSyntaxHighlighterPromise(languages[0]!);
++  expect(getSharedHighlighter).toHaveBeenCalledTimes(callsAfterPopulation + 1);
++});
++
++it("bounds successful language cache keys", async () => {
++  const highlighter = {} as DiffsHighlighter;
++  getSharedHighlighter.mockReset();
++  getSharedHighlighter.mockResolvedValue(highlighter);
++  const languages = Array.from(
++    { length: SYNTAX_HIGHLIGHTER_CACHE_LIMIT + 1 },
++    (_, index) => `bounded-test-language-${index}`,
++  );
++
++  const first = getSyntaxHighlighterPromise(languages[0]!);
++  for (const language of languages.slice(1)) {
++    getSyntaxHighlighterPromise(language);
++  }
++  expect(getSharedHighlighter).toHaveBeenCalledTimes(languages.length);
++
++  const reloaded = getSyntaxHighlighterPromise(languages[0]!);
++  expect(reloaded).not.toBe(first);
++  expect(getSharedHighlighter).toHaveBeenCalledTimes(languages.length + 1);
++  await expect(reloaded).resolves.toBe(highlighter);
+ });
+diff --git a/apps/web/src/lib/syntaxHighlighting.ts b/apps/web/src/lib/syntaxHighlighting.ts
+index 3be008ac..c6db4df1 100644
+--- a/apps/web/src/lib/syntaxHighlighting.ts
++++ b/apps/web/src/lib/syntaxHighlighting.ts
+@@ -15,25 +15,63 @@ import { resolveDiffThemeName } from "./diffRendering";
+  */
+ export const PREFERRED_HIGHLIGHTER: HighlighterTypes = "shiki-wasm";
+ 
++export const SYNTAX_HIGHLIGHTER_CACHE_LIMIT = 64;
++
+ const highlighterPromiseCache = new Map<string, Promise<DiffsHighlighter>>();
++const unsupportedLanguageLabels = new Set<string>();
++
++function rememberUnsupportedLanguage(language: string): void {
++  unsupportedLanguageLabels.delete(language);
++  unsupportedLanguageLabels.add(language);
++  while (unsupportedLanguageLabels.size > SYNTAX_HIGHLIGHTER_CACHE_LIMIT) {
++    const oldestLanguage = unsupportedLanguageLabels.values().next().value;
++    if (oldestLanguage === undefined) break;
++    unsupportedLanguageLabels.delete(oldestLanguage);
++  }
++}
++
++function cacheHighlighterPromise(language: string, promise: Promise<DiffsHighlighter>): void {
++  // Refresh existing entries so frequently used supported languages remain cached.
++  highlighterPromiseCache.delete(language);
++  highlighterPromiseCache.set(language, promise);
++
++  while (highlighterPromiseCache.size > SYNTAX_HIGHLIGHTER_CACHE_LIMIT) {
++    const oldestLanguage = highlighterPromiseCache.keys().next().value;
++    if (oldestLanguage === undefined) break;
++    highlighterPromiseCache.delete(oldestLanguage);
++  }
++}
+ 
+ export function getSyntaxHighlighterPromise(language: string): Promise<DiffsHighlighter> {
++  if (unsupportedLanguageLabels.has(language)) {
++    rememberUnsupportedLanguage(language);
++    return getSyntaxHighlighterPromise("text");
++  }
++
+   const cached = highlighterPromiseCache.get(language);
+-  if (cached) return cached;
++  if (cached) {
++    cacheHighlighterPromise(language, cached);
++    return cached;
++  }
+ 
+   const promise = getSharedHighlighter({
+     themes: [resolveDiffThemeName("dark"), resolveDiffThemeName("light")],
+     langs: [language as SupportedLanguages],
+     preferredHighlighter: PREFERRED_HIGHLIGHTER,
+   }).catch((error) => {
+-    if (language === "text") {
++    // Only remove this request if it is still the cached one. An unsupported arbitrary label
++    // must not remain as a second key for the canonical text highlighter.
++    if (highlighterPromiseCache.get(language) === promise) {
+       highlighterPromiseCache.delete(language);
++    }
++    if (language === "text") {
+       // "text" itself failed — Shiki cannot initialize at all, surface the error
+       throw error;
+     }
+-    // Language not supported by Shiki — fall back to "text"
++    // Remember only a bounded label set, and route future requests straight to canonical text.
++    rememberUnsupportedLanguage(language);
+     return getSyntaxHighlighterPromise("text");
+   });
+-  highlighterPromiseCache.set(language, promise);
++  cacheHighlighterPromise(language, promise);
+   return promise;
+ }
 diff --git a/apps/web/src/providerInstances.test.ts b/apps/web/src/providerInstances.test.ts
 index 3e809e17..45ff4fb1 100644
 --- a/apps/web/src/providerInstances.test.ts
@@ -11614,6 +12625,156 @@ index 20a5671d..a32b1028 100644
    if (detail) {
      entry.detail = detail;
    } else if (activity.kind === "runtime.error" || activity.kind === "runtime.warning") {
+diff --git a/packages/client-runtime/src/rpc/client.test.ts b/packages/client-runtime/src/rpc/client.test.ts
+index 9e4e8a60..72b83b88 100644
+--- a/packages/client-runtime/src/rpc/client.test.ts
++++ b/packages/client-runtime/src/rpc/client.test.ts
+@@ -413,6 +413,53 @@ describe("environment RPC", () => {
+     }),
+   );
+ 
++  it.effect("retries a terminal overflow defect in the same live session", () =>
++    Effect.gen(function* () {
++      const subscriptionCount = yield* Ref.make(0);
++      const overflowDefect = new RpcClientError.RpcClientError({
++        reason: new RpcClientError.RpcClientDefect({
++          message: "TerminalSubscriberOverflowError: terminal subscriber backlog exceeded",
++          cause: new Error("TerminalSubscriberOverflowError"),
++        }),
++      });
++      const client = {
++        [WS_METHODS.subscribeTerminalEvents]: () =>
++          Stream.unwrap(
++            Ref.getAndUpdate(subscriptionCount, (count) => count + 1).pipe(
++              Effect.map((count) =>
++                count === 0
++                  ? Stream.make("before-overflow").pipe(Stream.concat(Stream.fail(overflowDefect)))
++                  : Stream.make("after-resubscribe").pipe(Stream.concat(Stream.never)),
++              ),
++            ),
++          ),
++      } as unknown as WsRpcProtocolClient;
++      const { activeSession, supervisor } = yield* makeHarness();
++      yield* SubscriptionRef.set(activeSession, Option.some(session(client)));
++
++      const resultFiber = yield* subscribe(
++        WS_METHODS.subscribeTerminalEvents,
++        {},
++        { retryTransportFailureAfter: "100 millis" },
++      ).pipe(
++        Stream.take(2),
++        Stream.runCollect,
++        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
++        Effect.forkChild,
++      );
++      for (let attempt = 0; attempt < 100; attempt += 1) {
++        if ((yield* Ref.get(subscriptionCount)) === 1) break;
++        yield* Effect.yieldNow;
++      }
++      expect(yield* Ref.get(subscriptionCount)).toBe(1);
++
++      yield* TestClock.adjust("100 millis");
++      const result = yield* Fiber.join(resultFiber);
++      expect(result).toEqual(["before-overflow", "after-resubscribe"]);
++      expect(yield* Ref.get(subscriptionCount)).toBe(2);
++    }),
++  );
++
+   it.effect("retries handled domain failures within the same session when configured", () =>
+     Effect.gen(function* () {
+       const domainError = new Error("thread not found yet");
+diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
+index e80a2f0f..2f6ebc2c 100644
+--- a/packages/client-runtime/src/rpc/client.ts
++++ b/packages/client-runtime/src/rpc/client.ts
+@@ -182,6 +182,8 @@ interface SubscriptionOptions<TTag extends EnvironmentSubscriptionRpcTag> {
+     cause: Cause.Cause<EnvironmentRpcStreamFailure<TTag>>,
+   ) => Effect.Effect<void, never, never>;
+   readonly retryExpectedFailureAfter?: Duration.Input;
++  /** Retry an RPC transport/defect failure without waiting for a new websocket session. */
++  readonly retryTransportFailureAfter?: Duration.Input;
+   readonly resubscribe?: Stream.Stream<unknown, never, never>;
+ }
+ 
+@@ -260,16 +262,25 @@ function subscribeDynamicMapped<TTag extends EnvironmentSubscriptionRpcTag, A>(
+                           (reason) => reason._tag === "Fail" && isRpcClientError(reason.error),
+                         );
+                       if (isTransportFailure) {
+-                        return Stream.fromEffect(
+-                          Effect.logWarning(
+-                            "Durable RPC subscription lost its transport; waiting for the next session.",
+-                            {
+-                              cause: Cause.pretty(cause),
+-                              method: tag,
+-                              environmentId: supervisor.target.environmentId,
+-                            },
+-                          ),
++                        const retryAfter = options?.retryTransportFailureAfter;
++                        const message =
++                          retryAfter === undefined
++                            ? "Durable RPC subscription lost its transport; waiting for the next session."
++                            : "Durable RPC subscription lost its transport; retrying in the current session.";
++                        const handled = Stream.fromEffect(
++                          Effect.logWarning(message, {
++                            cause: Cause.pretty(cause),
++                            method: tag,
++                            environmentId: supervisor.target.environmentId,
++                          }),
+                         ).pipe(Stream.drain);
++                        if (retryAfter === undefined) return handled;
++                        return handled.pipe(
++                          Stream.concat(
++                            Stream.fromEffect(Effect.sleep(retryAfter)).pipe(Stream.drain),
++                          ),
++                          Stream.concat(subscribeToSession()),
++                        );
+                       }
+                       if (hasOnlyExpectedFailures && options?.onExpectedFailure !== undefined) {
+                         const handled = Stream.fromEffect(options.onExpectedFailure(cause)).pipe(
+diff --git a/packages/client-runtime/src/state/terminal.ts b/packages/client-runtime/src/state/terminal.ts
+index 3bc2bca7..06ec2e26 100644
+--- a/packages/client-runtime/src/state/terminal.ts
++++ b/packages/client-runtime/src/state/terminal.ts
+@@ -5,7 +5,6 @@ import { Atom } from "effect/unstable/reactivity";
+ import {
+   createAtomCommandScheduler,
+   createEnvironmentRpcCommand,
+-  createEnvironmentRpcSubscriptionAtomFamily,
+   createEnvironmentSubscriptionAtomFamily,
+ } from "./runtime.ts";
+ import type { EnvironmentRegistry } from "../connection/registry.ts";
+@@ -16,6 +15,8 @@ import {
+   nextTerminalAttachSeedState,
+ } from "./terminalSession.ts";
+ 
++const TERMINAL_OVERFLOW_RETRY_DELAY = "100 millis";
++
+ export function createTerminalEnvironmentAtoms<R, E>(
+   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, E>,
+ ) {
+@@ -41,14 +42,17 @@ export function createTerminalEnvironmentAtoms<R, E>(
+       label: "environment-data:terminal:attach",
+       subscribe: (input: EnvironmentRpcInput<typeof WS_METHODS.terminalAttach>) =>
+         Stream.suspend(() =>
+-          subscribe(WS_METHODS.terminalAttach, input).pipe(
+-            Stream.scan(nextTerminalAttachSeedState(), applyTerminalAttachStreamEvent),
+-          ),
++          subscribe(WS_METHODS.terminalAttach, input, {
++            retryTransportFailureAfter: TERMINAL_OVERFLOW_RETRY_DELAY,
++          }).pipe(Stream.scan(nextTerminalAttachSeedState(), applyTerminalAttachStreamEvent)),
+         ),
+     }),
+-    events: createEnvironmentRpcSubscriptionAtomFamily(runtime, {
++    events: createEnvironmentSubscriptionAtomFamily(runtime, {
+       label: "environment-data:terminal:events",
+-      tag: WS_METHODS.subscribeTerminalEvents,
++      subscribe: (input: EnvironmentRpcInput<typeof WS_METHODS.subscribeTerminalEvents>) =>
++        subscribe(WS_METHODS.subscribeTerminalEvents, input, {
++          retryTransportFailureAfter: TERMINAL_OVERFLOW_RETRY_DELAY,
++        }),
+     }),
+     metadata: createEnvironmentSubscriptionAtomFamily(runtime, {
+       label: "environment-data:terminal:metadata",
 diff --git a/packages/contracts/src/model.ts b/packages/contracts/src/model.ts
 index 0882aef5..41280ea3 100644
 --- a/packages/contracts/src/model.ts

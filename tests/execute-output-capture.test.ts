@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { Readable } from "node:stream";
-import { ExecuteOutputCapture } from "../src/typescript/output-capture";
+import { DEFAULT_EXECUTE_OUTPUT_BYTE_LIMIT, ExecuteOutputCapture } from "../src/typescript/output-capture";
 
 let directory: string;
 beforeEach(async () => {
@@ -75,6 +75,9 @@ test("reports an unwritable artifact location without claiming complete files ex
   expect(result.stdout).toEndWith("last");
   expect(result.stdoutPath).toBeUndefined();
   expect(result.outputArtifactErrors?.directory).toContain("Could not create");
+  expect(result.capturedOutputBytes).toBe(0);
+  expect(result.stdoutCapturedBytes).toBe(0);
+  expect(result.outputTruncated).toBe(false); // Storage error, not byte-limit exhaustion.
   expect(result.stdout.length).toBeLessThanOrEqual(4000);
 });
 
@@ -90,4 +93,111 @@ test("standalone captures use discoverable temporary files that survive completi
   } finally {
     await rm(dirname(result.stdoutPath!), { recursive: true, force: true });
   }
+});
+
+test("enforces one explicit byte budget across stdout and stderr", async () => {
+  const output = new ExecuteOutputCapture({
+    sessionFile: join(directory, "budget-session.jsonl"),
+    outputByteLimit: 4_500,
+  });
+  await output.consume("stdout", Readable.from(["x".repeat(4_001)]));
+  await output.consume("stderr", Readable.from(["y".repeat(1_000)]));
+  const result = await output.result();
+
+  expect(result).toMatchObject({
+    outputByteLimit: 4_500,
+    outputBytes: 5_001,
+    capturedOutputBytes: 4_500,
+    outputTruncated: true,
+    stdoutBytes: 4_001,
+    stdoutCapturedBytes: 4_001,
+    stderrBytes: 1_000,
+    stderrCapturedBytes: 499,
+  });
+  expect(await readFile(result.stdoutPath!, "utf8")).toBe("x".repeat(4_001));
+  expect(await readFile(result.stderrPath!, "utf8")).toBe("y".repeat(499));
+});
+
+test.skipIf(process.platform !== "linux")("closes artifact handles when a stream pump rejects", async () => {
+  const output = new ExecuteOutputCapture({ sessionFile: join(directory, "reject-session.jsonl") });
+  const broken = Readable.from(
+    (async function* () {
+      yield "x".repeat(5_000);
+      throw new Error("pump failed");
+    })(),
+  );
+  await expect(output.consume("stdout", broken)).rejects.toThrow("pump failed");
+  await output.consume("stderr", Readable.from([]));
+  const result = await output.result();
+  expect(result.outputArtifactErrors?.stdout).toContain("pump failed");
+
+  const descriptors = await readdir("/proc/self/fd");
+  const links = await Promise.all(
+    descriptors.map(async (descriptor) => {
+      try {
+        return await import("node:fs/promises").then(({ readlink }) => readlink(`/proc/self/fd/${descriptor}`));
+      } catch {
+        return "";
+      }
+    }),
+  );
+  expect(links).not.toContain(result.stdoutPath!);
+});
+
+test("default capture budget bounds artifacts while continuing to drain output", async () => {
+  const output = new ExecuteOutputCapture({ sessionFile: join(directory, "default-budget.jsonl") });
+  const chunk = Buffer.alloc(1024 * 1024, 120);
+  await output.consume(
+    "stdout",
+    Readable.from(
+      (function* () {
+        for (let index = 0; index < 12; index++) yield chunk;
+      })(),
+    ),
+  );
+  const result = await output.result();
+  expect(result.outputByteLimit).toBe(DEFAULT_EXECUTE_OUTPUT_BYTE_LIMIT);
+  expect(result.outputBytes).toBe(12 * chunk.length);
+  expect(result.capturedOutputBytes).toBe(DEFAULT_EXECUTE_OUTPUT_BYTE_LIMIT);
+  expect(result.outputTruncated).toBe(true);
+  expect((await stat(result.stdoutPath!)).size).toBe(DEFAULT_EXECUTE_OUTPUT_BYTE_LIMIT);
+  expect(result.stdout.length).toBeLessThanOrEqual(4000);
+});
+
+test("zero capture budget is explicit and preserves the separate inline preview", async () => {
+  const output = new ExecuteOutputCapture({ sessionFile: join(directory, "zero-budget.jsonl"), outputByteLimit: 0 });
+  await output.consume("stdout", Readable.from(["hello"]));
+  const result = await output.result();
+  expect(result).toMatchObject({ stdout: "hello", outputBytes: 5, capturedOutputBytes: 0, outputTruncated: true });
+  expect(result.stdoutPath).toBeUndefined();
+});
+
+test("capture limits count UTF-8 bytes, not characters", async () => {
+  const output = new ExecuteOutputCapture({ sessionFile: join(directory, "utf8-budget.jsonl"), outputByteLimit: 6 });
+  await output.consume("stdout", Readable.from(["界界"]));
+  const result = await output.result();
+  expect(result).toMatchObject({ stdout: "界界", outputBytes: 6, capturedOutputBytes: 6, outputTruncated: false });
+});
+
+test("zero capture budget creates no spill directories or paths above the preview threshold", async () => {
+  const output = new ExecuteOutputCapture({ sessionFile: join(directory, "zero-spill.jsonl"), outputByteLimit: 0 });
+  await output.consume("stdout", Readable.from(["x".repeat(5000)]));
+  await output.consume("stderr", Readable.from(["y".repeat(5000)]));
+  const result = await output.result();
+  expect(result.outputTruncated).toBe(true);
+  expect(result.capturedOutputBytes).toBe(0);
+  expect(result.stdoutPath).toBeUndefined();
+  expect(result.stderrPath).toBeUndefined();
+  expect(await readdir(directory)).toEqual([]);
+});
+
+test("streams arriving after capture budget exhaustion do not create empty artifacts", async () => {
+  const output = new ExecuteOutputCapture({ sessionFile: join(directory, "exhausted.jsonl"), outputByteLimit: 4001 });
+  await output.consume("stdout", Readable.from(["x".repeat(4001)]));
+  await output.consume("stderr", Readable.from(["y".repeat(5000)]));
+  const result = await output.result();
+  expect((await stat(result.stdoutPath!)).size).toBe(4001);
+  expect(result.stderrCapturedBytes).toBe(0);
+  expect(result.stderrPath).toBeUndefined();
+  expect(await readdir(dirname(result.stdoutPath!))).toEqual(["stdout.log"]);
 });

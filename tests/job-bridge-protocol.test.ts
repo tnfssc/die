@@ -1,7 +1,13 @@
 import { expect, spyOn, test } from "bun:test";
-import { Duplex } from "node:stream";
+import { getEventListeners } from "node:events";
+import { Duplex, PassThrough } from "node:stream";
 import { inspectDiagnostics } from "../src/diagnostics";
-import { installJobGlobals, MAX_JOB_BRIDGE_FRAME_BYTES, serveJobBridge } from "../src/typescript/job-bridge";
+import {
+  installJobGlobals,
+  MAX_JOB_BRIDGE_FRAME_BYTES,
+  serveJobBridge,
+  withJobCancellation,
+} from "../src/typescript/job-bridge";
 
 function socket() {
   return new Duplex({
@@ -179,5 +185,98 @@ test("client and server accept multi-frame chunks larger than one frame limit", 
   } finally {
     clientSocket.destroy();
     restore();
+  }
+});
+
+function bridgePair(): { server: Duplex; worker: Duplex } {
+  const requests = new PassThrough();
+  const responses = new PassThrough();
+  const fromPair = Duplex.from as unknown as (pair: { readable: PassThrough; writable: PassThrough }) => Duplex;
+  const server = fromPair({ readable: requests, writable: responses });
+  const worker = fromPair({ readable: responses, writable: requests });
+  // Duplex.from propagates peer destruction as AbortError; bridge shutdown is
+  // expected to destroy its owned endpoint in these protocol tests.
+  server.on("error", () => {});
+  worker.on("error", () => {});
+  return { server, worker };
+}
+
+function nextFrame(stream: Duplex): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    stream.once("data", (chunk: Buffer) => {
+      try {
+        resolve(JSON.parse(chunk.toString("utf8")));
+      } catch (error) {
+        reject(error);
+      }
+    });
+  });
+}
+
+test("acknowledged non-launch RPCs release request cancellation listeners immediately", async () => {
+  const { server, worker } = bridgePair();
+  const cancellation = new AbortController();
+  const bridge = serveJobBridge(
+    server,
+    async (_method, _params, signal) => {
+      withJobCancellation(signal, cancellation.signal);
+      return { ok: true };
+    },
+    new AbortController().signal,
+  );
+  try {
+    for (let id = 1; id <= 100; id++) {
+      const response = nextFrame(worker);
+      worker.write(JSON.stringify({ id, method: "jobs.list", params: {} }) + "\n");
+      expect(await response).toEqual({ id, result: { ok: true } });
+      expect(getEventListeners(cancellation.signal, "abort")).toHaveLength(1);
+      worker.write(JSON.stringify({ ack: id }) + "\n");
+      await Bun.sleep(0);
+      expect(getEventListeners(cancellation.signal, "abort")).toHaveLength(0);
+    }
+  } finally {
+    bridge.close();
+    worker.destroy();
+  }
+});
+
+test("failed RPCs release controllers while foreground ACK ownership stays provisional", async () => {
+  const { server, worker } = bridgePair();
+  const cancellation = new AbortController();
+  const bridge = serveJobBridge(
+    server,
+    async (method, params, signal) => {
+      withJobCancellation(signal, cancellation.signal);
+      if (method === "jobs.stop") throw new Error("failed");
+      return params;
+    },
+    new AbortController().signal,
+  );
+  try {
+    let response = nextFrame(worker);
+    worker.write(JSON.stringify({ id: 1, method: "jobs.stop", params: {} }) + "\n");
+    expect(await response).toEqual({ id: 1, error: "failed" });
+    expect(getEventListeners(cancellation.signal, "abort")).toHaveLength(0);
+    worker.write('{"ack":1}\n');
+
+    response = nextFrame(worker);
+    worker.write(JSON.stringify({ id: 2, method: "shell", params: { background: true } }) + "\n");
+    expect(await response).toEqual({ id: 2, result: { background: true } });
+    worker.write('{"ack":2}\n');
+    await Bun.sleep(0);
+    expect(getEventListeners(cancellation.signal, "abort")).toHaveLength(0);
+
+    response = nextFrame(worker);
+    worker.write(JSON.stringify({ id: 3, method: "shell", params: { background: false } }) + "\n");
+    expect(await response).toEqual({ id: 3, result: { background: false } });
+    worker.write('{"ack":3}\n');
+    await Bun.sleep(0);
+    expect(getEventListeners(cancellation.signal, "abort")).toHaveLength(1);
+
+    bridge.close(true);
+    expect(getEventListeners(cancellation.signal, "abort")).toHaveLength(0);
+  } finally {
+    bridge.close();
+    worker.destroy();
   }
 });

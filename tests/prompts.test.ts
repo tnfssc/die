@@ -132,7 +132,8 @@ test("execute tool description uses the embedded Markdown source", async () => {
   expect(tool.promptSnippet).toBe("Run JS/TS.");
   expect(tool.description).toBe(source.trimEnd());
   expect(tool.description).toContain("4,000 characters");
-  expect(tool.description).toContain("saved in full to files");
+  expect(tool.description).toContain("shared 10 MiB stdout/stderr capture limit");
+  expect(tool.description).toContain("truncation is reported explicitly");
   expect(tool.description).toStartWith("Run JS/TS code in current directory.");
   expect(tool.description).not.toContain("shell(");
   expect(tool.description).not.toContain("handoff");

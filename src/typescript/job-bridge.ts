@@ -439,11 +439,25 @@ export function serveJobBridge(
   let lastId = 0;
   let closed = false;
   const controller = new AbortController();
-  type ServedRequest = { controller: AbortController; reply: "pending" | "sent" | "acked" | "failed" };
+  type ServedRequest = {
+    controller?: AbortController;
+    method: string;
+    ownsResult: boolean;
+    reply: "pending" | "sent" | "acked" | "failed";
+  };
   const requests = new Map<number, ServedRequest>();
+  // Only successful foreground launch results transfer notification ownership.
+  // Background launch replies and every other helper method are ordinary RPCs.
+  const ownsForegroundResult = (method: string, result: unknown): boolean => {
+    const foreground = (value: unknown) =>
+      !!value && typeof value === "object" && "background" in value && value.background === false;
+    if (method === "shell") return foreground(result);
+    if (method === "subagent") return Array.isArray(result) ? result.some(foreground) : foreground(result);
+    return false;
+  };
   const abortRequests = () => {
     controller.abort();
-    for (const request of requests.values()) request.controller.abort();
+    for (const request of requests.values()) request.controller?.abort();
     requests.clear();
   };
   const abort = () => {
@@ -467,7 +481,7 @@ export function serveJobBridge(
     for (const [id, request] of requests) {
       if (request.reply === "acked") continue;
       lost++;
-      request.controller.abort();
+      request.controller?.abort();
       requests.delete(id);
     }
     if (lost && !disconnectRecorded) {
@@ -495,7 +509,7 @@ export function serveJobBridge(
     // ACK from swallowing the task's session completion notification.
     if (commitAcknowledgements) {
       for (const request of requests.values()) {
-        if (request.reply === "acked") request.controller.signal.dispatchEvent(new Event(JOB_RESPONSE_ACK_EVENT));
+        if (request.reply === "acked") request.controller?.signal.dispatchEvent(new Event(JOB_RESPONSE_ACK_EVENT));
       }
     }
     abortRequests();
@@ -510,22 +524,23 @@ export function serveJobBridge(
     abortRequests();
     socket.destroy(bridgeError(reason, code, dispatch));
   };
-  const send = (id: number, response: Response, ownsResult = true) => {
+  const send = (id: number, response: Response, delivered = true) => {
     const request = requests.get(id);
     if (!request || closed || socket.destroyed) {
-      request?.controller.abort();
+      request?.controller?.abort();
       requests.delete(id);
       return;
     }
     let line: string;
-    let fallback = !ownsResult;
+    let fallback = !delivered;
     // A handler error means the RPC response contains no foreground result.
     // Release notification ownership even if the worker receives and ACKs the
     // error frame successfully.
-    if (!ownsResult) {
+    if (!delivered) {
       bridgeDiagnostic(diagnosticOwner, "delivery_failed", "failed", "response");
       request.reply = "failed";
-      request.controller.abort();
+      request.controller?.abort();
+      request.controller = undefined;
     }
     try {
       line = JSON.stringify(response) + "\n";
@@ -543,19 +558,23 @@ export function serveJobBridge(
     // cannot own completion even if the worker acknowledges the error frame.
     if (fallback) {
       request.reply = "failed";
-      request.controller.abort();
-    } else request.reply = "sent";
+      request.controller?.abort();
+      request.controller = undefined;
+    } else {
+      request.ownsResult = ownsForegroundResult(request.method, response.result);
+      request.reply = "sent";
+    }
     try {
       socket.write(line, (error) => {
         if (error) {
           bridgeDiagnostic(diagnosticOwner, transportCode(error), "failed", "response");
-          request.controller.abort();
+          request.controller?.abort();
           requests.delete(id);
         }
       });
     } catch {
       bridgeDiagnostic(diagnosticOwner, "bridge_disconnected", "failed", "response");
-      request.controller.abort();
+      request.controller?.abort();
       requests.delete(id);
     }
   };
@@ -591,14 +610,21 @@ export function serveJobBridge(
             return false;
           }
           if (request.reply === "failed") {
-            // The worker received the bounded error fallback. There is no task
-            // result to commit, and abort above already released its listeners.
+            // Keep only the protocol token until delivery is acknowledged. The
+            // controller was already aborted when the failed reply was formed.
             requests.delete(acknowledgement.ack);
             return true;
           }
           if (request.reply !== "sent") {
             fail("Unknown or duplicate job bridge acknowledgement id", "protocol_invalid", "response");
             return false;
+          }
+          if (!request.ownsResult) {
+            // Non-launch helper replies own no foreground completion. Their ACK
+            // is final, so release cancellation wrappers immediately.
+            request.controller?.signal.dispatchEvent(new Event(JOB_RESPONSE_ACK_EVENT));
+            requests.delete(acknowledgement.ack);
+            return true;
           }
           request.reply = "acked";
           return true;
@@ -616,7 +642,12 @@ export function serveJobBridge(
         lastId = request.id;
         const requestController = new AbortController();
         Object.defineProperty(requestController.signal, ACK_CAPABLE, { value: true });
-        requests.set(request.id, { controller: requestController, reply: "pending" });
+        requests.set(request.id, {
+          controller: requestController,
+          method: request.method,
+          ownsResult: false,
+          reply: "pending",
+        });
         if (controller.signal.aborted) requestController.abort();
         void Promise.resolve()
           .then(() => handler(request.method, request.params, requestController.signal))

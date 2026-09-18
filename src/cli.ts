@@ -127,6 +127,9 @@ registerBunOAuthFlows();
 // This must be dynamic: PI_PACKAGE_DIR has to be set before Pi initializes its
 // product metadata and asset paths.
 const { main } = await import("@earendil-works/pi-coding-agent");
+// Install the owned synchronous journal adapter before any SDK session is created.
+const { installDiskBackedSessionManager } = await import("./history/session-manager");
+installDiskBackedSessionManager();
 // The UI extension imports Pi's CustomEditor, so it must also load only after
 // die's runtime paths and product metadata are configured.
 const [{ default: asynchronousTasksExtension }, { default: herdrAgentStateExtension }] = await Promise.all([

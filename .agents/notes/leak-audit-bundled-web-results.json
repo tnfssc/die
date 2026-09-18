@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "startedAt": "2026-09-18T19:01:42.983Z",
+  "options": {
+    "cycles": 600,
+    "held": 64
+  },
+  "isolation": {
+    "state": "/tmp/die-bundled-web-audit-XFkCUU",
+    "port": 36401
+  },
+  "provenance": {
+    "binary": "/home/tnfssc/Code/die/dist/die",
+    "binarySha256": "da358b97c8fadadeeef2ff6caab82787d4ddb30a5c42dbd8709e4a3bfdc1222a",
+    "binaryVersion": "0.3.4",
+    "gitHead": "f9d3e5cc51f164dca43fc445bd9057e70fac578b",
+    "pinnedTree": "/home/tnfssc/Code/die/.cache/die-t3code-v0042",
+    "expectedPinnedHead": "719a76ca1dbf5490f1aa33ffb9966301e02be9a9",
+    "actualPinnedHead": "719a76ca1dbf5490f1aa33ffb9966301e02be9a9",
+    "embeddedBootstrap": "/tmp/die-bundled-web-audit-XFkCUU/xdg-cache/die/web-runtime/08cd5600ffdefefcd294d897954509ccc61be7b69fdf23e6e65edc6cb2ec4634/bootstrap.mjs",
+    "embeddedBootstrapSha256": "154fc94a56be176ef6f4e6591f594a5834fd81bc2afe101442cc0b8d6364ebc2"
+  },
+  "launcher": {
+    "pid": 2131490,
+    "ppid": 2131449,
+    "startTime": "292158298",
+    "cmdline": "/home/tnfssc/Code/die/dist/die web serve --mode web --host 127.0.0.1 --port 36401 --base-dir /tmp/die-bundled-web-audit-XFkCUU --no-browser --log-level error"
+  },
+  "backend": {
+    "pid": 2131526,
+    "ppid": 2131490,
+    "startTime": "292158470",
+    "cmdline": "/home/tnfssc/Code/die/dist/die /tmp/die-bundled-web-audit-XFkCUU/xdg-cache/die/web-runtime/08cd5600ffdefefcd294d897954509ccc61be7b69fdf23e6e65edc6cb2ec4634/bootstrap.mjs serve --mode web --host 127.0.0.1 --port 36401 --base-dir /tmp/die-bundled-web-audit-XFkCUU --no-browser --log-level error"
+  },
+  "auth": "shipped die loopback no-auth mode; websocket ticket requested without bearer token",
+  "subscriptionFrames": 674,
+  "firstFrame": "{\"_tag\":\"Chunk\",\"requestId\":1,\"values\":[{\"version\":1,\"type\":\"snapshot\",\"config\":{\"environment\":{\"environmentId\":\"8f8a963d-a17d-4bd2-92e8-612ebbe93f6e\",\"label\":\"z14\",\"platform\":{\"os\":\"linux\",\"arch\":\"x64\",\"machine\":\"laptop\"},\"serverVersion\":\"0.0.40\",\"capabilities\":{\"repositoryIdentity\":true,\"connectionProbe\":true,\"attachmentUploads\":true,\"questionAttachments\":true,\"fileAttachments\":{\"maxUploadBytes\":52428800},\"pullRequests\":true,\"inlineMessageContext\":true,\"threadSettlement\":true,\"threadAutoSettle",
+  "samples": [
+    {
+      "label": "baseline-after-10-warmup",
+      "at": "2026-09-18T19:01:47.531Z",
+      "backend": {
+        "pid": 2131526,
+        "ppid": 2131490,
+        "startTime": "292158470",
+        "cmdline": "/home/tnfssc/Code/die/dist/die /tmp/die-bundled-web-audit-XFkCUU/xdg-cache/die/web-runtime/08cd5600ffdefefcd294d897954509ccc61be7b69fdf23e6e65edc6cb2ec4634/bootstrap.mjs serve --mode web --host 127.0.0.1 --port 36401 --base-dir /tmp/die-bundled-web-audit-XFkCUU --no-browser --log-level error",
+        "rssKb": 301204,
+        "pssKb": 279543,
+        "privateDirtyKb": 249048,
+        "fd": 25,
+        "threads": 21
+      },
+      "descendants": []
+    },
+    {
+      "label": "after-cycles-300",
+      "at": "2026-09-18T19:01:53.111Z",
+      "backend": {
+        "pid": 2131526,
+        "ppid": 2131490,
+        "startTime": "292158470",
+        "cmdline": "/home/tnfssc/Code/die/dist/die /tmp/die-bundled-web-audit-XFkCUU/xdg-cache/die/web-runtime/08cd5600ffdefefcd294d897954509ccc61be7b69fdf23e6e65edc6cb2ec4634/bootstrap.mjs serve --mode web --host 127.0.0.1 --port 36401 --base-dir /tmp/die-bundled-web-audit-XFkCUU --no-browser --log-level error",
+        "rssKb": 349216,
+        "pssKb": 327524,
+        "privateDirtyKb": 296740,
+        "fd": 22,
+        "threads": 21
+      },
+      "descendants": []
+    },
+    {
+      "label": "after-cycles-600",
+      "at": "2026-09-18T19:01:58.373Z",
+      "backend": {
+        "pid": 2131526,
+        "ppid": 2131490,
+        "startTime": "292158470",
+        "cmdline": "/home/tnfssc/Code/die/dist/die /tmp/die-bundled-web-audit-XFkCUU/xdg-cache/die/web-runtime/08cd5600ffdefefcd294d897954509ccc61be7b69fdf23e6e65edc6cb2ec4634/bootstrap.mjs serve --mode web --host 127.0.0.1 --port 36401 --base-dir /tmp/die-bundled-web-audit-XFkCUU --no-browser --log-level error",
+        "rssKb": 376248,
+        "pssKb": 354556,
+        "privateDirtyKb": 323772,
+        "fd": 22,
+        "threads": 21
+      },
+      "descendants": []
+    },
+    {
+      "label": "while-held-64",
+      "at": "2026-09-18T19:01:59.618Z",
+      "backend": {
+        "pid": 2131526,
+        "ppid": 2131490,
+        "startTime": "292158470",
+        "cmdline": "/home/tnfssc/Code/die/dist/die /tmp/die-bundled-web-audit-XFkCUU/xdg-cache/die/web-runtime/08cd5600ffdefefcd294d897954509ccc61be7b69fdf23e6e65edc6cb2ec4634/bootstrap.mjs serve --mode web --host 127.0.0.1 --port 36401 --base-dir /tmp/die-bundled-web-audit-XFkCUU --no-browser --log-level error",
+        "rssKb": 437136,
+        "pssKb": 415444,
+        "privateDirtyKb": 384660,
+        "fd": 86,
+        "threads": 21
+      },
+      "descendants": []
+    },
+    {
+      "label": "after-held-close-64",
+      "at": "2026-09-18T19:01:59.921Z",
+      "backend": {
+        "pid": 2131526,
+        "ppid": 2131490,
+        "startTime": "292158470",
+        "cmdline": "/home/tnfssc/Code/die/dist/die /tmp/die-bundled-web-audit-XFkCUU/xdg-cache/die/web-runtime/08cd5600ffdefefcd294d897954509ccc61be7b69fdf23e6e65edc6cb2ec4634/bootstrap.mjs serve --mode web --host 127.0.0.1 --port 36401 --base-dir /tmp/die-bundled-web-audit-XFkCUU --no-browser --log-level error",
+        "rssKb": 429532,
+        "pssKb": 407840,
+        "privateDirtyKb": 377056,
+        "fd": 22,
+        "threads": 21
+      },
+      "descendants": []
+    },
+    {
+      "label": "after-quiescence-5s",
+      "at": "2026-09-18T19:02:05.182Z",
+      "backend": {
+        "pid": 2131526,
+        "ppid": 2131490,
+        "startTime": "292158470",
+        "cmdline": "/home/tnfssc/Code/die/dist/die /tmp/die-bundled-web-audit-XFkCUU/xdg-cache/die/web-runtime/08cd5600ffdefefcd294d897954509ccc61be7b69fdf23e6e65edc6cb2ec4634/bootstrap.mjs serve --mode web --host 127.0.0.1 --port 36401 --base-dir /tmp/die-bundled-web-audit-XFkCUU --no-browser --log-level error",
+        "rssKb": 294180,
+        "pssKb": 272487,
+        "privateDirtyKb": 241704,
+        "fd": 21,
+        "threads": 21
+      },
+      "descendants": []
+    }
+  ],
+  "shutdown": {
+    "launcherExitCode": 130,
+    "exactIdentitySurvivorsBeforeKill": [],
+    "allOwnedStopped": true
+  },
+  "errors": [],
+  "finishedAt": "2026-09-18T19:02:05.188Z",
+  "stdoutTail": "T3 Code server is ready.\nConnection string: http://127.0.0.1:36401\n",
+  "stderrTail": ""
+}

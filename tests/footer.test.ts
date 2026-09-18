@@ -124,6 +124,56 @@ describe("compact extension footer", () => {
     expect(plain(renderDetailedFooter(ctx, data, theme, 150))[1]).toContain("$? (fast billing)");
   });
 
+  test("caches reduced history until session position changes", () => {
+    const { ctx, data, statuses } = fixture();
+    const manager = ctx.sessionManager;
+    const baseEntries = manager.getEntries();
+    const entries = [...baseEntries];
+    Object.assign(manager, { fileEntries: entries });
+    let calls = 0;
+    let leaf: string | null = "entry-1";
+    manager.getSessionId = () => "footer-cache-session";
+    manager.getLeafId = () => leaf;
+    manager.getEntries = () => {
+      calls++;
+      return entries as ReturnType<ExtensionContext["sessionManager"]["getEntries"]>;
+    };
+
+    expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("$0.002");
+    expect(plain(renderDetailedFooter(ctx, data, theme, 150))[1]).toContain("$0.002");
+    expect(calls).toBe(1);
+
+    // A live provider status remains live and does not force history materialization.
+    statuses.set("die-native-fast", "fast requested (tier/cost estimate unavailable)");
+    expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("$?");
+    expect(calls).toBe(1);
+    statuses.delete("die-native-fast");
+
+    const appendedUsage = { input: 10, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.003 } };
+    entries.push({ type: "message", message: { role: "assistant", usage: appendedUsage } } as (typeof entries)[number]);
+    leaf = "entry-2";
+    expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("$0.005");
+    expect(calls).toBe(2);
+
+    leaf = null; // resetLeaf()
+    expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("$0.005");
+    expect(calls).toBe(3);
+    leaf = "entry-1"; // branch(), including revisiting a previously cached leaf
+    expect(plain(renderDetailedFooter(ctx, data, theme, 150))[1]).toContain("$0.005");
+    expect(calls).toBe(4);
+    renderDetailedFooter(ctx, data, theme, 150);
+    expect(calls).toBe(4);
+
+    entries.push({
+      type: "custom",
+      customType: "die-native-fast-mode",
+      data: { enabled: true },
+    } as (typeof entries)[number]);
+    leaf = "entry-3";
+    expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("$?");
+    expect(calls).toBe(5);
+  });
+
   test("puts task count beside the directory without losing usage or model information", () => {
     const { ctx, data } = fixture();
     const lines = plain(renderDetailedFooter(ctx, data, theme, 150));
@@ -392,4 +442,30 @@ test("compact UI owns initial footer disposal across switches and shutdown", asy
   shutdown();
   expect(active).toBe(0);
   expect(disposed).toBe(3);
+});
+
+test("footer cache notices an append followed by branching back between renders", () => {
+  const { ctx, data } = fixture();
+  const manager = ctx.sessionManager;
+  const entries = [...manager.getEntries()];
+  Object.assign(manager, { fileEntries: entries });
+  manager.getSessionId = () => "same-session";
+  manager.getLeafId = () => "same-leaf";
+  let calls = 0;
+  manager.getEntries = () => {
+    calls++;
+    return entries;
+  };
+  expect(plain(renderSingleRowFooter(ctx, data, theme, 150))[0]).toContain("$0.002");
+  // appendMessage advances the leaf; branch(oldLeaf) restores it before a render.
+  entries.push({
+    type: "custom",
+    customType: "die-compaction-attempt",
+    data: {
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: { total: 0.003 } },
+    },
+  } as (typeof entries)[number]);
+  expect(plain(renderSingleRowFooter(ctx, data, theme, 150))[0]).toContain("$0.005");
+  renderSingleRowFooter(ctx, data, theme, 150);
+  expect(calls).toBe(2);
 });

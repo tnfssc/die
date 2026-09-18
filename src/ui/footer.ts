@@ -58,15 +58,64 @@ function columns(left: string, right: string, width: number): string {
   return lhs + " ".repeat(Math.max(0, width - visibleWidth(lhs) - visibleWidth(rhs))) + rhs;
 }
 
-function footerUsage(ctx: ExtensionContext) {
+type FooterHistory = {
+  input: number;
+  output: number;
+  read: number;
+  write: number;
+  cost: number;
+  cacheHit: number | undefined;
+  unavailableFastCost: boolean;
+};
+
+type FooterHistoryCache = {
+  sessionId: string;
+  leafId: string | null;
+  entries: WeakRef<object>;
+  entryCount: number;
+  value: FooterHistory;
+};
+
+// Keep only the reduced footer data. In particular, retaining entries here would defeat
+// lazy/disk-backed session history by keeping materialized message bodies alive.
+const footerHistoryCache = new WeakMap<object, FooterHistoryCache>();
+
+function readFooterHistory(ctx: ExtensionContext): FooterHistory {
+  const manager = ctx.sessionManager;
+  const identity = manager as typeof manager & {
+    getSessionId?: () => string;
+    getLeafId?: () => string | null;
+  };
+  // The pinned SDK (and our disk-backed adapter) keeps an append-only metadata
+  // array. Its identity/count catches appends followed by a branch back to the
+  // same leaf between renders. Unknown manager implementations stay uncached.
+  const fileEntries = (manager as unknown as { fileEntries?: unknown }).fileEntries;
+  const cacheable =
+    Array.isArray(fileEntries) &&
+    typeof identity.getSessionId === "function" &&
+    typeof identity.getLeafId === "function";
+  const sessionId = cacheable ? identity.getSessionId() : undefined;
+  const leafId = cacheable ? identity.getLeafId() : undefined;
+  const cached = cacheable ? footerHistoryCache.get(manager as object) : undefined;
+  if (
+    cacheable &&
+    cached &&
+    cached.sessionId === sessionId &&
+    cached.leafId === leafId &&
+    cached.entries.deref() === fileEntries &&
+    cached.entryCount === fileEntries.length
+  )
+    return cached.value;
+
   let input = 0,
     output = 0,
     read = 0,
     write = 0,
     cost = 0;
   let cacheHit: number | undefined;
+  let unavailableFastCost = false;
   // Include pre-compaction usage, nested tool usage, and summaries, like Pi.
-  for (const entry of ctx.sessionManager.getEntries()) {
+  for (const entry of manager.getEntries()) {
     let usage: Usage | undefined;
     if (entry.type === "message" && entry.message.role === "assistant") {
       usage = entry.message.usage;
@@ -79,6 +128,15 @@ function footerUsage(ctx: ExtensionContext) {
     } else if (entry.type === "custom" && entry.customType === "die-compaction-attempt") {
       usage = (entry.data as { usage?: Usage })?.usage;
     }
+    if (
+      entry.type === "custom" &&
+      entry.customType === "die-native-fast-mode" &&
+      entry.data &&
+      typeof entry.data === "object" &&
+      (entry.data as { enabled?: unknown }).enabled === true
+    ) {
+      unavailableFastCost = true;
+    }
     if (usage) {
       input += usage.input;
       output += usage.output;
@@ -87,21 +145,25 @@ function footerUsage(ctx: ExtensionContext) {
       cost += usage.cost.total;
     }
   }
-  return { input, output, read, write, cost, cacheHit };
+  const value = { input, output, read, write, cost, cacheHit, unavailableFastCost };
+  if (cacheable) {
+    // This is deliberately a single current-position entry, not a map by leaf. A
+    // branch can revisit an old leaf after more entries were appended, so reusing an
+    // older value for that leaf would miss the newer append-only history.
+    footerHistoryCache.set(manager as object, {
+      sessionId: sessionId!,
+      leafId: leafId!,
+      // Never keep an obsolete native in-memory entries array alive after reset.
+      entries: new WeakRef(fileEntries),
+      entryCount: fileEntries.length,
+      value,
+    });
+  }
+  return value;
 }
 
-function hasUnavailableFastCost(ctx: ExtensionContext, statuses: ReadonlyMap<string, string>): boolean {
-  if (statuses.get("die-native-fast")?.includes("cost estimate unavailable")) return true;
-  return ctx.sessionManager
-    .getEntries()
-    .some(
-      (entry) =>
-        entry.type === "custom" &&
-        entry.customType === "die-native-fast-mode" &&
-        !!entry.data &&
-        typeof entry.data === "object" &&
-        (entry.data as { enabled?: unknown }).enabled === true,
-    );
+function hasUnavailableFastCost(history: FooterHistory, statuses: ReadonlyMap<string, string>): boolean {
+  return statuses.get("die-native-fast")?.includes("cost estimate unavailable") === true || history.unavailableFastCost;
 }
 
 function cacheBadge(estimate: CacheEstimate | undefined, theme: Theme): string | undefined {
@@ -124,7 +186,8 @@ export function renderDetailedFooter(
   cache?: CacheEstimate,
 ): string[] {
   if (width < 1) return [];
-  const { input, output, read, write, cost, cacheHit } = footerUsage(ctx);
+  const history = readFooterHistory(ctx);
+  const { input, output, read, write, cost, cacheHit } = history;
   let path = footerPath(ctx.sessionManager.getCwd());
   const branch = data.getGitBranch();
   if (branch) path += ` (${branch})`;
@@ -138,7 +201,7 @@ export function renderDetailedFooter(
   if ((read || write) && cacheHit !== undefined) stats.push(`CH${cacheHit.toFixed(1)}%`);
   const model = ctx.model;
   const statuses = data.getExtensionStatuses();
-  const fastCostUnavailable = hasUnavailableFastCost(ctx, statuses);
+  const fastCostUnavailable = hasUnavailableFastCost(history, statuses);
   const subscription = model && (model.provider === "kimi-coding" || ctx.modelRegistry.isUsingOAuth(model));
   if (fastCostUnavailable) stats.push("$? (fast billing)");
   else if (cost || descendantCost || subscription)
@@ -202,7 +265,8 @@ export function renderCompactFooter(
     (key) => key !== "die-tasks" && key !== "die-mode" && key !== "die-native-fast",
   ).length;
   const extra = otherCount ? `+${otherCount} status` : "";
-  const cost = hasUnavailableFastCost(ctx, statuses) ? "$?" : "$" + (footerUsage(ctx).cost + descendantCost).toFixed(3);
+  const history = readFooterHistory(ctx);
+  const cost = hasUnavailableFastCost(history, statuses) ? "$?" : "$" + (history.cost + descendantCost).toFixed(3);
   const percent = ctx.getContextUsage()?.percent;
   const percentText = percent == null ? "?" : `${percent.toFixed(1).replace(/\.0$/, "")}%`;
   const context = (label: string) =>
