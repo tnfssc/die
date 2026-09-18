@@ -51,3 +51,5 @@
 - [Shared memory value](shared-memory-value.md): approved plain-language value makes code and notes part of finishing work; prompt delivery tested.
 
 - [Blacksmith CI request](blacksmith-ci.md): blocked by personal-repository ownership; no workflow changes or new release. Needs user decision.
+
+- [v0.3.4 release](release-v034.md): shared-memory value, GitHub runners retained; release preparation and validation.
