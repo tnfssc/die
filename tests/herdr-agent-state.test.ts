@@ -380,6 +380,44 @@ describe("built-in Herdr agent state", () => {
     }
   });
 
+  test("native RPC children never claim the root Herdr reporter", async () => {
+    const recorder = await socketRecorder();
+    try {
+      enable(recorder.path, "0");
+      const root = harness({ id: "root-tui", mode: "tui", idle: true });
+      registerHerdrAgentState(root.pi);
+      root.fire("session_start", { reason: "startup" });
+      await waitFor(() => recorder.requests.some((request) => request.params.agent_session_id === "root-tui"));
+      const beforeChild = recorder.requests.length;
+
+      // Native T3 children are separate Die RPC processes. They may inherit
+      // the root's Herdr socket environment and can have depth zero, so mode —
+      // not depth alone — is the authority boundary.
+      const child = harness({ id: "native-rpc-child", mode: "rpc", ui: true });
+      registerHerdrAgentState(child.pi);
+      child.fire("session_start", { reason: "startup" });
+      child.fire("agent_start");
+      child.fire("agent_settled");
+      child.fire("session_shutdown", { reason: "quit" });
+      await Bun.sleep(40);
+
+      expect(recorder.requests).toHaveLength(beforeChild);
+      expect(recorder.requests.some((request) => request.params.agent_session_id === "native-rpc-child")).toBe(false);
+      expect(recorder.requests.some((request) => request.method === "pane.release_agent")).toBe(false);
+
+      root.fire("agent_start");
+      await waitFor(() =>
+        recorder.requests.some(
+          (request) => request.params.agent_session_id === "root-tui" && request.params.state === "working",
+        ),
+      );
+      root.fire("session_shutdown", { reason: "quit" });
+      await waitFor(() => recorder.requests.some((request) => request.method === "pane.release_agent"));
+    } finally {
+      await recorder.close();
+    }
+  });
+
   test("unavailable endpoints and synchronous connector failures are nonfatal and prompt", async () => {
     const missing = join(tmpdir(), "die-herdr-missing-" + Math.random().toString(36).slice(2) + ".sock");
     enable(missing);

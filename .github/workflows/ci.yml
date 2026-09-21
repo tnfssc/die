@@ -23,6 +23,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.1
+      - name: Resolve pinned T3 source checkout
+        shell: bash
+        run: echo "DIE_T3_SOURCE=$GITHUB_WORKSPACE/.cache/die-t3code-$(bun -e 'console.log(require("./web/t3-source.json").revision)')" >> "$GITHUB_ENV"
       - name: Install required PTY tooling
         shell: bash
         run: sudo apt-get update && sudo apt-get install -y tmux
@@ -46,8 +49,20 @@ jobs:
       - name: Validate web backend
         shell: bash
         run: |
-          cd .cache/die-t3code/apps/server
-          ../../node_modules/.bin/vp test run src/provider/Layers/PiAdapter.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts src/terminal/NodePtyAdapter.test.ts src/terminal/BunPtyAdapter.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/ci/web-tests.log"
+          cd "$DIE_T3_SOURCE/apps/server"
+          ../../node_modules/.bin/vp test run src/provider/Layers/PiProvider.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts src/terminal/NodePtyAdapter.test.ts src/terminal/BunPtyAdapter.test.ts src/terminal/Manager.test.ts src/terminal/SubscriberStream.test.ts src/mcp/DieTaskService.test.ts src/mcp/OrchestratorMcpService.test.ts src/orchestration-v2/NativeDieIntegration.production.test.ts src/orchestration-v2/ProjectionStore.test.ts src/orchestration-v2/ProviderContinuationService.test.ts src/orchestration-v2/LocalJobNotification.test.ts src/orchestration-v2/NativeUsageAccounting.test.ts src/orchestration-v2/Adapters/PiAdapterV2.test.ts src/resourceTelemetry/ResourceTelemetry.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/ci/web-tests.log"
+      - name: Validate focused web model behavior
+        shell: bash
+        run: |
+          cd "$DIE_T3_SOURCE/apps/web"
+          ../../node_modules/.bin/vp test run --project unit src/composerDraftStore.test.ts src/lib/chatThreadActions.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/ci/web-model-tests.log"
+      - name: Validate web contracts and client projection
+        shell: bash
+        run: |
+          cd "$DIE_T3_SOURCE/packages/contracts"
+          ../../node_modules/.bin/vp test run src/browserProfile.test.ts src/orchestratorMcp.test.ts src/providerRuntime.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/ci/web-contract-tests.log"
+          cd "$DIE_T3_SOURCE/packages/client-runtime"
+          ../../node_modules/.bin/vp test run src/state/orchestrationV2Projection.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/ci/web-client-runtime-tests.log"
       - name: Deterministic tests
         shell: bash
         env:

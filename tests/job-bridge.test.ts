@@ -60,7 +60,11 @@ test("foreground work returns inline; background work survives execute and accep
   try {
     const fast = await execute('console.log(JSON.stringify(await shell("printf inline")))');
     expect(fast.exitCode).toBe(0);
-    expect(JSON.parse(fast.stdout)).toMatchObject({ background: false, status: "completed", output: "inline" });
+    expect(JSON.parse(fast.stdout)).toMatchObject({
+      background: false,
+      status: "completed",
+      output: "inline",
+    });
     expect(notifications).toHaveLength(0);
     const launch = await execute(
       'console.log(JSON.stringify(await shell("read value; printf received:$value", {waitSeconds:0,closeInput:false})))',
@@ -181,10 +185,18 @@ test("shell defaults to a three-second foreground budget; zero wait and timeout 
       'console.log(JSON.stringify(await shell("read value", {timeoutSeconds:0.2,closeInput:false})))',
     );
     expect(timeout.exitCode).toBe(0);
-    expect(JSON.parse(timeout.stdout)).toMatchObject({ background: false, status: "killed", timedOut: true });
+    expect(JSON.parse(timeout.stdout)).toMatchObject({
+      background: false,
+      status: "killed",
+      timedOut: true,
+    });
     const failure = await execute('console.log(JSON.stringify(await shell("exit 7")))');
     expect(failure.exitCode).toBe(0);
-    expect(JSON.parse(failure.stdout)).toMatchObject({ background: false, status: "failed", exitCode: 7 });
+    expect(JSON.parse(failure.stdout)).toMatchObject({
+      background: false,
+      status: "failed",
+      exitCode: 7,
+    });
     expect(notifications).toHaveLength(0);
   } finally {
     await manager.shutdown();
@@ -256,7 +268,10 @@ test("disconnect before an inline response is acknowledged restores completion n
     );
     expect(result.cancelled).toBe(true);
     expect(notifications).toHaveLength(1);
-    expect(notifications[0]).toMatchObject({ status: "completed", output: "raced" });
+    expect(notifications[0]).toMatchObject({
+      status: "completed",
+      output: "raced",
+    });
   } finally {
     await manager.shutdown();
   }
@@ -414,7 +429,10 @@ test("registered execute handoff separates completed delivery from pending wait 
     await manager.write(pending.id, "done\n", true);
     await manager.wait(pending.id);
     expect(notifications).toHaveLength(1);
-    expect(notifications[0]).toMatchObject({ id: pending.id, output: "pending:done" });
+    expect(notifications[0]).toMatchObject({
+      id: pending.id,
+      output: "pending:done",
+    });
   } finally {
     await manager.shutdown();
   }
@@ -542,4 +560,43 @@ test("history helpers share the execute bridge with explicit parameters", async 
     ["history.search", { query: "needle", limit: 2 }],
     ["history.read", { ref: "die-history-v1:s:e:0", maxChars: 9 }],
   ]);
+});
+
+test("execute cannot read T3 bridge credentials while parent job capability remains available", async () => {
+  const oldUrl = process.env.T3_MCP_URL;
+  const oldToken = process.env.T3_MCP_BEARER_TOKEN;
+  const oldSafe = process.env.DIE_SAFE_SENTINEL;
+  process.env.T3_MCP_URL = "http://secret.invalid/mcp";
+  process.env.T3_MCP_BEARER_TOKEN = "SECRET_EXECUTE_TOKEN";
+  process.env.DIE_SAFE_SENTINEL = "visible";
+  const seen: string[] = [];
+  try {
+    const result = await executeIsolated(
+      'console.log(JSON.stringify({url:process.env.T3_MCP_URL,token:process.env.T3_MCP_BEARER_TOKEN,safe:process.env.DIE_SAFE_SENTINEL,job:await subagent({prompt:"work",type:"fast"})}))',
+      process.cwd(),
+      undefined,
+      3_000,
+      {
+        executablePath: binary,
+        jobHandler: async (method) => {
+          seen.push(method);
+          return { id: "native-1", background: true };
+        },
+      },
+    );
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      safe: "visible",
+      job: { id: "native-1", background: true },
+    });
+    expect(seen).toEqual(["subagent"]);
+    expect(result.stdout).not.toContain("SECRET_EXECUTE_TOKEN");
+  } finally {
+    if (oldUrl === undefined) delete process.env.T3_MCP_URL;
+    else process.env.T3_MCP_URL = oldUrl;
+    if (oldToken === undefined) delete process.env.T3_MCP_BEARER_TOKEN;
+    else process.env.T3_MCP_BEARER_TOKEN = oldToken;
+    if (oldSafe === undefined) delete process.env.DIE_SAFE_SENTINEL;
+    else process.env.DIE_SAFE_SENTINEL = oldSafe;
+  }
 });

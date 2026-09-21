@@ -552,3 +552,46 @@ test("completion observers see budgeted manager state while delivery preserves t
   expect(observed.every((value) => value.output === "" && value.lost)).toBe(true);
   expect((await manager.wait(task.id)).output).toBe("");
 });
+
+test("stopping a workspace agent also stops its owned background setup", async () => {
+  const manager = new TaskManager(() => {}, 25);
+  managers.push(manager);
+  const setup = manager.spawn(commandLaunch("sleep 30"));
+  const agent = manager.spawn({
+    ...commandLaunch("sleep 30"),
+    kind: "agent",
+    workspace: { kind: "worktree", path: "/var/tmp/die-owned-worktree", setupTaskId: setup.id },
+  });
+  manager.kill(agent.id);
+  expect(manager.inspect(setup.id).termination?.cause).toBe("user-stop");
+  await Promise.all([manager.wait(agent.id), manager.wait(setup.id)]);
+});
+
+test("preparation failure closes owned setup and repeated preparation teardown leaves no active jobs", async () => {
+  const manager = new TaskManager(() => {}, 20);
+  managers.push(manager);
+  for (let index = 0; index < 8; index++) {
+    const child = manager.prepareAgent({
+      id: "task_prepare_" + index,
+      displayCommand: "prepare",
+      cwd: process.cwd(),
+      workspace: { kind: "worktree", path: process.cwd() },
+      timeoutMs: 10000,
+    });
+    const signal = manager.preparationSignal(child.id);
+    const setup = manager.spawn(commandLaunch("sleep 30"));
+    manager.updatePreparedWorkspace(child.id, {
+      kind: "worktree",
+      path: process.cwd(),
+      setupTaskId: setup.id,
+      setupStatus: "running",
+    });
+    if (index % 2) manager.kill(child.id);
+    else manager.failPreparedAgent(child.id, new Error("session preparation failed"));
+    expect(signal.aborted).toBe(true);
+    await Promise.all([manager.wait(child.id), manager.wait(setup.id)]);
+    expect(manager.inspect(setup.id).status).toBe("killed");
+  }
+  expect(manager.pending()).toHaveLength(0);
+  await manager.shutdown();
+});

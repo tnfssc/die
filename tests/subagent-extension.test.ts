@@ -155,6 +155,50 @@ test("resumed leaf identity is retained in instructions", async () => {
   expect(result.systemPrompt).not.toContain("Delegation is disabled");
   await e.fire("session_shutdown", {}, ctx);
 });
+test("rpc agent_end flushes an already-completed job before Pi settles", async () => {
+  const e = load();
+  let rpc: any;
+  const mock = spyOn(execution, "executeIsolated").mockImplementation(async (_c, _w, _s, _t, options) => {
+    rpc = options!.jobHandler;
+    return {
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      stdoutLost: false,
+      stderrLost: false,
+      timedOut: false,
+      cancelled: false,
+      images: [],
+    };
+  });
+  const ctx = contextFixture({ mode: "rpc" });
+  try {
+    await e.fire("session_start", {}, ctx);
+    await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, {
+      cwd: process.cwd(),
+    });
+    mock.mockRestore();
+    const task = await rpc(
+      "shell",
+      { command: "sleep 0.02; printf ready", waitSeconds: 0 },
+      new AbortController().signal,
+    );
+    expect(task.status).toBe("running");
+    while ((await rpc("jobs.inspect", { id: task.id }, new AbortController().signal)).status === "running")
+      await Bun.sleep(1);
+    expect(e.messages).toHaveLength(0);
+
+    await e.fire("agent_end", { messages: [] }, ctx);
+
+    expect(e.messages).toHaveLength(1);
+    expect(e.messages[0].customType).toBe("task-complete");
+    expect(e.messages[0].content).toContain("ready");
+  } finally {
+    mock.mockRestore();
+    await e.fire("session_shutdown", {}, ctx);
+  }
+});
+
 for (const mode of ["print", "json"] as const)
   test(mode + " idle boundary still resumes background jobs", async () => {
     const e = load();

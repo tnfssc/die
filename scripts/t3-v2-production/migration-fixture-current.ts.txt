@@ -1,0 +1,116 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { ThreadId } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { layer as eventSinkLayer } from "./orchestration-v2/EventSink.ts";
+import { layer as eventStoreLayer } from "./orchestration-v2/EventStore.ts";
+import { layer as importerLayer, LegacyV1ThreadImporter } from "./orchestration-v2/LegacyV1ThreadImporter.ts";
+import { ProjectionStoreV2, layer as projectionStoreLayer } from "./orchestration-v2/ProjectionStore.ts";
+import { initializeV2Database } from "./persistence/initializeV2Database.ts";
+import { makeSqlitePersistenceLive } from "./persistence/Layers/Sqlite.ts";
+
+const sourcePath = process.argv[2];
+if (!sourcePath) throw new Error("state path is required");
+const destinationPath = join(dirname(sourcePath), "statev2.sqlite");
+const hash = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
+const sourceHash = hash(sourcePath);
+await Effect.runPromise(initializeV2Database(destinationPath).pipe(Effect.provide(NodeServices.layer)));
+const threadId = ThreadId.make("legacy-thread");
+
+async function pass() {
+  const database = makeSqlitePersistenceLive(destinationPath).pipe(Layer.provide(NodeServices.layer));
+  const stores = Layer.mergeAll(eventStoreLayer, projectionStoreLayer).pipe(Layer.provideMerge(database));
+  const sink = eventSinkLayer.pipe(Layer.provide(stores));
+  const importer = importerLayer.pipe(Layer.provideMerge(Layer.mergeAll(stores, sink)));
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      const legacy = yield* LegacyV1ThreadImporter;
+      const projections = yield* ProjectionStoreV2;
+      const shell = yield* legacy.reconcileShells;
+      const transcript = yield* legacy.ensureTranscript(threadId);
+      const projection = yield* projections.getThreadProjection(threadId);
+      assert.equal(projection.thread.historyOrigin, "v1_import");
+      assert.deepEqual(
+        projection.messages.map((message) => message.text),
+        ["Question one", "Answer one", "Question two", "Answer two", "Question three", "Answer three"],
+      );
+      const provider =
+        yield* sql`SELECT provider_session_id, provider_thread_id, status FROM projection_thread_sessions WHERE thread_id = 'legacy-thread'`;
+      assert.deepEqual(
+        provider.map((row) => ({ ...row })),
+        [
+          {
+            provider_session_id: "legacy-provider-session",
+            provider_thread_id: "legacy-provider-thread",
+            status: "idle",
+          },
+        ],
+      );
+      const history =
+        yield* sql`SELECT resume_cursor_json, runtime_payload_json FROM provider_session_runtime WHERE thread_id = 'legacy-thread'`;
+      assert.deepEqual(
+        history.map((row) => ({ ...row })),
+        [
+          {
+            resume_cursor_json: '{"cursor":"synthetic-resume"}',
+            runtime_payload_json: '{"history":"synthetic-provider-history"}',
+          },
+        ],
+      );
+      const turn =
+        yield* sql`SELECT turn_id, checkpoint_ref, checkpoint_turn_count, state FROM projection_turns WHERE thread_id = 'legacy-thread'`;
+      assert.deepEqual(
+        turn.map((row) => ({ ...row })),
+        [
+          {
+            turn_id: "legacy-turn",
+            checkpoint_ref: "refs/t3/checkpoints/synthetic",
+            checkpoint_turn_count: 3,
+            state: "completed",
+          },
+        ],
+      );
+      const imported =
+        yield* sql`SELECT imported_message_count, transcript_imported_at FROM orchestration_v2_legacy_imports WHERE thread_id = 'legacy-thread'`;
+      assert.equal(imported[0]?.imported_message_count, 6);
+      assert.notEqual(imported[0]?.transcript_imported_at, null);
+      const eventCount = Number(
+        (yield* sql`SELECT COUNT(*) AS count FROM orchestration_events WHERE application_event_version = 2 AND stream_id = 'legacy-thread'`)[0]
+          ?.count,
+      );
+      return { shell, transcript, eventCount, messageCount: projection.messages.length };
+    }).pipe(Effect.provide(importer)),
+  );
+}
+const first = await pass();
+const second = await pass();
+assert.deepEqual(second.shell, { importedThreadCount: 0, importedMessageCount: 0 });
+assert.deepEqual(second.transcript, { importedThreadCount: 0, importedMessageCount: 0 });
+assert.equal(second.eventCount, first.eventCount);
+assert.equal(second.messageCount, 6);
+assert.equal(hash(sourcePath), sourceHash, "source V1 database changed");
+const check = new DatabaseSync(destinationPath, { readOnly: true });
+try {
+  assert.equal(check.prepare("SELECT MAX(migration_id) AS id FROM effect_sql_migrations").get()?.id, 54);
+} finally {
+  check.close();
+}
+console.log(
+  JSON.stringify({
+    first,
+    second,
+    messages: 6,
+    provider: "preserved",
+    history: "preserved",
+    turn: "preserved",
+    sourceSha256: sourceHash,
+    v2Migration: 54,
+  }),
+);

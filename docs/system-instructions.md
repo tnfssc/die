@@ -61,7 +61,7 @@ The ordinary production prompt is therefore:
 [root main-mode block OR child role block]
 ```
 
-For an externally supplied custom base, root collaboration/mode text is deliberately suppressed. Child sessions still receive their role prose, without delegation commentary. Runtime delegation restrictions are enforced independently by the job service.
+For an externally supplied custom base, root collaboration/mode text is deliberately suppressed. Child sessions still receive their role prose; only orchestrator roles add the workspace-isolation judgment. Runtime delegation restrictions are enforced independently by the job service. The execute reference documents optional `title` and structured `workspace` selection (inherit by default), batch isolation, and mode-specific setup sources. Only the two orchestrator role sources add the short judgment about choosing isolated code/PR work versus shared research/edits; workspace selection does not alter custom-base or role inheritance.
 
 ### Root mode selection
 

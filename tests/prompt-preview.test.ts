@@ -100,3 +100,34 @@ test("selected project base and append are included without loading settings or 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("workspace reference and role judgment reach real root and child assembly", async () => {
+  const judgment = "Independent code or PR work? Give it a worktree.";
+  for (const role of ["root", "orchestrator", "normal"] as const) {
+    const preview = await createPromptPreview({ role });
+    expect(preview.preview.networkRequests).toBe(0);
+    expect(preview.systemPrompt).toContain("title?, workspace?");
+    expect(preview.systemPrompt).toContain("one pinned commit");
+    if (role === "normal") expect(preview.systemPrompt).not.toContain(judgment);
+    else expect(preview.systemPrompt.split(judgment)).toHaveLength(2);
+  }
+});
+
+test("custom child base and append preserve role framing without injecting Die API prose", async () => {
+  const dir = await mkdtemp(join("/var/tmp", "die-workspace-prompt-"));
+  try {
+    await mkdir(join(dir, ".die"));
+    await writeFile(join(dir, ".die", "SYSTEM.md"), "WORKSPACE_CUSTOM_BASE");
+    await writeFile(join(dir, ".die", "APPEND_SYSTEM.md"), "WORKSPACE_CUSTOM_APPEND");
+    const preview = await createPromptPreview({ project: dir, role: "orchestrator" });
+    expect(preview.preview.networkRequests).toBe(0);
+    expect(preview.systemPrompt).toContain("WORKSPACE_CUSTOM_BASE");
+    expect(preview.systemPrompt).toContain("WORKSPACE_CUSTOM_APPEND");
+    expect(preview.systemPrompt).toContain("You are a orchestrator sub-agent.");
+    expect(preview.systemPrompt).toContain("Independent code or PR work? Give it a worktree.");
+    expect(preview.systemPrompt).not.toContain("title?, workspace?");
+    expect(preview.systemPrompt).not.toContain("Quick work? Finish it.");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
