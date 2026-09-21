@@ -28,7 +28,8 @@ test("real TUI /ps selects live jobs and only stops the confirmed target", async
                 function: {
                   name: "execute",
                   arguments: JSON.stringify({
-                    code: `const a=await shell("sh -c 'for i in 1 2 3 4 5; do echo ALPHA-$i; sleep 1; done'",{waitSeconds:0}); const b=await shell("sh -c 'while :; do echo BETA-live; sleep 1; done'",{waitSeconds:0}); console.log(a.id,b.id)`,
+                    // Job liveness must depend on test actions, not scheduler or PTY latency.
+                    code: `const a=await shell("sh -c 'while :; do echo ALPHA-live; sleep 1; done'",{waitSeconds:0}); const b=await shell("sh -c 'while :; do echo BETA-live; sleep 1; done'",{waitSeconds:0}); console.log(a.id,b.id)`,
                   }),
                 },
               },

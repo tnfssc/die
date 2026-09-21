@@ -52,3 +52,18 @@ Local required gates passed as recorded above; GitHub-hosted CI is separate and 
 - Reproduction: focused integration with trust/profile environment unset failed before fix; instrumentation exposed capability_denied. Corrected focused integration passed (1 test, 7.95s). Pinned-source server tsc --noEmit, formatter, verifyWebSource, canonical reverse-apply check and git diff --check passed.
 - Independent clean checkout: /tmp/die-ci-clean-pr1-9abdc410, fresh root/upstream dependencies and no reused dist/source cache, isolated HOME/cache, Bun 1.4.1 / Node 24.13.1 / pnpm 11.10.0 matching CI. Frozen install, format, lint, typecheck and full build passed; exact pre-fix backend CI selection reproduced failure. Focused model, contracts and client projection suites passed. Fresh upstream download retries slowed build but it succeeded. Local host is CachyOS, not Ubuntu; actual GitHub validation remains authoritative. Logs/progress: /tmp/die-ci-clean-progress.txt, /tmp/die-ci-artifacts-35613927360, /tmp/die-ci-35613927360.log, /tmp/die-ci-35614002299.log.
 - Existing .agents/notes/index.md modification and unrelated untracked research files preserved.
+
+### Published correction and actual runs
+
+- Commit: https://github.com/tnfssc/die/commit/d5ddd78f57d3bfc0735276361e35c2d9659d94ff
+- Push run **passed all gates**: https://github.com/tnfssc/die/actions/runs/35616674459
+- PR run passed the corrected backend, model/contracts/client gates but exposed a separate intermittent deterministic TUI timeout: https://github.com/tnfssc/die/actions/runs/35616678896 (`real TUI /ps selects live jobs and only stops the confirmed target`, 20000 ms). Its failed log and artifacts were inspected; investigation continues rather than treating a rerun as a fix.
+- Clean-checkout final results: 258 backend tests passed; 193 model/contracts/client tests passed; root 737 passed / 14 expected skips; smoke passed. Corrected source static checks and server typecheck passed. Same-binary A/B: original fixture timed out, corrected fixture passed using executable SHA256 29515a25c67923baf52e0d834cd4c45b468100491c5523d0886ab2e71acf9220.
+- Dependency-cache clarification: clean checkout had newly installed dependencies and no source/build cache, but pnpm reused external /tmp/.pnpm-store. Bun cache was isolated. Fresh GitHub-hosted build and full successful push run provide additional clean-run evidence; this is not a claim of zero package-download-cache reuse locally.
+
+### Follow-up TUI fixture race
+
+- Investigated `gh run view 35616678896 --log-failed` and downloaded ci-failure-logs. The PR run timed out in the /ps fixture while the simultaneous push run passed it.
+- Found a scheduler-dependent fixture: ALPHA self-terminated after five seconds even though the test requires it to stay alive throughout inspecting/stopping BETA. A temporary five-second scheduling delay reproduced lost liveness (`No jobs are running`) before the change and passed afterward (13.95s). The GitHub timeout log has no captured frame, so it cannot prove the exact point of that timeout; this corrects the reproduced race rather than claiming direct evidence of the runner's missing frame.
+- Minimal change: keep ALPHA active until existing TUI teardown, matching BETA's lifecycle. All selection, explicit confirmation, target-stop and other-job-liveness assertions and the 20000ms timeout remain unchanged.
+- Validation: six concurrent focused runs passed (~8.8s each); complete test file 2 passed / 26 assertions; final focused test 1 passed / 20 assertions; format and diff checks passed. Lint retains two pre-existing quote-escape warnings. Independent pinned-tool clean-checkout rerun started with logs /tmp/die-ci-tui-fixed-clean.log and /tmp/die-ci-tui-fixed-full.log.
