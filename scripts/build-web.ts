@@ -1,9 +1,40 @@
 import { execFileSync } from "node:child_process";
-import { access, cp, mkdir, rm, symlink } from "node:fs/promises";
+import { access, cp, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { packWebArchive } from "../src/web/archive";
 import sourcePin from "../web/t3-source.json";
 import { verifyWebSource } from "./web-source";
+
+async function verifyPortableOptionalDependencies(output: string): Promise<void> {
+  const pnpmStore = resolve(output, "node_modules/.pnpm");
+  const ffiStore = (await readdir(pnpmStore)).find((entry) => entry.startsWith("ffi-rs@"));
+  if (!ffiStore) throw new Error("Deployed web runtime is missing ffi-rs");
+  const ffiPackage = resolve(pnpmStore, ffiStore, "node_modules/ffi-rs/package.json");
+  const metadata = JSON.parse(await readFile(ffiPackage, "utf8")) as {
+    optionalDependencies?: Record<string, string>;
+  };
+  const required = [
+    "@yuuang/ffi-rs-darwin-arm64",
+    "@yuuang/ffi-rs-darwin-x64",
+    "@yuuang/ffi-rs-linux-arm64-gnu",
+    "@yuuang/ffi-rs-linux-arm64-musl",
+    "@yuuang/ffi-rs-linux-x64-gnu",
+    "@yuuang/ffi-rs-linux-x64-musl",
+    "@yuuang/ffi-rs-win32-arm64-msvc",
+    "@yuuang/ffi-rs-win32-ia32-msvc",
+    "@yuuang/ffi-rs-win32-x64-msvc",
+  ];
+  for (const name of required) {
+    if (!(name in (metadata.optionalDependencies ?? {}))) throw new Error("ffi-rs no longer declares " + name);
+    await access(resolve(pnpmStore, ffiStore, "node_modules", name, "package.json")).catch(() => {
+      throw new Error(
+        "Deployed web runtime is missing portable ffi-rs optional dependency " +
+          name +
+          "; update pnpm supportedArchitectures before packaging.",
+      );
+    });
+  }
+}
 
 const root = resolve(import.meta.dir, "..");
 export async function buildWeb(): Promise<void> {
@@ -48,6 +79,7 @@ export async function buildWeb(): Promise<void> {
   const selfReference = output + "/node_modules/.pnpm/node_modules/t3";
   await rm(selfReference, { force: true });
   await symlink("../../..", selfReference);
+  await verifyPortableOptionalDependencies(output);
   await cp(source + "/LICENSE", output + "/LICENSE-T3CODE");
   await cp(root + "/support/die-web-bootstrap.mjs", output + "/bootstrap.mjs");
   const patchHash = new Bun.CryptoHasher("sha256").update(await Bun.file(patch).bytes()).digest("hex");
