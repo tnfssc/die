@@ -3,10 +3,11 @@ import { access, cp, mkdir, rm, symlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { packWebArchive } from "../src/web/archive";
 import sourcePin from "../web/t3-source.json";
+import { verifyWebSource } from "./web-source";
 
 const root = resolve(import.meta.dir, "..");
 export async function buildWeb(): Promise<void> {
-  const source = resolve(process.env.DIE_T3_SOURCE ?? root + "/.cache/die-t3code");
+  const source = resolve(process.env.DIE_T3_SOURCE ?? root + "/.cache/die-t3code-" + sourcePin.revision);
   const output = resolve(root, "dist/die-web");
   const patch = resolve(root, "web/t3.patch");
   async function run(args: string[], cwd = source): Promise<void> {
@@ -34,6 +35,7 @@ export async function buildWeb(): Promise<void> {
     git(["apply", "--check", patch]);
     await run(["git", "apply", patch]);
   }
+  await verifyWebSource(source, patch);
   await run(["pnpm", "install", "--frozen-lockfile"]);
   // Bundlers erase types; validate the final patched backend before packaging it.
   await run([source + "/node_modules/.bin/tsc", "--noEmit"], source + "/apps/server");

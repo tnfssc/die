@@ -40,6 +40,10 @@ Run `die web` and open the local URL it prints. The browser interface is built o
 
 Chat with die, switch models and agent modes, follow background agents, review changes, and use the integrated terminal. The server binds to `127.0.0.1` by default. Run `die web --help` for options.
 
+## Subagent workspaces
+
+Subagents share the current checkout by default. Independent code work can request a separate Git worktree and branch, with configured setup run in that directory. CLI worktrees do not require the web server. See [subagent workspaces](docs/subagent-workspaces.md) for the API and retention behavior.
+
 ## Herdr integration
 
 Run die in a Herdr-managed terminal pane and it automatically reports whether it is working, idle, or waiting for input. Background jobs and sub-agents keep the pane marked as working even after the foreground turn ends.

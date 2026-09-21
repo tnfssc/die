@@ -6,6 +6,8 @@ export async function prepareAgentSession(
   cwd: string,
   sessionDir: string | undefined,
   info: Omit<AgentInfo, "sessionFile">,
+  taskId?: string,
+  title?: string,
 ) {
   // Dynamic import: die must initialize its Pi configuration before loading Pi.
   const { SessionManager } = await import("@earendil-works/pi-coding-agent");
@@ -18,10 +20,10 @@ export async function prepareAgentSession(
     // header now so even a launch/provider stall has a durable diagnostic identity.
     await writeFile(sessionFile, JSON.stringify(session.getHeader()) + "\n", { flag: "wx", mode: 0o600 });
     persisted = SessionManager.open(sessionFile);
-    const id = "task_" + randomUUID().slice(0, 8);
+    const id = taskId ?? "task_" + randomUUID().slice(0, 8);
     persisted.appendCustomEntry("die-agent", { ...info, taskId: id });
     persisted.appendSessionInfo(
-      info.type === "orchestrator" ? "[orchestrator agent] " + id : "[subagent · " + info.type + "] " + id,
+      (info.type === "orchestrator" ? "[orchestrator agent] " : "[subagent · " + info.type + "] ") + (title ?? id),
     );
     return { id, agent: { ...info, sessionFile } };
   } finally {

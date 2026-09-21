@@ -3,6 +3,7 @@ import type { Readable } from "node:stream";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { inspectDiagnostics, recordDiagnostic } from "../diagnostics";
 import { BoundedOutputBuffer } from "../tasks/output-buffer";
+import { scrubT3BridgeEnvironment } from "../tasks/t3-mcp-client";
 import { decodeImageChannel, IMAGE_CHANNEL_ENV, MAX_IMAGE_CHANNEL_BYTES } from "./images";
 import { JOB_BRIDGE_ENV, openParentJobBridge, serveJobBridge } from "./job-bridge";
 import {
@@ -37,7 +38,10 @@ export interface ExecutionResult {
   stderrCapturedBytes?: number;
   timedOut: boolean;
   cancelled: boolean;
-  termination?: { cause: "timeout" | "execute-abort" | "session-shutdown"; requestedAt: string };
+  termination?: {
+    cause: "timeout" | "execute-abort" | "session-shutdown";
+    requestedAt: string;
+  };
   images: ImageContent[];
   imageResizeNotes?: string[];
   imageError?: string;
@@ -61,6 +65,8 @@ export async function executeIsolated(
     executablePath?: string;
     killGraceMs?: number;
     jobHandler?: (method: string, params: unknown, signal: AbortSignal) => Promise<unknown>;
+    /** Durable outer execute tool-call identity, stable when that invocation is replayed. */
+    executeInvocationId?: string;
     sessionFile?: string;
     /** Combined byte cap for complete stdout/stderr capture. */
     outputByteLimit?: number;
@@ -103,7 +109,10 @@ export async function executeIsolated(
     });
     return result;
   }
-  const childEnv: NodeJS.ProcessEnv = { ...process.env, [IMAGE_CHANNEL_ENV]: "1" };
+  const childEnv: NodeJS.ProcessEnv = {
+    ...scrubT3BridgeEnvironment(process.env),
+    [IMAGE_CHANNEL_ENV]: "1",
+  };
   if (options.jobHandler) childEnv[JOB_BRIDGE_ENV] = "1";
   else delete childEnv[JOB_BRIDGE_ENV];
   const child = spawn(options.executablePath ?? process.execPath, [INTERNAL_TYPESCRIPT_RUNNER_ARG], {
@@ -124,7 +133,13 @@ export async function executeIsolated(
   const bridgeDiagnosticOwner = {};
   const jobBridge =
     options.jobHandler && jobPipe
-      ? serveJobBridge(jobPipe, options.jobHandler, executionController.signal, bridgeDiagnosticOwner)
+      ? serveJobBridge(
+          jobPipe,
+          options.jobHandler,
+          executionController.signal,
+          bridgeDiagnosticOwner,
+          options.executeInvocationId,
+        )
       : undefined;
   let imageError: string | undefined;
   // The first termination request owns the result. In particular, a caller
@@ -152,7 +167,10 @@ export async function executeIsolated(
   };
   const onAbort = () => terminate("abort");
   // Install completion handlers before writing source or acting on cancellation.
-  const completion = new Promise<{ exitCode: number | null; exitSignal: NodeJS.Signals | null }>((resolve, reject) => {
+  const completion = new Promise<{
+    exitCode: number | null;
+    exitSignal: NodeJS.Signals | null;
+  }>((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", () => {
       // execute is synchronous work, not a background-task launcher. Reap any
@@ -249,7 +267,11 @@ export async function executeIsolated(
     imageError,
   };
   const diagnostic = timedOut
-    ? { code: "timeout" as const, outcome: "cancelled" as const, cancellation: "timeout" as const }
+    ? {
+        code: "timeout" as const,
+        outcome: "cancelled" as const,
+        cancellation: "timeout" as const,
+      }
     : cancelled
       ? {
           code: signal?.reason === "shutdown" ? ("shutdown" as const) : ("caller_aborted" as const),

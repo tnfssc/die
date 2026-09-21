@@ -1,0 +1,48 @@
+import { DatabaseSync } from "node:sqlite";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
+import * as Effect from "effect/Effect";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { runMigrations } from "./persistence/Migrations.ts";
+
+const statePath = process.argv[2];
+if (!statePath) throw new Error("state path is required");
+await Effect.runPromise(
+  Effect.gen(function* () {
+    yield* runMigrations();
+    const sql = yield* SqlClient.SqlClient;
+    const rows = yield* sql`SELECT MAX(migration_id) AS id FROM effect_sql_migrations`;
+    if (rows[0]?.id !== 52) throw new Error("old checkout did not produce migration 52");
+  }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: statePath }))),
+);
+const db = new DatabaseSync(statePath);
+try {
+  db.exec(`
+    PRAGMA foreign_keys = ON;
+    INSERT INTO projection_projects (project_id, title, workspace_root, scripts_json, created_at, updated_at)
+    VALUES ('legacy-project', 'Synthetic v0.4 project', '/var/tmp/synthetic-project', '[]', '2026-01-01T00:00:00.000Z', '2026-01-07T00:00:00.000Z');
+    INSERT INTO projection_threads
+      (thread_id, project_id, title, model_selection_json, runtime_mode, interaction_mode, branch, worktree_path, latest_turn_id, created_at, updated_at, settled_override, settled_at, pinned_at, pin_order_key)
+    VALUES ('legacy-thread', 'legacy-project', 'Synthetic migration conversation', '{"instanceId":"codex","model":"gpt-5.4"}', 'full-access', 'plan', 'migration-fixture', '/var/tmp/synthetic-project', 'legacy-turn', '2026-01-01T00:00:00.000Z', '2026-01-07T00:00:00.000Z', 'settled', '2026-01-07T00:00:00.000Z', '2026-01-07T01:00:00.000Z', 'fixture-order');
+    INSERT INTO projection_thread_messages
+      (message_id, thread_id, turn_id, role, text, attachments_json, is_streaming, created_at, updated_at)
+    VALUES
+      ('legacy-message-1', 'legacy-thread', NULL, 'user', 'Question one', '[]', 0, '2026-01-01T01:00:00.000Z', '2026-01-01T01:00:00.000Z'),
+      ('legacy-message-2', 'legacy-thread', 'legacy-turn', 'assistant', 'Answer one', '[]', 0, '2026-01-02T01:00:00.000Z', '2026-01-02T01:00:00.000Z'),
+      ('legacy-message-3', 'legacy-thread', NULL, 'user', 'Question two', '[]', 0, '2026-01-03T01:00:00.000Z', '2026-01-03T01:00:00.000Z'),
+      ('legacy-message-4', 'legacy-thread', 'legacy-turn', 'assistant', 'Answer two', '[]', 0, '2026-01-04T01:00:00.000Z', '2026-01-04T01:00:00.000Z'),
+      ('legacy-message-5', 'legacy-thread', NULL, 'user', 'Question three', '[]', 0, '2026-01-05T01:00:00.000Z', '2026-01-05T01:00:00.000Z'),
+      ('legacy-message-6', 'legacy-thread', 'legacy-turn', 'assistant', 'Answer three', '[]', 0, '2026-01-06T01:00:00.000Z', '2026-01-06T01:00:00.000Z');
+    INSERT INTO projection_thread_sessions
+      (thread_id, status, provider_name, provider_session_id, provider_thread_id, active_turn_id, updated_at, runtime_mode, provider_instance_id)
+    VALUES ('legacy-thread', 'idle', 'codex', 'legacy-provider-session', 'legacy-provider-thread', NULL, '2026-01-07T00:00:00.000Z', 'full-access', 'codex');
+    INSERT INTO provider_session_runtime
+      (thread_id, provider_name, adapter_key, runtime_mode, status, last_seen_at, resume_cursor_json, runtime_payload_json, provider_instance_id)
+    VALUES ('legacy-thread', 'codex', 'legacy-provider-session', 'full-access', 'idle', '2026-01-07T00:00:00.000Z', '{"cursor":"synthetic-resume"}', '{"history":"synthetic-provider-history"}', 'codex');
+    INSERT INTO projection_turns
+      (thread_id, turn_id, pending_message_id, assistant_message_id, state, requested_at, started_at, completed_at, checkpoint_turn_count, checkpoint_ref, checkpoint_status, checkpoint_files_json)
+    VALUES ('legacy-thread', 'legacy-turn', 'legacy-message-5', 'legacy-message-6', 'completed', '2026-01-05T01:00:00.000Z', '2026-01-05T01:00:01.000Z', '2026-01-06T01:00:00.000Z', 3, 'refs/t3/checkpoints/synthetic', 'ready', '[]');
+  `);
+} finally {
+  db.close();
+}
+console.log("old719a76 fixture: migration=52 messages=6 provider=1 history=1 turn=1");

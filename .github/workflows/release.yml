@@ -28,6 +28,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.4.1
+      - name: Resolve pinned T3 source checkout
+        shell: bash
+        run: echo "DIE_T3_SOURCE=$GITHUB_WORKSPACE/.cache/die-t3code-$(bun -e 'console.log(require("./web/t3-source.json").revision)')" >> "$GITHUB_ENV"
       - name: Install required PTY tooling
         shell: bash
         run: sudo apt-get update && sudo apt-get install -y tmux
@@ -87,19 +90,19 @@ jobs:
       - name: Validate web backend
         shell: bash
         run: |
-          cd .cache/die-t3code/apps/server
+          cd "$DIE_T3_SOURCE/apps/server"
           ../../node_modules/.bin/tsc --noEmit 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-typecheck.log"
-          ../../node_modules/.bin/vp test run src/provider/Layers/PiAdapter.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts src/terminal/NodePtyAdapter.test.ts src/terminal/BunPtyAdapter.test.ts src/device/AgentDeviceTarget.test.ts src/provider/Layers/EventNdjsonLogger.test.ts src/terminal/SubscriberStream.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-tests.log"
+          ../../node_modules/.bin/vp test run src/provider/Layers/PiProvider.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts src/terminal/NodePtyAdapter.test.ts src/terminal/BunPtyAdapter.test.ts src/device/AgentDeviceTarget.test.ts src/provider/Layers/EventNdjsonLogger.test.ts src/terminal/SubscriberStream.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-tests.log"
       - name: Validate web cache regressions
         shell: bash
         run: |
-          cd .cache/die-t3code/apps/web
+          cd "$DIE_T3_SOURCE/apps/web"
           ../../node_modules/.bin/tsc --noEmit 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-client-typecheck.log"
           ../../node_modules/.bin/vp test run src/lib/syntaxHighlighting.test.ts src/components/pullRequest/pullRequestDetail.logic.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-cache-tests.log"
       - name: Validate terminal client recovery
         shell: bash
         run: |
-          cd .cache/die-t3code/packages/client-runtime
+          cd "$DIE_T3_SOURCE/packages/client-runtime"
           ../../node_modules/.bin/tsc --noEmit 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/terminal-client-typecheck.log"
           ../../node_modules/.bin/vp test run src/rpc/client.test.ts src/state/terminalSession.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/terminal-client-tests.log"
       - name: Create checksums and source information

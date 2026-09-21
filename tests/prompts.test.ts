@@ -139,3 +139,16 @@ test("execute tool description uses the embedded Markdown source", async () => {
   expect(tool.description).not.toContain("handoff");
   expect(executeReference.join("\n")).toContain("Execution cancelled? Jobs already started");
 });
+
+test("worktree API facts stay in reference and isolation judgment stays in orchestrator roles", () => {
+  const reference = executeReference.join("\n");
+  expect(reference).toContain("title?, workspace?");
+  expect(reference).toContain('{ kind: "inherit" }');
+  expect(reference).toContain("one pinned commit");
+  expect(reference).toContain("t3.json");
+  const judgment = "Independent code or PR work? Give it a worktree.";
+  expect(subagentGuidance("orchestrator")).toContain(judgment);
+  expect(mainAgentGuidance("orchestrator", "workspace-test")).toContain(judgment);
+  for (const role of ["fast", "normal"]) expect(subagentGuidance(role)).not.toContain(judgment);
+  expect(collaborationGuidance()).not.toContain(judgment);
+});

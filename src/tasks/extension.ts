@@ -27,6 +27,8 @@ import { registerNativeFastMode } from "./native-fast-mode";
 import { registerResumeSafeguards } from "./resume-safeguards";
 import { SUBAGENT_TYPES } from "./subagent-profiles";
 import { registerSubagentSettings } from "./subagent-settings-ui";
+import { T3LocalNotificationDelivery, T3LocalNotificationOutbox } from "./t3-local-notifications";
+import { T3_MCP_BEARER_ENV, T3_MCP_URL_ENV, t3BridgeEnvironment } from "./t3-mcp-client";
 import { createTaskLifecycleRecorder } from "./task-lifecycle";
 import { type TaskInspection, TaskManager } from "./task-manager";
 import { registerTaskMonitor } from "./task-monitor";
@@ -223,6 +225,8 @@ export default function asynchronousTasksExtension(
     taskUi?.setStatus("die-tasks", running > 0 ? `${running} task${running === 1 ? "" : "s"} running` : undefined);
   };
 
+  let t3NativeSession = false;
+  let t3LocalDelivery: T3LocalNotificationDelivery | undefined;
   type Notification = { kind: "completion"; task: TaskInspection } | { kind: "attention"; notice: AttentionNotice };
   const notificationBatch = new CompletionBatcher<Notification>(
     (items) => {
@@ -264,12 +268,34 @@ export default function asynchronousTasksExtension(
     500,
   );
   const completions = {
-    add: (task: TaskInspection) => notificationBatch.add({ kind: "completion", task }),
+    add: (task: TaskInspection) => {
+      if (t3NativeSession && task.kind === "command") {
+        if (!t3LocalDelivery) throw new Error("T3 local notification outbox is unavailable");
+        t3LocalDelivery.enqueue({
+          taskId: task.id,
+          kind: "completion",
+          text: formatCompletionNotification([task], 5_000),
+        });
+        return;
+      }
+      notificationBatch.add({ kind: "completion", task });
+    },
     flush: () => notificationBatch.flush(),
     dispose: () => notificationBatch.dispose(),
   };
   const attentions = {
-    add: (notice: AttentionNotice) => notificationBatch.add({ kind: "attention", notice }),
+    add: (notice: AttentionNotice) => {
+      if (t3NativeSession && notice.task.kind === "command") {
+        if (!t3LocalDelivery) return; // fail closed: never create an unowned Pi turn
+        t3LocalDelivery.enqueue({
+          taskId: notice.id,
+          kind: "attention",
+          text: formatAttentionNotification([notice], 5_000),
+        });
+        return;
+      }
+      notificationBatch.add({ kind: "attention", notice });
+    },
     flush: () => notificationBatch.flush(),
     // Completion owns the shared batcher's disposal.
     dispose: () => {},
@@ -292,6 +318,8 @@ export default function asynchronousTasksExtension(
       });
   };
   const getManager = (ctx = owningContext) => {
+    if (t3NativeSession && !t3LocalDelivery)
+      throw new Error("T3 local jobs require an available durable notification outbox");
     if (!manager) {
       // Capture ownership at manager creation, never through a mutable active
       // context. SessionManager objects may themselves be reused on /resume.
@@ -413,6 +441,14 @@ export default function asynchronousTasksExtension(
         options.profilesPath,
         attention,
         managerRecorder,
+        undefined,
+        undefined,
+        () => {
+          if (t3NativeSession)
+            t3LocalDelivery!.outbox.assertLaunchCapacity(
+              tasks.list().filter((task) => task.status === "running").length,
+            );
+        },
       );
     return service;
   };
@@ -446,6 +482,15 @@ export default function asynchronousTasksExtension(
     // Print/JSON sessions otherwise dispose their runtime immediately when the
     // model yields. Hold only that idle boundary (never spawn or the TUI loop)
     // until one result is ready, then queue it for Pi's post-run continuation.
+    // RPC is persistent. Local CLI sessions retain the historical synchronous
+    // flush, but T3 notifications never use Pi's volatile steer queue: they are
+    // persisted at the completion edge and committed through the server.
+    if (ctx.mode === "rpc") {
+      // T3 delivery is already durable and server-dispatched. Flushing Pi's
+      // volatile steer queue here cannot make a post-handoff completion safe.
+      if (!t3NativeSession) notificationBatch.flush();
+      return;
+    }
     if (ctx.mode !== "print" && ctx.mode !== "json") return;
     const lastAssistant = [...event.messages].reverse().find((message) => message.role === "assistant");
     if (ctx.signal?.aborted || lastAssistant?.stopReason === "aborted" || lastAssistant?.stopReason === "error") return;
@@ -549,8 +594,25 @@ export default function asynchronousTasksExtension(
     if (additions) return { systemPrompt: event.systemPrompt + "\n\n" + additions };
   });
 
-  pi.on("session_start", (_event, ctx) => {
+  pi.on("session_start", async (_event, ctx) => {
     notificationBatch.reset();
+    await t3LocalDelivery?.stop();
+    t3LocalDelivery = undefined;
+    t3NativeSession = process.env[T3_MCP_URL_ENV] !== undefined || process.env[T3_MCP_BEARER_ENV] !== undefined;
+    const sessionFile = ctx.sessionManager?.getSessionFile?.();
+    if (sessionFile) {
+      try {
+        const bridge = t3BridgeEnvironment();
+        if (bridge.kind === "remote") {
+          t3NativeSession = true;
+          t3LocalDelivery = new T3LocalNotificationDelivery(new T3LocalNotificationOutbox(sessionFile), bridge);
+          t3LocalDelivery.start(); // replay commit-with-lost-ACK rows on resume
+        }
+      } catch {
+        // A configured T3 session fails closed if its durable mailbox cannot be
+        // opened. It must never fall back to an unowned Pi-triggered turn.
+      }
+    }
     owningContext = ctx;
     scopeInstructionContinuity(ctx.sessionManager as object);
     // A resumed child keeps identity and delegation restrictions even when
@@ -566,6 +628,9 @@ export default function asynchronousTasksExtension(
     clearInstructionContinuity(ctx.sessionManager as object);
     taskUi?.setStatus("die-tasks", undefined);
     instructionMode.shutdown();
+    await t3LocalDelivery?.stop();
+    t3LocalDelivery = undefined;
+    t3NativeSession = false;
     completions.dispose();
     attentions.dispose();
     attention?.dispose();

@@ -1,0 +1,89 @@
+{
+  "launch": {
+    "tool": "die_task_launch",
+    "arguments": {
+      "clientRequestId": "11111111-1111-4111-8111-111111111111",
+      "prompt": "Implement the worker",
+      "profile": "fast"
+    },
+    "result": {
+      "version": 1,
+      "taskId": "native-task-1",
+      "childThreadId": "thread-1",
+      "childRunId": "run-1",
+      "childNodeId": "node-1",
+      "status": "running",
+      "profile": "fast",
+      "depth": 1,
+      "workspace": {
+        "kind": "inherit",
+        "preparationStatus": "ready"
+      }
+    }
+  },
+  "observe": {
+    "tool": "die_task_observe",
+    "arguments": {
+      "taskId": "native-task-1"
+    },
+    "result": {
+      "version": 1,
+      "taskId": "native-task-1",
+      "childThreadId": "thread-1",
+      "childRunId": "run-1",
+      "childNodeId": "node-1",
+      "status": "completed",
+      "profile": "fast",
+      "depth": 1,
+      "output": "done",
+      "transferId": "transfer-1",
+      "workspace": {
+        "kind": "inherit",
+        "preparationStatus": "ready"
+      }
+    }
+  },
+  "cancel": {
+    "tool": "die_task_cancel",
+    "arguments": {
+      "taskId": "native-task-1"
+    },
+    "result": {
+      "version": 1,
+      "taskId": "native-task-1",
+      "childThreadId": "thread-1",
+      "childRunId": "run-1",
+      "childNodeId": "node-1",
+      "status": "cancelled",
+      "profile": "fast",
+      "depth": 1,
+      "workspace": {
+        "kind": "inherit",
+        "preparationStatus": "ready"
+      }
+    }
+  },
+  "list": {
+    "tool": "die_task_list",
+    "arguments": {},
+    "result": {
+      "tasks": [
+        {
+          "version": 1,
+          "taskId": "native-task-1",
+          "childThreadId": "thread-1",
+          "childRunId": "run-1",
+          "childNodeId": "node-1",
+          "status": "running",
+          "profile": "fast",
+          "depth": 1,
+          "workspace": {
+            "kind": "inherit",
+            "preparationStatus": "ready"
+          }
+        }
+      ],
+      "total": 1
+    }
+  }
+}

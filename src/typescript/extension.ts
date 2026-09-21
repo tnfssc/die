@@ -73,7 +73,7 @@ export function registerExecuteTool(
         context.state,
         getOutputPad(context.cwd),
       ),
-    async execute(_toolCallId, input, signal, _onUpdate, ctx) {
+    async execute(toolCallId, input, signal, _onUpdate, ctx) {
       const params = z.parse(ExecuteParameters, input);
       const owner = ctx.sessionManager;
       const ownerSessionId = owner?.getSessionId?.();
@@ -88,6 +88,7 @@ export function registerExecuteTool(
         params.timeoutSeconds ? params.timeoutSeconds * 1_000 : undefined,
         {
           executablePath,
+          executeInvocationId: toolCallId,
           sessionFile: owner?.getSessionFile?.(),
           outputByteLimit: params.outputByteLimit,
           jobHandler: async (method, params, signal) => {

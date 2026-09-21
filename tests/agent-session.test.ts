@@ -27,3 +27,25 @@ test("agent sessions are durable before any model response, linked and clearly n
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("explicit task title names the durable child without replacing its identity", async () => {
+  const dir = await mkdtemp(join("/var/tmp", "die-agent-title-"));
+  try {
+    const prepared = await prepareAgentSession(
+      process.cwd(),
+      dir,
+      { type: "fast", model: "p/model", depth: 1, parentSessionFile: "/parent.jsonl" },
+      "task_12345678",
+      "Parser cleanup",
+    );
+    const entries = (await readFile(prepared.agent.sessionFile, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    expect(prepared.id).toBe("task_12345678");
+    expect(entries.find((entry) => entry.type === "session_info").name).toBe("[subagent · fast] Parser cleanup");
+    expect(entries.find((entry) => entry.customType === "die-agent").data.taskId).toBe("task_12345678");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

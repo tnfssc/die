@@ -55,15 +55,51 @@ type Acknowledgement = { ack: number };
 type Response = { id: number; result?: unknown; error?: string };
 
 type Options = Record<string, unknown>;
+export type SubagentWorkspace = { kind: "inherit" } | { kind: "worktree"; baseRef?: string; branch?: string };
+export interface SubagentOptions extends Options {
+  prompt?: string;
+  prompts?: string[];
+  title?: string;
+  type?: "fast" | "normal" | "orchestrator";
+  workspace?: SubagentWorkspace;
+  waitSeconds?: number;
+  timeoutSeconds?: number;
+}
 
 export const JOB_RESPONSE_ACK_EVENT = "die:job-response-ack";
 const ACK_CAPABLE = Symbol.for("die.job-response-ack-capable");
 
 const RESPONSE_DELIVERY_SIGNAL = Symbol.for("die.job-response-delivery-signal");
+const REQUEST_IDENTITY = Symbol.for("die.job-request-identity");
+export interface JobRequestIdentity {
+  /** Durable identity of the outer execute tool call. */
+  executeInvocationId: string;
+  /** One-based bridge call ordinal within that execute invocation. */
+  callIndex: number;
+}
 type AckCapableSignal = AbortSignal & {
   [ACK_CAPABLE]?: boolean;
   [RESPONSE_DELIVERY_SIGNAL]?: AbortSignal;
+  [REQUEST_IDENTITY]?: JobRequestIdentity;
 };
+
+/** Identity used for durable native mutation replay; payload equality is never intent identity. */
+export function getJobRequestIdentity(signal?: AbortSignal): JobRequestIdentity | undefined {
+  return signal ? (signal as AckCapableSignal)[REQUEST_IDENTITY] : undefined;
+}
+
+/** Attach bridge request identity while preserving cancellation and delivery metadata. */
+export function withJobRequestIdentity(signal: AbortSignal, identity: JobRequestIdentity): AbortSignal {
+  if (
+    !identity.executeInvocationId ||
+    identity.executeInvocationId.length > 512 ||
+    !Number.isSafeInteger(identity.callIndex) ||
+    identity.callIndex < 1
+  )
+    throw new Error("Invalid execute bridge request identity");
+  Object.defineProperty(signal, REQUEST_IDENTITY, { value: Object.freeze({ ...identity }) });
+  return signal;
+}
 
 /** Return the bridge signal whose lifetime describes response delivery. */
 export function getJobResponseDeliverySignal(signal?: AbortSignal): AbortSignal | undefined {
@@ -95,6 +131,8 @@ export function withJobCancellation(signal: AbortSignal, cancellation: AbortSign
   cancellation.addEventListener("abort", abort, { once: true });
   controller.signal.addEventListener("abort", cleanup, { once: true });
   Object.defineProperty(controller.signal, RESPONSE_DELIVERY_SIGNAL, { value: deliverySignal });
+  const requestIdentity = getJobRequestIdentity(signal);
+  if (requestIdentity) Object.defineProperty(controller.signal, REQUEST_IDENTITY, { value: requestIdentity });
   // A clean acknowledgement is also the end of this wrapper's lifetime. The
   // TaskManager listens to deliverySignal directly; it must not mistake local
   // wait cancellation (for example, handoff) for a bridge disconnect.
@@ -107,7 +145,7 @@ export function withJobCancellation(signal: AbortSignal, cancellation: AbortSign
 
 export interface ExecuteJobGlobals {
   shell(command: string, options?: Options): Promise<unknown>;
-  subagent(options: Options): Promise<unknown>;
+  subagent(options: SubagentOptions): Promise<unknown>;
   handoff(message: string): Promise<never>;
   history: {
     search(input: {
@@ -235,7 +273,7 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
 
   if (socket) {
     const acknowledge = (id: number, item: { resolve(value: unknown): void; reject(error: Error): void }) => {
-      const line = JSON.stringify({ ack: id }) + "\n";
+      const line = `${JSON.stringify({ ack: id })}\n`;
       try {
         socket.write(line, (error?: Error | null) => {
           if (!pending.delete(id)) return;
@@ -305,7 +343,7 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
     const id = nextId++;
     let line: string;
     try {
-      line = JSON.stringify({ id, method, params: params ?? null }) + "\n";
+      line = `${JSON.stringify({ id, method, params: params ?? null })}\n`;
     } catch (error) {
       return Promise.reject(
         bridgeError(`Could not encode job bridge request: ${message(error)}`, "protocol_invalid", "none", socket),
@@ -434,6 +472,7 @@ export function serveJobBridge(
   handler: JobHandler,
   executionSignal: AbortSignal,
   diagnosticOwner: object = socket,
+  executeInvocationId?: string,
 ): { close(commitAcknowledgements?: boolean): void } {
   let input: Buffer = Buffer.alloc(0);
   let lastId = 0;
@@ -543,16 +582,16 @@ export function serveJobBridge(
       request.controller = undefined;
     }
     try {
-      line = JSON.stringify(response) + "\n";
+      line = `${JSON.stringify(response)}\n`;
     } catch (error) {
       fallback = true;
       bridgeDiagnostic(diagnosticOwner, "response_invalid", "fallback", "response");
-      line = JSON.stringify({ id: response.id, error: `Could not encode job result: ${message(error)}` }) + "\n";
+      line = `${JSON.stringify({ id: response.id, error: `Could not encode job result: ${message(error)}` })}\n`;
     }
     if (Buffer.byteLength(line) > MAX_JOB_BRIDGE_FRAME_BYTES) {
       fallback = true;
       bridgeDiagnostic(diagnosticOwner, "frame_oversize", "fallback", "response");
-      line = JSON.stringify({ id: response.id, error: "Job bridge response exceeded 1 MB" }) + "\n";
+      line = `${JSON.stringify({ id: response.id, error: "Job bridge response exceeded 1 MB" })}\n`;
     }
     // A fallback reply does not contain the selected foreground result, so it
     // cannot own completion even if the worker acknowledges the error frame.
@@ -642,6 +681,8 @@ export function serveJobBridge(
         lastId = request.id;
         const requestController = new AbortController();
         Object.defineProperty(requestController.signal, ACK_CAPABLE, { value: true });
+        if (executeInvocationId)
+          withJobRequestIdentity(requestController.signal, { executeInvocationId, callIndex: request.id });
         requests.set(request.id, {
           controller: requestController,
           method: request.method,

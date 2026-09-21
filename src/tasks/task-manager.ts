@@ -7,6 +7,7 @@ import {
 } from "../typescript/job-bridge";
 import { type AgentInfo, AgentProgress } from "./agent-progress";
 import { BoundedOutputBuffer } from "./output-buffer";
+import type { WorkspaceSummary } from "./worktree-workspace";
 
 const MAX_CAPTURE_BYTES = 1_000_000;
 const MAX_INSPECT_BYTES = 5_000;
@@ -23,7 +24,7 @@ function utf8SequenceLength(byte: number): number {
   return 1;
 }
 
-function utf8SafeSlice(buffer: Buffer, limit: number): { start: number; end: number } {
+export function utf8SafeSlice(buffer: Buffer, limit: number): { start: number; end: number } {
   let start = 0;
   while (start < buffer.length && (buffer[start] & 0xc0) === 0x80) start++;
 
@@ -74,6 +75,7 @@ export interface TaskManagerHooks {
 /** Lightweight lifecycle events. Payloads are snapshots; subscribers cannot mutate manager state. */
 export type TaskEvent =
   | { type: "spawned"; task: TaskSummary }
+  | { type: "updated"; task: TaskSummary }
   | { type: "activity"; task: TaskSummary; source: "output" | "input" }
   | { type: "completed"; task: TaskSummary }
   | { type: "stopping"; task: TaskSummary };
@@ -82,6 +84,7 @@ export type TaskEventListener = (event: TaskEvent) => void;
 export interface TaskLaunch {
   id?: string;
   agent?: AgentInfo;
+  workspace?: WorkspaceSummary;
   kind: "command" | "agent";
   command: string;
   args?: string[];
@@ -93,8 +96,18 @@ export interface TaskLaunch {
   notifyOnComplete?: boolean;
 }
 
+export interface AgentPreparationLaunch {
+  id: string;
+  displayCommand: string;
+  cwd: string;
+  workspace: WorkspaceSummary;
+  timeoutMs?: number;
+  notifyOnComplete?: boolean;
+}
+
 export interface TaskSummary {
   agent?: AgentInfo;
+  workspace?: WorkspaceSummary;
   id: string;
   kind: "command" | "agent";
   command: string;
@@ -126,6 +139,7 @@ interface ManagedTask extends TaskSummary {
   notifyOnComplete: boolean;
   completion?: Promise<TaskInspection>;
   resolveCompletion?: (task: TaskInspection) => void;
+  preparationController?: AbortController;
 }
 
 export interface TaskInspection extends TaskSummary {
@@ -167,9 +181,99 @@ export class TaskManager {
   }
 
   spawn(launch: TaskLaunch): TaskSummary {
+    return this.#spawn(launch);
+  }
+
+  /** Reserve the final child identity before workspace Git/setup begins. */
+  prepareAgent(launch: AgentPreparationLaunch): TaskSummary {
     if (this.#shuttingDown) throw new Error("Task manager is shutting down");
-    const id = launch.id ?? `task_${randomUUID().slice(0, 8)}`;
-    if (this.#tasks.has(id)) throw new Error("Duplicate task ID");
+    if (this.#tasks.has(launch.id)) throw new Error("Duplicate task ID");
+    let resolveCompletion!: (task: TaskInspection) => void;
+    const completion = new Promise<TaskInspection>((resolve) => {
+      resolveCompletion = resolve;
+    });
+    const preparationController = new AbortController();
+    const task: ManagedTask = {
+      id: launch.id,
+      workspace: { ...launch.workspace, preparationStatus: "preparing" },
+      kind: "agent",
+      command: launch.displayCommand,
+      cwd: launch.cwd,
+      status: "running",
+      startedAt: new Date().toISOString(),
+      baseOffset: 0,
+      outputEnd: 0,
+      timedOut: false,
+      lastActivityAt: new Date().toISOString(),
+      stdinOpen: false,
+      output: new BoundedOutputBuffer(MAX_CAPTURE_BYTES),
+      killRequested: false,
+      notifyOnComplete: launch.notifyOnComplete ?? false,
+      completion,
+      resolveCompletion,
+      preparationController,
+    };
+    this.#tasks.set(task.id, task);
+    this.#diagnostic({ component: "jobs", code: "JOBS_TASK_SPAWNED", outcome: "success", taskId: task.id });
+    this.#emit({ type: "spawned", task: this.#summary(task) });
+    if (launch.timeoutMs) {
+      task.timeout = setTimeout(() => this.kill(task.id, "timeout"), launch.timeoutMs);
+      task.timeout.unref?.();
+    }
+    return this.#summary(task);
+  }
+
+  preparationSignal(id: string): AbortSignal {
+    const task = this.#require(id);
+    if (!task.preparationController) throw new Error("Task " + id + " is not preparing");
+    return task.preparationController.signal;
+  }
+
+  updatePreparedWorkspace(id: string, workspace: WorkspaceSummary): TaskSummary {
+    const task = this.#requireRunning(id);
+    if (!task.preparationController) throw new Error("Task " + id + " is not preparing");
+    task.workspace = { ...workspace, preparationStatus: "preparing" };
+    task.cwd = workspace.path;
+    this.#emit({ type: "updated", task: this.#summary(task) });
+    return this.#summary(task);
+  }
+
+  updateWorkspaceSetup(id: string, status: NonNullable<WorkspaceSummary["setupStatus"]>): TaskSummary {
+    const task = this.#require(id);
+    if (!task.workspace?.setupTaskId) throw new Error("Task " + id + " has no workspace setup");
+    task.workspace.setupStatus = status;
+    this.#emit({ type: "updated", task: this.#summary(task) });
+    return this.#summary(task);
+  }
+
+  activatePreparedAgent(id: string, launch: Omit<TaskLaunch, "id" | "kind">): TaskSummary {
+    return this.#spawn({ ...launch, id, kind: "agent" }, true);
+  }
+
+  failPreparedAgent(id: string, error: unknown): TaskSummary {
+    const task = this.#requireRunning(id);
+    if (!task.preparationController) throw new Error("Task " + id + " is not preparing");
+    const message = error instanceof Error ? error.message : String(error);
+    this.#append(task, "[workspace preparation failed] " + message + "\n", false);
+    if (task.workspace) {
+      task.workspace.preparationStatus = "failed";
+      task.workspace.preparationError = message.slice(0, 2000);
+      if (task.workspace.setupStatus === "running") task.workspace.setupStatus = "failed";
+    }
+    task.preparationController.abort(error);
+    const setupId = task.workspace?.setupTaskId;
+    if (setupId && this.#tasks.get(setupId)?.status === "running") this.kill(setupId, "execute-cancellation");
+    this.#settlePrepared(task, "failed");
+    return this.#summary(task);
+  }
+
+  #spawn(launch: TaskLaunch, activatingPrepared = false): TaskSummary {
+    if (this.#shuttingDown) throw new Error("Task manager is shutting down");
+    const id = launch.id ?? "task_" + randomUUID().slice(0, 8);
+    const prepared = activatingPrepared ? this.#requireRunning(id) : undefined;
+    if (prepared && (!prepared.preparationController || prepared.process))
+      throw new Error("Task " + id + " is not preparing");
+    if (!activatingPrepared && this.#tasks.has(id)) throw new Error("Duplicate task ID");
     const child = spawn(launch.command, launch.args ?? [], {
       cwd: launch.cwd,
       env: launch.env ?? process.env,
@@ -177,37 +281,52 @@ export class TaskManager {
       detached: process.platform !== "win32",
       stdio: ["pipe", "pipe", "pipe"],
     });
-    let resolveCompletion!: (task: TaskInspection) => void;
-    const completion = new Promise<TaskInspection>((resolve) => {
-      resolveCompletion = resolve;
-    });
-    const task: ManagedTask = {
-      id,
-      agent: launch.agent ? { ...launch.agent, phase: "starting", events: 0 } : undefined,
-      kind: launch.kind,
-      command: launch.displayCommand,
-      cwd: launch.cwd,
-      pid: child.pid,
-      status: "running",
-      startedAt: new Date().toISOString(),
-      baseOffset: 0,
-      outputEnd: 0,
-      timedOut: false,
-      lastActivityAt: new Date().toISOString(),
-      stdinOpen: !launch.closeStdin,
-      process: child,
-      output: new BoundedOutputBuffer(MAX_CAPTURE_BYTES),
-      killRequested: false,
-      notifyOnComplete: launch.notifyOnComplete ?? true,
-      completion,
-      resolveCompletion,
-    };
-    this.#tasks.set(id, task);
-    this.#diagnostic({ component: "jobs", code: "JOBS_TASK_SPAWNED", outcome: "success", taskId: id });
-    this.#taskChild({ taskId: id, kind: launch.kind, sessionFile: launch.agent?.sessionFile });
+    let task: ManagedTask;
+    if (prepared) {
+      task = prepared;
+      task.agent = launch.agent ? { ...launch.agent, phase: "starting", events: 0 } : undefined;
+      task.workspace = launch.workspace ? { ...launch.workspace, preparationStatus: "ready" } : undefined;
+      task.command = launch.displayCommand;
+      task.cwd = launch.cwd;
+      task.pid = child.pid;
+      task.stdinOpen = !launch.closeStdin;
+      task.process = child;
+      task.preparationController = undefined;
+      this.#taskChild({ taskId: id, kind: launch.kind, sessionFile: launch.agent?.sessionFile });
+      this.#emit({ type: "updated", task: this.#summary(task) });
+    } else {
+      let resolveCompletion!: (task: TaskInspection) => void;
+      const completion = new Promise<TaskInspection>((resolve) => {
+        resolveCompletion = resolve;
+      });
+      task = {
+        id,
+        agent: launch.agent ? { ...launch.agent, phase: "starting", events: 0 } : undefined,
+        workspace: launch.workspace ? { ...launch.workspace } : undefined,
+        kind: launch.kind,
+        command: launch.displayCommand,
+        cwd: launch.cwd,
+        pid: child.pid,
+        status: "running",
+        startedAt: new Date().toISOString(),
+        baseOffset: 0,
+        outputEnd: 0,
+        timedOut: false,
+        lastActivityAt: new Date().toISOString(),
+        stdinOpen: !launch.closeStdin,
+        process: child,
+        output: new BoundedOutputBuffer(MAX_CAPTURE_BYTES),
+        killRequested: false,
+        notifyOnComplete: launch.notifyOnComplete ?? true,
+        completion,
+        resolveCompletion,
+      };
+      this.#tasks.set(id, task);
+      this.#diagnostic({ component: "jobs", code: "JOBS_TASK_SPAWNED", outcome: "success", taskId: id });
+      this.#taskChild({ taskId: id, kind: launch.kind, sessionFile: launch.agent?.sessionFile });
+      this.#emit({ type: "spawned", task: this.#summary(task) });
+    }
     if (launch.closeStdin) child.stdin.end();
-    this.#emit({ type: "spawned", task: this.#summary(task) });
-
     // Intentionally merge stdout and stderr for now. Stream labels and strict
     // cross-stream ordering require a structured output format; add that later.
     const progress = task.agent
@@ -274,7 +393,7 @@ export class TaskManager {
       if (!this.#shuttingDown && task.notifyOnComplete) this.#notify(inspection);
     });
 
-    if (launch.timeoutMs) {
+    if (launch.timeoutMs && !task.timeout) {
       task.timeout = setTimeout(() => {
         this.kill(id, "timeout");
       }, launch.timeoutMs);
@@ -434,11 +553,28 @@ export class TaskManager {
       cancellation: this.#cancellation(cause),
     });
     this.#emit({ type: "stopping", task: this.#summary(task) });
-    this.#signal(task, "SIGTERM");
-    task.killTimer = setTimeout(() => {
-      if (task.status === "running") this.#signal(task, "SIGKILL");
-    }, this.#killGraceMs);
-    task.killTimer.unref?.();
+    const setupTaskId = task.workspace?.setupTaskId;
+    if (setupTaskId && setupTaskId !== id) {
+      const setup = this.#tasks.get(setupTaskId);
+      if (setup?.status === "running" && !setup.killRequested) this.kill(setupTaskId, cause);
+    }
+    if (task.preparationController) {
+      task.preparationController.abort(
+        new Error(cause === "timeout" ? "Workspace preparation timed out" : "Workspace preparation cancelled"),
+      );
+      if (task.workspace) {
+        task.workspace.preparationStatus = "failed";
+        task.workspace.preparationError = cause === "timeout" ? "timed out" : "cancelled";
+        if (task.workspace.setupStatus === "running") task.workspace.setupStatus = "failed";
+      }
+      this.#settlePrepared(task, "killed");
+    } else {
+      this.#signal(task, "SIGTERM");
+      task.killTimer = setTimeout(() => {
+        if (task.status === "running") this.#signal(task, "SIGKILL");
+      }, this.#killGraceMs);
+      task.killTimer.unref?.();
+    }
     return this.#summary(task);
   }
 
@@ -492,6 +628,30 @@ export class TaskManager {
       });
     })();
     return this.#shutdown;
+  }
+
+  #settlePrepared(task: ManagedTask, status: "failed" | "killed"): void {
+    if (task.timeout) clearTimeout(task.timeout);
+    task.timeout = undefined;
+    task.completedAt = new Date().toISOString();
+    task.status = status;
+    task.stdinOpen = false;
+    task.preparationController = undefined;
+    const inspection = this.inspect(task.id, Math.max(task.baseOffset, task.outputEnd - MAX_INSPECT_BYTES));
+    const resolveTask = task.resolveCompletion;
+    task.completion = undefined;
+    task.resolveCompletion = undefined;
+    this.#retainCompletedOutput(task);
+    resolveTask?.(inspection);
+    this.#emit({ type: "completed", task: this.#summary(task) });
+    this.#diagnostic({
+      component: "jobs",
+      code: "JOBS_TASK_COMPLETED",
+      outcome: task.termination ? "cancelled" : "failed",
+      taskId: task.id,
+      ...(task.termination ? { cancellation: this.#cancellation(task.termination.cause) } : {}),
+    });
+    if (!this.#shuttingDown && task.notifyOnComplete) this.#notify(inspection);
   }
 
   #retainCompletedOutput(task: ManagedTask): void {
@@ -623,6 +783,7 @@ export class TaskManager {
     return {
       ...summary,
       ...(summary.agent ? { agent: { ...summary.agent } } : {}),
+      ...(summary.workspace ? { workspace: { ...summary.workspace } } : {}),
       ...(summary.termination ? { termination: { ...summary.termination } } : {}),
     };
   }
