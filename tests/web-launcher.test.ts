@@ -65,6 +65,36 @@ test.each([
   expect(webLaunch([...args], { HOME: "/fixture" }, "/tools/die").args).toEqual([...expected]);
 });
 
+test("embedded web settings enable only Die on first run", async () => {
+  const home = await mkdtemp(join(tmpdir(), "die-web-settings-first-run-"));
+  try {
+    const settings = join(home, "userdata", "settings.json");
+    await seedWebSettings(home, "/fixture/die");
+    expect(JSON.parse(await Bun.file(settings).text())).toEqual({
+      providers: {
+        codex: { enabled: false },
+        claudeAgent: { enabled: false },
+        cursor: { enabled: false },
+        grok: { enabled: false },
+        pi: { enabled: true },
+        opencode: { enabled: false },
+        antigravity: { enabled: false },
+      },
+      providerInstances: {
+        codex: { driver: "codex", enabled: false },
+        claudeAgent: { driver: "claudeAgent", enabled: false },
+        cursor: { driver: "cursor", enabled: false },
+        grok: { driver: "grok", enabled: false },
+        pi: { driver: "pi", enabled: true, config: { binaryPath: "/fixture/die" } },
+        opencode: { driver: "opencode", enabled: false },
+        antigravity: { driver: "antigravity", enabled: false },
+      },
+    });
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("embedded web settings preserve unrelated configuration", async () => {
   const home = await mkdtemp(join(tmpdir(), "die-web-settings-"));
   try {
@@ -73,14 +103,21 @@ test("embedded web settings preserve unrelated configuration", async () => {
       settings,
       JSON.stringify({
         theme: "dark",
-        providerInstances: { pi: { config: { custom: true } }, other: { enabled: true } },
+        providers: { codex: { enabled: true }, claudeAgent: { enabled: true } },
+        providerInstances: {
+          pi: { config: { custom: true } },
+          codex: { driver: "codex", enabled: true },
+          other: { enabled: true },
+        },
       }),
     );
     await seedWebSettings(home, "/fixture/die");
     expect(JSON.parse(await Bun.file(settings).text())).toEqual({
       theme: "dark",
+      providers: { codex: { enabled: true }, claudeAgent: { enabled: true } },
       providerInstances: {
         pi: { driver: "pi", enabled: true, config: { custom: true, binaryPath: "/fixture/die" } },
+        codex: { driver: "codex", enabled: true },
         other: { enabled: true },
       },
     });

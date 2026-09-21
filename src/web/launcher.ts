@@ -32,24 +32,43 @@ function objectSetting(value: unknown, label: string, settingsPath: string): Rec
   return value as Record<string, unknown>;
 }
 
+const WEB_PROVIDER_DEFAULTS = {
+  codex: false,
+  claudeAgent: false,
+  cursor: false,
+  grok: false,
+  pi: true,
+  opencode: false,
+  antigravity: false,
+} as const;
+
 export async function seedWebSettings(baseDir: string, dieBinary: string): Promise<void> {
   const settingsPath = join(baseDir, "userdata", "settings.json");
   let settings: unknown = {};
+  let firstRun = false;
   try {
     settings = JSON.parse(await readFile(settingsPath, "utf8"));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT")
       throw new Error(`Refusing to replace unreadable T3 settings at ${settingsPath}: ${(error as Error).message}`);
+    firstRun = true;
   }
   const root = objectSetting(settings, "settings", settingsPath);
-  objectSetting(root.providers, "providers", settingsPath);
+  const providers = objectSetting(root.providers, "providers", settingsPath);
   const providerInstances = objectSetting(root.providerInstances, "providerInstances", settingsPath);
   const pi = objectSetting(providerInstances.pi, "providerInstances.pi", settingsPath);
   const config = objectSetting(pi.config, "providerInstances.pi.config", settingsPath);
+  const firstRunProviders = Object.fromEntries(
+    Object.entries(WEB_PROVIDER_DEFAULTS).map(([driver, enabled]) => [driver, { enabled }]),
+  );
+  const firstRunProviderInstances = Object.fromEntries(
+    Object.entries(WEB_PROVIDER_DEFAULTS).map(([driver, enabled]) => [driver, { driver, enabled }]),
+  );
   const next = {
     ...root,
+    ...(firstRun ? { providers: { ...providers, ...firstRunProviders } } : {}),
     providerInstances: {
-      ...providerInstances,
+      ...(firstRun ? firstRunProviderInstances : providerInstances),
       pi: { ...pi, driver: "pi", enabled: true, config: { ...config, binaryPath: resolve(expandHome(dieBinary)) } },
     },
   };
