@@ -13940,3 +13940,17 @@ index dd38709b..c6d9724b 100644
    orchestrator_capabilities: tool(
      ["Get", "Getting", "Got", "orchestration capabilities"],
      "capabilities",
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index 2a6429b8..1ace5591 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -208,6 +208,6 @@ peerDependencyRules:
+     vite: "*"
+ 
+ supportedArchitectures:
+-  cpu: [current, x64]
+-  libc: [current, glibc]
+-  os: [current, linux]
++  cpu: [current, x64, arm64, ia32]
++  libc: [current, glibc, musl]
++  os: [current, darwin, linux, win32]
