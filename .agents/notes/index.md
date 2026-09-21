@@ -59,3 +59,5 @@
 - [Audit judgment](leak-audit-judgment.md): follow-up merit-based fix decisions, independent challenges, desktop reachability correction; no implementation. See docs/memory-resource-judgment.md.
 
 - [v0.4.0 resource fixes release](resource-fixes-release.md): published and official Linux checksum/version verified; disk-backed history, bounded output/terminal queues, lifecycle/log/cache fixes. No local installation performed.
+
+- [v0.5.0 release](release-v050.md): PR #1 merged; feature release validation and publication authorized, isolated worktree preserves concurrent work.
