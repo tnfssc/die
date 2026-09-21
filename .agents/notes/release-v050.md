@@ -31,3 +31,17 @@ Coordinator final: bun run generate:notices; bun run format:check; bun run lint;
 ## Publication commands
 
 From isolated worktree: git add package.json docs/release-v0.5.0.md .agents/notes/release-v050.md .agents/notes/index.md; git commit -m "Release v0.5.0: add native task workspaces"; git push origin HEAD:develop; git tag -a v0.5.0 -m "v0.5.0"; git push origin v0.5.0. Repository commit/tag signing remains enabled. Non-force pushes protect concurrent remote updates; immutable existing tags not touched. Release run/result and downloaded-asset verification recorded below after completion.
+
+## Published and independently verified
+
+- Release commit: cccda344e878ddfeb3f18a250226d41d928f7650 (SSH signature present); annotated signed tag v0.5.0 points to this commit. Published on develop; source checkout remains on its original feature branch with original uncommitted changes unchanged.
+- Release workflow https://github.com/tnfssc/die/actions/runs/35626709990 SUCCESS; release-commit develop CI https://github.com/tnfssc/die/actions/runs/35626705278 SUCCESS.
+- Published 2026-09-21T16:44:19Z: https://github.com/tnfssc/die/releases/tag/v0.5.0 . GitHub latest endpoint confirms v0.5.0, draft=false, prerelease=false.
+- Commands: gh run watch 35626709990 --exit-status (exit 0); gh release view v0.5.0 --json url,isDraft,isPrerelease,publishedAt,assets; gh release download v0.5.0 --dir /var/tmp/die-official-v050; gh release edit v0.5.0 --notes-file /tmp/die-release-v050/docs/release-v0.5.0.md; gh api repos/tnfssc/die/releases/latest.
+- Downloaded all 12 published assets. In /var/tmp/die-official-v050: sha256sum -c die-linux-x64.sha256 die-linux-arm64.sha256 die-darwin-arm64.sha256 die-android-arm64.sha256: all four OK. Independently computed all 12 asset SHA256 digests and lengths with node:crypto; each matches GitHub asset digest/size metadata. All four license/source documents present and nonempty.
+- Official Linux x64 SHA256: 07cadac341315bddb96f7fbe2b77ecaec6a6d9666034dcf8aded96e7b0260be9. chmod u+x die-linux-x64; env -i HOME=/var/tmp/die-official-v050/isolated-home PATH=/nonexistent ./die-linux-x64 --version reports 0.5.0 (asserted). No execution claimed for other architectures.
+- SOURCE.txt matches release commit/tag, T3 a9b49a7df0a4261dcc438d4493cc3154a1d9819e and web/t3.patch SHA256 244d45a4dc93527dc7c91b1946bc19d720678cb22240453e26a946cfabdac41d.
+- Original checkout porcelain status compared against saved initial snapshot: identical; worker also confirmed original cached T3 checkout unchanged. No reset/clean/stash, user session changes, or user CLI install. Local release build artifacts/worktree retained; official downloads use /var/tmp because /tmp has limited space.
+- SSH emitted an unused id_rsa compatibility warning but both authorized non-force pushes exited 0. Commit/tag objects contain SSH signatures; local signature verification is not configured (allowedSignersFile absent), so no cryptographic local verification claim.
+
+No release blockers remain. Final publication notes committed/pushed with git add .agents/notes/release-v050.md .agents/notes/index.md; git commit -m "Record verified v0.5.0 publication"; git push origin HEAD:develop. Immutable release tag unchanged.
