@@ -5063,10 +5063,10 @@ index 00000000..0b79fd65
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts b/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts
 new file mode 100644
-index 00000000..9f27c415
+index 00000000..5c339a37
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts
-@@ -0,0 +1,711 @@
+@@ -0,0 +1,733 @@
 +// @effect-diagnostics preferSchemaOverJson:off globalConsoleInEffect:off missingEffectContext:off missingLayerContext:off anyUnknownInErrorContext:off globalFetchInEffect:off nodeBuiltinImport:off globalTimers:off
 +/** End-to-end contract: real Die routes subagent/jobs through die_task_launch, die_task_observe, die_task_list, and die_task_cancel. */
 +import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -5361,6 +5361,10 @@ index 00000000..9f27c415
 +            ]);
 +          });
 +          const port = await listen(model);
++          const dieBinary =
++            process.env.T3_V2_DIE_BINARY ?? resolve(process.cwd(), "../../../../dist/die");
++          const previousDieWebBinary = process.env.DIE_WEB_DIE_BINARY;
++          const previousProfilesPath = process.env.DIE_SUBAGENT_PROFILES_PATH;
 +          const root = await mkdtemp(resolve(tmpdir(), "t3-integrated-real-"));
 +          const home = resolve(root, "home"),
 +            agent = resolve(root, "agent");
@@ -5386,8 +5390,15 @@ index 00000000..9f27c415
 +              },
 +            }),
 +          );
++          const profilesPath = resolve(root, "subagents.json");
++          await writeFile(profilesPath, "{}");
++          process.env.DIE_WEB_DIE_BINARY = dieBinary;
++          process.env.DIE_SUBAGENT_PROFILES_PATH = profilesPath;
 +          return {
 +            model,
++            dieBinary,
++            previousDieWebBinary,
++            previousProfilesPath,
 +            requests,
 +            spawnPids,
 +            hanging,
@@ -5409,8 +5420,7 @@ index 00000000..9f27c415
 +              instanceId: PI,
 +              settings: {
 +                enabled: true,
-+                binaryPath:
-+                  process.env.T3_V2_DIE_BINARY ?? resolve(process.cwd(), "../../../../dist/die"),
++                binaryPath: fixture.dieBinary,
 +                launchArgs: "--no-context-files",
 +                customModels: [],
 +              },
@@ -5421,7 +5431,7 @@ index 00000000..9f27c415
 +                HOME: fixture.home,
 +                PI_CODING_AGENT_DIR: fixture.agent,
 +                DIE_CODING_AGENT_DIR: fixture.agent,
-+                DIE_WEB_DIE_BINARY: process.env.T3_V2_DIE_BINARY,
++                DIE_WEB_DIE_BINARY: fixture.dieBinary,
 +              },
 +              spawner: ChildProcessSpawner.make((command) =>
 +                spawner.spawn(command).pipe(
@@ -5662,10 +5672,17 @@ index 00000000..9f27c415
 +              expect(
 +                parentCredential.authorizationHeader !== childCredential.authorizationHeader,
 +              ).toBe(true);
++              const parentScope = yield* registry.resolve(
++                parentCredential.authorizationHeader.slice(7),
++              );
++              expect(parentScope?.capabilities.has("die-delegation")).toBe(true);
++              expect(parentScope?.dieDelegation).toEqual({ profile: "orchestrator", depth: 0 });
 +              const childScope = yield* registry.resolve(
 +                childCredential.authorizationHeader.slice(7),
 +              );
 +              expect(childScope?.threadId).toBe(successThreadId);
++              expect(childScope?.capabilities.has("die-delegation")).toBe(true);
++              expect(childScope?.dieDelegation).toEqual({ profile: "orchestrator", depth: 1 });
 +
 +              const foregroundResultAcks = executeOutputs.reduce(
 +                (count: number, item: any) =>
@@ -5718,6 +5735,11 @@ index 00000000..9f27c415
 +          ),
 +        (fixture) =>
 +          Effect.promise(async () => {
++            if (fixture.previousDieWebBinary === undefined) delete process.env.DIE_WEB_DIE_BINARY;
++            else process.env.DIE_WEB_DIE_BINARY = fixture.previousDieWebBinary;
++            if (fixture.previousProfilesPath === undefined)
++              delete process.env.DIE_SUBAGENT_PROFILES_PATH;
++            else process.env.DIE_SUBAGENT_PROFILES_PATH = fixture.previousProfilesPath;
 +            for (const res of fixture.hanging) res.destroy();
 +            fixture.model.closeAllConnections();
 +            fixture.model.close();
