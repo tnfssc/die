@@ -1,3 +1,4 @@
+import { getCurrentSystemPrompt } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -98,8 +99,8 @@ async function sdk(
   const session = created.session;
   cleanup.push(() => session.dispose());
   const requests: string[] = [];
-  session.agent.streamFunction = ((_model: unknown, context: { systemPrompt: string }) => {
-    requests.push(context.systemPrompt);
+  session.agent.streamFunction = (_model, context) => {
+    requests.push(getCurrentSystemPrompt(context.messages));
     const message: AssistantMessage = {
       role: "assistant",
       api: "openai-codex-responses",
@@ -114,7 +115,7 @@ async function sdk(
     stream.push({ type: "start", partial: message });
     stream.push({ type: "done", reason: "stop", message });
     return stream;
-  }) as typeof session.agent.streamFunction;
+  };
   return { session, requests, frameCalls: () => frameCalls, manager };
 }
 
@@ -125,7 +126,7 @@ test("real SDK defaults main frame to orchestrator and switches to a prose-free 
   expect(f.requests[0]).not.toContain("Available tools:");
   expect(f.requests[0]).not.toContain("In addition to the tools above");
   expect(f.requests[0]).toContain("shell 3 seconds");
-  expect(f.requests[0]).toContain("Current working directory: " + f.manager.getCwd());
+  expect(f.requests[0]).toContain("<cwd>\n" + f.manager.getCwd() + "\n</cwd>");
   expect(f.requests[0]).toContain("Project memory is indexed at .agents/notes/index.md");
   expect(f.requests[0]).not.toContain("Pi documentation (read only");
   expect(f.requests[0]).toContain("FRAME_BEFORE");

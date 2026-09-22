@@ -1,3 +1,4 @@
+import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import {
   AgentSession,
@@ -461,7 +462,11 @@ let accountingAdapterInstalled = false;
 export function installShakeAccountingAdapter(): void {
   if (accountingAdapterInstalled) return;
   const prototype = AgentSession.prototype as unknown as {
-    _checkCompaction?: (message: AgentMessage, skipAbortedCheck?: boolean) => Promise<boolean>;
+    _checkCompaction?: (
+      message: AgentMessage,
+      skipAbortedCheck?: boolean,
+      toolResults?: ToolResultMessage[],
+    ) => Promise<boolean>;
     getContextUsage?: () => { tokens: number | null; contextWindow: number; percent: number | null } | undefined;
     sessionManager?: { buildContextEntries(): SessionEntry[]; getBranch(): SessionEntry[]; getSessionId(): string };
   };
@@ -496,14 +501,14 @@ export function installShakeAccountingAdapter(): void {
       );
   };
   accountingAdapterInstalled = true;
-  prototype._checkCompaction = async function (message, skipAbortedCheck) {
+  prototype._checkCompaction = async function (message, skipAbortedCheck, toolResults) {
     // Only suppress Pi's stale last-response threshold check before a new
     // prompt. A response that just came back may itself report overflow (often
     // as an error with no usage), and must retain Pi's compact-and-retry path.
     if (skipAbortedCheck === false && lacksFreshUsage(this)) return false;
     const manager = this.sessionManager as object | undefined;
     const applicationsBefore = manager ? (compactionShakeApplications.get(manager) ?? 0) : 0;
-    const shouldContinue = await originalCheck.call(this, message, skipAbortedCheck);
+    const shouldContinue = await originalCheck.call(this, message, skipAbortedCheck, toolResults);
     const shakeApplied = manager && (compactionShakeApplications.get(manager) ?? 0) > applicationsBefore;
     // The hook cancels to short-circuit both compaction handlers. Preserve Pi's
     // compact-and-retry continuation for an interrupted response.

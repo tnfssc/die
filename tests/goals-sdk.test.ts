@@ -1,3 +1,4 @@
+import { getCurrentSystemPrompt, getCurrentTools, type TranscriptContext } from "@earendil-works/pi-ai";
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -43,10 +44,10 @@ test("real offline assembly changes only messages across goal set, update, and c
       'await goal.update({status:"blocked",blocker:"Need focused fixture"})',
       "await goal.clear()",
     ];
-    const scripted = (_model: any, context: any) => {
+    const scripted = (_model: any, context: TranscriptContext) => {
       contexts.push({
-        systemPrompt: context.systemPrompt,
-        tools: JSON.stringify(context.tools),
+        systemPrompt: getCurrentSystemPrompt(context.messages),
+        tools: JSON.stringify(getCurrentTools(context.messages)),
         messages: JSON.stringify(context.messages),
       });
       const index = contexts.length - 1;
@@ -147,7 +148,7 @@ test("real SDK reconciles helper waiting through task-complete and completes", a
     let settled = 0;
     let handoffGoalStatus: string | undefined;
     const prompts: string[] = [];
-    const scripted = (_model: any, context: any) => {
+    const scripted = (_model: any, context: TranscriptContext) => {
       calls++;
       prompts.push(JSON.stringify(context));
       const stream = createAssistantMessageEventStream();
@@ -328,7 +329,7 @@ async function runRealPrintCompletionCycles(recordMilestones: boolean) {
     let calls = 0;
     let ended = 0;
     let settled = 0;
-    const scripted = (_model: any, context: any) => {
+    const scripted = (_model: any, context: TranscriptContext) => {
       calls++;
       const serialized = JSON.stringify(context);
       const paused = serialized.includes("Status: paused");
@@ -518,7 +519,7 @@ test("live goal fixture reaches an intercepted real-runtime provider offline", a
     const originalProviderStream = provider.streamSimple;
     let intercepted = 0;
     let interceptedOptions: any;
-    provider.streamSimple = ((_model: any, _context: any, options: any) => {
+    provider.streamSimple = ((_model: any, _context: TranscriptContext, options: any) => {
       intercepted++;
       interceptedOptions = options;
       throw new Error("OFFLINE_PROVIDER_INTERCEPT");

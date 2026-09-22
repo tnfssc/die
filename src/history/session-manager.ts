@@ -1,8 +1,16 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { SessionContext, SessionEntry, SessionHeader, SessionTreeNode } from "@earendil-works/pi-coding-agent";
+import type {
+  ContextEditEntry,
+  SessionContext,
+  SessionEntry,
+  SessionHeader,
+  SessionProjection,
+  SessionTreeNode,
+} from "@earendil-works/pi-coding-agent";
 import {
   CURRENT_SESSION_VERSION,
   SessionManager,
@@ -152,7 +160,7 @@ function contextMetadata(path: EntryMetadata[]): EntryMetadata[] {
   let keep = false;
   for (let i = 0; i < at; i++) {
     if (path[i].id === compaction.firstKeptEntryId) keep = true;
-    if (keep) selected.push(path[i]);
+    if (keep && !(path[i].type === "message" && path[i].messageRole === "system")) selected.push(path[i]);
   }
   selected.push(...path.slice(at + 1));
   return selected;
@@ -177,7 +185,7 @@ function openStore(path: string): DiskEntryStore {
 }
 
 /**
- * Install the 0.85.1-compatible disk-backed implementation on the SDK class.
+ * Install the 0.87.0-compatible disk-backed implementation on the SDK class.
  * Call this before importing/invoking the SDK CLI main function. In-memory managers
  * are deliberately untouched.
  */
@@ -201,7 +209,9 @@ export function installDiskBackedSessionManager(): void {
     getBranch: prototype.getBranch,
     getTree: prototype.getTree,
     buildContextEntries: prototype.buildContextEntries,
+    buildSessionProjection: prototype.buildSessionProjection,
     buildSessionContext: prototype.buildSessionContext,
+    appendContextEdit: prototype.appendContextEdit,
     getHeader: prototype.getHeader,
     getSessionName: prototype.getSessionName,
   };
@@ -295,14 +305,93 @@ export function installDiskBackedSessionManager(): void {
     const path = pathMetadata(owned.store, internals(this).leafId);
     return contextMetadata(path).map((meta) => owned.store.materialize(meta));
   };
+  prototype.buildSessionProjection = function (this: SessionManager): SessionProjection {
+    const owned = state(this);
+    if (!owned) return original.buildSessionProjection.call(this);
+    const path = pathMetadata(owned.store, internals(this).leafId);
+    const contextEntries = contextMetadata(path).map((meta) => owned.store.materialize(meta));
+    const edits = new Map<string, ContextEditEntry>();
+    for (const entry of contextEntries) {
+      if (entry.type === "context_edit") edits.set(entry.targetId, entry);
+    }
+    const entries = contextEntries.map((sourceEntry, index) => {
+      let messages = sessionEntryToContextMessages(sourceEntry);
+      const edit = edits.get(sourceEntry.id);
+      if (sourceEntry.type === "compaction" && index > 0) messages = [];
+      else if (edit?.replacement === null) messages = [];
+      else if (edit?.replacement) {
+        const replacement = edit.replacement;
+        messages = messages.map((message) => {
+          if (
+            message.role !== "user" &&
+            message.role !== "assistant" &&
+            message.role !== "toolResult" &&
+            message.role !== "custom"
+          )
+            return message;
+          const content =
+            (message.role === "assistant" || message.role === "toolResult") && typeof replacement.content === "string"
+              ? [{ type: "text" as const, text: replacement.content }]
+              : replacement.content;
+          return { ...message, content } as typeof message;
+        });
+      }
+      return { sourceEntry, messages };
+    });
+    return {
+      entries,
+      messages: entries.flatMap((entry) => entry.messages),
+      ...contextSettings(path),
+    };
+  };
   prototype.buildSessionContext = function (this: SessionManager): SessionContext {
     const owned = state(this);
     if (!owned) return original.buildSessionContext.call(this);
-    const path = pathMetadata(owned.store, internals(this).leafId);
-    const messages = contextMetadata(path).flatMap((meta) =>
-      sessionEntryToContextMessages(owned.store.materialize(meta)),
-    );
-    return { messages, ...contextSettings(path) };
+    const { messages, thinkingLevel, model } = this.buildSessionProjection();
+    return { messages, thinkingLevel, model };
+  };
+  prototype.appendContextEdit = function (
+    this: SessionManager,
+    targetId: string,
+    replacement: ContextEditEntry["replacement"],
+  ): string {
+    const owned = state(this);
+    if (!owned) return original.appendContextEdit.call(this, targetId, replacement);
+    if (
+      replacement !== null &&
+      (typeof replacement !== "object" ||
+        !("content" in replacement) ||
+        (typeof replacement.content !== "string" && !Array.isArray(replacement.content)))
+    )
+      throw new Error("Context edit replacement must be null or contain string/array content");
+    const target = owned.store.byId.get(targetId);
+    if (!target) throw new Error(`Entry ${targetId} not found`);
+    if (!pathMetadata(owned.store, internals(this).leafId).some((entry) => entry.id === targetId))
+      throw new Error(`Entry ${targetId} is not on the active branch`);
+    const editable =
+      target.type === "custom_message" ||
+      (target.type === "message" &&
+        (target.messageRole === "user" || target.messageRole === "assistant" || target.messageRole === "toolResult"));
+    if (!editable) throw new Error(`Entry ${targetId} does not contribute editable model content`);
+    const normalizedReplacement =
+      replacement !== null &&
+      (target.messageRole === "assistant" || target.messageRole === "toolResult") &&
+      typeof replacement.content === "string"
+        ? { content: [{ type: "text" as const, text: replacement.content }] }
+        : replacement;
+    let id: string;
+    do id = randomUUID().slice(0, 8);
+    while (owned.store.byId.has(id));
+    const entry: ContextEditEntry = {
+      type: "context_edit",
+      id,
+      parentId: internals(this).leafId,
+      timestamp: new Date().toISOString(),
+      targetId,
+      replacement: normalizedReplacement,
+    };
+    internals(this)._appendEntry(entry);
+    return id;
   };
   prototype.getHeader = function (this: SessionManager): SessionHeader | null {
     return state(this)?.store.header ?? original.getHeader.call(this);

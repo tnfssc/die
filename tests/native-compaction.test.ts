@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { Model } from "@earendil-works/pi-ai";
+import { normalizeContext, type Model } from "@earendil-works/pi-ai";
 import { convertResponsesMessages } from "@earendil-works/pi-ai/api/openai-responses-shared";
-import { buildSessionContext, SessionManager } from "@earendil-works/pi-coding-agent";
+import { buildSessionContext, convertToLlm, SessionManager } from "@earendil-works/pi-coding-agent";
 import { inspectDiagnostics } from "../src/diagnostics";
 import {
   adaptNativeCompactionMessages,
@@ -311,9 +311,14 @@ describe("opaque checkpoint adapter", () => {
       role: "assistant",
       content: [{ type: "thinking", thinkingSignature: JSON.stringify(item) }],
     });
-    const wire = convertResponsesMessages(model, { messages: adapted as any }, new Set([model.provider]), {
-      includeSystemPrompt: false,
-    });
+    const wire = convertResponsesMessages(
+      model,
+      normalizeContext({ messages: convertToLlm(adapted) }),
+      new Set([model.provider]),
+      {
+        includeSystemPrompt: false,
+      },
+    );
     expect(wire[0]).toEqual(item);
     const switched = adaptNativeCompactionMessages(messages, { ...ctx, model: { ...model, id: "other" } } as any);
     expect(switched[0].role).toBe("compactionSummary");

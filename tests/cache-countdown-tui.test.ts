@@ -29,6 +29,7 @@ test("real PTY shows unknown estimate and /cache-ttl persists a validated value"
       "OPENAI_API_KEY=offline",
       binary,
       "--offline",
+      "--no-approve",
       "--no-session",
       "--provider",
       "openai",

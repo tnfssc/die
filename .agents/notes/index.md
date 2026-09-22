@@ -61,3 +61,5 @@
 - [v0.4.0 resource fixes release](resource-fixes-release.md): published and official Linux checksum/version verified; disk-backed history, bounded output/terminal queues, lifecycle/log/cache fixes. No local installation performed.
 
 - [v0.5.0 release](release-v050.md): published and verified; all four binaries/checksums and 12 asset digests validated, official Linux reports 0.5.0; no local install, concurrent work preserved.
+
+- [Pi 0.87 upgrade](pi-0.87-upgrade.md): transcript migration, lazy-history parity, patched-web API review, license updates, and validation/worktree record.

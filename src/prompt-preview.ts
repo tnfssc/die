@@ -1,12 +1,15 @@
+import { getModel } from "@earendil-works/pi-ai/compat";
 import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
   type AssistantMessage,
-  type Context,
+  type TranscriptContext,
+  type Tool,
+  getCurrentSystemPrompt,
+  getCurrentTools,
   createAssistantMessageEventStream,
-  getModel,
-} from "@earendil-works/pi-ai/compat";
+} from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -45,8 +48,8 @@ export interface PromptPreview {
   };
   model: { provider: string; id: string };
   systemPrompt: string;
-  tools: NonNullable<Context["tools"]>;
-  messages: Context["messages"];
+  tools: Tool[];
+  messages: TranscriptContext["messages"];
 }
 
 const usage = {
@@ -164,9 +167,9 @@ export async function createPromptPreview(options: PromptPreviewOptions = {}): P
       tools: ["execute"],
     }));
 
-    let captured: Context | undefined;
+    let captured: TranscriptContext | undefined;
     let streamCalls = 0;
-    session.agent.streamFunction = ((_model: unknown, context: Context) => {
+    session.agent.streamFunction = (_model, context) => {
       streamCalls++;
       captured = context;
       const message: AssistantMessage = {
@@ -183,11 +186,11 @@ export async function createPromptPreview(options: PromptPreviewOptions = {}): P
       stream.push({ type: "start", partial: message });
       stream.push({ type: "done", reason: "stop", message });
       return stream;
-    }) as typeof session.agent.streamFunction;
+    };
 
     await session.prompt(options.message ?? "Preview this request without sending it to a model.");
     if (!captured || streamCalls !== 1) throw new Error("Prompt preview did not capture exactly one provider context");
-    const context = captured as Context;
+    const context = captured;
     const projectLabel = selectedProject
       ? `Selected external project context: ${cwd}`
       : "Isolated temporary context (default): external project context is excluded";
@@ -220,8 +223,8 @@ export async function createPromptPreview(options: PromptPreviewOptions = {}): P
         networkRequests: 0,
       },
       model: { provider: model.provider, id: model.id },
-      systemPrompt: context.systemPrompt ?? "",
-      tools: context.tools ?? [],
+      systemPrompt: getCurrentSystemPrompt(context.messages),
+      tools: getCurrentTools(context.messages),
       messages: context.messages,
     };
   } finally {

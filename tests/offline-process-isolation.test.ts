@@ -50,6 +50,7 @@ test("test TUI processes cannot use an inherited Herdr pane identity", async () 
       "OPENAI_API_KEY=offline-test-placeholder",
       resolve(import.meta.dir, "../dist/die"),
       "--offline",
+      "--no-approve",
       "--no-session",
       "--provider",
       "openai",

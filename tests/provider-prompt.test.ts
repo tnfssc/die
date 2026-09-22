@@ -1,3 +1,4 @@
+import { normalizeContext } from "@earendil-works/pi-ai";
 import { expect, test } from "bun:test";
 import { stream } from "@earendil-works/pi-ai/api/openai-codex-responses";
 import { getModel } from "@earendil-works/pi-ai/compat";
@@ -29,10 +30,10 @@ test("Codex serializes the complete system prompt as instructions without a netw
   const events = [];
   for await (const event of stream(
     model!,
-    {
+    normalizeContext({
       systemPrompt,
       messages: [{ role: "user", content: "Serialize this request, but do not send it.", timestamp: 0 }],
-    },
+    }),
     {
       apiKey: dummyCodexJwt(),
       transport: "sse",

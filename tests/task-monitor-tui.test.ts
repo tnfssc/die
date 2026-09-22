@@ -102,6 +102,7 @@ test("real TUI /ps selects live jobs and only stops the confirmed target", async
         "HOME=" + home,
         "DIE_CODING_AGENT_DIR=" + agentDir,
         binary,
+        "--no-approve",
         "--no-session",
         "--provider",
         "fixture",
@@ -222,6 +223,7 @@ test("real TUI /resume selects a durable child and requires explicit confirmatio
       "DIE_CODING_AGENT_DIR=" + join(home, ".die", "agent"),
       binary,
       "--offline",
+      "--no-approve",
       "--session",
       rootFile,
     ]

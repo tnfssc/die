@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import * as z from "zod/mini";
-import { validateToolArguments } from "@earendil-works/pi-ai";
+import { validateToolArguments, type JsonObject } from "@earendil-works/pi-ai";
 import { toolParameters } from "../src/tool-schema";
 import extension from "../src/tasks/extension";
 test("only execute is registered with a provider-friendly schema", () => {
@@ -35,7 +35,8 @@ test("only execute is registered with a provider-friendly schema", () => {
       arguments: { code: "console.log(1)", timeoutSeconds: "2" },
     }),
   ).toEqual({ code: "console.log(1)", timeoutSeconds: 2 });
-  for (const args of [{}, { code: "ok", timeoutSeconds: 0 }])
+  const invalidArgs: JsonObject[] = [{}, { code: "ok", timeoutSeconds: 0 }];
+  for (const args of invalidArgs)
     expect(() =>
       validateToolArguments(tools[0], { type: "toolCall", id: "t", name: "execute", arguments: args }),
     ).toThrow();

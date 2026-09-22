@@ -1,7 +1,7 @@
-import { convertToLlm } from "@earendil-works/pi-coding-agent";
 import { describe, expect, test } from "bun:test";
-import { inspectDiagnostics } from "../src/diagnostics";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import { convertToLlm } from "@earendil-works/pi-coding-agent";
+import { inspectDiagnostics } from "../src/diagnostics";
 import {
   bindCurrentCompactionSession,
   buildCacheAffineRequest,
@@ -104,12 +104,23 @@ function snapshot(overrides: any = {}) {
 describe("cache-affine compaction request", () => {
   test("preserves the exact fully transformed context, system, and tools", () => {
     const request = buildCacheAffineRequest(snapshot(), event())!;
-    expect(request.systemPrompt).toBe("actual post-hook system");
-    expect(request.tools).toEqual(snapshot().tools);
-    expect((request.messages[0] as any).content[0].text).toBe("HOOKED-old-user");
-    expect((request.messages[2] as any).content[0].text).toBe("tail-user");
-    expect((request.messages[3] as any).content[0].text).toBe("tail-assistant");
+    expect(request.messages[0]).toMatchObject({
+      role: "system",
+      content: "actual post-hook system",
+      toolsAdded: snapshot().tools,
+    });
+    expect((request.messages[1] as any).content[0].text).toBe("HOOKED-old-user");
+    expect((request.messages[3] as any).content[0].text).toBe("tail-user");
+    expect((request.messages[4] as any).content[0].text).toBe("tail-assistant");
     expect((request.messages.at(-1) as any).content[0].text).toContain("Summarize the whole conversation above.");
+  });
+
+  test("counts the transcript system/tool frame once in the compaction input budget", () => {
+    const request = buildCacheAffineRequest({ ...snapshot(), systemPrompt: "frame ".repeat(4000) }, event())!;
+    expect(request).toBeDefined();
+    expect(request.estimatedInputTokens).toBeGreaterThan(6000);
+    expect(request.estimatedInputTokens).toBeLessThan(8000);
+    expect(request.messages.filter((message) => message.role === "system")).toHaveLength(1);
   });
 
   test("summarizes the whole current conversation regardless of Pi's replay boundary", () => {
@@ -149,7 +160,7 @@ describe("cache-affine compaction request", () => {
       snapshot({ messages: [user("old-user"), assistant("old-assistant")], leafId: "2" }),
       assistantTailEvent,
     )!;
-    expect((request.messages[2] as any).content[0].text).toBe("tail-assistant");
+    expect((request.messages[3] as any).content[0].text).toBe("tail-assistant");
   });
 
   test("rejects context transforms that change message boundaries", () => {
@@ -158,8 +169,8 @@ describe("cache-affine compaction request", () => {
 
   test("keeps the replay tail in the model-facing history being summarized", () => {
     const request = buildCacheAffineRequest(snapshot(), event())!;
-    expect((request.messages[2] as any).content[0].text).toBe("tail-user");
-    expect((request.messages[3] as any).content[0].text).toBe("tail-assistant");
+    expect((request.messages[3] as any).content[0].text).toBe("tail-user");
+    expect((request.messages[4] as any).content[0].text).toBe("tail-assistant");
     expect((request.messages.at(-1) as any).content[0].text).toContain("whole conversation above");
   });
 
@@ -325,7 +336,7 @@ describe("extension lifecycle", () => {
     );
     const result = await handlers.get("session_before_compact")!(event(), ctx);
     expect(captured.options).toMatchObject({ sessionId: "stable-session", reasoning: "high" });
-    expect(captured.context.tools.map((tool: any) => tool.name)).toEqual(["execute"]);
+    expect(captured.context.messages[0].toolsAdded.map((tool: any) => tool.name)).toEqual(["execute"]);
     expect(result.compaction.usage.cacheRead).toBe(8);
     expect(result.compaction.summary).toContain("task_fixture: command, running");
     expect(result.compaction.firstKeptEntryId).toBe("3");

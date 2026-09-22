@@ -55,6 +55,7 @@ test("real footer includes nested costs, updates while idle, and restores on res
       "OPENAI_API_KEY=offline-test-placeholder",
       resolve(import.meta.dir, "../dist/die"),
       "--offline",
+      "--no-approve",
       "--session",
       root.getSessionFile()!,
       "--provider",

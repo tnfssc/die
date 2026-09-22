@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, Message, Model, Tool } from "@earendil-works/pi-ai";
+import { normalizeContext } from "@earendil-works/pi-ai";
 import { adjustMaxTokensForThinking } from "@earendil-works/pi-ai/api/simple-options";
 import {
   buildSessionContext,
@@ -86,21 +87,22 @@ async function prepareCurrentConversation(
   // that effective frame. Re-emitting it here can repeat arbitrary extension
   // side effects. Fresh/resumed sessions have no framed snapshot and must run it.
   const hasEffectiveFrame = snapshot?.systemPrompt !== undefined && snapshot.tools !== undefined;
-  const baseSystemPrompt = session?._baseSystemPrompt ?? ctx.getSystemPrompt();
   if (!hasEffectiveFrame && typeof session?._extensionRunner?.emitBeforeAgentStart !== "function") return undefined;
   const start = !hasEffectiveFrame
     ? await session!._extensionRunner!.emitBeforeAgentStart(
         prompt,
         images.length ? images : undefined,
-        baseSystemPrompt,
         session!._baseSystemPromptOptions,
       )
     : undefined;
-  // Match AgentSession's framing order exactly, including an explicitly empty
-  // prompt returned by a framing hook. Save fresh-compaction framing so the next
-  // custom turn and all of its tool continuations reuse it.
-  const effectiveSystemPrompt = hasEffectiveFrame ? snapshot!.systemPrompt! : (start?.systemPrompt ?? baseSystemPrompt);
-  agent.state.systemPrompt = effectiveSystemPrompt;
+  // Match AgentSession's framing order. Fresh compaction must prepare the same
+  // structured system delta that prompt() would have persisted for a normal turn.
+  if (start) {
+    session!._runSystemPromptOptions = start.systemPromptOptions;
+    const update = session!._preparePromptAndToolLoadout(start.systemPromptOptions, raw);
+    if (update) raw.unshift(update);
+  }
+  const effectiveSystemPrompt = hasEffectiveFrame ? snapshot!.systemPrompt! : session!.systemPrompt;
   setCurrentInstructionFrame(ctx.sessionManager as object, effectiveSystemPrompt);
   for (const message of start?.messages ?? []) {
     raw.push({
@@ -114,12 +116,17 @@ async function prepareCurrentConversation(
   }
   const transformed = agent.transformContext ? await agent.transformContext(raw, event.signal) : raw;
   if (event.signal.aborted) return undefined;
-  const messages = await agent.convertToLlm(transformed);
+  const converted = await agent.convertToLlm(transformed);
   const tools = agent.state.tools.map((tool) => ({
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,
   }));
+  const messages = normalizeContext({
+    systemPrompt: effectiveSystemPrompt,
+    messages: converted.filter((message) => message.role !== "system"),
+    tools,
+  }).messages;
   return {
     messages,
     rawMessages: convertToLlm(branchMessages),
@@ -127,29 +134,20 @@ async function prepareCurrentConversation(
     tools,
     thinkingBudget: anthropicThinkingBudget(ctx.model, ctx.thinkingLevel, agent.thinkingBudgets),
     complete: async (request, maxTokens, onPayload) => {
-      const stream = await agent.streamFunction(
-        ctx.model!,
-        {
-          systemPrompt: request.systemPrompt,
-          messages: request.messages,
-          tools: request.tools,
+      const stream = await agent.streamFunction(ctx.model!, normalizeContext({ messages: request.messages }), {
+        reasoning: ctx.thinkingLevel === "off" ? undefined : ctx.thinkingLevel,
+        sessionId: ctx.sessionManager.getSessionId(),
+        signal: event.signal,
+        transport: agent.transport,
+        thinkingBudgets: agent.thinkingBudgets,
+        maxRetryDelayMs: agent.maxRetryDelayMs,
+        maxTokens,
+        onPayload: async (payload: unknown, model: Model<any>) => {
+          const normallyTransformed = (agent.onPayload ? await agent.onPayload(payload, model) : undefined) ?? payload;
+          return onPayload(normallyTransformed);
         },
-        {
-          reasoning: ctx.thinkingLevel === "off" ? undefined : ctx.thinkingLevel,
-          sessionId: ctx.sessionManager.getSessionId(),
-          signal: event.signal,
-          transport: agent.transport,
-          thinkingBudgets: agent.thinkingBudgets,
-          maxRetryDelayMs: agent.maxRetryDelayMs,
-          maxTokens,
-          onPayload: async (payload: unknown, model: Model<any>) => {
-            const normallyTransformed =
-              (agent.onPayload ? await agent.onPayload(payload, model) : undefined) ?? payload;
-            return onPayload(normallyTransformed);
-          },
-          onResponse: agent.onResponse,
-        },
-      );
+        onResponse: agent.onResponse,
+      });
       return stream.result();
     },
   };
@@ -171,9 +169,7 @@ function anthropicThinkingBudget(
 }
 
 export type CacheAffineRequest = {
-  systemPrompt: string;
   messages: Message[];
-  tools: Tool[];
   outputTokens: number;
   estimatedInputTokens: number;
 };
@@ -217,18 +213,25 @@ function prepareCacheAffineRequest(
 ): RequestBuildResult {
   const { preparation } = event;
   const history = current.messages;
-  if (history.length === 0) return { reason: "the prepared conversation is empty" };
+  if (!history.some((message) => message.role !== "system")) return { reason: "the prepared conversation is empty" };
   const custom = customInstructions?.trim() ? "Additional user focus: " + customInstructions.trim() : "";
   // Use a replacement callback so dollar sequences and template-like text in
   // the user-provided focus remain literal data rather than another pass.
   const prompt = promptTemplate.replace("{{customInstructions}}", () => custom).trimEnd();
 
   const suffixTokens = Math.ceil(prompt.length / 4) + 32;
-  const transformedTokens = history.reduce((total, message) => total + estimateTokens(message as AgentMessage), 0);
-  const rawTokens = current.rawMessages?.reduce((total, message) => total + estimateTokens(message as AgentMessage), 0);
+  // Pi 0.87 includes the instruction/tool frame in the transcript. Count it
+  // once, not both as history and again as the separately estimated frame.
+  const conversationTokens = (messages: Message[]) =>
+    messages.reduce((total, message) => total + (message.role === "system" ? 0 : estimateTokens(message)), 0);
+  const transformedTokens = conversationTokens(history);
+  const rawTokens = current.rawMessages && conversationTokens(current.rawMessages);
   const transformedGrowth = Math.max(0, transformedTokens - (rawTokens ?? preparation.tokensBefore));
   const reserve = preparation.settings.reserveTokens;
-  const frameTokens = Math.ceil((current.systemPrompt.length + JSON.stringify(current.tools).length) / 4) + 128;
+  const frameTokens = Math.max(
+    history.reduce((total, message) => total + (message.role === "system" ? estimateTokens(message) : 0), 0),
+    Math.ceil((current.systemPrompt.length + JSON.stringify(current.tools).length) / 4) + 128,
+  );
   const estimatedInputTokens =
     Math.max(preparation.tokensBefore + transformedGrowth, transformedTokens + frameTokens) + suffixTokens;
   const outputTokens = Math.min(
@@ -244,9 +247,7 @@ function prepareCacheAffineRequest(
 
   return {
     request: {
-      systemPrompt: current.systemPrompt,
       messages: [...history, { role: "user", content: [{ type: "text", text: prompt }], timestamp: Date.now() }],
-      tools: current.tools,
       outputTokens,
       estimatedInputTokens,
     },
@@ -286,7 +287,11 @@ export function buildCacheAffineRequest(
     snapshot,
     event,
     {
-      messages: history,
+      messages: normalizeContext({
+        systemPrompt: snapshot.systemPrompt,
+        messages: history,
+        tools: snapshot.tools,
+      }).messages,
       rawMessages: currentRaw,
       systemPrompt: snapshot.systemPrompt ?? "",
       tools: snapshot.tools ?? [],

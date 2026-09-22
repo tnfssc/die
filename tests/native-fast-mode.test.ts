@@ -1,3 +1,4 @@
+import { normalizeContext } from "@earendil-works/pi-ai";
 import { expect, test } from "bun:test";
 import { zstdDecompressSync } from "node:zlib";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -147,7 +148,7 @@ test("exact provider/model/auth allowlist rejects lookalikes before dispatch", (
   expect(nativeFastSupport(getModel("openai-codex", "gpt-5.6-luna")!).supported).toBe(true);
   expect(CODEX_FAST_MODELS.has("gpt-5.3-codex-spark")).toBe(false);
   expect(nativeFastSupport(getModel("openai-codex", "gpt-5.3-codex-spark")!).supported).toBe(false);
-  expect(nativeFastSupport(getModel("openai-codex", "gpt-5.4-mini")!).supported).toBe(false);
+  expect(nativeFastSupport({ ...getModel("openai-codex", "gpt-5.5")!, id: "gpt-5.4-mini" }).supported).toBe(false);
   const custom = { ...getModel("openai", "gpt-5.3-codex")!, provider: "gateway" };
   expect(nativeFastSupport(custom).supported).toBe(false);
   const proxy = { ...getModel("openai", "gpt-5.3-codex")!, baseUrl: "https://proxy.example/v1" };
@@ -303,7 +304,11 @@ test("actual Pi streamSimple Codex SSE serialization carries priority and preser
   await h.runtime
     .streamSimple(
       model,
-      { systemPrompt: "keep-system", messages: [{ role: "user", content: "hi", timestamp: 1 }], tools: [] },
+      normalizeContext({
+        systemPrompt: "keep-system",
+        messages: [{ role: "user", content: "hi", timestamp: 1 }],
+        tools: [],
+      }),
       {
         apiKey: token,
         transport: "sse",
@@ -368,7 +373,11 @@ test("actual Pi streamSimple Codex WebSocket frame carries priority", async () =
     const response = await h.runtime
       .streamSimple(
         model,
-        { systemPrompt: "ws-system", messages: [{ role: "user", content: "hi", timestamp: 1 }], tools: [] },
+        normalizeContext({
+          systemPrompt: "ws-system",
+          messages: [{ role: "user", content: "hi", timestamp: 1 }],
+          tools: [],
+        }),
         {
           apiKey: token,
           transport: "websocket",

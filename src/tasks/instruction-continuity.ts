@@ -1,6 +1,6 @@
-import type { Agent } from "@earendil-works/pi-agent-core";
+import type { Agent, AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ImageContent } from "@earendil-works/pi-ai";
-import { AgentSession } from "@earendil-works/pi-coding-agent";
+import { AgentSession, type NormalizedBuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 
 /**
  * Compatibility boundary for die-owned instruction continuity.
@@ -24,27 +24,31 @@ export type ClassicSession = {
   agent: Agent;
   sessionManager: object;
   _buildRuntime(options: unknown): void;
-  _systemPromptOverride?: string;
-  _runAgentPrompt(messages: unknown): Promise<void>;
+  readonly systemPrompt: string;
+  _runSystemPromptOptions?: NormalizedBuildSystemPromptOptions;
+  _runAgentPrompt(messages: AgentMessage | AgentMessage[]): Promise<void>;
+  _preparePromptAndToolLoadout(
+    options: NormalizedBuildSystemPromptOptions,
+    messages?: AgentMessage[],
+  ): AgentMessage | undefined;
   _extensionRunner?: {
     emitBeforeAgentStart(
       prompt: string,
       images: ImageContent[] | undefined,
-      systemPrompt: string,
-      options: unknown,
-    ): Promise<
-      | {
-          messages?: Array<{ customType: string; content: unknown[]; display?: boolean; details?: unknown }>;
-          systemPrompt?: string;
-        }
-      | undefined
-    >;
+      options: NormalizedBuildSystemPromptOptions,
+    ): Promise<{
+      messages: Array<{ customType: string; content: unknown[]; display?: boolean; details?: unknown }>;
+      systemPromptOptions: NormalizedBuildSystemPromptOptions;
+    }>;
   };
-  _baseSystemPrompt?: string;
-  _baseSystemPromptOptions?: unknown;
+  _baseSystemPromptOptions: NormalizedBuildSystemPromptOptions;
 };
 
-type InstructionFrame = { sessionId: string; systemPrompt?: string };
+type InstructionFrame = {
+  sessionId: string;
+  systemPrompt?: string;
+  systemPromptOptions?: NormalizedBuildSystemPromptOptions;
+};
 
 const classicSessions = new WeakMap<object, ClassicSession>();
 // A persisted session id is not an owner identity: two in-memory managers may
@@ -87,12 +91,13 @@ export function setCurrentInstructionFrame(sessionManager: object, systemPrompt:
   const frame = currentInstructionFrame(sessionManager);
   if (!frame) return false;
   frame.systemPrompt = systemPrompt;
-  // Pi refreshes tool continuations from this private override, not agent.state.
-  // Synchronize it immediately, including compaction within an existing run.
+  // Pi 0.87 carries instructions as transcript system messages. Keep the
+  // active run options in sync so tool continuations use the exact forced frame.
   const owner = classicSessions.get(sessionManager);
   if (owner) {
-    owner._systemPromptOverride = systemPrompt;
-    owner.agent.state.systemPrompt = systemPrompt;
+    const basis = owner._runSystemPromptOptions ?? owner._baseSystemPromptOptions;
+    frame.systemPromptOptions = { ...basis, forceSystemPrompt: systemPrompt };
+    owner._runSystemPromptOptions = frame.systemPromptOptions;
   }
   return true;
 }
@@ -140,16 +145,17 @@ export function installCurrentConversationAdapter(): void {
     );
   }
   classicAdapterInstalled = true;
-  prototype._runAgentPrompt = async function (this: ClassicSession, messages: unknown) {
+  prototype._runAgentPrompt = async function (this: ClassicSession, messages: AgentMessage | AgentMessage[]) {
     const frame = currentInstructionFrame(this.sessionManager);
     if (frame) {
-      // prompt() has already run the entire before_agent_start chain. Capture
-      // that final override; custom-message turns have no override, so restore
-      // it once for the whole agent loop (including every tool continuation).
-      if (this._systemPromptOverride !== undefined) frame.systemPrompt = this._systemPromptOverride;
-      else if (frame.systemPrompt !== undefined) {
-        this._systemPromptOverride = frame.systemPrompt;
-        this.agent.state.systemPrompt = frame.systemPrompt;
+      // prompt() has already run before_agent_start and prepared its transcript
+      // update. Capture those final options. Custom-message turns do not run the
+      // hook, so restore the options for the provider projection and continuations.
+      if (this._runSystemPromptOptions !== undefined) {
+        frame.systemPromptOptions = this._runSystemPromptOptions;
+        frame.systemPrompt = this.systemPrompt;
+      } else if (frame.systemPromptOptions !== undefined) {
+        this._runSystemPromptOptions = frame.systemPromptOptions;
       }
     }
     return runAgentPrompt.call(this, messages);

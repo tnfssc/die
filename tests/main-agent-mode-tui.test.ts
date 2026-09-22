@@ -33,6 +33,7 @@ test("real TUI /mode reports and switches the root instruction mode", async () =
       "OPENAI_API_KEY=offline-test-placeholder",
       binary,
       "--offline",
+      "--no-approve",
       "--no-session",
       "--provider",
       "openai",

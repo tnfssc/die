@@ -53,6 +53,7 @@ test("quiet startup hides Pi promotion and skill inventory without disabling ski
       "OPENAI_API_KEY=offline-test-placeholder",
       binary,
       "--offline",
+      "--no-approve",
       "--no-session",
       "--provider",
       "openai",

@@ -4458,11 +4458,51 @@ index c6a399b3..947b0578 100644
 +    hardStop: hardStopProcess,
    } satisfies PiRpcConnection;
  });
+diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
+index 2d448e3b..9af09feb 100644
+--- a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
++++ b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
+@@ -27,6 +27,16 @@ async function loadRequestHook(): Promise<RequestHook> {
+   return hook!;
+ }
+ 
++describe("Pi extension API compatibility", () => {
++  it("types imported MCP schemas as Pi registerTool parameters", () => {
++    assert.include(
++      PI_T3_MCP_EXTENSION_SOURCE,
++      'type PiToolSchema = Parameters<ExtensionAPI["registerTool"]>[0]["parameters"]',
++    );
++    assert.include(PI_T3_MCP_EXTENSION_SOURCE, '(value: unknown) => PiToolSchema');
++  });
++});
++
+ describe("Pi upstream output-budget workaround", () => {
+   for (const key of ["max_tokens", "max_completion_tokens"]) {
+     it(`caps ${key} without changing the conversation or tools`, async () => {
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
-index 185bd16f..1f258f1e 100644
+index 185bd16f..87b02578 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
-@@ -246,6 +246,11 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
+@@ -35,6 +35,7 @@ const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
+ const FILE_CHANGE_TOOLS = new Set(${JSON.stringify(PI_FILE_CHANGE_TOOLS)});
+ 
+ type RuntimeMode = "approval-required" | "auto-accept-edits" | "auto" | "full-access";
++type PiToolSchema = Parameters<ExtensionAPI["registerTool"]>[0]["parameters"];
+ 
+ type JsonRpcResponse = {
+   readonly id?: number | string;
+@@ -86,8 +87,8 @@ function parseSseOrJson(body: string, contentType: string): JsonRpcResponse {
+   return JSON.parse(body) as JsonRpcResponse;
+ }
+ 
+-function jsonSchemaToTypebox(schema: Record<string, unknown> | undefined) {
+-  const unsafe = (Type as { Unsafe?: (value: unknown) => unknown }).Unsafe;
++function jsonSchemaToTypebox(schema: Record<string, unknown> | undefined): PiToolSchema {
++  const unsafe = (Type as { Unsafe?: (value: unknown) => PiToolSchema }).Unsafe;
+   if (typeof unsafe === "function" && schema !== undefined) {
+     return unsafe(schema);
+   }
+@@ -246,6 +247,11 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
      }
    });
  
@@ -4474,7 +4514,7 @@ index 185bd16f..1f258f1e 100644
    const endpoint = env(URL_ENV);
    const token = env(TOKEN_ENV);
    if (endpoint === undefined || token === undefined) {
-@@ -268,6 +273,8 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
+@@ -268,6 +274,8 @@ export default async function t3McpExtension(pi: ExtensionAPI) {
        await client.connect(signal);
        const tools = await client.listTools(signal);
        for (const tool of tools) {

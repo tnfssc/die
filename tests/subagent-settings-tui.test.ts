@@ -28,6 +28,7 @@ test("real TUI searches profile models, keeps selection, and saves", async () =>
       "OPENAI_API_KEY=offline-test-placeholder",
       binary,
       "--offline",
+      "--no-approve",
       "--no-session",
       "--provider",
       "openai",

@@ -142,9 +142,17 @@ try {
     entry.message.content.length !== 256 * 1024
   )
     throw new Error("Original history lost on resume");
-  manager.appendMessage({ role: "user", content: "post-resume append", timestamp: Date.now() });
+  const resumedId = manager.appendMessage({ role: "user", content: "post-resume append", timestamp: Date.now() });
+  manager.appendContextEdit(resumedId, { content: "post-resume edited" });
   manager.setSessionFile(path);
-  if (manager.buildSessionContext().messages.length !== 3) throw new Error("Resume append lost");
+  const projection = manager.buildSessionProjection();
+  if (projection.messages.length !== 3) throw new Error("Resume append lost");
+  if (!projection.entries.some(({ sourceEntry }) => sourceEntry.type === "context_edit"))
+    throw new Error("Context edit provenance lost on resume");
+  if (!projection.messages.some((message) => message.role === "user" && message.content === "post-resume edited"))
+    throw new Error("Context edit projection lost on resume");
+  if (manager.buildSessionContext().messages.length !== projection.messages.length)
+    throw new Error("Session context diverged from projection");
   await sample("resume append");
   const baseline = samples[0]!;
   const last = samples.at(-1)!;

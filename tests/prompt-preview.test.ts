@@ -1,3 +1,4 @@
+import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
 import { expect, spyOn, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -37,7 +38,10 @@ test("offline preview captures production prompt, tool definition, and injected 
     expect(preview.systemPrompt).not.toContain("In addition to the tools above");
     for (const guidance of executeGuidance) expect(preview.systemPrompt).toContain(guidance);
     expect(preview.systemPrompt).not.toContain("Delegation is disabled");
-    expect(preview.systemPrompt).toContain("Current working directory:");
+    expect(preview.systemPrompt).toContain("<cwd>");
+    expect(preview.messages[0]?.role).toBe("system");
+    expect(getCurrentSystemPrompt(preview.messages)).toBe(preview.systemPrompt);
+    expect(getCurrentTools(preview.messages)).toEqual(preview.tools);
     expect(preview.tools).toHaveLength(1);
     expect(preview.tools[0]).toMatchObject({
       name: registered.name,

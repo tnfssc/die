@@ -27,6 +27,7 @@ test.skipIf(!hasTmux)(
         "OPENAI_API_KEY=offline-test-placeholder",
         resolve(import.meta.dir, "../dist/die"),
         "--offline",
+        "--no-approve",
         "--session",
         sessionFile,
         "--provider",

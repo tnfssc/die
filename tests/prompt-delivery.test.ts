@@ -1,8 +1,9 @@
+import { getCurrentSystemPrompt, getCurrentTools, type TranscriptContext } from "@earendil-works/pi-ai";
 import { test, expect } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createAssistantMessageEventStream, type AssistantMessage, type Context } from "@earendil-works/pi-ai/compat";
+import { createAssistantMessageEventStream, type AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { getModel } from "@earendil-works/pi-ai/compat";
 import {
   ModelRuntime,
@@ -92,7 +93,7 @@ test("production tasks extension guidance reaches the actual stream context", as
       tools: ["execute"],
     }));
 
-    let streamedContext: Context | undefined;
+    let streamedContext: TranscriptContext | undefined;
     session.agent.streamFunction = (_model, context) => {
       streamedContext = context;
       const stream = createAssistantMessageEventStream();
@@ -121,7 +122,7 @@ test("production tasks extension guidance reaches the actual stream context", as
     await session.prompt("verify prompt delivery");
 
     expect(streamedContext).toBeDefined();
-    const prompt = streamedContext!.systemPrompt ?? "";
+    const prompt = getCurrentSystemPrompt(streamedContext!.messages);
     for (const value of workingValues) expect(prompt).toContain(value);
     for (const reference of executeReference) expect(prompt).toContain(reference);
     expect(prompt).toContain("await handoff(message)");
@@ -131,10 +132,10 @@ test("production tasks extension guidance reaches the actual stream context", as
     expect(prompt).not.toContain("Always read pi .md files");
     expect(prompt).toContain("KEEP_APPEND_GUIDANCE");
     expect(prompt).toContain("KEEP_PROJECT_GUIDANCE");
-    expect(prompt).toContain("Current working directory:");
-    expect(streamedContext!.tools?.map((tool) => tool.name)).toEqual(["execute"]);
+    expect(prompt).toContain("<cwd>");
+    expect(getCurrentTools(streamedContext!.messages).map((tool) => tool.name)).toEqual(["execute"]);
     await session.prompt("verify the next turn too");
-    expect(streamedContext!.systemPrompt).toBe(prompt);
+    expect(getCurrentSystemPrompt(streamedContext!.messages)).toBe(prompt);
   } finally {
     session?.dispose();
     await rm(dir, { recursive: true, force: true });

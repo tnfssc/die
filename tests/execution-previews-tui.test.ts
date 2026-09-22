@@ -1,3 +1,4 @@
+import type { JsonObject } from "@earendil-works/pi-ai";
 import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -32,7 +33,7 @@ test("real TUI shows one-line collapsed execute/task rows and expandable details
   try {
     const session = SessionManager.create(home, join(home, "sessions"));
     session.appendMessage({ role: "user", content: "Preview fixture", timestamp: Date.now() });
-    const appendTool = (id: string, code: string, text: string, details: object, isError: boolean) => {
+    const appendTool = (id: string, code: string, text: string, details: JsonObject, isError: boolean) => {
       session.appendMessage({
         role: "assistant",
         content: [{ type: "toolCall", id, name: "execute", arguments: { code } }],

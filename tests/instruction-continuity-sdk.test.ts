@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { getCurrentSystemPrompt, type TranscriptContext } from "@earendil-works/pi-ai";
 import { type AssistantMessage, createAssistantMessageEventStream, getModel } from "@earendil-works/pi-ai/compat";
 import {
   createAgentSession,
@@ -83,18 +84,12 @@ for (const { customPrompt, emptyFrame } of [
       }));
 
       const requests: Array<{ systemPrompt: string; messages: unknown[] }> = [];
-      const execute = session.agent.state.tools.find((tool) => tool.name === "execute")!;
-      session.agent.state.tools = session.agent.state.tools.map((tool) =>
-        tool.name === "execute"
-          ? {
-              ...execute,
-              execute: async () => ({ content: [{ type: "text", text: "ACTUAL_EXECUTE_RESULT" }], details: {} }),
-            }
-          : tool,
-      );
       let call = 0;
-      session.agent.streamFunction = ((_model: unknown, context: { systemPrompt: string; messages: unknown[] }) => {
-        requests.push({ systemPrompt: context.systemPrompt, messages: structuredClone(context.messages) });
+      session.agent.streamFunction = ((_model: unknown, context: TranscriptContext) => {
+        requests.push({
+          systemPrompt: getCurrentSystemPrompt(context.messages),
+          messages: structuredClone(context.messages),
+        });
         call++;
         const tool = call === 2;
         const message: AssistantMessage = {
@@ -123,6 +118,15 @@ for (const { customPrompt, emptyFrame } of [
       }) as typeof session.agent.streamFunction;
 
       await session.prompt("ordinary user turn");
+      const execute = session.agent.state.tools.find((tool) => tool.name === "execute")!;
+      session.agent.state.tools = session.agent.state.tools.map((tool) =>
+        tool.name === "execute"
+          ? {
+              ...execute,
+              execute: async () => ({ content: [{ type: "text", text: "ACTUAL_EXECUTE_RESULT" }], details: {} }),
+            }
+          : tool,
+      );
       await session.sendCustomMessage(
         { customType: "task-complete", content: "idle completion", display: true },
         { triggerTurn: true },
@@ -263,8 +267,11 @@ test("fresh compaction prepares the frame and redacted context for a later custo
           }
         : tool,
     );
-    const testStreamFunction = ((_model: unknown, context: { systemPrompt: string; messages: any[] }) => {
-      seen.push({ systemPrompt: context.systemPrompt, messages: structuredClone(context.messages) });
+    const testStreamFunction = ((_model: unknown, context: TranscriptContext) => {
+      seen.push({
+        systemPrompt: getCurrentSystemPrompt(context.messages),
+        messages: structuredClone(context.messages),
+      });
       const content: any[] =
         phase === "compact"
           ? [{ type: "text", text: "## Goal\nKeep fresh state." }]
@@ -305,14 +312,17 @@ test("fresh compaction prepares the frame and redacted context for a later custo
     const refreshed = await session.agent.prepareNextTurnWithContext!(
       {
         context: {
-          systemPrompt: "stale-base",
           messages: session.agent.state.messages,
           tools: session.agent.state.tools,
         },
       } as any,
       new AbortController().signal,
     );
-    expect(refreshed?.context?.systemPrompt).toBe(seen[0]!.systemPrompt);
+    const projected = await session.agent.transformContext!(
+      refreshed?.context?.messages ?? [],
+      new AbortController().signal,
+    );
+    expect(getCurrentSystemPrompt(projected)).toBe(seen[0]!.systemPrompt);
 
     phase = "custom-first";
     // Compaction rebuilds agent runtime state, so retain the offline transport
@@ -341,7 +351,7 @@ test("fresh compaction prepares the frame and redacted context for a later custo
       "result-for-fresh-tool-a",
       "result-for-fresh-tool-b",
     ]);
-    expect(contextCalls).toBe(4);
+    expect(contextCalls).toBe(5);
   } finally {
     session?.dispose();
     await rm(dir, { recursive: true, force: true });

@@ -222,7 +222,9 @@ test("actual SDK preserves first post-shake overflow compaction and retries once
       extensionFactories: [{ name: "die-tasks", factory: tasks }],
     });
     await loader.reload();
-    const model = { ...getModel("openai", "gpt-4o")!, contextWindow: 12000, maxTokens: 4000 };
+    // Pi 0.87 estimates recovery context from its durable projection after
+    // omitting the failed attempt. Leave room for that conservative raw estimate.
+    const model = { ...getModel("openai", "gpt-4o")!, contextWindow: 20000, maxTokens: 4000 };
     ({ session } = await createAgentSession({
       cwd: dir,
       agentDir: dir,
@@ -242,7 +244,7 @@ test("actual SDK preserves first post-shake overflow compaction and retries once
     const contexts: any[] = [];
     session.agent.streamFunction = (_model: any, context: any) => {
       contexts.push(structuredClone(context.messages));
-      if (contexts.length === 1) return errorResponse("context_length_exceeded");
+      if (contexts.length === 1) return errorResponse("Your input exceeds the context window of this model");
       if (contexts.length === 2) return response("automatic summary");
       return response("retry succeeded");
     };
@@ -258,6 +260,37 @@ test("actual SDK preserves first post-shake overflow compaction and retries once
           .at(-1) as any
       )?.message.content[0]?.text,
     ).toBe("retry succeeded");
+
+    // Pi 0.87 forwards completed tool results into recovery so the whole
+    // interrupted attempt is omitted, not just its assistant message.
+    await session.prompt("begin another recovery run");
+    const interrupted: AssistantMessage = {
+      ...assistant([{ type: "toolCall", id: "recovery-tool", name: "execute", arguments: { code: "1" } }], smallUsage),
+      stopReason: "length",
+      timestamp: Date.now() + 10,
+    };
+    const toolResult: import("@earendil-works/pi-ai").ToolResultMessage = {
+      role: "toolResult",
+      toolCallId: "recovery-tool",
+      toolName: "execute",
+      content: [{ type: "text", text: "interrupted tool result" }],
+      isError: false,
+      timestamp: interrupted.timestamp + 1,
+    };
+    const interruptedId = manager.appendMessage(interrupted);
+    const toolResultId = manager.appendMessage(toolResult);
+    session.agent.state.messages = manager.buildSessionContext().messages;
+    const recovery = session as unknown as {
+      _checkCompaction(
+        message: AssistantMessage,
+        skipAborted: boolean,
+        results: (typeof toolResult)[],
+      ): Promise<boolean>;
+    };
+    await recovery._checkCompaction(interrupted, true, [toolResult]);
+    const omitted = manager.getEntries().filter((entry) => entry.type === "context_edit" && entry.replacement === null);
+    expect(omitted.map((entry) => entry.type === "context_edit" && entry.targetId)).toContain(interruptedId);
+    expect(omitted.map((entry) => entry.type === "context_edit" && entry.targetId)).toContain(toolResultId);
   } finally {
     session?.dispose();
     await rm(dir, { recursive: true, force: true });
