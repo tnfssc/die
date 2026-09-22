@@ -63,3 +63,5 @@
 - [v0.5.0 release](release-v050.md): published and verified; all four binaries/checksums and 12 asset digests validated, official Linux reports 0.5.0; no local install, concurrent work preserved.
 
 - [Pi 0.87 upgrade](pi-0.87-upgrade.md): transcript migration, lazy-history parity, patched-web API review, license updates, and validation/worktree record.
+
+- [Release verification preference](release-verification-preference.md): user says no automatic post-release binary downloads solely to recheck CI-generated checksums; rely on passing CI and confirm publication.
