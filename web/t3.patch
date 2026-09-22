@@ -5063,10 +5063,10 @@ index 00000000..0b79fd65
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts b/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts
 new file mode 100644
-index 00000000..5c339a37
+index 0000000..67e142d
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts
-@@ -0,0 +1,733 @@
+@@ -0,0 +1,800 @@
 +// @effect-diagnostics preferSchemaOverJson:off globalConsoleInEffect:off missingEffectContext:off missingLayerContext:off anyUnknownInErrorContext:off globalFetchInEffect:off nodeBuiltinImport:off globalTimers:off
 +/** End-to-end contract: real Die routes subagent/jobs through die_task_launch, die_task_observe, die_task_list, and die_task_cancel. */
 +import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -5228,8 +5228,31 @@ index 00000000..5c339a37
 +          const requests: any[] = [];
 +          const spawnPids: number[] = [];
 +          const hanging = new Set<ServerResponse>();
++          let releaseSuccessRequest!: () => void;
++          const successRequestRelease = new Promise<void>((resolveRelease) => {
++            releaseSuccessRequest = resolveRelease;
++          });
++          let markSuccessRequestReached!: () => void;
++          const successRequestReached = new Promise<void>((resolveReached) => {
++            markSuccessRequestReached = resolveReached;
++          });
++          let releaseParentReady!: () => void;
++          const parentReadyRelease = new Promise<void>((resolveRelease) => {
++            releaseParentReady = resolveRelease;
++          });
++          let markParentReadyReached!: () => void;
++          const parentReadyReached = new Promise<void>((resolveReached) => {
++            markParentReadyReached = resolveReached;
++          });
 +          let parentExecuteResponses = 0;
 +          const model = createServer(async (req, res) => {
++            if (req.method === "GET" && req.url === "/parent-ready") {
++              markParentReadyReached();
++              await parentReadyRelease;
++              res.writeHead(204);
++              res.end();
++              return;
++            }
 +            if (req.method === "GET" && req.url === "/cancel-ready") {
 +              const ready = requests.some((r) =>
 +                (r.messages ?? []).some(
@@ -5301,9 +5324,9 @@ index 00000000..5c339a37
 +              return;
 +            }
 +            if (!isParent && userText.includes("INTEGRATED_SUCCESS_CHILD")) {
-+              await new Promise((resolveDelay) => setTimeout(resolveDelay, 2_500));
-+              return sse(res, [
-+                {
++              res.writeHead(200, { "content-type": "text/event-stream" });
++              res.write(
++                `data: ${JSON.stringify({
 +                  ...base,
 +                  choices: [
 +                    {
@@ -5312,16 +5335,24 @@ index 00000000..5c339a37
 +                      finish_reason: null,
 +                    },
 +                  ],
-+                },
-+                { ...base, choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-+              ]);
++                })}\n\n`,
++              );
++              markSuccessRequestReached();
++              await successRequestRelease;
++              res.end(
++                `data: ${JSON.stringify({
++                  ...base,
++                  choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
++                })}\n\ndata: [DONE]\n\n`,
++              );
++              return;
 +            }
 +            if (
 +              (isParent || text.includes("INTEGRATED_PARENT_CONTINUATION")) &&
 +              parentExecuteResponses < 2
 +            ) {
 +              parentExecuteResponses += 1;
-+              const code = `const a=await subagent({type:"orchestrator",prompt:"INTEGRATED_SUCCESS_CHILD"}); if(!a.background) throw new Error("NOT_NATIVE_ASYNC"); const first=await jobs.inspect(a.id); const listed=await jobs.list({count:20}); const pending=await subagent({type:"orchestrator",prompt:"INTEGRATED_CANCEL_CHILD"}); const deadline=Date.now()+10000; while(!(await (await fetch("http://127.0.0.1:${(model.address() as { port: number }).port}/cancel-ready")).json()).ready) { if(Date.now()>deadline) throw new Error("CANCEL_CHILD_DID_NOT_REACH_MODEL"); await new Promise(r=>setTimeout(r,20)); } const cancel=await jobs.stop(pending.id); const cancelAgain=await jobs.stop(pending.id); console.log("INTEGRATED_PARENT_CONTINUATION"+JSON.stringify({taskId:a.id,background:a.background,firstStatus:first.status,listHasTask:listed.jobs.some(x=>x.id===a.id),cancelStatus:cancel.status,cancelAgainStatus:cancelAgain.status})); await handoff("INTEGRATED_PARENT_HANDOFF");`;
++              const code = `const a=await subagent({type:"orchestrator",prompt:"INTEGRATED_SUCCESS_CHILD"}); if(!a.background) throw new Error("NOT_NATIVE_ASYNC"); const first=await jobs.inspect(a.id); const listed=await jobs.list({count:20}); const pending=await subagent({type:"orchestrator",prompt:"INTEGRATED_CANCEL_CHILD"}); const deadline=Date.now()+10000; while(!(await (await fetch("http://127.0.0.1:${(model.address() as { port: number }).port}/cancel-ready")).json()).ready) { if(Date.now()>deadline) throw new Error("CANCEL_CHILD_DID_NOT_REACH_MODEL"); await new Promise(r=>setTimeout(r,20)); } const cancel=await jobs.stop(pending.id); const cancelAgain=await jobs.stop(pending.id); console.log("INTEGRATED_PARENT_CONTINUATION"+JSON.stringify({taskId:a.id,background:a.background,firstStatus:first.status,listHasTask:listed.jobs.some(x=>x.id===a.id),cancelStatus:cancel.status,cancelAgainStatus:cancelAgain.status})); await fetch("http://127.0.0.1:${(model.address() as { port: number }).port}/parent-ready"); await handoff("INTEGRATED_PARENT_HANDOFF");`;
 +              return sse(res, [
 +                {
 +                  ...base,
@@ -5402,6 +5433,10 @@ index 00000000..5c339a37
 +            requests,
 +            spawnPids,
 +            hanging,
++            successRequestReached,
++            releaseSuccessRequest,
++            parentReadyReached,
++            releaseParentReady,
 +            root,
 +            home,
 +            agent,
@@ -5545,6 +5580,55 @@ index 00000000..5c339a37
 +                modelSelection: selection,
 +                dispatchMode: { type: "start_immediately" },
 +              });
++              yield* Effect.promise(() => fixture.successRequestReached);
++              yield* Effect.promise(() => fixture.parentReadyReached);
++              const activeParent = yield* waitFor(orchestrator, PARENT, (p) =>
++                (() => {
++                  const success = p.subagents.filter((s: any) => s.origin === "app_owned")[0];
++                  return (
++                    success?.childThreadId !== null &&
++                    success !== undefined &&
++                    success.status !== "completed" &&
++                    success.status !== "interrupted" &&
++                    success.status !== "cancelled"
++                  );
++                })(),
++              );
++              const activeSuccess = activeParent.subagents.filter(
++                (s: any) => s.origin === "app_owned",
++              )[0];
++              if (activeSuccess?.childThreadId === null || activeSuccess === undefined)
++                return yield* Effect.die(new Error("success child was not active at barrier"));
++              const activeSuccessThreadId = activeSuccess.childThreadId;
++              const registry = yield* McpSessionRegistry.McpSessionRegistry;
++              const parentCredential = McpProviderSession.readMcpProviderSession(PARENT)!;
++              const childCredential =
++                McpProviderSession.readMcpProviderSession(activeSuccessThreadId)!;
++              expect(Boolean(childCredential)).toBe(true);
++              expect(
++                parentCredential.authorizationHeader !== childCredential.authorizationHeader,
++              ).toBe(true);
++              const parentScope = yield* registry.resolve(
++                parentCredential.authorizationHeader.slice(7),
++              );
++              expect(parentScope?.capabilities.has("die-delegation")).toBe(true);
++              expect(parentScope?.dieDelegation).toEqual({ profile: "orchestrator", depth: 0 });
++              const childScope = yield* registry.resolve(
++                childCredential.authorizationHeader.slice(7),
++              );
++              expect(childScope?.threadId).toBe(activeSuccessThreadId);
++              expect(childScope?.capabilities.has("die-delegation")).toBe(true);
++              expect(childScope?.dieDelegation).toEqual({ profile: "orchestrator", depth: 1 });
++              fixture.releaseParentReady();
++              yield* waitFor(orchestrator, PARENT, (p) =>
++                p.turnItems.some(
++                  (item: any) =>
++                    item.type === "dynamic_tool" &&
++                    String(item.output).includes("INTEGRATED_PARENT_HANDOFF"),
++                ),
++              );
++              fixture.releaseSuccessRequest();
++
 +              const parent = yield* waitFor(
 +                orchestrator,
 +                PARENT,
@@ -5665,25 +5749,6 @@ index 00000000..5c339a37
 +              }
 +              for (const request of fixture.requests)
 +                expect(request.tools.map((t: any) => t.function.name)).toEqual(["execute"]);
-+              const registry = yield* McpSessionRegistry.McpSessionRegistry;
-+              const parentCredential = McpProviderSession.readMcpProviderSession(PARENT)!;
-+              const childCredential = McpProviderSession.readMcpProviderSession(successThreadId)!;
-+              expect(Boolean(childCredential)).toBe(true);
-+              expect(
-+                parentCredential.authorizationHeader !== childCredential.authorizationHeader,
-+              ).toBe(true);
-+              const parentScope = yield* registry.resolve(
-+                parentCredential.authorizationHeader.slice(7),
-+              );
-+              expect(parentScope?.capabilities.has("die-delegation")).toBe(true);
-+              expect(parentScope?.dieDelegation).toEqual({ profile: "orchestrator", depth: 0 });
-+              const childScope = yield* registry.resolve(
-+                childCredential.authorizationHeader.slice(7),
-+              );
-+              expect(childScope?.threadId).toBe(successThreadId);
-+              expect(childScope?.capabilities.has("die-delegation")).toBe(true);
-+              expect(childScope?.dieDelegation).toEqual({ profile: "orchestrator", depth: 1 });
-+
 +              const foregroundResultAcks = executeOutputs.reduce(
 +                (count: number, item: any) =>
 +                  count + (String(item.output).match(/"background":false/g)?.length ?? 0),
@@ -5740,6 +5805,8 @@ index 00000000..5c339a37
 +            if (fixture.previousProfilesPath === undefined)
 +              delete process.env.DIE_SUBAGENT_PROFILES_PATH;
 +            else process.env.DIE_SUBAGENT_PROFILES_PATH = fixture.previousProfilesPath;
++            fixture.releaseParentReady();
++            fixture.releaseSuccessRequest();
 +            for (const res of fixture.hanging) res.destroy();
 +            fixture.model.closeAllConnections();
 +            fixture.model.close();
