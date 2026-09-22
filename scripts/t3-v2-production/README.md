@@ -63,15 +63,38 @@ of each script. Native acceptance requires the candidate's
 
 ## Migration acceptance
 
-The migration harness needs prepared dependency trees for the pinned current checkout
-and the historical `719a76ca1dbf5490f1aa33ffb9966301e02be9a9` checkout. It uses
-`web/t3-source.json` and `web/t3.patch` by default and never installs packages.
-The two tracked `migration-fixture-*.ts.txt` files are copied temporarily beneath
-the matching checkout solely for package resolution and are removed in `finally`.
+The migration harness covers the actual current-production source
+`a9b49a7df0a4261dcc438d4493cc3154a1d9819e`, with the pre-adoption canonical
+patch from `c6fe280`, upgrading in place to the preview revision in
+`web/t3-source.json` plus `web/t3.patch`. Both checkouts need independent,
+prepared dependency trees whose installed lockfile exactly matches
+`pnpm-lock.yaml`; the harness never clones or installs and never writes package
+caches. Override checkout or patch paths with
+`T3_V2_MIGRATION_PRODUCTION`, `T3_V2_MIGRATION_PREVIEW`,
+`T3_V2_MIGRATION_PRODUCTION_PATCH`, and
+`T3_V2_MIGRATION_PREVIEW_PATCH`.
+
+The production runner creates a native V2 event/projection graph with a run and
+nodes, normalized usage and cost, provider session/thread/turn identity, a
+completed native subagent job, two-message history and turn items, plus encoded
+server settings with a provider instance and price override. The preview runner
+opens that same database and settings file, validates them through preview domain
+readers/schemas, then starts a second time and compares a semantic snapshot. This
+is an upgrade/restart compatibility gate: both revisions currently report schema
+migration 54, so it does not claim that a new numbered migration ran.
 
 ```bash
+TMPDIR=/var/tmp \
+T3_V2_MIGRATION_PRODUCTION=/absolute/path/to/patched-a9b49a7 \
+T3_V2_MIGRATION_PREVIEW=/absolute/path/to/patched-b488c57 \
 bun scripts/t3-v2-production/migration-acceptance.ts
 ```
+
+The two tracked fixture templates are copied temporarily beneath their matching
+checkout solely for workspace package resolution and removed in `finally`.
+The harness also reconstructs and hash-checks the production patch from repository
+history when no explicit production patch is supplied, and verifies that each
+checkout is exactly its pinned HEAD plus the expected patch before running.
 
 ## Packaged, preservation, and worktree gates
 
