@@ -38,6 +38,8 @@ Inside `die`, type `/` to see available commands.
 
 Run `die web` and open the local URL it prints. The browser interface is built on [T3 Code](https://github.com/pingdotgg/t3code) and is bundled in the executable—no separate Node or Bun installation needed.
 
+The bundled source is pinned to the official **preview** channel (`v0.0.43-preview.20260921.2045`), not nightly. Exact upstream revision and local integration changes are recorded in `web/t3-source.json` and `web/t3.patch`.
+
 Chat with die, switch models and agent modes, follow background agents, review changes, and use the integrated terminal. The server binds to `127.0.0.1` by default. Run `die web --help` for options.
 
 ## Subagent workspaces
