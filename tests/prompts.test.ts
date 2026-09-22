@@ -152,3 +152,17 @@ test("worktree API facts stay in reference and isolation judgment stays in orche
   for (const role of ["fast", "normal"]) expect(subagentGuidance(role)).not.toContain(judgment);
   expect(collaborationGuidance()).not.toContain(judgment);
 });
+
+test("orchestrators use persistent worktree locations for ongoing work", () => {
+  for (const guidance of [
+    subagentGuidance("orchestrator"),
+    mainAgentGuidance("orchestrator", "worktree-location-test"),
+  ]) {
+    expect(guidance).toContain('subagent({ workspace: { kind: "worktree" }, ... })');
+    expect(guidance).toContain("use the worktree path it returns");
+    expect(guidance).toContain("not \u0060/tmp\u0060 or \u0060/var/tmp\u0060");
+    expect(guidance).toContain("DIE_WORKTREE_ROOT");
+    expect(guidance).toContain("not ongoing implementation or release work");
+    expect(guidance).toContain("Record the worktree path and branch");
+  }
+});
