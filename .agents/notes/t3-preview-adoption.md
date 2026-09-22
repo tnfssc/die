@@ -1,5 +1,7 @@
 # Official preview adoption and acceptance (2026-09-22)
 
+**Final status: implementation and required local acceptance PASS; ready for parent review, not publication by this task.**
+
 User authorized adoption of official preview v0.0.43-preview.20260921.2045, commit b488c57f3f9f1688e31c53daee99e29dd1d0baa2. This task does not publish, push, tag, or version; parent owns release decision.
 
 ## Persistent workspaces
@@ -45,3 +47,17 @@ Additional persistent workers:
 - `TMPDIR=/var/tmp bun run check`: PASS. `bunx biome format src scripts tests`: PASS (218 files). `git diff --check`: PASS. Logs check-final.log, format-final.log, diff-check.log.
 - Exact final executable SHA-pinned `packaged-smoke.ts`: PASS. Evidence artifacts/t3-preview-adoption/packaged-smoke.{json,log}. Covers relocated path with spaces, unusable runtime PATH, exact owned-PID shutdown, preserved nested settings/provider metadata, HTTP and WS no-auth hostile Origin/Host matrix.
 - Actual deployed LICENSE-T3CODE and valid JSON dist/client/third-party-licenses.json exist. Portable optional dependency verification ran successfully inside build-web; cross-platform execution is not claimed.
+
+## Integrated final acceptance and release handoff
+
+- Final exact-binary native production integration, browser lifecycle, shell completion/second-turn/handoff/reload preservation, CLI/native structured-worktree lifecycle/setup, and shared contract: PASS. See [final live acceptance](t3-preview-final-live-acceptance.md), integrated commit 410443f. Owner reviewed matching binary hashes and proof files. Browser and preservation tests exercised real packaged Pi against isolated deterministic loopback model endpoints, not a live paid provider.
+- Current-production a9b49a7 + c6fe280 canonical patch -> preview -> second fresh preview process: PASS. Worker added retained fixtures/harness (6915aa4); owner reran against **final** reviewed source/patch with final native-usage optimization. Log artifacts/t3-preview-adoption/migration-final.log. Preserved 13 events, thread/run/node/job graph, normalized tokens/cost, provider/session/native refs, history, settings hash and semantic restart snapshot. Both pins are schema migration 54; no new numbered migration is claimed.
+- Owner strengthened migration source gating by reusing authoritative verifyWebSource, including its untracked-source guard instead of a duplicate tracked-only verifier. Harness fixture files are created only after verification and removed afterward. Additional owner production clone: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_49d9fc83/.cache/t3-current-production-migration, detached a9b49a7 (independent copy, old canonical patch).
+- Initial historical 719a76 -> preview migration also passed in preliminary worker artifacts/t3-preview-live/migration.log. The retained migration harness now targets current production, not that historical fixture.
+- Root typecheck was rerun after harness integration; the full root suite above used the same unchanged runtime. No source/runtime change since exact-binary live acceptance. Version remains 0.5.4; no tag, push, publish, or install performed. Parent may review and decide the next release/version.
+
+## Remaining scope/risk (not waived material failures)
+
+Official upstream preview is a prerelease and divergent from the prior pin. Local acceptance is Linux x64/Bun 1.4.1 only; optional portable dependencies were checked structurally, but other target OS/architecture binaries were not executed. No universal upstream suite or zero-leak claim. Native usage lookup now limits JS payload decoding to the selected subtree but SQLite scans lineage JSON once per depth; a schema/index improvement may be useful for very deep/high-cardinality state. Resource evidence is bounded queue/fanout/replay/exact PID/FD/shutdown testing, not an indefinite load soak. Browser smoke does not claim compaction or every model/mode combination; migration does exercise durable token/cost/settings preservation. No unresolved material gate found in this task.
+
+Preferred parent review source: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_49d9fc83/.cache/t3-preview-final-source. Final patch/binary/archive hashes are above; all proof artifacts remain local ignored evidence, not committed build inputs. All implementation worker branches/paths are recorded above and in linked scoped reports. The retained worktree harness fixture under /var/tmp is disposable acceptance evidence (not ongoing implementation); its generated test branches are listed in the live report.

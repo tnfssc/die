@@ -1,3 +1,4 @@
+- [Official T3 preview adoption and final acceptance](t3-preview-adoption.md) — pinned preview, semantic/resource repair, final package/live/security/current-production migration evidence and parent release handoff (2026-09-22).
 # Project notes
 
 - **Editing prompts? Start with [the prompt editing guide](../../docs/prompts.md).** It explains reviewing the whole input, decision reasons, and how to inspect assembly. [Model input source map](../../docs/system-instructions.md) lists sources and inclusion conditions.

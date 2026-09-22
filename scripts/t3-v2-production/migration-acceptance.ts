@@ -5,6 +5,7 @@ import { copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import sourcePin from "../../web/t3-source.json";
+import { verifyWebSource } from "../web-source";
 
 const PRODUCTION_REVISION = "a9b49a7df0a4261dcc438d4493cc3154a1d9819e";
 const PRODUCTION_PATCH_COMMIT = "c6fe280";
@@ -47,20 +48,7 @@ async function assertCanonicalPatchedCheckout(input: {
 }): Promise<void> {
   if (String(git(input.directory, ["rev-parse", "HEAD"])).trim() !== input.revision)
     throw new Error(`${input.label} checkout HEAD mismatch`);
-  const indexDirectory = await mkdtemp(join(TMP_ROOT, "die-t3-v2-index-"));
-  const env = { ...process.env, GIT_INDEX_FILE: join(indexDirectory, "index") };
-  try {
-    execFileSync("git", ["-C", input.directory, "read-tree", "HEAD"], { env, stdio: "ignore" });
-    execFileSync("git", ["-C", input.directory, "apply", "--cached", "--binary", input.patch], {
-      env,
-      stdio: "ignore",
-    });
-    execFileSync("git", ["-C", input.directory, "diff", "--no-ext-diff", "--exit-code"], { env, stdio: "ignore" });
-  } catch {
-    throw new Error(`${input.label} checkout is not exactly pinned HEAD plus its canonical patch`);
-  } finally {
-    await rm(indexDirectory, { recursive: true, force: true });
-  }
+  await verifyWebSource(input.directory, input.patch);
   await assertDependencies(input.directory, input.label);
 }
 async function runBun(directory: string, source: string, state: string, phase?: string): Promise<void> {
