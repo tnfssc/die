@@ -1,0 +1,253 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  ServerSettings,
+  EventId,
+  MessageId,
+  NodeId,
+  ProjectId,
+  ProviderInstanceId,
+  ProviderSessionId,
+  ProviderThreadId,
+  ProviderTurnId,
+  RunAttemptId,
+  RunId,
+  ThreadId,
+  TurnItemId,
+} from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import { CodexProviderCapabilitiesV2 } from "./orchestration-v2/Adapters/CodexAdapterV2.ts";
+import { EventSinkV2, layer as eventSinkLayer } from "./orchestration-v2/EventSink.ts";
+import { layer as eventStoreLayer } from "./orchestration-v2/EventStore.ts";
+import { layer as projectionStoreLayer } from "./orchestration-v2/ProjectionStore.ts";
+import { initializeV2Database } from "./persistence/initializeV2Database.ts";
+import { makeSqlitePersistenceLive } from "./persistence/Layers/Sqlite.ts";
+
+const stateDirectory = process.argv[2];
+if (!stateDirectory) throw new Error("state directory is required");
+const databasePath = join(stateDirectory, "state.sqlite");
+const settingsPath = join(stateDirectory, "settings.json");
+const manifestPath = join(stateDirectory, "fixture.json");
+const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
+
+await Effect.runPromise(initializeV2Database(databasePath).pipe(Effect.provide(NodeServices.layer)));
+
+const threadId = ThreadId.make("migration-native-thread");
+const projectId = ProjectId.make("migration-project");
+const runId = RunId.make("migration-run");
+const attemptId = RunAttemptId.make("migration-attempt");
+const rootNodeId = NodeId.make("migration-root-node");
+const assistantNodeId = NodeId.make("migration-assistant-node");
+const providerInstanceId = ProviderInstanceId.make("codex-migration");
+const providerSessionId = ProviderSessionId.make("migration-provider-session");
+const providerThreadId = ProviderThreadId.make("migration-provider-thread");
+const providerTurnId = ProviderTurnId.make("migration-provider-turn");
+const userMessageId = MessageId.make("migration-user-message");
+const assistantMessageId = MessageId.make("migration-assistant-message");
+const userItemId = TurnItemId.make("migration-user-item");
+const assistantItemId = TurnItemId.make("migration-assistant-item");
+const taskId = NodeId.make("migration-native-job");
+const driver = "codex" as const;
+const modelSelection = { instanceId: providerInstanceId, model: "gpt-5.4" };
+
+const database = makeSqlitePersistenceLive(databasePath).pipe(Layer.provide(NodeServices.layer));
+const stores = Layer.mergeAll(eventStoreLayer, projectionStoreLayer).pipe(Layer.provideMerge(database));
+const runtime = Layer.mergeAll(stores, eventSinkLayer.pipe(Layer.provide(stores)));
+const result = await Effect.runPromise(
+  Effect.gen(function* () {
+    const sink = yield* EventSinkV2;
+    const now = yield* DateTime.now;
+    const events = [
+      {
+        id: EventId.make("migration-event-thread"), type: "thread.created" as const, threadId, occurredAt: now,
+        payload: {
+          createdBy: "user" as const, creationSource: "web" as const, id: threadId, projectId,
+          title: "Current production native migration fixture", providerInstanceId, modelSelection,
+          runtimeMode: "full-access" as const, interactionMode: "plan" as const,
+          branch: "migration-acceptance", worktreePath: "/var/tmp/migration-project",
+          activeProviderThreadId: providerThreadId,
+          lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+          forkedFrom: null, createdAt: now, updatedAt: now, archivedAt: null,
+          settledOverride: null, settledAt: null, lastVisitedAt: now, deletedAt: null,
+        },
+      },
+      {
+        id: EventId.make("migration-event-session"), type: "provider-session.attached" as const,
+        threadId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          id: providerSessionId, driver, providerInstanceId, status: "ready" as const,
+          cwd: "/var/tmp/migration-project", model: "gpt-5.4",
+          capabilities: CodexProviderCapabilitiesV2, createdAt: now, updatedAt: now, lastError: null,
+        },
+      },
+      {
+        id: EventId.make("migration-event-provider-thread"), type: "provider-thread.updated" as const,
+        threadId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          id: providerThreadId, driver, providerInstanceId, providerSessionId, appThreadId: threadId,
+          ownerNodeId: rootNodeId, nativeThreadRef: { driver, nativeId: "native-conversation-42", strength: "strong" as const },
+          nativeConversationHeadRef: null, status: "idle" as const,
+          firstRunOrdinal: 1, lastRunOrdinal: 1, handoffIds: [], forkedFrom: null,
+          createdAt: now, updatedAt: now,
+        },
+      },
+      {
+        id: EventId.make("migration-event-run"), type: "run.created" as const,
+        threadId, runId, nodeId: rootNodeId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          id: runId, threadId, ordinal: 1, providerInstanceId, modelSelection, providerThreadId,
+          userMessageId, rootNodeId, activeAttemptId: attemptId, status: "completed" as const,
+          requestedAt: now, startedAt: now, completedAt: now, checkpointId: null, contextHandoffId: null,
+        },
+      },
+      {
+        id: EventId.make("migration-event-attempt"), type: "run-attempt.created" as const,
+        threadId, runId, nodeId: rootNodeId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          id: attemptId, runId, attemptOrdinal: 1, rootNodeId, providerInstanceId,
+          providerThreadId, providerTurnId, reason: "initial" as const, status: "completed" as const,
+          startedAt: now, completedAt: now,
+        },
+      },
+      {
+        id: EventId.make("migration-event-root-node"), type: "node.updated" as const,
+        threadId, runId, nodeId: rootNodeId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          id: rootNodeId, threadId, runId, parentNodeId: null, rootNodeId, kind: "root_turn" as const,
+          status: "completed" as const, countsForRun: true, providerThreadId, providerTurnId: null,
+          nativeItemRef: null, runtimeRequestId: null, checkpointScopeId: null,
+          startedAt: now, completedAt: now,
+        },
+      },
+      {
+        id: EventId.make("migration-event-assistant-node"), type: "node.updated" as const,
+        threadId, runId, nodeId: assistantNodeId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          id: assistantNodeId, threadId, runId, parentNodeId: rootNodeId, rootNodeId,
+          kind: "assistant_message" as const, status: "completed" as const, countsForRun: false,
+          providerThreadId, providerTurnId, nativeItemRef: null, runtimeRequestId: null,
+          checkpointScopeId: null, startedAt: now, completedAt: now,
+        },
+      },
+      {
+        id: EventId.make("migration-event-provider-turn"), type: "provider-turn.updated" as const,
+        threadId, runId, nodeId: rootNodeId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          id: providerTurnId, providerThreadId, nodeId: rootNodeId, runAttemptId: attemptId,
+          nativeTurnRef: { driver, nativeId: "native-turn-7", strength: "strong" as const }, ordinal: 1, status: "completed" as const,
+          startedAt: now, completedAt: now,
+          turnTokenUsage: {
+            usageScope: "main_agent" as const, usageStatus: "complete" as const, hasSubagents: true,
+            inputTokens: 321, cachedInputTokens: 123, cacheCreationTokens: 17,
+            outputTokens: 45, reasoningTokens: 9, totalCostUsd: 0.42,
+          },
+        },
+      },
+      {
+        id: EventId.make("migration-event-user-message"), type: "message.updated" as const,
+        threadId, runId, nodeId: rootNodeId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          createdBy: "user" as const, creationSource: "web" as const, id: userMessageId,
+          threadId, runId, nodeId: rootNodeId, role: "user" as const,
+          text: "Will my native history survive the preview upgrade?", attachments: [],
+          streaming: false, createdAt: now, updatedAt: now,
+        },
+      },
+      {
+        id: EventId.make("migration-event-assistant-message"), type: "message.updated" as const,
+        threadId, runId, nodeId: assistantNodeId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          createdBy: "agent" as const, creationSource: "provider" as const,
+          id: assistantMessageId, threadId, runId, nodeId: assistantNodeId,
+          role: "assistant" as const, text: "Yes; graph, usage, session, job, provider, settings, and history remain.",
+          attachments: [], streaming: false, createdAt: now, updatedAt: now,
+        },
+      },
+      {
+        id: EventId.make("migration-event-user-item"), type: "turn-item.updated" as const,
+        threadId, runId, nodeId: rootNodeId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          createdBy: "user" as const, creationSource: "web" as const, id: userItemId,
+          threadId, runId, nodeId: rootNodeId, providerThreadId, providerTurnId: null,
+          nativeItemRef: null, parentItemId: null, ordinal: 100, status: "completed" as const,
+          title: null, startedAt: now, completedAt: now, updatedAt: now,
+          type: "user_message" as const, messageId: userMessageId, inputIntent: "turn_start" as const,
+          text: "Will my native history survive the preview upgrade?", attachments: [],
+        },
+      },
+      {
+        id: EventId.make("migration-event-assistant-item"), type: "turn-item.updated" as const,
+        threadId, runId, nodeId: assistantNodeId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          createdBy: "agent" as const, creationSource: "provider" as const,
+          id: assistantItemId, threadId, runId, nodeId: assistantNodeId, providerThreadId, providerTurnId,
+          nativeItemRef: null, parentItemId: userItemId, ordinal: 101,
+          status: "completed" as const, title: null, startedAt: now, completedAt: now, updatedAt: now,
+          type: "assistant_message" as const, messageId: assistantMessageId,
+          text: "Yes; graph, usage, session, job, provider, settings, and history remain.", streaming: false,
+        },
+      },
+      {
+        id: EventId.make("migration-event-job"), type: "subagent.updated" as const,
+        threadId, runId, nodeId: taskId, driver, providerInstanceId, occurredAt: now,
+        payload: {
+          id: taskId, threadId, runId, parentNodeId: rootNodeId, origin: "app_owned" as const,
+          createdBy: "agent" as const, driver, providerInstanceId, providerThreadId,
+          childThreadId: null, nativeTaskRef: null, prompt: "Verify migration fixture",
+          title: "Migration acceptance job", model: "gpt-5.4", completionWake: "always" as const,
+          completionDelivery: { state: "acknowledged" as const, observedByRunId: runId },
+          status: "completed" as const, result: "fixture verified", startedAt: now,
+          completedAt: now, updatedAt: now,
+        },
+      },
+    ];
+    const stored = [];
+    for (const event of events) {
+      console.log(`seeding ${event.type}`);
+      stored.push(...(yield* sink.write({ events: [event] as never })));
+    }
+    return { eventCount: stored.length, lastSequence: stored.at(-1)?.sequence };
+  }).pipe(Effect.provide(runtime)),
+);
+assert.equal(result.eventCount, 13);
+
+const settings = {
+  ...DEFAULT_SERVER_SETTINGS,
+  defaultRuntimeMode: "approval-required",
+  providerInstances: {
+    "codex-migration": {
+      driver: "codex",
+      displayName: "Migration fixture provider",
+      enabled: true,
+      config: { binaryPath: "/opt/migration/codex", fixtureMarker: "current-production" },
+    },
+  },
+  usagePriceOverrides: {
+    "gpt-5.4": { inputCostPerMillionTokens: 1.25, outputCostPerMillionTokens: 10 },
+  },
+};
+const encodedSettings = Schema.encodeSync(ServerSettings)(settings as never);
+writeFileSync(settingsPath, JSON.stringify(encodedSettings, null, 2) + "\n", { flag: "wx" });
+
+const check = new DatabaseSync(databasePath, { readOnly: true });
+let migration: unknown;
+try {
+  migration = check.prepare("SELECT MAX(migration_id) AS id FROM effect_sql_migrations").get()?.id;
+  assert.equal(migration, 54);
+  assert.equal(check.prepare("SELECT COUNT(*) AS count FROM orchestration_events WHERE application_event_version = 2").get()?.count, 13);
+} finally { check.close(); }
+const manifest = {
+  productionRevision: "a9b49a7df0a4261dcc438d4493cc3154a1d9819e",
+  migration, eventCount: result.eventCount, lastSequence: result.lastSequence,
+  databaseSha256: sha256(databasePath), settingsSha256: sha256(settingsPath),
+};
+writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", { flag: "wx" });
+console.log(JSON.stringify(manifest));

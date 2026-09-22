@@ -1,0 +1,103 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { ServerSettings, ThreadId } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
+import { nativeThreadUsageReport } from "./orchestration-v2/NativeUsageAccounting.ts";
+import { ProjectionStoreV2, layer as projectionStoreLayer } from "./orchestration-v2/ProjectionStore.ts";
+import { initializeV2Database } from "./persistence/initializeV2Database.ts";
+import { makeSqlitePersistenceLive } from "./persistence/Layers/Sqlite.ts";
+
+const stateDirectory = process.argv[2];
+const phase = process.argv[3];
+if (!stateDirectory || (phase !== "upgrade" && phase !== "restart")) throw new Error("state directory and upgrade|restart phase are required");
+const databasePath = join(stateDirectory, "state.sqlite");
+const settingsPath = join(stateDirectory, "settings.json");
+const fixture = JSON.parse(readFileSync(join(stateDirectory, "fixture.json"), "utf8"));
+const snapshotPath = join(stateDirectory, "preview-snapshot.json");
+const sha256 = (path: string) => createHash("sha256").update(readFileSync(path)).digest("hex");
+const settingsHashBefore = sha256(settingsPath);
+await Effect.runPromise(initializeV2Database(databasePath).pipe(Effect.provide(NodeServices.layer)));
+const database = makeSqlitePersistenceLive(databasePath).pipe(Layer.provide(NodeServices.layer));
+const runtime = Layer.mergeAll(projectionStoreLayer.pipe(Layer.provideMerge(database)), database);
+const threadId = ThreadId.make("migration-native-thread");
+const observed = await Effect.runPromise(Effect.gen(function* () {
+  const projections = yield* ProjectionStoreV2;
+  const sql = yield* SqlClient.SqlClient;
+  const projection = yield* projections.getThreadProjection(threadId);
+  const usage = nativeThreadUsageReport(threadId, [projection]);
+  const migration = Number((yield* sql`SELECT MAX(migration_id) AS id FROM effect_sql_migrations`)[0]?.id);
+  const eventCount = Number((yield* sql`SELECT COUNT(*) AS count FROM orchestration_events WHERE application_event_version = 2`)[0]?.count);
+  return { projection, usage, migration, eventCount };
+}).pipe(Effect.provide(runtime)));
+
+const { projection, usage } = observed;
+assert.equal(observed.migration, 54);
+assert.equal(observed.eventCount, fixture.eventCount);
+assert.equal(projection.thread.id, threadId);
+assert.equal(projection.thread.title, "Current production native migration fixture");
+assert.equal(projection.thread.runtimeMode, "full-access");
+assert.equal(projection.thread.interactionMode, "plan");
+assert.equal(projection.thread.modelSelection.instanceId, "codex-migration");
+assert.equal(projection.thread.modelSelection.model, "gpt-5.4");
+assert.equal(projection.thread.branch, "migration-acceptance");
+assert.deepEqual(projection.runs.map((run) => [run.id, run.status]), [["migration-run", "completed"]]);
+assert.deepEqual(projection.nodes.map((node) => [node.id, node.kind, node.status]), [
+  ["migration-assistant-node", "assistant_message", "completed"],
+  ["migration-root-node", "root_turn", "completed"],
+]);
+assert.deepEqual(projection.providerSessions.map((session) => [session.id, session.driver, session.providerInstanceId, session.status, session.model]),
+  [["migration-provider-session", "codex", "codex-migration", "ready", "gpt-5.4"]]);
+assert.equal(projection.providerThreads[0]?.id, "migration-provider-thread");
+assert.equal(projection.providerThreads[0]?.providerSessionId, "migration-provider-session");
+assert.equal(projection.providerThreads[0]?.nativeThreadRef?.nativeId, "native-conversation-42");
+assert.equal(projection.providerTurns[0]?.nativeTurnRef?.nativeId, "native-turn-7");
+assert.deepEqual(projection.providerTurns[0]?.turnTokenUsage, {
+  usageScope: "main_agent", usageStatus: "complete", hasSubagents: true,
+  inputTokens: 321, cachedInputTokens: 123, cacheCreationTokens: 17,
+  outputTokens: 45, reasoningTokens: 9, totalCostUsd: 0.42,
+});
+assert.deepEqual(usage.own, {
+  turns: 1, completeTurns: 1, partialTurns: 0, unavailableTurns: 0,
+  inputTokens: 321, cachedInputTokens: 123, cacheCreationTokens: 17,
+  outputTokens: 45, reasoningTokens: 9, costUsd: 0.42,
+  costKnownTurns: 1, costUnavailableTurns: 0, costStatus: "complete",
+});
+assert.deepEqual(usage.subtree, usage.own);
+assert.deepEqual(usage.descendantThreadIds, []);
+assert.deepEqual(projection.subagents.map((job) => ({ id: job.id, origin: job.origin, status: job.status, title: job.title, result: job.result, wake: job.completionWake, delivery: job.completionDelivery })), [{
+  id: "migration-native-job", origin: "app_owned", status: "completed", title: "Migration acceptance job",
+  result: "fixture verified", wake: "always", delivery: { state: "acknowledged", observedByRunId: "migration-run" },
+}]);
+assert.deepEqual(projection.messages.map((message) => [message.role, message.text]), [
+  ["user", "Will my native history survive the preview upgrade?"],
+  ["assistant", "Yes; graph, usage, session, job, provider, settings, and history remain."],
+]);
+assert.deepEqual(projection.turnItems.map((item) => [item.type, item.status, item.ordinal]), [
+  ["user_message", "completed", 1000001], ["assistant_message", "completed", 1000002],
+]);
+
+const settings = Schema.decodeUnknownSync(ServerSettings)(JSON.parse(readFileSync(settingsPath, "utf8")));
+assert.equal(settings.defaultRuntimeMode, "approval-required");
+assert.deepEqual(settings.providerInstances["codex-migration"], {
+  driver: "codex", displayName: "Migration fixture provider", enabled: true,
+  config: { binaryPath: "/opt/migration/codex", fixtureMarker: "current-production" },
+});
+assert.deepEqual(settings.usagePriceOverrides["gpt-5.4"], { inputCostPerMillionTokens: 1.25, outputCostPerMillionTokens: 10 });
+assert.equal(sha256(settingsPath), settingsHashBefore);
+assert.equal(sha256(settingsPath), fixture.settingsSha256);
+const semantic = {
+  migration: observed.migration, eventCount: observed.eventCount,
+  graph: { thread: projection.thread.id, runs: projection.runs.map((run) => run.id), nodes: projection.nodes.map((node) => node.id), jobs: projection.subagents.map((job) => job.id) },
+  provider: { sessions: projection.providerSessions.map((session) => session.id), threads: projection.providerThreads.map((thread) => thread.id), turns: projection.providerTurns.map((turn) => turn.id) },
+  history: projection.messages.map((message) => [message.role, message.text]), usage: usage.own,
+  settingsSha256: fixture.settingsSha256,
+};
+if (phase === "upgrade") writeFileSync(snapshotPath, JSON.stringify(semantic, null, 2) + "\n", { flag: "wx" });
+else assert.deepEqual(semantic, JSON.parse(readFileSync(snapshotPath, "utf8")));
+console.log(JSON.stringify({ phase, ...semantic }));

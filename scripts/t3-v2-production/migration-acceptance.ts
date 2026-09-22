@@ -1,47 +1,72 @@
-/** Reproducible, isolated v0.4 (719a76) -> current V2 migration acceptance. */
+/** Isolated current-production -> pinned-preview migration and restart acceptance. */
 import { execFileSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { copyFile, mkdtemp, rm } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import sourcePin from "../../web/t3-source.json";
 
-const OLD_REVISION = "719a76ca1dbf5490f1aa33ffb9966301e02be9a9";
+const PRODUCTION_REVISION = "a9b49a7df0a4261dcc438d4493cc3154a1d9819e";
+const PRODUCTION_PATCH_COMMIT = "c6fe280";
+const PRODUCTION_PATCH_SHA256 = "4d73cc3cdc4ad8962358d61bd31d178d3e47b346819bb2562d0b0d590c85ec02";
 const ROOT = resolve(import.meta.dir, "../..");
-const OLD = resolve(ROOT, `.cache/die-t3code-${OLD_REVISION}`);
-const CURRENT = resolve(process.env.T3_V2_CANDIDATE ?? resolve(ROOT, ".cache/die-t3code-" + sourcePin.revision));
-const PATCH = resolve(process.env.T3_V2_MIGRATION_PATCH ?? resolve(ROOT, "web/t3.patch"));
-const MANIFEST = resolve(ROOT, "web/t3-source.json");
+const PRODUCTION = resolve(
+  process.env.T3_V2_MIGRATION_PRODUCTION ?? resolve(ROOT, `.cache/die-t3code-${PRODUCTION_REVISION}`),
+);
+const PREVIEW = resolve(
+  process.env.T3_V2_MIGRATION_PREVIEW ??
+    process.env.T3_V2_CANDIDATE ??
+    resolve(ROOT, `.cache/die-t3code-${sourcePin.revision}`),
+);
+const PREVIEW_PATCH = resolve(process.env.T3_V2_MIGRATION_PREVIEW_PATCH ?? resolve(ROOT, "web/t3.patch"));
 const TMP_ROOT = tmpdir();
 
-function git(directory: string, args: string[]): string {
-  return execFileSync("git", ["-C", directory, ...args], { encoding: "utf8" }).trim();
+function git(directory: string, args: string[], encoding: BufferEncoding | null = "utf8"): string | Buffer {
+  return execFileSync("git", ["-C", directory, ...args], { encoding, maxBuffer: 32 * 1024 * 1024 });
 }
-async function verifyFocusedCandidate(): Promise<void> {
+function sha256(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+async function assertDependencies(directory: string, label: string): Promise<void> {
+  const modules = join(directory, "node_modules/.modules.yaml");
+  const installedLock = join(directory, "node_modules/.pnpm/lock.yaml");
+  if (!(await Bun.file(modules).exists()))
+    throw new Error(`${label} dependencies are not prepared (the harness never installs)`);
+  const [source, installed] = await Promise.all([
+    Bun.file(join(directory, "pnpm-lock.yaml")).bytes(),
+    Bun.file(installedLock).bytes(),
+  ]);
+  if (!Buffer.from(source).equals(Buffer.from(installed)))
+    throw new Error(`${label} installed dependencies do not match pnpm-lock.yaml`);
+}
+async function assertCanonicalPatchedCheckout(input: {
+  directory: string;
+  revision: string;
+  patch: string;
+  label: string;
+}): Promise<void> {
+  if (String(git(input.directory, ["rev-parse", "HEAD"])).trim() !== input.revision)
+    throw new Error(`${input.label} checkout HEAD mismatch`);
   const indexDirectory = await mkdtemp(join(TMP_ROOT, "die-t3-v2-index-"));
   const env = { ...process.env, GIT_INDEX_FILE: join(indexDirectory, "index") };
-  const focused = [
-    "apps/server/src/persistence",
-    "apps/server/src/orchestration-v2/LegacyV1ThreadImporter.ts",
-    "pnpm-lock.yaml",
-    "package.json",
-    "pnpm-workspace.yaml",
-  ];
   try {
-    execFileSync("git", ["-C", CURRENT, "read-tree", "HEAD"], { env, stdio: "ignore" });
-    execFileSync("git", ["-C", CURRENT, "apply", "--cached", "--binary", PATCH], { env, stdio: "ignore" });
-    execFileSync("git", ["-C", CURRENT, "diff", "--no-ext-diff", "--exit-code", "--", ...focused], {
+    execFileSync("git", ["-C", input.directory, "read-tree", "HEAD"], { env, stdio: "ignore" });
+    execFileSync("git", ["-C", input.directory, "apply", "--cached", "--binary", input.patch], {
       env,
       stdio: "ignore",
     });
+    execFileSync("git", ["-C", input.directory, "diff", "--no-ext-diff", "--exit-code"], { env, stdio: "ignore" });
   } catch {
-    throw new Error("candidate migration/importer inputs differ from the frozen candidate patch");
+    throw new Error(`${input.label} checkout is not exactly pinned HEAD plus its canonical patch`);
   } finally {
     await rm(indexDirectory, { recursive: true, force: true });
   }
+  await assertDependencies(input.directory, input.label);
 }
-async function runNode(directory: string, source: string, state: string): Promise<void> {
-  const child = Bun.spawn([process.execPath, "--no-warnings", "--experimental-strip-types", source, state], {
+async function runBun(directory: string, source: string, state: string, phase?: string): Promise<void> {
+  const args = [process.execPath, "--no-warnings", "--experimental-strip-types", source, state];
+  if (phase) args.push(phase);
+  const child = Bun.spawn(args, {
     cwd: directory,
     env: { ...process.env, TMPDIR: dirname(state) },
     stdin: "ignore",
@@ -49,54 +74,52 @@ async function runNode(directory: string, source: string, state: string): Promis
     stderr: "inherit",
   });
   const code = await child.exited;
-  if (code !== 0) throw new Error(`runner failed (${code}): ${source}`);
+  if (code !== 0) throw new Error(`runner failed (${code}): ${source}${phase ? ` [${phase}]` : ""}`);
 }
 
-const manifest = (await Bun.file(MANIFEST).json()) as { revision: string };
-if (git(OLD, ["rev-parse", "HEAD"]) !== OLD_REVISION) throw new Error("old checkout HEAD mismatch");
-const oldInputs = [
-  "apps/server/src/persistence",
-  "packages/shared/src/nodeSqliteClient.ts",
-  "pnpm-lock.yaml",
-  "package.json",
-  "pnpm-workspace.yaml",
-];
-if (git(OLD, ["status", "--porcelain", "--untracked-files=no", "--", ...oldInputs]) !== "")
-  throw new Error("old migration source or lockfiles differ from frozen 719a76 checkout");
-if (!(await Bun.file(join(OLD, "node_modules/.modules.yaml")).exists()))
-  throw new Error("old frozen dependencies are not prepared (this test never installs)");
-if (
-  !Buffer.from(await Bun.file(join(OLD, "pnpm-lock.yaml")).bytes()).equals(
-    Buffer.from(await Bun.file(join(OLD, "node_modules/.pnpm/lock.yaml")).bytes()),
-  )
-)
-  throw new Error("old installed dependencies do not match pnpm-lock.yaml");
-if (git(CURRENT, ["rev-parse", "HEAD"]) !== manifest.revision) throw new Error("candidate checkout HEAD mismatch");
-if (!(await Bun.file(join(CURRENT, "node_modules/.modules.yaml")).exists()))
-  throw new Error("candidate frozen dependencies are not prepared (this test never installs)");
-if (
-  !Buffer.from(await Bun.file(join(CURRENT, "pnpm-lock.yaml")).bytes()).equals(
-    Buffer.from(await Bun.file(join(CURRENT, "node_modules/.pnpm/lock.yaml")).bytes()),
-  )
-)
-  throw new Error("candidate installed dependencies do not match pnpm-lock.yaml");
-await verifyFocusedCandidate();
-
-const temporary = await mkdtemp(join(TMP_ROOT, "die-t3-v2-migration-"));
+const temporary = await mkdtemp(join(TMP_ROOT, "die-t3-v2-current-migration-"));
+const suppliedProductionPatch = process.env.T3_V2_MIGRATION_PRODUCTION_PATCH;
+const productionPatch = suppliedProductionPatch
+  ? resolve(suppliedProductionPatch)
+  : join(temporary, "current-production.patch");
 const suffix = randomUUID();
-const oldRunner = join(OLD, "apps/server/src", `.die-migration-old-${suffix}.ts`);
-const currentRunner = join(CURRENT, "apps/server/src", `.die-migration-current-${suffix}.ts`);
-const state = join(temporary, "state.sqlite");
+const productionRunner = join(PRODUCTION, "apps/server/src", `.die-current-production-migration-${suffix}.ts`);
+const previewRunner = join(PREVIEW, "apps/server/src", `.die-preview-migration-${suffix}.ts`);
+const state = join(temporary, "state");
 try {
-  await copyFile(join(import.meta.dir, "migration-fixture-old.ts.txt"), oldRunner);
-  await runNode(OLD, oldRunner, state);
-  await copyFile(join(import.meta.dir, "migration-fixture-current.ts.txt"), currentRunner);
-  await runNode(CURRENT, currentRunner, state);
-  console.log("migration acceptance: PASS (fixture + migrate/import + restart/idempotency)");
+  if (!suppliedProductionPatch) {
+    const bytes = git(ROOT, ["show", `${PRODUCTION_PATCH_COMMIT}:web/t3.patch`], null) as Buffer;
+    await writeFile(productionPatch, bytes);
+  }
+  if (sha256(await Bun.file(productionPatch).bytes()) !== PRODUCTION_PATCH_SHA256)
+    throw new Error("current-production canonical patch hash mismatch");
+  const previewManifest = (await Bun.file(resolve(ROOT, "web/t3-source.json")).json()) as {
+    revision: string;
+  };
+  if (previewManifest.revision !== sourcePin.revision) throw new Error("preview source manifest import mismatch");
+  await assertCanonicalPatchedCheckout({
+    directory: PRODUCTION,
+    revision: PRODUCTION_REVISION,
+    patch: productionPatch,
+    label: "current-production",
+  });
+  await assertCanonicalPatchedCheckout({
+    directory: PREVIEW,
+    revision: sourcePin.revision,
+    patch: PREVIEW_PATCH,
+    label: "preview",
+  });
+
+  await copyFile(join(import.meta.dir, "migration-fixture-production.ts.txt"), productionRunner);
+  await runBun(PRODUCTION, productionRunner, state);
+  await copyFile(join(import.meta.dir, "migration-fixture-preview.ts.txt"), previewRunner);
+  await runBun(PREVIEW, previewRunner, state, "upgrade");
+  await runBun(PREVIEW, previewRunner, state, "restart");
+  console.log("migration acceptance: PASS (current production -> preview -> preview restart)");
 } finally {
   await Promise.all([
-    rm(oldRunner, { force: true }),
-    rm(currentRunner, { force: true }),
+    rm(productionRunner, { force: true }),
+    rm(previewRunner, { force: true }),
     rm(temporary, { recursive: true, force: true }),
   ]);
 }
