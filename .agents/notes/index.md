@@ -75,4 +75,4 @@
 
 - [Hide empty native cost summary](t3-preview-hide-empty-cost-summary.md): empty homepage cost label fixed; own/subtree activity required, zero and unknown real costs preserved; not released.
 
-- [v0.5.6 release](release-v056.md): empty homepage cost display fix; push/release authorized, preparation underway.
+- [v0.5.6 release](release-v056.md): published; empty homepage cost fix, CI/release successful, assets confirmed.
