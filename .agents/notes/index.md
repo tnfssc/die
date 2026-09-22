@@ -76,3 +76,5 @@
 - [Hide empty native cost summary](t3-preview-hide-empty-cost-summary.md): empty homepage cost label fixed; own/subtree activity required, zero and unknown real costs preserved; not released.
 
 - [v0.5.6 release](release-v056.md): published; empty homepage cost fix, CI/release successful, assets confirmed.
+
+- [Web startup warnings](web-startup-warnings.md): Git 5s noninteractive fetch timeout/fallback traced; title warning isolates naming failure but hides cause. Research/testing status and Mac diagnostics.
