@@ -65,3 +65,7 @@
 - [Pi 0.87 upgrade](pi-0.87-upgrade.md): transcript migration, lazy-history parity, patched-web API review, license updates, and validation/worktree record.
 
 - [Release verification preference](release-verification-preference.md): user says no automatic post-release binary downloads solely to recheck CI-generated checksums; rely on passing CI and confirm publication.
+
+- [T3 nightly switch and release](t3-nightly-release.md): nightly implementation delegated in persistent worktree; release authorized after validation.
+
+- [T3 preview compatibility](t3-preview-compatibility.md): investigation complete; isolated rebase builds and passes focused tests; live acceptance needed before adoption.

@@ -5,6 +5,21 @@ The adopted source is pinned by `web/t3-source.json`; production changes are car
 only by `web/t3.patch`. This work does not install the application, publish a
 release, or change a version.
 
+## Upstream channel compatibility
+
+The canonical pin is a native orchestration-v2 integration base, not evidence that
+Die follows upstream's stable channel. Upstream **nightly** and **preview** are
+separate release channels; a preview must not be described as a nightly.
+
+As checked on 2026-09-22, the latest official nightly is
+[v0.0.43-nightly.20260922.2083](https://github.com/pingdotgg/t3code/releases/tag/v0.0.43-nightly.20260922.2083)
+at `0141bc2bf5fcf52a563240a6bce4b58050496db5`. It lacks the upstream
+orchestration-v2 backend, native MCP contracts, and Pi driver used by our current
+patch. Switching only the source pin fails patch application and would not
+preserve native delegation. Keep the canonical pin unchanged until an explicit
+channel/migration decision is made; do not silently replace native children with
+local delegation or label the preview channel as nightly.
+
 ## Ownership and contract
 
 T3 owns native child processes, threads, transcripts, graph state, persisted results,
