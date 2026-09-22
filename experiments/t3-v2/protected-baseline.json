@@ -1,0 +1,17 @@
+{
+  "capturedAt": "2026-09-20T16:46:42.792Z",
+  "files": [
+    {
+      "path": "web/t3-source.json",
+      "sha256": "1b609ecabc895af98de3bbd20c97d0686a129f1e9f2f28828c36050e753c6318"
+    },
+    {
+      "path": "web/t3.patch",
+      "sha256": "60243189e9169193a3b4d4724a16c4413ac15b455ea922a4220b4636f7abf3cd"
+    },
+    {
+      "path": "dist/die",
+      "sha256": "2cf83717f43b646bb9d83e6238ac72e255ab52952428384ec33d1fb3cdce0401"
+    }
+  ]
+}

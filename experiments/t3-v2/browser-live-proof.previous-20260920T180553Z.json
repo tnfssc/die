@@ -1,0 +1,20 @@
+{
+  "label": "rendered closed real-engine SQLite snapshot, provider stopped",
+  "parentThreadId": "thread:integrated-real-parent",
+  "childThreadId": "thread:delegated-task:command%3Amcp%3A6c95953b-0422-497a-8545-8c36ed62ac78%3Adelegate-task%3Aintegrated-stable-success",
+  "parentUrl": "http://localhost:30733/9b294b5c-889c-4d2e-9f9a-b8bf76d81097/thread%3Aintegrated-real-parent",
+  "childUrl": "http://localhost:30733/9b294b5c-889c-4d2e-9f9a-b8bf76d81097/thread%3Adelegated-task%3Acommand%253Amcp%253A6c95953b-0422-497a-8545-8c36ed62ac78%253Adelegate-task%253Aintegrated-stable-success",
+  "clickedLabel": "INTEGRATED_SUCCESS_CHILD\ncompleted\n2s",
+  "markers": [
+    "INTEGRATED_CHILD_TOOL_EVENT",
+    "INTEGRATED_REAL_RESULT_7bde9d"
+  ],
+  "markerCounts": {
+    "INTEGRATED_CHILD_TOOL_EVENT": 1,
+    "INTEGRATED_REAL_RESULT_7bde9d": 1
+  },
+  "childCount": 2,
+  "refreshed": true,
+  "sourceDatabaseSha256": "c4ebb6876912181fd7b593c1582214965be5a13d9f75cdf0bf9f48c1c844f073",
+  "sourceResultSha256": "893bf90856603de69d37934af0ec9b8802c8423c4b5fb83a72b33508c569398d"
+}

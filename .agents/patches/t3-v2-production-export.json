@@ -1,0 +1,9 @@
+{
+  "adopted": false,
+  "repository": "https://github.com/pingdotgg/t3code.git",
+  "revision": "a9b49a7df0a4261dcc438d4493cc3154a1d9819e",
+  "patch": ".agents/patches/t3-v2-production-candidate.patch",
+  "patchSha256": "a98ba10466328f7800f0d64a1f5df88dcf290980fdeb30e80a2412e6114f7e91",
+  "cleanApplyVerified": true,
+  "exportedAt": "2026-09-21T10:10:36.185Z"
+}

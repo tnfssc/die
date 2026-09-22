@@ -1,0 +1,20 @@
+{
+  "label": "rendered closed real-engine SQLite snapshot, provider stopped",
+  "parentThreadId": "thread:integrated-real-parent",
+  "childThreadId": "thread:delegated-task:command%3Amcp%3A6be5ccee-7bfb-4def-857f-81387fb1a1a2%3Adelegate-task%3Aintegrated-stable-success",
+  "parentUrl": "http://localhost:30733/daabf068-bea7-4923-a6d2-7d75c79b499a/thread%3Aintegrated-real-parent",
+  "childUrl": "http://localhost:30733/daabf068-bea7-4923-a6d2-7d75c79b499a/thread%3Adelegated-task%3Acommand%253Amcp%253A6be5ccee-7bfb-4def-857f-81387fb1a1a2%253Adelegate-task%253Aintegrated-stable-success",
+  "clickedLabel": "INTEGRATED_SUCCESS_CHILD\ncompleted\n3s",
+  "markers": [
+    "INTEGRATED_CHILD_TOOL_EVENT",
+    "INTEGRATED_REAL_RESULT_7bde9d"
+  ],
+  "markerCounts": {
+    "INTEGRATED_CHILD_TOOL_EVENT": 1,
+    "INTEGRATED_REAL_RESULT_7bde9d": 1
+  },
+  "childCount": 2,
+  "refreshed": true,
+  "sourceDatabaseSha256": "ffe4d964bd08445ca0ee402aa9ddbc7a540e55457ea9d5ac0ee5f03077b35f1e",
+  "sourceResultSha256": "6845fa9acadd1ddd5f484a7b16eaa28b7d8f976afba81e4efa77836e7b6355bd"
+}

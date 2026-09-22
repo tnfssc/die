@@ -1,0 +1,82 @@
+{
+  "scope": "scripted real-engine success/retry/cancel only; local helper is NOT disabled",
+  "processes": [
+    {
+      "pid": 39578,
+      "binary": "dist/die",
+      "mode": "rpc",
+      "category": "rpc-provider"
+    },
+    {
+      "pid": 39606,
+      "binary": "dist/die",
+      "mode": null,
+      "category": "execute-worker"
+    },
+    {
+      "pid": 39646,
+      "binary": "dist/die",
+      "mode": "rpc",
+      "category": "rpc-provider"
+    },
+    {
+      "pid": 39701,
+      "binary": "dist/die",
+      "mode": null,
+      "category": "execute-worker"
+    },
+    {
+      "pid": 39780,
+      "binary": "dist/die",
+      "mode": "rpc",
+      "category": "rpc-provider"
+    }
+  ],
+  "providerRpcCount": 3,
+  "localSubagentCount": 0,
+  "engine": {
+    "parentThreadId": "thread:integrated-real-parent",
+    "parentRunId": "run:thread:thread%3Aintegrated-real-parent:ordinal:1",
+    "successTaskId": "node:delegated-task:command%3Amcp%3A6be5ccee-7bfb-4def-857f-81387fb1a1a2%3Adelegate-task%3Aintegrated-stable-success",
+    "successThreadId": "thread:delegated-task:command%3Amcp%3A6be5ccee-7bfb-4def-857f-81387fb1a1a2%3Adelegate-task%3Aintegrated-stable-success",
+    "successRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A6be5ccee-7bfb-4def-857f-81387fb1a1a2%253Adelegate-task%253Aintegrated-stable-success:ordinal:1",
+    "cancelTaskId": "node:delegated-task:command%3Amcp%3A6be5ccee-7bfb-4def-857f-81387fb1a1a2%3Adelegate-task%3Aintegrated-stable-cancel",
+    "cancelThreadId": "thread:delegated-task:command%3Amcp%3A6be5ccee-7bfb-4def-857f-81387fb1a1a2%3Adelegate-task%3Aintegrated-stable-cancel",
+    "cancelRunId": "run:thread:thread%3Adelegated-task%3Acommand%253Amcp%253A6be5ccee-7bfb-4def-857f-81387fb1a1a2%253Adelegate-task%253Aintegrated-stable-cancel:ordinal:1",
+    "providerPids": [
+      39578,
+      39646,
+      39780
+    ],
+    "successModelRequests": 2,
+    "cancelModelRequests": 1,
+    "parentRunStatus": "completed",
+    "cancelStatus": "interrupted",
+    "successRunCount": 1,
+    "resultTransferCount": 1,
+    "parentToolMarkerCount": 1,
+    "deliveryState": "acknowledged",
+    "cancelDeliveryState": "disposed",
+    "activeTools": [
+      "execute"
+    ],
+    "staleInheritedCredentialIgnored": true,
+    "siblingReadRejected": true,
+    "siblingCancelRejected": true,
+    "revokedCredentialStatus": 401,
+    "clientRequestIds": [
+      "integrated-stable-success",
+      "integrated-stable-cancel"
+    ],
+    "unauthorized": 401,
+    "marker": "INTEGRATED_REAL_RESULT_7bde9d"
+  },
+  "finalization": {
+    "providerPids": [
+      39578,
+      39646,
+      39780
+    ],
+    "allReaped": true
+  }
+}

@@ -1,0 +1,44 @@
+{"at":"2026-09-20T17:55:48.094Z","details":["start","direct"]}
+{"at":"2026-09-20T17:55:48.113Z","details":["[combined] opening"]}
+{"at":"2026-09-20T17:55:48.123Z","details":["spawn",{"launchMode":"direct","pid":31965}]}
+{"at":"2026-09-20T17:55:48.124Z","details":["[combined] opened"]}
+{"at":"2026-09-20T17:55:48.692Z","details":["[combined] ensured"]}
+{"at":"2026-09-20T17:55:48.697Z","details":["[combined] event","provider_thread.updated"]}
+{"at":"2026-09-20T17:55:48.697Z","details":["[combined] event","provider_session.updated"]}
+{"at":"2026-09-20T17:55:48.697Z","details":["[combined] event","provider_turn.updated"]}
+{"at":"2026-09-20T17:55:48.697Z","details":["[combined] event","provider_thread.updated"]}
+{"at":"2026-09-20T17:55:48.697Z","details":["[combined] event","provider_session.updated"]}
+{"at":"2026-09-20T17:55:48.725Z","details":["[combined] event","node.updated"]}
+{"at":"2026-09-20T17:55:48.725Z","details":["[combined] event","turn_item.updated"]}
+{"at":"2026-09-20T17:55:48.920Z","details":["[combined] event","node.updated"]}
+{"at":"2026-09-20T17:55:48.920Z","details":["[combined] event","turn_item.updated"]}
+{"at":"2026-09-20T17:55:48.925Z","details":["[combined] event","node.updated"]}
+{"at":"2026-09-20T17:55:48.925Z","details":["[combined] event","turn_item.updated"]}
+{"at":"2026-09-20T17:55:48.926Z","details":["[combined] event","message.updated"]}
+{"at":"2026-09-20T17:55:48.935Z","details":["[combined] event","provider_turn.updated"]}
+{"at":"2026-09-20T17:55:48.936Z","details":["[combined] prompt-proof-complete",{"launchMode":"direct","modelRequests":2,"mcpCalls":[{"method":"initialize","authorized":true},{"method":"notifications/initialized","authorized":true},{"method":"tools/list","authorized":true},{"method":"initialize","authorized":true},{"method":"tools/call","authorized":true}],"activeTools":["execute"]}]}
+{"at":"2026-09-20T17:55:48.936Z","details":["[combined] scope-finalizer-enter"]}
+{"at":"2026-09-20T17:55:49.949Z","details":["[combined] scope-finalized"]}
+{"at":"2026-09-20T17:55:49.949Z","details":["reaped",{"pid":31965,"alive":false}]}
+{"at":"2026-09-20T17:55:49.952Z","details":["start","bridge"]}
+{"at":"2026-09-20T17:55:49.955Z","details":["[combined] opening"]}
+{"at":"2026-09-20T17:55:49.962Z","details":["spawn",{"launchMode":"bridge","pid":32031}]}
+{"at":"2026-09-20T17:55:49.962Z","details":["[combined] opened"]}
+{"at":"2026-09-20T17:55:50.616Z","details":["[combined] ensured"]}
+{"at":"2026-09-20T17:55:50.618Z","details":["[combined] event","provider_thread.updated"]}
+{"at":"2026-09-20T17:55:50.618Z","details":["[combined] event","provider_session.updated"]}
+{"at":"2026-09-20T17:55:50.618Z","details":["[combined] event","provider_turn.updated"]}
+{"at":"2026-09-20T17:55:50.619Z","details":["[combined] event","provider_thread.updated"]}
+{"at":"2026-09-20T17:55:50.619Z","details":["[combined] event","provider_session.updated"]}
+{"at":"2026-09-20T17:55:50.646Z","details":["[combined] event","node.updated"]}
+{"at":"2026-09-20T17:55:50.646Z","details":["[combined] event","turn_item.updated"]}
+{"at":"2026-09-20T17:55:50.847Z","details":["[combined] event","node.updated"]}
+{"at":"2026-09-20T17:55:50.847Z","details":["[combined] event","turn_item.updated"]}
+{"at":"2026-09-20T17:55:50.858Z","details":["[combined] event","node.updated"]}
+{"at":"2026-09-20T17:55:50.858Z","details":["[combined] event","turn_item.updated"]}
+{"at":"2026-09-20T17:55:50.858Z","details":["[combined] event","message.updated"]}
+{"at":"2026-09-20T17:55:50.861Z","details":["[combined] event","provider_turn.updated"]}
+{"at":"2026-09-20T17:55:50.861Z","details":["[combined] prompt-proof-complete",{"launchMode":"bridge","modelRequests":2,"mcpCalls":[{"method":"initialize","authorized":true},{"method":"notifications/initialized","authorized":true},{"method":"tools/list","authorized":true},{"method":"initialize","authorized":true},{"method":"tools/call","authorized":true}],"activeTools":["execute"]}]}
+{"at":"2026-09-20T17:55:50.861Z","details":["[combined] scope-finalizer-enter"]}
+{"at":"2026-09-20T17:55:51.870Z","details":["[combined] scope-finalized"]}
+{"at":"2026-09-20T17:55:51.870Z","details":["reaped",{"pid":32031,"alive":false}]}

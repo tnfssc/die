@@ -1,0 +1,249 @@
+diff --git a/apps/web/src/components/chat/DraftHeroHeadline.tsx b/apps/web/src/components/chat/DraftHeroHeadline.tsx
+index 07956c2b..25b18873 100644
+--- a/apps/web/src/components/chat/DraftHeroHeadline.tsx
++++ b/apps/web/src/components/chat/DraftHeroHeadline.tsx
+@@ -176,10 +176,16 @@ export function DraftHeroHeadline({
+               const environmentSettings = environments.find(
+                 (environment) => environment.environmentId === project.environmentId,
+               )?.serverConfig?.settings;
+-              const defaultModelSelection = environmentSettings
+-                ? resolveProjectSettings(environmentSettings, project.id, project).settings
+-                    .defaultModelSelection
+-                : project.defaultModelSelection;
++              const resolvedProjectSettings = environmentSettings
++                ? resolveProjectSettings(environmentSettings, project.id, project)
++                : null;
++              // A project-scoped pin is explicit intent. The environment
++              // default is only a fallback and must not erase the user's
++              // last explicit model choice when switching a blank draft.
++              const defaultModelSelection =
++                resolvedProjectSettings?.sources.defaultModelSelection === "project"
++                  ? resolvedProjectSettings.settings.defaultModelSelection
++                  : project.defaultModelSelection;
+               if (defaultModelSelection) {
+                 setModelSelection(draftId, defaultModelSelection, {
+                   replaceOptions: true,
+diff --git a/apps/web/src/composerDraftStore.test.ts b/apps/web/src/composerDraftStore.test.ts
+index df7969a8..d803b127 100644
+--- a/apps/web/src/composerDraftStore.test.ts
++++ b/apps/web/src/composerDraftStore.test.ts
+@@ -2448,6 +2448,74 @@ describe("composerDraftStore sticky composer settings", () => {
+     resetComposerDraftStore();
+   });
+ 
++  it("keeps resumed models while new blank and worktree drafts use the last explicit pick", () => {
++    const store = useComposerDraftStore.getState();
++    const resumed = scopeThreadRef(TEST_ENVIRONMENT_ID, ThreadId.make("thread-resumed-a"));
++    const blankDraft = DraftId.make("draft-blank-b");
++    const worktreeDraft = DraftId.make("draft-worktree-b");
++
++    store.setModelSelection(resumed, modelSelection(CODEX_DRIVER, "model-a"), {
++      explicit: true,
++    });
++    store.setStickyModelSelection(modelSelection(CURSOR_DRIVER, "model-b"));
++    store.applyStickyState(blankDraft);
++    store.applyStickyState(worktreeDraft);
++
++    expect(draftFor(ThreadId.make("thread-resumed-a"), TEST_ENVIRONMENT_ID)).toMatchObject({
++      activeProvider: CODEX_INSTANCE,
++      modelSelectionByProvider: {
++        [CODEX_INSTANCE]: modelSelection(CODEX_DRIVER, "model-a"),
++      },
++    });
++    for (const draftId of [blankDraft, worktreeDraft]) {
++      expect(draftByKey(draftId)).toMatchObject({
++        activeProvider: CURSOR_INSTANCE,
++        modelSelectionByProvider: {
++          [CURSOR_INSTANCE]: modelSelection(CURSOR_DRIVER, "model-b"),
++        },
++      });
++    }
++
++    // An explicit selection made for this new thread still has final say.
++    store.setModelSelection(blankDraft, modelSelection(CLAUDE_AGENT_DRIVER, "model-c"), {
++      explicit: true,
++      replaceOptions: true,
++    });
++    expect(draftByKey(blankDraft)).toMatchObject({
++      activeProvider: CLAUDE_AGENT_INSTANCE,
++      modelSelectionByProvider: {
++        [CLAUDE_AGENT_INSTANCE]: modelSelection(CLAUDE_AGENT_DRIVER, "model-c"),
++      },
++      modelSelectionExplicit: true,
++    });
++  });
++
++  it("rehydrates the last explicit model selection for later blank drafts", async () => {
++    vi.useFakeTimers();
++    try {
++      await useComposerDraftStore.persist.clearStorage();
++      useComposerDraftStore
++        .getState()
++        .setStickyModelSelection(modelSelection(CURSOR_DRIVER, "model-b"));
++      await vi.advanceTimersByTimeAsync(300);
++
++      resetComposerDraftStore();
++      await useComposerDraftStore.persist.rehydrate();
++      const reloadedDraft = DraftId.make("draft-after-reload");
++      useComposerDraftStore.getState().applyStickyState(reloadedDraft);
++
++      expect(draftByKey(reloadedDraft)).toMatchObject({
++        activeProvider: CURSOR_INSTANCE,
++        modelSelectionByProvider: {
++          [CURSOR_INSTANCE]: modelSelection(CURSOR_DRIVER, "model-b"),
++        },
++      });
++    } finally {
++      await useComposerDraftStore.persist.clearStorage();
++      vi.useRealTimers();
++    }
++  });
++
+   it("stores a sticky model selection", () => {
+     const store = useComposerDraftStore.getState();
+ 
+diff --git a/apps/web/src/hooks/useHandleNewThread.ts b/apps/web/src/hooks/useHandleNewThread.ts
+index 3b2becd4..6a680cd3 100644
+--- a/apps/web/src/hooks/useHandleNewThread.ts
++++ b/apps/web/src/hooks/useHandleNewThread.ts
+@@ -94,10 +94,11 @@ export function useNewThreadHandler() {
+       const requestingRouteHref = router.state.location.href;
+       const routeChangedSinceRequest = () => router.state.location.href !== requestingRouteHref;
+       const currentRouteTarget = getCurrentRouteTarget();
+-      // A new thread carries the user's working mode from the thread being
+-      // viewed. The target project's configured model still wins; interaction
+-      // mode carries independently. Permissions, branch, worktree, and env mode
+-      // come from configured defaults unless the caller passes them explicitly.
++      // A new thread carries the user's working interaction mode. Model
++      // selection is different: a resumed thread's saved model is historical
++      // state, not new-thread intent. Only an explicit composer pick can be
++      // carried, and an explicit project pin still wins. Permissions, branch,
++      // worktree, and env mode come from configured defaults unless overridden.
+       const carrySourceShell =
+         currentRouteTarget?.kind === "server"
+           ? readThreadShell(currentRouteTarget.threadRef)
+@@ -145,7 +146,9 @@ export function useNewThreadHandler() {
+       const resolveModelSelectionOverride = (destinationDraftId: DraftId) =>
+         resolveNewThreadModelSelectionOverride({
+           projectDefaultSelection: projectDefaultModelSelection ?? null,
++          projectDefaultIsExplicit: projectSettings.sources.defaultModelSelection === "project",
+           carrySelection: carryModelSelection,
++          carrySelectionIsExplicit: hasExplicitComposerModelSelection(carrySourceComposer),
+           carrySourceDraftId:
+             currentRouteTarget?.kind === "draft" ? currentRouteTarget.draftId : null,
+           destinationDraftId,
+@@ -273,8 +276,8 @@ export function useNewThreadHandler() {
+           }
+           // Model intent: an explicit human pick always stands. Seeds and
+           // legacy entries alike re-resolve here — sticky first, mirroring
+-          // the mint-fresh path, then the project default or carried
+-          // selection on top. This runs even when the draft is already open:
++          // the mint-fresh path, then an explicit project pin or explicit
++          // carried selection on top. This runs even when the draft is already open:
+           // without it, a changed pin could never reach the draft the user
+           // is looking at, because explicit picks are the only thing the
+           // flag protects.
+@@ -423,8 +426,8 @@ export function useNewThreadHandler() {
+         applyStickyState(draftId);
+         const modelSelectionOverride = resolveModelSelectionOverride(draftId);
+         if (modelSelectionOverride) {
+-          // Project defaults and carried selections both outrank global sticky
+-          // state. The project default wins when both are present.
++          // Explicit project pins and carried user picks outrank sticky state.
++          // The project pin wins when both are present.
+           setModelSelection(draftId, modelSelectionOverride, { replaceOptions: true });
+         }
+         await router.navigate({
+diff --git a/apps/web/src/lib/chatThreadActions.test.ts b/apps/web/src/lib/chatThreadActions.test.ts
+index c145404a..b3d85796 100644
+--- a/apps/web/src/lib/chatThreadActions.test.ts
++++ b/apps/web/src/lib/chatThreadActions.test.ts
+@@ -58,18 +58,48 @@ describe("chatThreadActions", () => {
+     expect(
+       resolveNewThreadModelSelectionOverride({
+         projectDefaultSelection: null,
++        projectDefaultIsExplicit: false,
+         carrySelection: CARRIED_SELECTION,
++        carrySelectionIsExplicit: true,
+         carrySourceDraftId: "draft-a",
+         destinationDraftId: "draft-a",
+       }),
+     ).toBeNull();
+   });
+ 
++  it("does not let a resumed thread's saved model override the last explicit sticky pick", () => {
++    expect(
++      resolveNewThreadModelSelectionOverride({
++        projectDefaultSelection: null,
++        projectDefaultIsExplicit: false,
++        carrySelection: CARRIED_SELECTION,
++        carrySelectionIsExplicit: false,
++        carrySourceDraftId: null,
++        destinationDraftId: "draft-b",
++      }),
++    ).toBeNull();
++  });
++
++  it("treats an environment default as fallback rather than explicit new-thread intent", () => {
++    expect(
++      resolveNewThreadModelSelectionOverride({
++        projectDefaultSelection: PROJECT_DEFAULT_SELECTION,
++        projectDefaultIsExplicit: false,
++        carrySelection: null,
++        carrySelectionIsExplicit: false,
++        carrySourceDraftId: null,
++        destinationDraftId: "draft-b",
++      }),
++    ).toBeNull();
++  });
++
+   it("still carries models between different threads when the project has no default", () => {
+     expect(
+       resolveNewThreadModelSelectionOverride({
+         projectDefaultSelection: null,
++        projectDefaultIsExplicit: false,
+         carrySelection: CARRIED_SELECTION,
++        carrySelectionIsExplicit: true,
+         carrySourceDraftId: "draft-a",
+         destinationDraftId: "draft-b",
+       }),
+@@ -80,7 +110,9 @@ describe("chatThreadActions", () => {
+     expect(
+       resolveNewThreadModelSelectionOverride({
+         projectDefaultSelection: PROJECT_DEFAULT_SELECTION,
++        projectDefaultIsExplicit: true,
+         carrySelection: CARRIED_SELECTION,
++        carrySelectionIsExplicit: true,
+         carrySourceDraftId: "draft-a",
+         destinationDraftId: "draft-b",
+       }),
+diff --git a/apps/web/src/lib/chatThreadActions.ts b/apps/web/src/lib/chatThreadActions.ts
+index c14a26d0..fc7717cc 100644
+--- a/apps/web/src/lib/chatThreadActions.ts
++++ b/apps/web/src/lib/chatThreadActions.ts
+@@ -46,14 +46,21 @@ export function resolveNewDraftStartFromOrigin(input: {
+ 
+ export function resolveNewThreadModelSelectionOverride(input: {
+   readonly projectDefaultSelection: ModelSelection | null;
++  /** Only project-scoped defaults are explicit; the environment default is a fallback. */
++  readonly projectDefaultIsExplicit: boolean;
+   readonly carrySelection: ModelSelection | null;
++  /** Saved models on resumed threads are not new-thread intent. */
++  readonly carrySelectionIsExplicit: boolean;
+   readonly carrySourceDraftId: string | null;
+   readonly destinationDraftId: string;
+ }): ModelSelection | null {
+-  return (
+-    input.projectDefaultSelection ??
+-    (input.carrySourceDraftId === input.destinationDraftId ? null : input.carrySelection)
+-  );
++  if (input.projectDefaultIsExplicit && input.projectDefaultSelection) {
++    return input.projectDefaultSelection;
++  }
++  if (input.carrySelectionIsExplicit && input.carrySourceDraftId !== input.destinationDraftId) {
++    return input.carrySelection;
++  }
++  return null;
+ }
+ 
+ export function hasExplicitComposerModelSelection(

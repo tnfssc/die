@@ -1,0 +1,60 @@
+diff --git a/apps/server/src/bin.ts b/apps/server/src/bin.ts
+index 063093874..66c1c2c4f 100644
+--- a/apps/server/src/bin.ts
++++ b/apps/server/src/bin.ts
+@@ -9,6 +9,12 @@
+  */
+ import { isEntrypoint } from "./entrypoint.ts";
+ 
++/** Run the bundled CLI with explicit arguments for the embedded web runtime. */
++export async function runCli(args: ReadonlyArray<string>): Promise<number> {
++  const cli = await import("./binCli.ts");
++  return cli.runCli(args);
++}
++
+ if (
+   isEntrypoint({
+     moduleUrl: import.meta.url,
+diff --git a/apps/server/src/binCli.ts b/apps/server/src/binCli.ts
+index 331d68c8f..a5c8b63ae 100644
+--- a/apps/server/src/binCli.ts
++++ b/apps/server/src/binCli.ts
+@@ -2,6 +2,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+ import * as NodeServices from "@effect/platform-node/NodeServices";
+ import * as Effect from "effect/Effect";
+ import * as Layer from "effect/Layer";
++import * as Runtime from "effect/Runtime";
+ import { Argument, Command } from "effect/unstable/cli";
+ import * as CliError from "effect/unstable/cli/CliError";
+ 
+@@ -81,10 +82,24 @@ export const makeCli = ({ cloudEnabled = hasCloudPublicConfig } = {}) =>
+ 
+ export const cli = makeCli();
+ 
+-export function runCli() {
+-  Command.run(cli, { version: packageJson.version }).pipe(
+-    Effect.scoped,
+-    Effect.provide(CliRuntimeLayer),
+-    NodeRuntime.runMain,
+-  );
++export function runCli(): void;
++export function runCli(args: ReadonlyArray<string>): Promise<number>;
++export function runCli(args?: ReadonlyArray<string>): void | Promise<number> {
++  if (args === undefined) {
++    Command.run(cli, { version: packageJson.version }).pipe(
++      Effect.scoped,
++      Effect.provide(CliRuntimeLayer),
++      NodeRuntime.runMain,
++    );
++    return;
++  }
++  return new Promise((resolve) => {
++    NodeRuntime.runMain(
++      Command.runWith(cli, { version: packageJson.version })(args).pipe(
++        Effect.scoped,
++        Effect.provide(CliRuntimeLayer),
++      ),
++      { teardown: (exit) => Runtime.defaultTeardown(exit, resolve) },
++    );
++  });
+ }

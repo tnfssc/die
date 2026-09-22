@@ -1,0 +1,80 @@
+diff --git a/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts b/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
+index 3a64a87a7..cdfbf2b3d 100644
+--- a/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
++++ b/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
+@@ -469,7 +469,7 @@ const unusedScheduledTaskStubLayer = Layer.succeed(
+ 
+ describe("orchestrator MCP toolkit", () => {
+   it.live(
+-    "delegates cross-provider tasks, polls and cancels children, and creates ordinary threads",
++    "delegates cross-provider tasks with exactly-once reconnect, status, results, graph, and cancel",
+     () =>
+       Effect.scoped(
+         Effect.gen(function* () {
+@@ -1700,6 +1700,66 @@ describe("orchestrator MCP toolkit", () => {
+               ),
+             ).toHaveLength(1);
+ 
++            // Simulate an MCP transport reconnect by reconstructing the authenticated
++            // invocation scope. Durable task lookup and request receipts must not depend
++            // on the lifetime or object identity of the first connection.
++            const reconnectedInvocation: McpInvocationContext.McpInvocationScope = {
++              ...invocation,
++              capabilities: new Set(["orchestration"]),
++              issuedAt: invocation.issuedAt + 1,
++            };
++            const statusAfterReconnectCall = yield* invokeAs(
++              reconnectedInvocation,
++              "task_status",
++              { taskId: delegated.taskId },
++            );
++            const statusAfterReconnect = yield* decodeDelegateTaskResult(
++              statusAfterReconnectCall.structuredContent,
++            ).pipe(Effect.orDie);
++            expect(statusAfterReconnect).toMatchObject({
++              taskId: delegated.taskId,
++              childThreadId: delegated.childThreadId,
++              childRunId: delegated.childRunId,
++              status: "completed",
++              summary: delegatedResult,
++            });
++
++            const capturedBeforeReconnectReplay = yield* Ref.get(capturedTurns);
++            const replayAfterReconnectCall = yield* invokeAs(
++              reconnectedInvocation,
++              "delegate_task",
++              {
++                task: delegatedPrompt,
++                target: {
++                  providerInstanceId: claudeInstanceId,
++                  model: claudeModel,
++                },
++                mode: "async",
++                clientRequestId: "delegate-claude-1",
++              },
++            );
++            const replayAfterReconnect = yield* decodeDelegateTaskResult(
++              replayAfterReconnectCall.structuredContent,
++            ).pipe(Effect.orDie);
++            expect(replayAfterReconnect.taskId).toBe(delegated.taskId);
++            expect(replayAfterReconnect.resultContextTransferId).toBe(
++              delegated.resultContextTransferId,
++            );
++            expect(
++              (yield* Ref.get(capturedTurns)).filter(
++                (turn) => turn.threadId === delegated.childThreadId,
++              ),
++            ).toHaveLength(
++              capturedBeforeReconnectReplay.filter(
++                (turn) => turn.threadId === delegated.childThreadId,
++              ).length,
++            );
++            expect(
++              (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.filter(
++                (task) => task.id === delegated.taskId,
++              ),
++            ).toHaveLength(1);
++
+             // Options outside the model's advertised descriptors are rejected
+             // before any child thread is created.
+             const rejectedOptionsCall = yield* invoke("delegate_task", {

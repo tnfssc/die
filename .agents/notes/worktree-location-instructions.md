@@ -1,0 +1,3 @@
+# Persistent worktree instructions
+
+User requested explicit instruction update after main put release worktree in /tmp. Updated src/prompts/main-orchestrator.md and orchestrator.md in current workspace: use managed subagent workspace API and returned path; manual worktrees persistent, CLI ~/.die/worktrees or DIE_WORKTREE_ROOT; no /tmp or /var/tmp for ongoing implementation/release; record path/branch. Disposable tests/probes may use tmp. Added tests/prompts.test.ts regression; prompts and preview suites 15 pass, 163 assertions. Not rebuilt/installed/released; uncommitted in current feature workspace. Must integrate alongside provider-default task without overwriting either. Existing /tmp/die-release-051 not yet moved.

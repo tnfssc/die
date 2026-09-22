@@ -1,0 +1,7 @@
+2026-09-20 followthrough; unchanged root source
+Command:
+bun test tests/subagent-extension.test.ts tests/typescript-execution.test.ts tests/typescript-runner.test.ts
+Result: exit 0; 65 pass, 0 fail, 252 expect() calls; 3 files; 10.24s.
+Full generated log: .runtime/logs/local-regression-final.log (not tracked).
+Protected audit: web/t3-source.json, web/t3.patch, dist/die match protected-baseline.json.
+Selected local CLI regression only; real-engine proof is separate.
