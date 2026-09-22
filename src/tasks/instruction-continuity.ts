@@ -25,6 +25,7 @@ export type ClassicSession = {
   sessionManager: object;
   _buildRuntime(options: unknown): void;
   readonly systemPrompt: string;
+  getActiveToolNames(): string[];
   _runSystemPromptOptions?: NormalizedBuildSystemPromptOptions;
   _runAgentPrompt(messages: AgentMessage | AgentMessage[]): Promise<void>;
   _preparePromptAndToolLoadout(

@@ -249,3 +249,162 @@ for (const [provider, id, api] of [
     }
   }, 20_000);
 }
+
+for (const explicitSelection of [false, true]) {
+  test(`fresh compaction reconciles ${explicitSelection ? "explicit" : "implicit"} before_agent_start tools`, async () => {
+    const dir = await mkdtemp(join(tmpdir(), "die-compact-fresh-tools-"));
+    let session: Awaited<ReturnType<typeof createAgentSession>>["session"] | undefined;
+    let networkCalls = 0;
+    const payloads: any[] = [];
+    try {
+      const model = getModel("anthropic", "claude-sonnet-4-5")!;
+      const runtime = await ModelRuntime.create({
+        authPath: join(dir, "auth.json"),
+        modelsPath: null,
+        refreshOnCreate: false,
+      });
+      runtime.hasConfiguredAuth = () => true;
+      runtime.getAuth = (async () => ({ auth: { apiKey: "offline-key" } })) as any;
+      const fixture = (m: any, context: any, options: any) => {
+        const output = createAssistantMessageEventStream();
+        void (async () => {
+          const observed = await anthropic
+            .streamSimple(m, context, {
+              ...options,
+              apiKey: "offline-key",
+              transport: "sse",
+              fetch: async () => {
+                networkCalls++;
+                throw Error("unexpected network");
+              },
+              onPayload: async (payload: any) => {
+                const transformed = (await options?.onPayload?.(payload, m)) ?? payload;
+                payloads.push(structuredClone(transformed));
+                throw Error(sentinel);
+              },
+            })
+            .result();
+          if (!observed.errorMessage?.includes(sentinel)) throw Error(observed.errorMessage);
+          const message: AssistantMessage = {
+            role: "assistant",
+            api: m.api,
+            provider: m.provider,
+            model: m.id,
+            content: [{ type: "text", text: "## Goal\nKeep fresh framing." }],
+            stopReason: "stop",
+            usage,
+            timestamp: Date.now(),
+          };
+          output.push({ type: "done", reason: "stop", message });
+          output.end(message);
+        })().catch((error) => {
+          const message: any = {
+            role: "assistant",
+            api: m.api,
+            provider: m.provider,
+            model: m.id,
+            content: [],
+            stopReason: "error",
+            errorMessage: String(error),
+            usage,
+            timestamp: Date.now(),
+          };
+          output.push({ type: "error", reason: "error", error: message });
+          output.end(message);
+        });
+        return output;
+      };
+      runtime.streamSimple = fixture as any;
+      const realProvider = runtime.getProvider("anthropic")!;
+      runtime.getProvider = (() => ({ ...realProvider, streamSimple: fixture })) as any;
+
+      const manager = SessionManager.inMemory(dir);
+      for (let turn = 0; turn < 3; turn++) {
+        manager.appendMessage({
+          role: "user",
+          content: `Fresh compaction history ${turn}. ` + "context-detail ".repeat(500),
+          timestamp: turn * 2 + 1,
+        });
+        manager.appendMessage({
+          role: "assistant",
+          api: model.api,
+          provider: model.provider,
+          model: model.id,
+          content: [{ type: "text", text: `History ${turn} acknowledged.` }],
+          stopReason: "stop",
+          usage,
+          timestamp: turn * 2 + 2,
+        });
+      }
+      manager.appendMessage({
+        role: "user",
+        content: "Fresh compaction current history. " + "current-detail ".repeat(100),
+        timestamp: 7,
+      });
+      manager.appendMessage({
+        role: "assistant",
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        content: [{ type: "text", text: "History acknowledged." }],
+        stopReason: "stop",
+        usage,
+        timestamp: 8,
+      });
+      const loader = new DefaultResourceLoader({
+        cwd: dir,
+        agentDir: dir,
+        noExtensions: true,
+        noSkills: true,
+        noThemes: true,
+        noPromptTemplates: true,
+        extensionFactories: [
+          {
+            name: "fresh-frame-tools",
+            factory: (pi) => {
+              pi.on("before_agent_start", (event) => {
+                pi.setActiveTools([]);
+                if (explicitSelection) event.systemPromptOptions.selectedTools = ["execute"];
+                return { systemPrompt: event.systemPrompt + "\n\nFRESH_FRAME_INSTRUCTION" };
+              });
+            },
+          },
+          { name: "die-tasks", factory: tasks },
+        ],
+      });
+      await loader.reload();
+      ({ session } = await createAgentSession({
+        cwd: dir,
+        agentDir: dir,
+        resourceLoader: loader,
+        model,
+        modelRuntime: runtime,
+        sessionManager: manager,
+        settingsManager: SettingsManager.inMemory({
+          compaction: { enabled: false, keepRecentTokens: 128, reserveTokens: 8192 },
+        }),
+        tools: ["execute", "read"],
+      }));
+
+      // No normal prompt precedes compact(): this is the fresh-session path that
+      // must reproduce AgentSession.prompt()'s post-hook tool reconciliation.
+      await session.compact();
+
+      expect(payloads).toHaveLength(1);
+      expect((payloads[0].tools ?? []).map((tool: any) => tool.name)).toEqual(explicitSelection ? ["execute"] : []);
+      expect(JSON.stringify(payloads[0].system)).toContain("FRESH_FRAME_INSTRUCTION");
+      expect(session.systemPrompt).toContain("FRESH_FRAME_INSTRUCTION");
+      expect(session.getActiveToolNames()).toEqual(explicitSelection ? ["execute"] : []);
+      const checkpoint = manager
+        .getEntries()
+        .slice()
+        .reverse()
+        .find((entry) => entry.type === "compaction") as any;
+      expect(checkpoint?.details?.strategy).toBe("cache-affine-plaintext");
+      expect(networkCalls).toBe(0);
+    } finally {
+      session?.dispose();
+      await rm(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+}

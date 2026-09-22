@@ -88,13 +88,25 @@ async function prepareCurrentConversation(
   // side effects. Fresh/resumed sessions have no framed snapshot and must run it.
   const hasEffectiveFrame = snapshot?.systemPrompt !== undefined && snapshot.tools !== undefined;
   if (!hasEffectiveFrame && typeof session?._extensionRunner?.emitBeforeAgentStart !== "function") return undefined;
-  const start = !hasEffectiveFrame
-    ? await session!._extensionRunner!.emitBeforeAgentStart(
-        prompt,
-        images.length ? images : undefined,
-        session!._baseSystemPromptOptions,
-      )
-    : undefined;
+  let start:
+    | Awaited<ReturnType<NonNullable<NonNullable<typeof session>["_extensionRunner"]>["emitBeforeAgentStart"]>>
+    | undefined;
+  if (!hasEffectiveFrame) {
+    const selectedToolsBefore = session!._baseSystemPromptOptions.selectedTools;
+    start = await session!._extensionRunner!.emitBeforeAgentStart(
+      prompt,
+      images.length ? images : undefined,
+      session!._baseSystemPromptOptions,
+    );
+    // before_agent_start may either edit selectedTools explicitly or use
+    // setActiveTools() to change the live loadout. As in AgentSession.prompt(),
+    // an explicit selection wins; otherwise reconcile the returned stale copy
+    // with the live tool names before _preparePromptAndToolLoadout() applies it.
+    const handlerEditedTools =
+      start.systemPromptOptions.selectedTools.length !== selectedToolsBefore.length ||
+      start.systemPromptOptions.selectedTools.some((name, index) => name !== selectedToolsBefore[index]);
+    if (!handlerEditedTools) start.systemPromptOptions.selectedTools = session!.getActiveToolNames();
+  }
   // Match AgentSession's framing order. Fresh compaction must prepare the same
   // structured system delta that prompt() would have persisted for a normal turn.
   if (start) {
