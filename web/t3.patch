@@ -1,6 +1,6 @@
 diff --git a/apps/server/src/auth/DieWebAuth.test.ts b/apps/server/src/auth/DieWebAuth.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..3e8a404833b7827ca5caf7b32c6245972c175466
+index 000000000..3e8a40483
 --- /dev/null
 +++ b/apps/server/src/auth/DieWebAuth.test.ts
 @@ -0,0 +1,97 @@
@@ -103,7 +103,7 @@ index 0000000000000000000000000000000000000000..3e8a404833b7827ca5caf7b32c624597
 +});
 diff --git a/apps/server/src/auth/DieWebAuth.ts b/apps/server/src/auth/DieWebAuth.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..56eda5fd73c76a11399cbd5731949123221c70d3
+index 000000000..56eda5fd7
 --- /dev/null
 +++ b/apps/server/src/auth/DieWebAuth.ts
 @@ -0,0 +1,66 @@
@@ -174,7 +174,7 @@ index 0000000000000000000000000000000000000000..56eda5fd73c76a11399cbd5731949123
 +  scopes: [...AuthAdministrativeScopes] as ReadonlyArray<AuthEnvironmentScope>,
 +};
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
-index bfa1b87deb9984255d06d54ec44d1886979b21fb..79cfaaee00169aae01b97cbb07ad1b608e782e54 100644
+index bfa1b87de..79cfaaee0 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.test.ts
 @@ -78,6 +78,50 @@ const requestMetadata = {
@@ -229,7 +229,7 @@ index bfa1b87deb9984255d06d54ec44d1886979b21fb..79cfaaee00169aae01b97cbb07ad1b60
      Effect.gen(function* () {
        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 481ffc2fad644d4a903f5374f27ad4bccc10c89a..7f8e4b71265c21e7b35e0487c34afbb44a504cbf 100644
+index 481ffc2fa..7f8e4b712 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
 @@ -37,6 +37,7 @@ import * as PairingGrantStore from "./PairingGrantStore.ts";
@@ -298,7 +298,7 @@ index 481ffc2fad644d4a903f5374f27ad4bccc10c89a..7f8e4b71265c21e7b35e0487c34afbb4
        if (Option.isSome(requestUrl)) {
          const websocketTicket = requestUrl.value.searchParams.get(WEBSOCKET_TICKET_QUERY_PARAM);
 diff --git a/apps/server/src/bin.ts b/apps/server/src/bin.ts
-index 063093874503d06608cf67580675a3e30ed43ee5..66c1c2c4f8a5b53164d0f7c09b3e999161a926f9 100644
+index 063093874..66c1c2c4f 100644
 --- a/apps/server/src/bin.ts
 +++ b/apps/server/src/bin.ts
 @@ -9,6 +9,12 @@
@@ -315,7 +315,7 @@ index 063093874503d06608cf67580675a3e30ed43ee5..66c1c2c4f8a5b53164d0f7c09b3e9991
    isEntrypoint({
      moduleUrl: import.meta.url,
 diff --git a/apps/server/src/binCli.ts b/apps/server/src/binCli.ts
-index 331d68c8f4ea29109731be64e0780e2eb64018ba..a5c8b63ae7fc15b0278aa759702fcc2b1b4f47a9 100644
+index 331d68c8f..a5c8b63ae 100644
 --- a/apps/server/src/binCli.ts
 +++ b/apps/server/src/binCli.ts
 @@ -2,6 +2,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -358,7 +358,7 @@ index 331d68c8f4ea29109731be64e0780e2eb64018ba..a5c8b63ae7fc15b0278aa759702fcc2b
 +  });
  }
 diff --git a/apps/server/src/cli/config.test.ts b/apps/server/src/cli/config.test.ts
-index 61ac22adb48762a07e43c0c4955948367b4eae19..c5a8f2f35f0f7705e75048d357aeec8ba254f4e1 100644
+index 61ac22adb..c5a8f2f35 100644
 --- a/apps/server/src/cli/config.test.ts
 +++ b/apps/server/src/cli/config.test.ts
 @@ -225,6 +225,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
@@ -418,7 +418,7 @@ index 61ac22adb48762a07e43c0c4955948367b4eae19..c5a8f2f35f0f7705e75048d357aeec8b
          noBrowser: true,
          startupPresentation: "headless",
 diff --git a/apps/server/src/cli/config.ts b/apps/server/src/cli/config.ts
-index 09a30aeb19e7a85505f62cb05ff7bf62b1e39218..d4f9f9b0a6f68dce57d98736a5f03c9583efd051 100644
+index 09a30aeb1..d4f9f9b0a 100644
 --- a/apps/server/src/cli/config.ts
 +++ b/apps/server/src/cli/config.ts
 @@ -20,6 +20,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -468,7 +468,7 @@ index 09a30aeb19e7a85505f62cb05ff7bf62b1e39218..d4f9f9b0a6f68dce57d98736a5f03c95
        startupPresentation,
        desktopBootstrapToken,
 diff --git a/apps/server/src/config.ts b/apps/server/src/config.ts
-index 701aca58e59fa76878c669798b544ff6fad65ab8..2369316e8bbc40455765378628cef8759574eb0f 100644
+index 701aca58e..2369316e8 100644
 --- a/apps/server/src/config.ts
 +++ b/apps/server/src/config.ts
 @@ -91,6 +91,8 @@ export class ServerConfig extends Context.Service<
@@ -482,7 +482,7 @@ index 701aca58e59fa76878c669798b544ff6fad65ab8..2369316e8bbc40455765378628cef875
      readonly desktopBootstrapToken: string | undefined;
 diff --git a/apps/server/src/mcp/DieDelegationPolicy.test.ts b/apps/server/src/mcp/DieDelegationPolicy.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..c08cabf7e2368f93429a2b8ffbc6b066b6acb0bf
+index 000000000..c08cabf7e
 --- /dev/null
 +++ b/apps/server/src/mcp/DieDelegationPolicy.test.ts
 @@ -0,0 +1,107 @@
@@ -595,7 +595,7 @@ index 0000000000000000000000000000000000000000..c08cabf7e2368f93429a2b8ffbc6b066
 +});
 diff --git a/apps/server/src/mcp/DieDelegationPolicy.ts b/apps/server/src/mcp/DieDelegationPolicy.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..31dc2b24add5d8a9ad766f8375cb60761350bbda
+index 000000000..31dc2b24a
 --- /dev/null
 +++ b/apps/server/src/mcp/DieDelegationPolicy.ts
 @@ -0,0 +1,119 @@
@@ -720,7 +720,7 @@ index 0000000000000000000000000000000000000000..31dc2b24add5d8a9ad766f8375cb6076
 +}
 diff --git a/apps/server/src/mcp/DieTaskService.test.ts b/apps/server/src/mcp/DieTaskService.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..80a959ff033e0aeb54b949e1085210786f004f8e
+index 000000000..80a959ff0
 --- /dev/null
 +++ b/apps/server/src/mcp/DieTaskService.test.ts
 @@ -0,0 +1,716 @@
@@ -1442,7 +1442,7 @@ index 0000000000000000000000000000000000000000..80a959ff033e0aeb54b949e108521078
 +);
 diff --git a/apps/server/src/mcp/DieTaskService.ts b/apps/server/src/mcp/DieTaskService.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..a523a03e03baa7cc5c6b710f87935617f3542d22
+index 000000000..a523a03e0
 --- /dev/null
 +++ b/apps/server/src/mcp/DieTaskService.ts
 @@ -0,0 +1,607 @@
@@ -2054,7 +2054,7 @@ index 0000000000000000000000000000000000000000..a523a03e03baa7cc5c6b710f87935617
 +});
 +export const layer = Layer.effect(DieTaskService, make);
 diff --git a/apps/server/src/mcp/McpHttpServer.ts b/apps/server/src/mcp/McpHttpServer.ts
-index 810ac9d49580466de45cc795afd6662a426491eb..7e5e0effd6b1499c3a7adaa2ef785bdf7681fe31 100644
+index 810ac9d49..7e5e0effd 100644
 --- a/apps/server/src/mcp/McpHttpServer.ts
 +++ b/apps/server/src/mcp/McpHttpServer.ts
 @@ -32,6 +32,7 @@ import { ThreadToolkitHandlersLive } from "./toolkits/thread/handlers.ts";
@@ -2074,7 +2074,7 @@ index 810ac9d49580466de45cc795afd6662a426491eb..7e5e0effd6b1499c3a7adaa2ef785bdf
    Layer.provide(ThreadMetadataMcpService.layer),
  );
 diff --git a/apps/server/src/mcp/McpInvocationContext.ts b/apps/server/src/mcp/McpInvocationContext.ts
-index 8e07e0650d7e94b2d05ec45fb763ada7927593e3..a4a5188b1cc13f7ff22d7d141748a6c82e768e58 100644
+index 8e07e0650..a4a5188b1 100644
 --- a/apps/server/src/mcp/McpInvocationContext.ts
 +++ b/apps/server/src/mcp/McpInvocationContext.ts
 @@ -11,18 +11,26 @@ import * as Effect from "effect/Effect";
@@ -2105,7 +2105,7 @@ index 8e07e0650d7e94b2d05ec45fb763ada7927593e3..a4a5188b1cc13f7ff22d7d141748a6c8
  }
  
 diff --git a/apps/server/src/mcp/McpSessionRegistry.test.ts b/apps/server/src/mcp/McpSessionRegistry.test.ts
-index ba3c20968d10aebdce60d7f267e2455795625139..2638f42abb1808d46b7a754785ad0f42c421427e 100644
+index ba3c20968..2638f42ab 100644
 --- a/apps/server/src/mcp/McpSessionRegistry.test.ts
 +++ b/apps/server/src/mcp/McpSessionRegistry.test.ts
 @@ -102,6 +102,28 @@ it.effect("always grants pull-requests and gates browser and device access indep
@@ -2138,7 +2138,7 @@ index ba3c20968d10aebdce60d7f267e2455795625139..2638f42abb1808d46b7a754785ad0f42
    Effect.gen(function* () {
      const cases = [
 diff --git a/apps/server/src/mcp/McpSessionRegistry.ts b/apps/server/src/mcp/McpSessionRegistry.ts
-index ad741acb9bc60fa25750571214a2294099dce820..f58d42cb1b2c79fe578b1256fe3b2c82a1d31850 100644
+index ad741acb9..f58d42cb1 100644
 --- a/apps/server/src/mcp/McpSessionRegistry.ts
 +++ b/apps/server/src/mcp/McpSessionRegistry.ts
 @@ -22,6 +22,10 @@ export interface McpCredentialRequest {
@@ -2188,7 +2188,7 @@ index ad741acb9bc60fa25750571214a2294099dce820..f58d42cb1b2c79fe578b1256fe3b2c82
        };
        yield* SynchronizedRef.update(state, ({ records }) => {
 diff --git a/apps/server/src/mcp/OrchestratorMcpService.test.ts b/apps/server/src/mcp/OrchestratorMcpService.test.ts
-index 8fb3517135a3caccea0ae9cf050ff2727384cebe..ff6b00c1ccd2f4990a614a01e23ff0bbed310f6f 100644
+index 8fb351713..ff6b00c1c 100644
 --- a/apps/server/src/mcp/OrchestratorMcpService.test.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpService.test.ts
 @@ -28,6 +28,33 @@ import type { McpInvocationScope } from "./McpInvocationContext.ts";
@@ -2431,7 +2431,7 @@ index 8fb3517135a3caccea0ae9cf050ff2727384cebe..ff6b00c1ccd2f4990a614a01e23ff0bb
              clientRequestId: "delegate-antigravity-1",
            });
 diff --git a/apps/server/src/mcp/OrchestratorMcpService.ts b/apps/server/src/mcp/OrchestratorMcpService.ts
-index 4c58a5854c46cbcc9de23f884eef3e9dd1e48d7d..bccd61f840e170621bd9b17f84fb73306475e68a 100644
+index 4c58a5854..bccd61f84 100644
 --- a/apps/server/src/mcp/OrchestratorMcpService.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpService.ts
 @@ -4,6 +4,7 @@ import {
@@ -2660,7 +2660,7 @@ index 4c58a5854c46cbcc9de23f884eef3e9dd1e48d7d..bccd61f840e170621bd9b17f84fb7330
    OrchestratorMcpService,
    never,
 diff --git a/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts b/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
-index 3a64a87a7152969a079060d25fd646ef1549b6e6..8eb10655bb7d01f1a4a451d961dfb4b9f5479020 100644
+index 3a64a87a7..8eb10655b 100644
 --- a/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
 @@ -50,6 +50,7 @@ import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexA
@@ -2725,7 +2725,7 @@ index 3a64a87a7152969a079060d25fd646ef1549b6e6..8eb10655bb7d01f1a4a451d961dfb4b9
  
          yield* Effect.gen(function* () {
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
-index bdd7a0a2ffac5f40061d0df7de54893c6e498d23..bd11a27539522c0ff050600669f5a0deb2574ee2 100644
+index bdd7a0a2f..bd11a2753 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
 +++ b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
 @@ -1,11 +1,42 @@
@@ -2772,7 +2772,7 @@ index bdd7a0a2ffac5f40061d0df7de54893c6e498d23..bd11a27539522c0ff050600669f5a0de
      Effect.gen(function* () {
        const scope = yield* McpInvocationContext;
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts b/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts
-index de85b6f72e0c21da0d8d3b69cec5e7cd52166e16..368e426c27d848eb77acd0b26076560dcf9a0dff 100644
+index de85b6f72..368e426c2 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts
 +++ b/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts
 @@ -3,6 +3,10 @@ import { Tool } from "effect/unstable/ai";
@@ -2827,7 +2827,7 @@ index de85b6f72e0c21da0d8d3b69cec5e7cd52166e16..368e426c27d848eb77acd0b26076560d
 +  });
  });
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/tools.ts b/apps/server/src/mcp/toolkits/orchestrator/tools.ts
-index d1f712e75b8bcbd074e37bdb844621c88ed7146a..236ad6f83a7d28cabc1bf56a3b6c0b4deb7297e6 100644
+index d1f712e75..236ad6f83 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/tools.ts
 +++ b/apps/server/src/mcp/toolkits/orchestrator/tools.ts
 @@ -1,4 +1,12 @@
@@ -2940,7 +2940,7 @@ index d1f712e75b8bcbd074e37bdb844621c88ed7146a..236ad6f83a7d28cabc1bf56a3b6c0b4d
    DelegateTaskTool,
    TaskStatusTool,
 diff --git a/apps/server/src/mcp/toolkits/worktree/registration.test.ts b/apps/server/src/mcp/toolkits/worktree/registration.test.ts
-index 924801431fe67a44c7ce092dff9968872074a017..5651b136d82eed58e4c25c09ad4b68af8ee223c9 100644
+index 924801431..5651b136d 100644
 --- a/apps/server/src/mcp/toolkits/worktree/registration.test.ts
 +++ b/apps/server/src/mcp/toolkits/worktree/registration.test.ts
 @@ -1,5 +1,6 @@
@@ -2972,7 +2972,7 @@ index 924801431fe67a44c7ce092dff9968872074a017..5651b136d82eed58e4c25c09ad4b68af
          Layer.build,
        );
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index ee2fb5d4a416d5439ef7c9e0cce95d2ac4149124..c04f1acdbcae782074a35ffd754eaf173c35aa0f 100644
+index ee2fb5d4a..c04f1acdb 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -644,7 +644,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
@@ -3007,7 +3007,7 @@ index ee2fb5d4a416d5439ef7c9e0cce95d2ac4149124..c04f1acdbcae782074a35ffd754eaf17
  });
  
 diff --git a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts
-index ad87b4bf74658eeeaa9a7a0e28a6965f8ff03760..c4e24e5d8ddfd7962dbb4c3e80efc71883ba670a 100644
+index ad87b4bf7..c4e24e5d8 100644
 --- a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts
 @@ -40,8 +40,8 @@ import {
@@ -3309,7 +3309,7 @@ index ad87b4bf74658eeeaa9a7a0e28a6965f8ff03760..c4e24e5d8ddfd7962dbb4c3e80efc718
  
  // This fails before a provider transcript exists, so a replay fixture is not
 diff --git a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts
-index 1e5c5b43e93f82618df95c792370cd337c341833..3d573983b9e9a502950c92ba76d240496a97ddc5 100644
+index 1e5c5b43e..3d573983b 100644
 --- a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts
 @@ -45,6 +45,7 @@ import {
@@ -3744,7 +3744,7 @@ index 1e5c5b43e93f82618df95c792370cd337c341833..3d573983b9e9a502950c92ba76d24049
        spawner,
        fileSystem,
 diff --git a/apps/server/src/orchestration-v2/Adapters/PiRpc.ts b/apps/server/src/orchestration-v2/Adapters/PiRpc.ts
-index c6a399b3d1a5b5744b4e20c77389604b7083ab7f..947b0578c204d1661bcbe9a723fb0b03ea3057b9 100644
+index c6a399b3d..947b0578c 100644
 --- a/apps/server/src/orchestration-v2/Adapters/PiRpc.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/PiRpc.ts
 @@ -24,6 +24,7 @@ import * as Option from "effect/Option";
@@ -3920,7 +3920,7 @@ index c6a399b3d1a5b5744b4e20c77389604b7083ab7f..947b0578c204d1661bcbe9a723fb0b03
    } satisfies PiRpcConnection;
  });
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
-index 2d448e3b7a533915b186921a606c10439b37b136..a5db5d31561d13c5d747fd7a14de56a343a604be 100644
+index 2d448e3b7..a5db5d315 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
 @@ -27,6 +27,16 @@ async function loadRequestHook(): Promise<RequestHook> {
@@ -3941,7 +3941,7 @@ index 2d448e3b7a533915b186921a606c10439b37b136..a5db5d31561d13c5d747fd7a14de56a3
    for (const key of ["max_tokens", "max_completion_tokens"]) {
      it(`caps ${key} without changing the conversation or tools`, async () => {
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
-index 185bd16f9745ab30c55a267224bb81634253fc34..87b025782908e49183b6c37bd6df9edbcc16e665 100644
+index 185bd16f9..87b025782 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
 @@ -35,6 +35,7 @@ const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
@@ -3985,7 +3985,7 @@ index 185bd16f9745ab30c55a267224bb81634253fc34..87b025782908e49183b6c37bd6df9edb
          const registeredName = \`mcp__t3-code__\${name}\`;
          const description = tool.description ?? name;
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts
-index b50a80a1cabe3a43db20cd73686b334dc01c3fad..f0cb2b8152fa247ad5d1c255b77e37f1f911ad4e 100644
+index b50a80a1c..f0cb2b815 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts
 @@ -88,6 +88,27 @@ describe("pi T3 MCP injection", () => {
@@ -4025,7 +4025,7 @@ index b50a80a1cabe3a43db20cd73686b334dc01c3fad..f0cb2b8152fa247ad5d1c255b77e37f1
    );
  });
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts
-index bd10c62672130a87307411b34dfd045c6e988ba8..d9f6e07e90c5cd58769bb86bad428038fb606a4b 100644
+index bd10c6267..d9f6e07e9 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts
 @@ -251,6 +251,9 @@ export function buildPiRpcLaunch(input: {
@@ -4039,7 +4039,7 @@ index bd10c62672130a87307411b34dfd045c6e988ba8..d9f6e07e90c5cd58769bb86bad428038
    const hasT3Mcp = hasT3Extension && input.mcpSession !== undefined;
    const extensionSafeArgs =
 diff --git a/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts b/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
-index 567fea60f7c42942503895e18ea5748f6868c7ea..d149a665cfd54f626fa005f27f4b8294c23a8d57 100644
+index 567fea60f..d149a665c 100644
 --- a/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
 +++ b/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
 @@ -40,7 +40,9 @@ import { worktreeRepairDependenciesTestLayer } from "./ProviderTurnStartService.
@@ -4118,7 +4118,7 @@ index 567fea60f7c42942503895e18ea5748f6868c7ea..d149a665cfd54f626fa005f27f4b8294
            commandId: CommandId.make("command:delegated-delivery-a2:ack-after-dispose"),
 diff --git a/apps/server/src/orchestration-v2/DelegatedCompletionWake.ts b/apps/server/src/orchestration-v2/DelegatedCompletionWake.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..1ac21f77d38357b24dc56739b0b1297e63755c3d
+index 000000000..1ac21f77d
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/DelegatedCompletionWake.ts
 @@ -0,0 +1,25 @@
@@ -4149,7 +4149,7 @@ index 0000000000000000000000000000000000000000..1ac21f77d38357b24dc56739b0b1297e
 +}
 diff --git a/apps/server/src/orchestration-v2/LocalJobNotification.test.ts b/apps/server/src/orchestration-v2/LocalJobNotification.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..0b79fd6502dae3018bbd628a71ac48530250038a
+index 000000000..0b79fd650
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/LocalJobNotification.test.ts
 @@ -0,0 +1,409 @@
@@ -4564,7 +4564,7 @@ index 0000000000000000000000000000000000000000..0b79fd6502dae3018bbd628a71ac4853
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts b/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..67e142de2270f0a813a24344599a8d2d6ccc9fba
+index 000000000..67e142de2
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts
 @@ -0,0 +1,800 @@
@@ -5370,7 +5370,7 @@ index 0000000000000000000000000000000000000000..67e142de2270f0a813a24344599a8d2d
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeUsageAccounting.test.ts b/apps/server/src/orchestration-v2/NativeUsageAccounting.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..40f01a13701b1862a34f458f2d5f7c1ad924d32e
+index 000000000..40f01a137
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeUsageAccounting.test.ts
 @@ -0,0 +1,169 @@
@@ -5545,7 +5545,7 @@ index 0000000000000000000000000000000000000000..40f01a13701b1862a34f458f2d5f7c1a
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeUsageAccounting.ts b/apps/server/src/orchestration-v2/NativeUsageAccounting.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..e8bcfa3bd7fd00682cf0810de6f70a91d6cddbe7
+index 000000000..e8bcfa3bd
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeUsageAccounting.ts
 @@ -0,0 +1,124 @@
@@ -5674,7 +5674,7 @@ index 0000000000000000000000000000000000000000..e8bcfa3bd7fd00682cf0810de6f70a91
 +  };
 +}
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index bd49052007b3500bdbc5b81201661c3aef60cb50..c8061c2aa77d477cb95301f5fab31b30445c258a 100644
+index bd4905200..c8061c2aa 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -48,6 +48,7 @@ import * as Layer from "effect/Layer";
@@ -6562,10 +6562,18 @@ index bd49052007b3500bdbc5b81201661c3aef60cb50..c8061c2aa77d477cb95301f5fab31b30
        Stream.filter(
          (stored) =>
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.test.ts b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
-index acdb7320bb030b1215dd29e163fc79d6488e9deb..15c5a576544085e63f258d33361a46bcf0a9dd0c 100644
+index acdb7320b..9a4b31ba0 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.test.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
-@@ -383,7 +383,18 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
+@@ -315,6 +315,7 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
+   it.effect("preserves stored provider usage when a terminal update omits it", () =>
+     Effect.gen(function* () {
+       const projectionStore = yield* ProjectionStoreV2;
++      const sql = yield* SqlClient.SqlClient;
+       const now = yield* DateTime.now;
+       const threadId = ThreadId.make("thread:provider-usage-reload");
+       const providerThreadId = ProviderThreadId.make("provider-thread:provider-usage-reload");
+@@ -383,7 +384,18 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
          nodeId,
          driver,
          occurredAt: now,
@@ -6585,7 +6593,7 @@ index acdb7320bb030b1215dd29e163fc79d6488e9deb..15c5a576544085e63f258d33361a46bc
        });
        yield* projectionStore.apply({
          id: EventId.make("event:provider-usage-reload:completed"),
-@@ -398,6 +409,12 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
+@@ -398,6 +410,25 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
        const reloaded = yield* projectionStore.getThreadProjection(threadId);
        assert.deepEqual(reloaded.providerTurns[0]?.tokenUsage, initialUsage);
        assert.strictEqual(reloaded.providerTurns[0]?.status, "completed");
@@ -6595,11 +6603,24 @@ index acdb7320bb030b1215dd29e163fc79d6488e9deb..15c5a576544085e63f258d33361a46bc
 +        snapshotWithNativeUsage.projection.nativeUsage?.subtree.costStatus,
 +        "complete",
 +      );
++
++      // Native usage reads must stay scoped to the requested subtree. A corrupt,
++      // unrelated persisted row is neither transferred nor decoded.
++      yield* sql`INSERT INTO orchestration_v2_projection_threads (
++        thread_id, project_id, title, default_provider, runtime_mode, interaction_mode,
++        created_at, updated_at, payload_json
++      ) VALUES (
++        'thread:unrelated-malformed', 'project:unrelated', 'unrelated', 'codex',
++        'full_access', 'default', ${DateTime.formatIso(now)}, ${DateTime.formatIso(now)}, '{'
++      )`;
++      const scopedSnapshot = yield* projectionStore.getThreadSnapshot(threadId);
++      assert.strictEqual(scopedSnapshot.projection.nativeUsage?.own.costUsd, 0.42);
++      yield* sql`DELETE FROM orchestration_v2_projection_threads WHERE thread_id = 'thread:unrelated-malformed'`;
  
        yield* projectionStore.apply({
          id: EventId.make("event:provider-usage-reload:replacement"),
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index 191ca76103c8a2b47b7aa2fbcee6322358581825..48677ccf8ec13f7daaff505632b87c0069a92540 100644
+index 191ca7610..53b15b716 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
 @@ -64,6 +64,7 @@ import * as Ref from "effect/Ref";
@@ -6631,20 +6652,52 @@ index 191ca76103c8a2b47b7aa2fbcee6322358581825..48677ccf8ec13f7daaff505632b87c00
                  )
                )
              )
-@@ -4215,12 +4219,48 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -4215,12 +4219,80 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
            }),
          )
          .pipe(Effect.mapError(controlReadError(threadId)));
 +    const readNativeUsageReport = (rootThreadId: ThreadId) =>
 +      Effect.gen(function* () {
-+        const [threadRows, providerTurnRows] = yield* Effect.all([
-+          sql<{ readonly thread_id: string; readonly payload_json: string }>`
-+            SELECT thread_id, payload_json FROM orchestration_v2_projection_threads
-+          `,
-+          sql<{ readonly thread_id: string; readonly payload_json: string }>`
-+            SELECT thread_id, payload_json FROM orchestration_v2_projection_provider_turns
-+          `,
-+        ]);
++        // Snapshot reads are frequent control/UI reads. Keep native accounting scoped
++        // to the requested Die-owned subtree rather than decoding every thread and
++        // provider turn in the database on each read.
++        const threadRows: Array<{ readonly thread_id: string; readonly payload_json: string }> = [
++          ...(yield* sql<{ readonly thread_id: string; readonly payload_json: string }>`
++            SELECT thread_id, payload_json
++            FROM orchestration_v2_projection_threads
++            WHERE thread_id = ${rootThreadId}
++          `),
++        ];
++        const selectedThreadIds = new Set(threadRows.map((row) => row.thread_id));
++        let frontier = threadRows.map((row) => row.thread_id);
++        while (frontier.length > 0) {
++          const children = yield* sql<{
++            readonly thread_id: string;
++            readonly payload_json: string;
++          }>`
++            SELECT thread_id, payload_json
++            FROM orchestration_v2_projection_threads
++            WHERE CASE WHEN json_valid(payload_json)
++              THEN json_extract(payload_json, '$.lineage.relationshipToParent') = 'subagent'
++                AND json_extract(payload_json, '$.lineage.parentThreadId') IN ${sql.in(frontier)}
++              ELSE 0 END
++          `;
++          frontier = [];
++          for (const child of children) {
++            if (selectedThreadIds.has(child.thread_id)) continue;
++            selectedThreadIds.add(child.thread_id);
++            threadRows.push(child);
++            frontier.push(child.thread_id);
++          }
++        }
++        const providerTurnRows =
++          selectedThreadIds.size === 0
++            ? []
++            : yield* sql<{ readonly thread_id: string; readonly payload_json: string }>`
++                SELECT thread_id, payload_json
++                FROM orchestration_v2_projection_provider_turns
++                WHERE thread_id IN ${sql.in([...selectedThreadIds])}
++              `;
 +        const threads = yield* Effect.all(
 +          threadRows.map((row) => decodeThreadPayload(row.payload_json)),
 +        );
@@ -6681,7 +6734,7 @@ index 191ca76103c8a2b47b7aa2fbcee6322358581825..48677ccf8ec13f7daaff505632b87c00
              const rows = yield* sql<{ readonly snapshot_sequence: number | null }>`
              SELECT MAX(sequence) AS snapshot_sequence
              FROM orchestration_events
-@@ -4265,7 +4305,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -4265,7 +4337,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                        `).map((row) => ThreadId.make(row.thread_id))[0] ??
                        threadId,
                    };
@@ -6690,7 +6743,7 @@ index 191ca76103c8a2b47b7aa2fbcee6322358581825..48677ccf8ec13f7daaff505632b87c00
                rowLimit: options.rowLimit,
                userTurnLimit: options.userTurnLimit,
                ...(historyAnchor?.threadId === threadId
-@@ -4273,6 +4313,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
+@@ -4273,6 +4345,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                  : {}),
                ...(historyAnchor === undefined ? {} : { historyAnchor }),
              });
@@ -6700,7 +6753,7 @@ index 191ca76103c8a2b47b7aa2fbcee6322358581825..48677ccf8ec13f7daaff505632b87c00
                SELECT MAX(sequence) AS snapshot_sequence
                FROM orchestration_events
 diff --git a/apps/server/src/orchestration-v2/ProviderAdapter.ts b/apps/server/src/orchestration-v2/ProviderAdapter.ts
-index 478150bd59f688738ba7ad085c82a3bc32d61454..1a8bd06bc351ae574db19be3ddd5d983bbf3f05b 100644
+index 478150bd5..1a8bd06bc 100644
 --- a/apps/server/src/orchestration-v2/ProviderAdapter.ts
 +++ b/apps/server/src/orchestration-v2/ProviderAdapter.ts
 @@ -486,6 +486,13 @@ export interface ProviderAdapterV2SessionRuntime {
@@ -6718,7 +6771,7 @@ index 478150bd59f688738ba7ad085c82a3bc32d61454..1a8bd06bc351ae574db19be3ddd5d983
     * Manager-owned runtimes expose a synchronous subscription so concurrent
     * provider threads receive independent copies of the process event stream.
 diff --git a/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts b/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts
-index e6af7fa791b5f697f84d52f180cecdafb73b175e..2e771859a9dcddc5ffeb7550191c0dfe37ee3984 100644
+index e6af7fa79..2e771859a 100644
 --- a/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts
 +++ b/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts
 @@ -1,3 +1,4 @@
@@ -6847,7 +6900,7 @@ index e6af7fa791b5f697f84d52f180cecdafb73b175e..2e771859a9dcddc5ffeb7550191c0dfe
    }),
  );
 diff --git a/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts b/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts
-index 1c95c3ba90a716fb2ad265317758f106f21aea7b..92ac238030a5db79dda00f967024cebf62b55811 100644
+index 1c95c3ba9..92ac23803 100644
 --- a/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts
 @@ -10,7 +10,9 @@ import {
@@ -7107,7 +7160,7 @@ index 1c95c3ba90a716fb2ad265317758f106f21aea7b..92ac238030a5db79dda00f967024cebf
      return Effect.gen(function* () {
        const attempts = yield* Ref.make(0);
 diff --git a/apps/server/src/orchestration-v2/ProviderContinuationService.ts b/apps/server/src/orchestration-v2/ProviderContinuationService.ts
-index d8f9197f42de0fff752a15698610f9a40d56a8d3..b32b1631af8780d3c3cfcbfb418890414a0d4ef3 100644
+index d8f9197f4..b32b1631a 100644
 --- a/apps/server/src/orchestration-v2/ProviderContinuationService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderContinuationService.ts
 @@ -1,6 +1,7 @@
@@ -7284,7 +7337,7 @@ index d8f9197f42de0fff752a15698610f9a40d56a8d3..b32b1631af8780d3c3cfcbfb41889041
        Effect.forkScoped,
      );
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts
-index 8d2947094aaa704454c9b8f9f776f5f2f5d3b95b..18f775d1e031937b5f75e6b47a1908ee24633d8b 100644
+index 8d2947094..18f775d1e 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts
 @@ -1,9 +1,13 @@
@@ -8332,7 +8385,7 @@ index 8d2947094aaa704454c9b8f9f776f5f2f5d3b95b..18f775d1e031937b5f75e6b47a1908ee
        );
      }),
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
-index ced52cee8a5b5079d6c09d5952b2c3280a4f9f16..92e2e5869c8ebc4c18ba9b27931f3d5861752f6c 100644
+index ced52cee8..92e2e5869 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 @@ -31,6 +31,8 @@ import * as ProjectService from "../project/ProjectService.ts";
@@ -8803,7 +8856,7 @@ index ced52cee8a5b5079d6c09d5952b2c3280a4f9f16..92e2e5869c8ebc4c18ba9b27931f3d58
                };
                yield* Ref.update(sessions, (current) => {
 diff --git a/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts b/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
-index cb6f66d4e5b2285f90631be943e80cff7d47de8f..f8aaba3f7bc4eba84efba538e270b46de0ef1dfd 100644
+index cb6f66d4e..f8aaba3f7 100644
 --- a/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
 +++ b/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
 @@ -1741,6 +1741,8 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch
@@ -8816,7 +8869,7 @@ index cb6f66d4e5b2285f90631be943e80cff7d47de8f..f8aaba3f7bc4eba84efba538e270b46d
            launches.launch(request).pipe(
              Effect.andThen(
 diff --git a/apps/server/src/orchestration-v2/ThreadLaunchService.ts b/apps/server/src/orchestration-v2/ThreadLaunchService.ts
-index 3cafae35e2d7007f3717f1a3d4385cc3678aa010..d33d2be2bf841c90bf929538f610368d31f197fd 100644
+index 3cafae35e..d33d2be2b 100644
 --- a/apps/server/src/orchestration-v2/ThreadLaunchService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadLaunchService.ts
 @@ -75,6 +75,8 @@ export interface ThreadLaunchInput {
@@ -8885,7 +8938,7 @@ index 3cafae35e2d7007f3717f1a3d4385cc3678aa010..d33d2be2bf841c90bf929538f610368d
  
  export const layer = Layer.effect(ThreadLaunchService, make);
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 6a5084601454aad1a54020a20fda76b0dd423628..e0f463f4af9ec03ef6a30fc930a029832ebaf825 100644
+index 6a5084601..e0f463f4a 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -83,6 +83,7 @@ export function existingThreadIdsForCommand(
@@ -8952,7 +9005,7 @@ index 6a5084601454aad1a54020a20fda76b0dd423628..e0f463f4af9ec03ef6a30fc930a02983
  );
  
 diff --git a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
-index f81d477edaf8b2cb3470b3fe8c63b8930acc1c2f..65e38b075a7b8b9ef35d475260b742cdae826592 100644
+index f81d477ed..65e38b075 100644
 --- a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 +++ b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 @@ -158,6 +158,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
@@ -8964,7 +9017,7 @@ index f81d477edaf8b2cb3470b3fe8c63b8930acc1c2f..65e38b075a7b8b9ef35d475260b742cd
        return [command.parentThreadId];
      case "thread.fork":
 diff --git a/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts b/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
-index b159540b6c7161899da7ffcf465f6cb14293baa2..d88ecc09874b7e0244894ae23213764b2e624110 100644
+index b159540b6..d88ecc098 100644
 --- a/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
 +++ b/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
 @@ -16,6 +16,7 @@ import { ProjectionProjectRepositoryLive } from "../../persistence/Layers/Projec
@@ -9004,7 +9057,7 @@ index b159540b6c7161899da7ffcf465f6cb14293baa2..d88ecc09874b7e0244894ae23213764b
        ),
 diff --git a/apps/server/src/provider/DieWebPi.test.ts b/apps/server/src/provider/DieWebPi.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..9d2bb056c6ba24e9be488c4e884025bb3fe75bb8
+index 000000000..9d2bb056c
 --- /dev/null
 +++ b/apps/server/src/provider/DieWebPi.test.ts
 @@ -0,0 +1,42 @@
@@ -9052,7 +9105,7 @@ index 0000000000000000000000000000000000000000..9d2bb056c6ba24e9be488c4e884025bb
 +});
 diff --git a/apps/server/src/provider/DieWebPi.ts b/apps/server/src/provider/DieWebPi.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..c09c1fec626e36b58296684d17d40debef9c2684
+index 000000000..c09c1fec6
 --- /dev/null
 +++ b/apps/server/src/provider/DieWebPi.ts
 @@ -0,0 +1,29 @@
@@ -9086,7 +9139,7 @@ index 0000000000000000000000000000000000000000..c09c1fec626e36b58296684d17d40deb
 +  return providerInstanceId === "pi" && dieWebBinary(environment) !== undefined;
 +}
 diff --git a/apps/server/src/provider/Drivers/PiDriver.ts b/apps/server/src/provider/Drivers/PiDriver.ts
-index 72cb0fec732b7b16895d9627a247fbf5af0c4ac4..276e08cd0cb6f71f4e1a94f1c9412bff243f8a5d 100644
+index 72cb0fec7..276e08cd0 100644
 --- a/apps/server/src/provider/Drivers/PiDriver.ts
 +++ b/apps/server/src/provider/Drivers/PiDriver.ts
 @@ -36,6 +36,7 @@ import {
@@ -9129,7 +9182,7 @@ index 72cb0fec732b7b16895d9627a247fbf5af0c4ac4..276e08cd0cb6f71f4e1a94f1c9412bff
          orchestrationAdapter,
          textGeneration,
 diff --git a/apps/server/src/provider/Layers/PiProvider.test.ts b/apps/server/src/provider/Layers/PiProvider.test.ts
-index 4f7a6f6adf1f95c40368150a5a0dc8a301d2d853..663756e133b953a1f30b54d375a6a6cd64220116 100644
+index 4f7a6f6ad..663756e13 100644
 --- a/apps/server/src/provider/Layers/PiProvider.test.ts
 +++ b/apps/server/src/provider/Layers/PiProvider.test.ts
 @@ -74,6 +74,11 @@ describe("PiProvider", () => {
@@ -9145,7 +9198,7 @@ index 4f7a6f6adf1f95c40368150a5a0dc8a301d2d853..663756e133b953a1f30b54d375a6a6cd
      }).pipe(Effect.provide(NodeServices.layer)),
    );
 diff --git a/apps/server/src/provider/Layers/PiProvider.ts b/apps/server/src/provider/Layers/PiProvider.ts
-index edbace8019bdece177ce470cd8e24abd8f6fc90b..5abac7d1d9709e6e16a0e96d6bbb8ad1b341ce0c 100644
+index edbace801..5abac7d1d 100644
 --- a/apps/server/src/provider/Layers/PiProvider.ts
 +++ b/apps/server/src/provider/Layers/PiProvider.ts
 @@ -43,6 +43,7 @@ import {
@@ -9237,7 +9290,7 @@ index edbace8019bdece177ce470cd8e24abd8f6fc90b..5abac7d1d9709e6e16a0e96d6bbb8ad1
        presentation: PI_PRESENTATION,
        enabled: piSettings.enabled,
 diff --git a/apps/server/src/provider/Layers/ProviderRegistry.test.ts b/apps/server/src/provider/Layers/ProviderRegistry.test.ts
-index 24ecd5710f502b085349bb76ceb169236912305c..e32af6709730980726f34d89445c10cbce520fad 100644
+index 24ecd5710..e32af6709 100644
 --- a/apps/server/src/provider/Layers/ProviderRegistry.test.ts
 +++ b/apps/server/src/provider/Layers/ProviderRegistry.test.ts
 @@ -2598,7 +2598,12 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
@@ -9267,7 +9320,7 @@ index 24ecd5710f502b085349bb76ceb169236912305c..e32af6709730980726f34d89445c10cb
              assert.strictEqual(reprobedCodex?.installed, false);
            }).pipe(Effect.provide(runtimeServices));
 diff --git a/apps/server/src/serverRuntimeStartup.test.ts b/apps/server/src/serverRuntimeStartup.test.ts
-index a89d010fab75702bbc743da33b03d32bc09e9b1d..255992efdbb2989c30d1562c202df176527c8e96 100644
+index a89d010fa..255992efd 100644
 --- a/apps/server/src/serverRuntimeStartup.test.ts
 +++ b/apps/server/src/serverRuntimeStartup.test.ts
 @@ -13,9 +13,46 @@ import * as Ref from "effect/Ref";
@@ -9318,7 +9371,7 @@ index a89d010fab75702bbc743da33b03d32bc09e9b1d..255992efdbb2989c30d1562c202df176
    assert.deepEqual(ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(), {
      instanceId: ProviderInstanceId.make("codex"),
 diff --git a/apps/server/src/serverRuntimeStartup.ts b/apps/server/src/serverRuntimeStartup.ts
-index 2ec488f2b8024ce5be9058c581512361b0158b48..d4702f427eddad147f35a30c76526c1a0e353dea 100644
+index 2ec488f2b..d4702f427 100644
 --- a/apps/server/src/serverRuntimeStartup.ts
 +++ b/apps/server/src/serverRuntimeStartup.ts
 @@ -172,10 +172,16 @@ const recordStartupHeartbeat = Effect.gen(function* () {
@@ -9400,7 +9453,7 @@ index 2ec488f2b8024ce5be9058c581512361b0158b48..d4702f427eddad147f35a30c76526c1a
                ).pipe(Effect.annotateLogs({ pairingUrl: startupBrowserTarget }));
 diff --git a/apps/server/src/terminal/BunPtyAdapter.test.ts b/apps/server/src/terminal/BunPtyAdapter.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..26c2f6cf8db92d77b1c8aea80487b14a6931db4d
+index 000000000..26c2f6cf8
 --- /dev/null
 +++ b/apps/server/src/terminal/BunPtyAdapter.test.ts
 @@ -0,0 +1,229 @@
@@ -9635,7 +9688,7 @@ index 0000000000000000000000000000000000000000..26c2f6cf8db92d77b1c8aea80487b14a
 +);
 diff --git a/apps/server/src/terminal/BunPtyAdapter.ts b/apps/server/src/terminal/BunPtyAdapter.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..350de371ccb7649a4104f9554e359932945e2c4d
+index 000000000..350de371c
 --- /dev/null
 +++ b/apps/server/src/terminal/BunPtyAdapter.ts
 @@ -0,0 +1,186 @@
@@ -9826,7 +9879,7 @@ index 0000000000000000000000000000000000000000..350de371ccb7649a4104f9554e359932
 +    }),
 +  });
 diff --git a/apps/server/src/terminal/Manager.test.ts b/apps/server/src/terminal/Manager.test.ts
-index be62d0eebe0297dd9ef1ea7890dcfa12a1c5a9dd..543be8473b4545d9b0c9c7216bc63e12d54d2c84 100644
+index be62d0eeb..543be8473 100644
 --- a/apps/server/src/terminal/Manager.test.ts
 +++ b/apps/server/src/terminal/Manager.test.ts
 @@ -788,6 +788,70 @@ it.layer(
@@ -9948,7 +10001,7 @@ index be62d0eebe0297dd9ef1ea7890dcfa12a1c5a9dd..543be8473b4545d9b0c9c7216bc63e12
      Effect.gen(function* () {
        const { manager, ptyAdapter } = yield* createManager(3);
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index 398442ee18dbdf7a86a63e1d3ae7e7a5668fec7e..39f83e3c729e3508038fedd320c087fae935876f 100644
+index 398442ee1..39f83e3c7 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -6,6 +6,8 @@
@@ -10213,7 +10266,7 @@ index 398442ee18dbdf7a86a63e1d3ae7e7a5668fec7e..39f83e3c729e3508038fedd320c087fa
        session.processEventDrainRunning = false;
        yield* persistHistory(input.threadId, terminalId, session.history);
 diff --git a/apps/server/src/terminal/NodePtyAdapter.test.ts b/apps/server/src/terminal/NodePtyAdapter.test.ts
-index e6650025f70f6039db522317abe8ba22a63b4325..11df4fe33b36e689420606bfe84f1294bc788708 100644
+index e6650025f..11df4fe33 100644
 --- a/apps/server/src/terminal/NodePtyAdapter.test.ts
 +++ b/apps/server/src/terminal/NodePtyAdapter.test.ts
 @@ -28,6 +28,7 @@ const makeTestLayer = (platform: NodeJS.Platform = "win32") =>
@@ -10225,7 +10278,7 @@ index e6650025f70f6039db522317abe8ba22a63b4325..11df4fe33b36e689420606bfe84f1294
        ),
      ),
 diff --git a/apps/server/src/terminal/NodePtyAdapter.ts b/apps/server/src/terminal/NodePtyAdapter.ts
-index 67cdcecdd53aabfc631e854d36f856406bf50ac7..a8621acf005cd385aa29ba808fc97142418a996d 100644
+index 67cdcecdd..a8621acf0 100644
 --- a/apps/server/src/terminal/NodePtyAdapter.ts
 +++ b/apps/server/src/terminal/NodePtyAdapter.ts
 @@ -8,6 +8,7 @@ import * as Path from "effect/Path";
@@ -10254,7 +10307,7 @@ index 67cdcecdd53aabfc631e854d36f856406bf50ac7..a8621acf005cd385aa29ba808fc97142
 +export { BunTerminalRuntimeRef } from "./BunPtyAdapter.ts";
 diff --git a/apps/server/src/terminal/SubscriberStream.test.ts b/apps/server/src/terminal/SubscriberStream.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..53672885112ae2b0dbda1a98a68d44fb4d73d307
+index 000000000..536728851
 --- /dev/null
 +++ b/apps/server/src/terminal/SubscriberStream.test.ts
 @@ -0,0 +1,167 @@
@@ -10427,7 +10480,7 @@ index 0000000000000000000000000000000000000000..53672885112ae2b0dbda1a98a68d44fb
 +});
 diff --git a/apps/server/src/terminal/SubscriberStream.ts b/apps/server/src/terminal/SubscriberStream.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..3f66277788b593e6d6e3c8076b20cd1a5e707795
+index 000000000..3f6627778
 --- /dev/null
 +++ b/apps/server/src/terminal/SubscriberStream.ts
 @@ -0,0 +1,144 @@
@@ -10576,7 +10629,7 @@ index 0000000000000000000000000000000000000000..3f66277788b593e6d6e3c8076b20cd1a
 +  );
 +}
 diff --git a/apps/server/src/vcs/GitVcsDriverCore.test.ts b/apps/server/src/vcs/GitVcsDriverCore.test.ts
-index d42c5b74e1558e394ebcca75605ad21f79db47ab..2f0957a088b8303545c6e4039a3128fbc2033828 100644
+index d42c5b74e..2f0957a08 100644
 --- a/apps/server/src/vcs/GitVcsDriverCore.test.ts
 +++ b/apps/server/src/vcs/GitVcsDriverCore.test.ts
 @@ -2227,6 +2227,34 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
@@ -10615,7 +10668,7 @@ index d42c5b74e1558e394ebcca75605ad21f79db47ab..2f0957a088b8303545c6e4039a3128fb
        Effect.gen(function* () {
          const cwd = yield* makeTmpDir();
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 176ef3bd5f70b94e3dd568f709b321ee2487503a..629e3a84ca66d8d88ba959be69d9569959dd72e4 100644
+index 176ef3bd5..629e3a84c 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -174,6 +174,7 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -10749,7 +10802,7 @@ index 176ef3bd5f70b94e3dd568f709b321ee2487503a..629e3a84ca66d8d88ba959be69d95699
              Effect.forkScoped,
            );
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 96c366ccd8974d2b034f83f5d407b96cd3fa8caf..585c8f7b455a6177dbf3e90970dcb6d755aa2aea 100644
+index 96c366ccd..585c8f7b4 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -10676,6 +10676,7 @@ export default function ChatView(props: ChatViewProps) {
@@ -10761,7 +10814,7 @@ index 96c366ccd8974d2b034f83f5d407b96cd3fa8caf..585c8f7b455a6177dbf3e90970dcb6d7
                              activeTaskSteps={activeComposerTaskSteps}
                              compactThreadUnavailable={compactThreadUnavailable}
 diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
-index 89390422f3f0e94c517020cf9df1354bda653817..059b486f2793b730873d58d5b62290b0e86968bc 100644
+index 89390422f..059b486f2 100644
 --- a/apps/web/src/components/ThreadRouteView.tsx
 +++ b/apps/web/src/components/ThreadRouteView.tsx
 @@ -54,6 +54,11 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
@@ -10814,7 +10867,7 @@ index 89390422f3f0e94c517020cf9df1354bda653817..059b486f2793b730873d58d5b62290b0
        <ChatView
          {...(nextChatViewKey ? { key: nextChatViewKey.key } : {})}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index 54689eee2e2ce7a49b15f36cf4263e9a3dd7ad7d..2eb6c05d832799850843bb2b92957718e8b8aa06 100644
+index 54689eee2..2eb6c05d8 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
 @@ -23,6 +23,7 @@ import type {
@@ -10884,7 +10937,7 @@ index 54689eee2e2ce7a49b15f36cf4263e9a3dd7ad7d..2eb6c05d832799850843bb2b92957718
                      pendingAction={pendingPrimaryAction}
                      isRunning={phase === "running"}
 diff --git a/apps/web/src/components/chat/DraftHeroHeadline.tsx b/apps/web/src/components/chat/DraftHeroHeadline.tsx
-index d542cd6a8a9f28aae60094046d25a5d56e589340..407cfb9b59c8b5f6c46d85d7ecadebdab990102b 100644
+index d542cd6a8..407cfb9b5 100644
 --- a/apps/web/src/components/chat/DraftHeroHeadline.tsx
 +++ b/apps/web/src/components/chat/DraftHeroHeadline.tsx
 @@ -177,10 +177,16 @@ export function DraftHeroHeadline({
@@ -10909,7 +10962,7 @@ index d542cd6a8a9f28aae60094046d25a5d56e589340..407cfb9b59c8b5f6c46d85d7ecadebda
                  setModelSelection(draftId, defaultModelSelection, {
                    replaceOptions: true,
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index e00b01b16e17051962ceb76ec157868193fa4614..c4fa1f94e08763db1f18de8f7e528f16788d0781 100644
+index e00b01b16..c4fa1f94e 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 @@ -1,4 +1,4 @@
@@ -11031,7 +11084,7 @@ index e00b01b16e17051962ceb76ec157868193fa4614..c4fa1f94e08763db1f18de8f7e528f16
 +  });
 +});
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 80f1465693c717f0cafd8411ad9e1b0caa19a83b..5c9bd32c8003f6c0fd7dae56effd082482f43e59 100644
+index 80f146569..5c9bd32c8 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
 @@ -836,6 +836,7 @@ function deriveTurnFolds(input: {
@@ -11069,7 +11122,7 @@ index 80f1465693c717f0cafd8411ad9e1b0caa19a83b..5c9bd32c8003f6c0fd7dae56effd0824
            collapsedEntryIds.has(nextEntry.id) ||
            collapsedSupersededEntryIds.has(nextEntry.id) ||
 diff --git a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx b/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
-index f19e41599043c65352fb31b4c0cf6293198fdb6f..bc569dd38d5b8fd1c36a1f1df9a283d649939271 100644
+index f19e41599..bc569dd38 100644
 --- a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
 +++ b/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
 @@ -152,6 +152,7 @@ import {
@@ -11090,7 +11143,7 @@ index f19e41599043c65352fb31b4c0cf6293198fdb6f..bc569dd38d5b8fd1c36a1f1df9a283d6
      store.setReviewComments(
        target,
 diff --git a/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts b/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
-index 978ae69583df31b2670c7ad8860a503d9ee2c8e1..47d98c1d31c954f779a04c9b12954bd00c6cc793 100644
+index 978ae6958..47d98c1d3 100644
 --- a/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
 +++ b/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
 @@ -30,6 +30,8 @@ import {
@@ -11139,7 +11192,7 @@ index 978ae69583df31b2670c7ad8860a503d9ee2c8e1..47d98c1d31c954f779a04c9b12954bd0
    const detail = (overrides: Record<string, unknown> = {}) =>
      ({
 diff --git a/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts b/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
-index b8d2d897a4597f144aa571def0013f61d30772ac..aa0afa5ded81d9d77e8311614918d916296ce679 100644
+index b8d2d897a..aa0afa5de 100644
 --- a/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
 +++ b/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
 @@ -793,6 +793,25 @@ export function stripPullRequestHandoffReferences(
@@ -11169,7 +11222,7 @@ index b8d2d897a4597f144aa571def0013f61d30772ac..aa0afa5ded81d9d77e8311614918d916
   * The prompt the composer should hold once a hand-off lands there.
   *
 diff --git a/apps/web/src/components/settings/providerDriverMeta.ts b/apps/web/src/components/settings/providerDriverMeta.ts
-index 53908510c2939ed47eae2add3256b181b36b9210..cb547ee06027c54face3546222ae7bd7c6112276 100644
+index 53908510c..cb547ee06 100644
 --- a/apps/web/src/components/settings/providerDriverMeta.ts
 +++ b/apps/web/src/components/settings/providerDriverMeta.ts
 @@ -85,8 +85,7 @@ const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
@@ -11183,7 +11236,7 @@ index 53908510c2939ed47eae2add3256b181b36b9210..cb547ee06027c54face3546222ae7bd7
    },
    {
 diff --git a/apps/web/src/composerDraftStore.test.ts b/apps/web/src/composerDraftStore.test.ts
-index df7969a86188024170182673fedb7ace85585613..d803b12792f7acd38cc44b3567f49bfad5fbee28 100644
+index df7969a86..d803b1279 100644
 --- a/apps/web/src/composerDraftStore.test.ts
 +++ b/apps/web/src/composerDraftStore.test.ts
 @@ -2448,6 +2448,74 @@ describe("composerDraftStore sticky composer settings", () => {
@@ -11262,7 +11315,7 @@ index df7969a86188024170182673fedb7ace85585613..d803b12792f7acd38cc44b3567f49bfa
      const store = useComposerDraftStore.getState();
  
 diff --git a/apps/web/src/hooks/useHandleNewThread.ts b/apps/web/src/hooks/useHandleNewThread.ts
-index 3b2becd43d5bfc4a86840c04be401d3dca3f9285..6a680cd37f2664f8d1dc603796dca56ccca77395 100644
+index 3b2becd43..6a680cd37 100644
 --- a/apps/web/src/hooks/useHandleNewThread.ts
 +++ b/apps/web/src/hooks/useHandleNewThread.ts
 @@ -94,10 +94,11 @@ export function useNewThreadHandler() {
@@ -11314,7 +11367,7 @@ index 3b2becd43d5bfc4a86840c04be401d3dca3f9285..6a680cd37f2664f8d1dc603796dca56c
          }
          await router.navigate({
 diff --git a/apps/web/src/lib/chatThreadActions.test.ts b/apps/web/src/lib/chatThreadActions.test.ts
-index c145404a74e2dbd43f0cc59cda96ca40b14b494a..b3d8579627252e8fe9a43292e978fe4ee9d72b53 100644
+index c145404a7..b3d857962 100644
 --- a/apps/web/src/lib/chatThreadActions.test.ts
 +++ b/apps/web/src/lib/chatThreadActions.test.ts
 @@ -58,18 +58,48 @@ describe("chatThreadActions", () => {
@@ -11377,7 +11430,7 @@ index c145404a74e2dbd43f0cc59cda96ca40b14b494a..b3d8579627252e8fe9a43292e978fe4e
          destinationDraftId: "draft-b",
        }),
 diff --git a/apps/web/src/lib/chatThreadActions.ts b/apps/web/src/lib/chatThreadActions.ts
-index c14a26d03d1c0e3cf69593da9c9682925b31608b..fc7717cc7bfc4a35c5a13f4fe2515de426497855 100644
+index c14a26d03..fc7717cc7 100644
 --- a/apps/web/src/lib/chatThreadActions.ts
 +++ b/apps/web/src/lib/chatThreadActions.ts
 @@ -46,14 +46,21 @@ export function resolveNewDraftStartFromOrigin(input: {
@@ -11407,7 +11460,7 @@ index c14a26d03d1c0e3cf69593da9c9682925b31608b..fc7717cc7bfc4a35c5a13f4fe2515de4
  
  export function hasExplicitComposerModelSelection(
 diff --git a/apps/web/src/lib/syntaxHighlighting.test.ts b/apps/web/src/lib/syntaxHighlighting.test.ts
-index 1f7ce756b60ce6e94d0478ae79716558452b3bdd..7c27f5898792558f1398ceda28c82bf3fa1d9027 100644
+index 1f7ce756b..7c27f5898 100644
 --- a/apps/web/src/lib/syntaxHighlighting.test.ts
 +++ b/apps/web/src/lib/syntaxHighlighting.test.ts
 @@ -9,10 +9,24 @@ vi.mock("@pierre/diffs", () => ({
@@ -11501,7 +11554,7 @@ index 1f7ce756b60ce6e94d0478ae79716558452b3bdd..7c27f5898792558f1398ceda28c82bf3
 +  await expect(reloaded).resolves.toBe(highlighter);
  });
 diff --git a/apps/web/src/lib/syntaxHighlighting.ts b/apps/web/src/lib/syntaxHighlighting.ts
-index 3be008ac2b794e6d8017d5f5b6464cae1da93e47..c6db4df1773fe20b65f05253862910353de52c1f 100644
+index 3be008ac2..c6db4df17 100644
 --- a/apps/web/src/lib/syntaxHighlighting.ts
 +++ b/apps/web/src/lib/syntaxHighlighting.ts
 @@ -15,25 +15,63 @@ import { resolveDiffThemeName } from "./diffRendering";
@@ -11573,7 +11626,7 @@ index 3be008ac2b794e6d8017d5f5b6464cae1da93e47..c6db4df1773fe20b65f0525386291035
    return promise;
  }
 diff --git a/apps/web/src/session-logic.ts b/apps/web/src/session-logic.ts
-index 059710305382d707a9f006d03f21d6e2a87205b0..d1b1d6a75468ff3405d7affa9cb4f479e70aa3e4 100644
+index 059710305..d1b1d6a75 100644
 --- a/apps/web/src/session-logic.ts
 +++ b/apps/web/src/session-logic.ts
 @@ -78,6 +78,8 @@ export interface WorkLogEntry {
@@ -11598,7 +11651,7 @@ index 059710305382d707a9f006d03f21d6e2a87205b0..d1b1d6a75468ff3405d7affa9cb4f479
    } as const;
  
 diff --git a/package.json b/package.json
-index d15bacce2190dc64d03d438d10c666752c730af3..198cf4a0e544d0d64cb263cbc75fcb3a2da78968 100644
+index d15bacce2..198cf4a0e 100644
 --- a/package.json
 +++ b/package.json
 @@ -1,6 +1,47 @@
@@ -11737,7 +11790,7 @@ index d15bacce2190dc64d03d438d10c666752c730af3..198cf4a0e544d0d64cb263cbc75fcb3a
 +  }
  }
 diff --git a/packages/client-runtime/src/rpc/client.test.ts b/packages/client-runtime/src/rpc/client.test.ts
-index 032603f28a96b67b377b9d1887c65dba10a096bb..2995af426864d93e6906d5b97c56e42164fcbc10 100644
+index 032603f28..2995af426 100644
 --- a/packages/client-runtime/src/rpc/client.test.ts
 +++ b/packages/client-runtime/src/rpc/client.test.ts
 @@ -566,6 +566,53 @@ describe("environment RPC", () => {
@@ -11795,7 +11848,7 @@ index 032603f28a96b67b377b9d1887c65dba10a096bb..2995af426864d93e6906d5b97c56e421
      Effect.gen(function* () {
        const domainError = new Error("thread not found yet");
 diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
-index 8d75e499f46d82b67843c66e2d1a871e38aa127c..ccd58a9b1ebf01c2062e8e3fc63e7aa9e98a692d 100644
+index 8d75e499f..ccd58a9b1 100644
 --- a/packages/client-runtime/src/rpc/client.ts
 +++ b/packages/client-runtime/src/rpc/client.ts
 @@ -191,6 +191,8 @@ interface SubscriptionOptions<TTag extends EnvironmentSubscriptionRpcTag> {
@@ -11843,7 +11896,7 @@ index 8d75e499f46d82b67843c66e2d1a871e38aa127c..ccd58a9b1ebf01c2062e8e3fc63e7aa9
                        if (hasOnlyExpectedFailures && options?.onExpectedFailure !== undefined) {
                          const handled = Stream.fromEffect(options.onExpectedFailure(cause)).pipe(
 diff --git a/packages/client-runtime/src/state/orchestrationV2Projection.test.ts b/packages/client-runtime/src/state/orchestrationV2Projection.test.ts
-index 1a53afb8d7e8b937cc5a90ec43ff4bad1f027bf7..afb38182c0252cbb3ca47680997bcb0b6fd236c5 100644
+index 1a53afb8d..afb38182c 100644
 --- a/packages/client-runtime/src/state/orchestrationV2Projection.test.ts
 +++ b/packages/client-runtime/src/state/orchestrationV2Projection.test.ts
 @@ -122,6 +122,14 @@ describe("applyOrchestrationV2ProjectionEvent", () => {
@@ -11936,7 +11989,7 @@ index 1a53afb8d7e8b937cc5a90ec43ff4bad1f027bf7..afb38182c0252cbb3ca47680997bcb0b
 +  });
 +});
 diff --git a/packages/client-runtime/src/state/orchestrationV2Projection.ts b/packages/client-runtime/src/state/orchestrationV2Projection.ts
-index 9af2eb3434118a9bd978e02e62b207f5a55b75dd..455b0a07346d5db928954f0caa5deb0693c3c150 100644
+index 9af2eb343..455b0a073 100644
 --- a/packages/client-runtime/src/state/orchestrationV2Projection.ts
 +++ b/packages/client-runtime/src/state/orchestrationV2Projection.ts
 @@ -227,6 +227,15 @@ export function applyOrchestrationV2ProjectionEvent(
@@ -11956,7 +12009,7 @@ index 9af2eb3434118a9bd978e02e62b207f5a55b75dd..455b0a07346d5db928954f0caa5deb06
        };
      case "runtime-request.updated":
 diff --git a/packages/client-runtime/src/state/terminal.ts b/packages/client-runtime/src/state/terminal.ts
-index 3bc2bca78f0f11cfc44394996ef15640346e00e2..06ec2e26f36ba9e0cae608bc3d2d2835881fef7b 100644
+index 3bc2bca78..06ec2e26f 100644
 --- a/packages/client-runtime/src/state/terminal.ts
 +++ b/packages/client-runtime/src/state/terminal.ts
 @@ -5,7 +5,6 @@ import { Atom } from "effect/unstable/reactivity";
@@ -12000,7 +12053,7 @@ index 3bc2bca78f0f11cfc44394996ef15640346e00e2..06ec2e26f36ba9e0cae608bc3d2d2835
      metadata: createEnvironmentSubscriptionAtomFamily(runtime, {
        label: "environment-data:terminal:metadata",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index f6218f1899b153ca44648e108385f5ea69a6f27f..3046c0115c30ab7a5b03f8a16f97f32132e85027 100644
+index f6218f189..3046c0115 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -126,7 +126,10 @@ export type OrchestrationV2ContextSourcePoint = typeof OrchestrationV2ContextSou
@@ -12202,7 +12255,7 @@ index f6218f1899b153ca44648e108385f5ea69a6f27f..3046c0115c30ab7a5b03f8a16f97f321
      type: Schema.Literal("thread.created.record"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/orchestratorMcp.test.ts b/packages/contracts/src/orchestratorMcp.test.ts
-index 617442ecea9d5b3297042cbfb0e485d2ed717793..0b7e65f978f28a2bf7ab949b273c400dd03d9449 100644
+index 617442ece..0b7e65f97 100644
 --- a/packages/contracts/src/orchestratorMcp.test.ts
 +++ b/packages/contracts/src/orchestratorMcp.test.ts
 @@ -2,6 +2,10 @@ import { describe, expect, it } from "@effect/vitest";
@@ -12298,7 +12351,7 @@ index 617442ecea9d5b3297042cbfb0e485d2ed717793..0b7e65f978f28a2bf7ab949b273c400d
 +  });
  });
 diff --git a/packages/contracts/src/orchestratorMcp.ts b/packages/contracts/src/orchestratorMcp.ts
-index 19480711491ad9176121d9ce243198345a1ab462..5f1fe379476e74fb5ebf7ac650af730b17c179a1 100644
+index 194807114..5f1fe3794 100644
 --- a/packages/contracts/src/orchestratorMcp.ts
 +++ b/packages/contracts/src/orchestratorMcp.ts
 @@ -44,7 +44,9 @@ const OrchestratorMcpTitle = TrimmedNonEmptyString.check(Schema.isMaxLength(512)
@@ -12434,7 +12487,7 @@ index 19480711491ad9176121d9ce243198345a1ab462..5f1fe379476e74fb5ebf7ac650af730b
    /**
     * When true (the default), the scheduled task fires into the calling thread
 diff --git a/packages/contracts/src/providerRuntime.test.ts b/packages/contracts/src/providerRuntime.test.ts
-index f7404c66ed6a0e2c4b824ad984c113bee58afade..33b277ba6c29b6b127b1bb88c0cb211b5a3207d4 100644
+index f7404c66e..33b277ba6 100644
 --- a/packages/contracts/src/providerRuntime.test.ts
 +++ b/packages/contracts/src/providerRuntime.test.ts
 @@ -25,19 +25,38 @@ describe("ProviderRuntimeEvent", () => {
@@ -12489,7 +12542,7 @@ index f7404c66ed6a0e2c4b824ad984c113bee58afade..33b277ba6c29b6b127b1bb88c0cb211b
        decodeRuntimeEvent({
          ...completeEvent,
 diff --git a/packages/contracts/src/providerRuntime.ts b/packages/contracts/src/providerRuntime.ts
-index f5a273263112bdf5207d4adae29d752b7a22a8f1..32a24f5050d2550e79c6da94de5ee48d18e1c634 100644
+index f5a273263..32a24f505 100644
 --- a/packages/contracts/src/providerRuntime.ts
 +++ b/packages/contracts/src/providerRuntime.ts
 @@ -333,6 +333,12 @@ const TurnTokenUsageCommonFields = {
@@ -12506,7 +12559,7 @@ index f5a273263112bdf5207d4adae29d752b7a22a8f1..32a24f5050d2550e79c6da94de5ee48d
  };
  export const TurnTokenUsage = Schema.Union([
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index ba92ec1da7a8faf1d4a76826949069bb91d2a49e..d56406507cdfc01104a931f4cf9a49397b7bcb80 100644
+index ba92ec1da..d56406507 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -817,23 +817,22 @@ export type AntigravitySettings = typeof AntigravitySettings.Type;
@@ -12540,7 +12593,7 @@ index ba92ec1da7a8faf1d4a76826949069bb91d2a49e..d56406507cdfc01104a931f4cf9a4939
      ),
 diff --git a/packages/shared/src/hostProcess.test.ts b/packages/shared/src/hostProcess.test.ts
 new file mode 100644
-index 0000000000000000000000000000000000000000..2ba981e59e17b5ad486abf8da77574af17bd394f
+index 000000000..2ba981e59
 --- /dev/null
 +++ b/packages/shared/src/hostProcess.test.ts
 @@ -0,0 +1,25 @@
@@ -12570,7 +12623,7 @@ index 0000000000000000000000000000000000000000..2ba981e59e17b5ad486abf8da77574af
 +  });
 +});
 diff --git a/packages/shared/src/hostProcess.ts b/packages/shared/src/hostProcess.ts
-index 9bd41a825044429820f2c42f9be3a6d66e948b17..ca69bb15d68b087e2a2afaf6e6d8237091b17ae8 100644
+index 9bd41a825..ca69bb15d 100644
 --- a/packages/shared/src/hostProcess.ts
 +++ b/packages/shared/src/hostProcess.ts
 @@ -2,7 +2,6 @@ import * as Context from "effect/Context";
@@ -12630,7 +12683,7 @@ index 9bd41a825044429820f2c42f9be3a6d66e948b17..ca69bb15d68b087e2a2afaf6e6d82370
   * Every IP address this machine answers to: the interface addresses, plus
   * whatever the resolver returns for the machine's own hostname. The latter
 diff --git a/packages/shared/src/t3McpToolPresentation.ts b/packages/shared/src/t3McpToolPresentation.ts
-index dd38709bd0e6808f0b8071c6b251663b3a58b423..767b45583d495c7760e0ab2dd2bec0e36ab31f21 100644
+index dd38709bd..767b45583 100644
 --- a/packages/shared/src/t3McpToolPresentation.ts
 +++ b/packages/shared/src/t3McpToolPresentation.ts
 @@ -93,6 +93,13 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
@@ -12648,7 +12701,7 @@ index dd38709bd0e6808f0b8071c6b251663b3a58b423..767b45583d495c7760e0ab2dd2bec0e3
      ["Get", "Getting", "Got", "orchestration capabilities"],
      "capabilities",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index 2a6429b8eb9d86d87bb9c0ff22b1c76001794a84..1ace55916c963eb4f18692317786d4c6b95d3b81 100644
+index 2a6429b8e..1ace55916 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -208,6 +208,6 @@ peerDependencyRules:
