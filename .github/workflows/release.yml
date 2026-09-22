@@ -98,7 +98,7 @@ jobs:
         run: |
           cd "$DIE_T3_SOURCE/apps/web"
           ../../node_modules/.bin/tsc --noEmit 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-client-typecheck.log"
-          ../../node_modules/.bin/vp test run src/lib/syntaxHighlighting.test.ts src/components/pullRequest/pullRequestDetail.logic.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-cache-tests.log"
+          ../../node_modules/.bin/vp test run src/lib/syntaxHighlighting.test.ts src/components/pullRequest/pullRequestDetail.logic.test.ts src/components/chat/nativeUsageCost.logic.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-cache-tests.log"
       - name: Validate terminal client recovery
         shell: bash
         run: |
