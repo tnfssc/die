@@ -70,3 +70,7 @@
 - [T3 nightly switch and release](t3-nightly-release.md): nightly implementation delegated in persistent worktree; release authorized after validation.
 
 - [T3 preview compatibility](t3-preview-compatibility.md): investigation complete; isolated rebase builds and passes focused tests; live acceptance needed before adoption.
+
+- [v0.5.5 unavailable native cost](native-cost-unavailable-v055.md): user-reported own/subtree unavailable display; investigation running in isolated worktree.
+
+- [Hide empty native cost summary](t3-preview-hide-empty-cost-summary.md): empty homepage cost label fixed; own/subtree activity required, zero and unknown real costs preserved; not released.
