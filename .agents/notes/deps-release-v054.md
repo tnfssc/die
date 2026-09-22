@@ -1,0 +1,17 @@
+# Dependency update / next release (2026-09-22)
+
+User asked update deps and new release; no installation requested. Current published v0.5.3. Proposed next patch v0.5.4, do not reuse existing tags. Current branch feat/native-task-workspaces HEAD 8d8f068 (publication notes), origin/develop cb3eca2. Many preexisting untracked notes/experiments/scripts and index edits: preserve, stage explicit task files only.
+
+Main changed only package.json/bun.lock (four Pi packages 0.85.1 -> 0.87.0), and prepare-assets.ts version/hash guard. This guard bump is PROVISIONAL until adapter review passes. New hash d365ffb5a189915c3af93953daf751bff45fe46222b05c426f8d8b845946bebf. No source/test hacks landed; check has ~14 API errors due messages-only TranscriptContext + readonly agent systemPrompt. Important upstream session context/projection semantics need real adaptation, not casts.
+
+Implementation delegated to orchestrator task_6de63bb9 in /home/tnfssc/.die/worktrees/die-a86675007a5e-task_6de63bb9 branch die/implement-pi-0.87-compatibility-6de63bb9, from HEAD. Own complete dependency/source/test upgrade including adapter parity, web integration compatibility review, checks/tests/build/notices. Must commit/report, no publish. Main integrate by replacing only its provisional package/lock/guard edits before cherry-pick. Research task_36ddf1df remains running in /home/tnfssc/.die/worktrees/die-a86675007a5e-task_36ddf1df branch die/dependency-update-research-36ddf1df; do not integrate redundant research blindly.
+
+Release research task_d4ac3c9d finished; prior details .agents/notes/release-v052.md. Publish develop fast-forward, wait complete branch CI before tagging exact successful commit, then release workflow and official artifact checks. CI includes root format/lint/check/build/tests/smoke and pinned T3 backend/web/contracts/projection suites. Latest four Pi packages 0.87.0, other root deps already latest per bun outdated. No tag/push/version bump yet. Preserve current installed binary.
+
+Research worker task_36ddf1df drifted into full implementation; stopped at 06:38Z to avoid duplicate work. Its uncommitted exploratory changes remain in research worktree (do not integrate automatically). Authoritative implementation remains task_6de63bb9.
+
+Integrated worker 4eda0d9 as d5cce65. Preserved preexisting index edits in .agents/rollback/index-pre-v054.md and restored them afterward. Version bumped 0.5.4 (uncommitted); frozen install/check/notices passed in main. Full test/build + smoke task_7d1ec811 running (artifacts/v054/{tests,smoke}.log). Independent read-only correctness review task_c35525ae active. Worker validated 741/14/0 full suite, history soak, web server typecheck/RPC; no live paid tests. Await local validation + review, commit release version/own note only, push HEAD:develop fast-forward; branch CI before tag. No push yet.
+
+Main local validation first hit unrelated workspace state: format scans preexisting untracked experiments/scripts, and default cached T3 has old patch. No source failure established. Rerun build/test/smoke with DIE_T3_SOURCE pointing to integration worker verified patched cache. Clean-worker format passed; CI will validate clean release tree.
+
+Main full rebuilt tests passed 741/14/0. Smoke rerun task_b7a8c267 with correct explicit T3 env (initial smoke invocation omitted it and selected stale default cache). Preparing version commit and branch CI; independent review still pending, tag gated on review and CI.
