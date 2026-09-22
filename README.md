@@ -1,6 +1,6 @@
 # die
 
-A coding agent built on [Pi](https://pi.dev), with a terminal interface, a bundled web UI, and first-class Herdr integration. One standalone executable includes background jobs, sub-agents, and project-local memory.
+A coding agent built on [Pi](https://pi.dev), with a terminal interface, a bundled web UI, and first-class Herdr integration. One standalone executable includes background jobs, sub-agents, and project wisdom.
 
 ## Install
 
@@ -44,13 +44,13 @@ Chat with die, switch models and agent modes, follow background agents, review c
 
 ## Subagent workspaces
 
-Subagents share the current checkout by default. Independent code work can request a separate Git worktree and branch, with configured setup run in that directory. CLI worktrees do not require the web server. See [subagent workspaces](docs/subagent-workspaces.md) for the API and retention behavior.
+Subagents share the current checkout by default. Independent code work can request a separate Git worktree and branch, with configured setup run in that directory. CLI worktrees do not require the web server. See [subagent workspaces](./wisdom/worktrees/subagent-workspaces.md) for the API and retention behavior.
 
 ## Herdr integration
 
 Run die in a Herdr-managed terminal pane and it automatically reports whether it is working, idle, or waiting for input. Background jobs and sub-agents keep the pane marked as working even after the foreground turn ends.
 
-The integration is built in: no extra extension or configuration needed. Herdr is optional; die works on its own too. See [Herdr integration](docs/herdr.md) for lifecycle and compatibility details.
+The integration is built in: no extra extension or configuration needed. Herdr is optional; die works on its own too. See [Herdr integration](./wisdom/integrations/herdr.md) for lifecycle and compatibility details.
 
 ## Build from source
 
@@ -68,13 +68,13 @@ Install your local build:
 bun run install:local
 ```
 
-## Notes
+## Project wisdom
 
 - Released binaries currently support Linux x64/arm64, macOS Apple Silicon, and Android Termux arm64.
 - Credentials and model configuration are supplied at runtime, like Pi.
 - State is stored under `~/.die`.
-- See `docs/` for design notes and deeper documentation.
+- See `wisdom/` for durable project context and deeper feature notes.
 
 ## Resource limits
 
-Die bounds retained job output, execute capture, and persistent session-body caching without deleting original session history. See [resource limits](docs/resource-limits.md) for defaults, truncation semantics, storage ownership, and web shutdown behavior.
+Die bounds retained job output, execute capture, and persistent session-body caching without deleting original session history. See [resource limits](./wisdom/resources/resource-limits.md) for defaults, truncation semantics, storage ownership, and web shutdown behavior.

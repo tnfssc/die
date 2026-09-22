@@ -1,6 +1,6 @@
 # Isolated memory/resource audit probes
 
-See [the audit report](../../docs/memory-resource-audit.md) for results and limitations. These are manual investigation harnesses, not automatic product fixes. Run from repository root on Linux with Bun 1.4.1 / Node 24 and the repository dependencies installed. Native/backend probes require the existing current patched web checkout/dependencies; bundled probes require a built `dist/die`.
+See [the audit report](../../wisdom/resources/memory-resource-audit.md) for results and limitations. These are manual investigation harnesses, not automatic product fixes. Run from repository root on Linux with Bun 1.4.1 / Node 24 and the repository dependencies installed. Native/backend probes require the existing current patched web checkout/dependencies; bundled probes require a built `dist/die`.
 
 ## CLI / execute
 

@@ -59,10 +59,10 @@ ignored `artifacts/goals/`. Do not describe a mocked SDK stream as live-model ev
 - `src/tasks/` implements durable jobs, sub-agents, completion delivery, and
   persisted session diagnostics.
 - `src/goals/` implements branch-scoped durable goal state and continuation policy;
-  user-facing behavior is documented in `docs/goals.md`.
+  user-facing behavior is documented in `wisdom/goals/goals.md`.
 - `src/ui/` contains TUI behavior.
 - `src/prompts/*.md` are the source prompts imported by `src/prompts.ts`.
-  Start with [Editing prompts](docs/prompts.md) and the assembled input, not an isolated
+  Start with [Editing prompts](./wisdom/prompts/prompts.md) and the assembled input, not an isolated
   sentence. Edit Markdown rather than generated representations, and preserve explicit
   custom prompts and instruction continuity.
 - `scripts/prepare-assets.ts` copies the Pi runtime assets embedded by the build.

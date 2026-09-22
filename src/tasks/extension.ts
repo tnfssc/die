@@ -3,7 +3,7 @@ import { attachDiagnosticSink, diagnosticRecorder, recordDiagnostic } from "../d
 import { registerOperationDiagnostics } from "../diagnostics-extension";
 import { type GoalRuntime, registerGoalMode } from "../goals/extension";
 import { HistoryService } from "../history/service";
-import { type ProjectMemoryRuntime, registerProjectMemory } from "../memory/extension";
+import { type ProjectWisdomRuntime, registerProjectWisdom } from "../wisdom/extension";
 import { collaborationGuidance, isDieSystemPrompt, subagentGuidance } from "../prompts";
 import { registerExecuteTool } from "../typescript/extension";
 import { completionPreview } from "../ui/execution-previews";
@@ -302,9 +302,9 @@ export default function asynchronousTasksExtension(
   };
 
   let goals: GoalRuntime;
-  let projectMemory: ProjectMemoryRuntime | undefined;
-  const reconcileProjectMemory = () => {
-    const runtime = projectMemory;
+  let projectWisdom: ProjectWisdomRuntime | undefined;
+  const reconcileProjectWisdom = () => {
+    const runtime = projectWisdom;
     if (!runtime) return;
     // Completion can race both pending-record installation and an already-running
     // reconciliation. Recheck once its current pass drains so the terminal edge
@@ -381,7 +381,7 @@ export default function asynchronousTasksExtension(
       manager.subscribe((event) => {
         emitWebTask(event);
         if (event.type === "activity") return;
-        if (event.type === "completed") reconcileProjectMemory();
+        if (event.type === "completed") reconcileProjectWisdom();
         const task = event.task;
         lifecycle({
           event: event.type,
@@ -452,20 +452,7 @@ export default function asynchronousTasksExtension(
       );
     return service;
   };
-  projectMemory = registerProjectMemory(pi, {
-    jobs: {
-      handle: (method, params, ctx, signal) => getService(ctx).handle(method, params, ctx, signal),
-    },
-    manager: {
-      inspect: (id, offset, limit) => {
-        if (!manager) throw new Error("Task manager is unavailable");
-        return manager.inspect(id, offset, limit);
-      },
-      kill: (id, cause) => {
-        if (!manager) throw new Error("Task manager is unavailable");
-        return manager.kill(id, cause);
-      },
-    },
+  projectWisdom = registerProjectWisdom(pi, {
     isRoot: () => subagentDepth === 0,
   });
   registerExecuteTool(

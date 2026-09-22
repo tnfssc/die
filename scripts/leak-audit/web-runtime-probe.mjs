@@ -360,14 +360,14 @@ try {
 
   results.serverStdoutTail = stdout.slice(-4000);
   results.serverStderrTail = stderr.slice(-4000);
-  const out = process.env.LEAK_OUTPUT || resolve(ROOT, ".agents/notes/leak-audit-web-runtime-results.json");
+  const out = process.env.LEAK_OUTPUT || resolve(ROOT, "wisdom/resources/leak-audit-web-runtime-results.json");
   await writeFile(out, JSON.stringify(results, null, 2) + "\n");
   console.log(`RESULT ${out}`);
 } catch (error) {
   results.errors.push(error?.stack ?? String(error));
   console.error(error);
   process.exitCode = 1;
-  const out = process.env.LEAK_OUTPUT || resolve(ROOT, ".agents/notes/leak-audit-web-runtime-results.json");
+  const out = process.env.LEAK_OUTPUT || resolve(ROOT, "wisdom/resources/leak-audit-web-runtime-results.json");
   await writeFile(out, JSON.stringify(results, null, 2) + "\n");
 } finally {
   await stop();

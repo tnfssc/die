@@ -11,7 +11,7 @@ const ROOT = resolve(import.meta.dirname, "../..");
 const BINARY = resolve(ROOT, "dist/die");
 const PINNED_TREE = resolve(ROOT, ".cache/die-t3code-v0042");
 const EXPECTED_PIN = "719a76ca1dbf5490f1aa33ffb9966301e02be9a9";
-const OUT = process.env.LEAK_OUTPUT || resolve(ROOT, ".agents/notes/leak-audit-bundled-web-results.json");
+const OUT = process.env.LEAK_OUTPUT || resolve(ROOT, "wisdom/resources/leak-audit-bundled-web-results.json");
 const opts = { cycles: Number(process.env.LEAK_CYCLES ?? 600), held: Number(process.env.LEAK_HELD ?? 64) };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const timeout = (p, ms, what) =>
