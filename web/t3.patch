@@ -10867,10 +10867,17 @@ index 89390422f..059b486f2 100644
        <ChatView
          {...(nextChatViewKey ? { key: nextChatViewKey.key } : {})}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index 54689eee2..2eb6c05d8 100644
+index 54689eee2..93851b117 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
-@@ -23,6 +23,7 @@ import type {
+@@ -1,5 +1,6 @@
+ import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
+ import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
++import { shouldShowNativeCostSummary } from "./nativeUsageCost.logic";
+ import { isLocalEnvironmentDisabled } from "../../localEnvironment";
+ import { usePrimaryEnvironmentId } from "../../state/environments";
+ import { useRightPanelStore } from "~/rightPanelStore";
+@@ -23,6 +24,7 @@ import type {
    ChatFileAttachment,
    EnvironmentId,
    ModelSelection,
@@ -10878,7 +10885,7 @@ index 54689eee2..2eb6c05d8 100644
    ProjectId,
    PullRequestListInput,
    PreviewAnnotationPayload,
-@@ -1331,9 +1332,16 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
+@@ -1331,9 +1333,16 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
    );
  });
  
@@ -10895,11 +10902,11 @@ index 54689eee2..2eb6c05d8 100644
    reserveContextWindowMeter: boolean;
    activeThreadModelDisplayName: string | null;
    isPreparingWorktree: boolean;
-@@ -1366,6 +1374,16 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
+@@ -1366,6 +1375,16 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
  }) {
    return (
      <>
-+      {props.nativeUsage ? (
++      {props.nativeUsage && shouldShowNativeCostSummary(props.nativeUsage) ? (
 +        <span
 +          className="whitespace-nowrap text-[11px] text-muted-foreground"
 +          title="Provider-reported API-equivalent spend. Partial means one or more turns did not report cost."
@@ -10912,7 +10919,7 @@ index 54689eee2..2eb6c05d8 100644
        {props.activeContextWindow ? (
          <ContextWindowMeter
            usage={props.activeContextWindow}
-@@ -1559,6 +1577,7 @@ export interface ChatComposerProps {
+@@ -1559,6 +1578,7 @@ export interface ChatComposerProps {
  
    // Context window
    activeContextWindow: ContextWindowSnapshot | null;
@@ -10920,7 +10927,7 @@ index 54689eee2..2eb6c05d8 100644
    compactThreadUnavailable: boolean;
    compactDisabled: boolean;
    compactDisabledReason: string | null;
-@@ -1701,6 +1720,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -1701,6 +1721,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      activeProjectDefaultModelSelection,
      activeThreadModelSelection,
      activeContextWindow,
@@ -10928,7 +10935,7 @@ index 54689eee2..2eb6c05d8 100644
      compactThreadUnavailable,
      compactDisabled,
      compactDisabledReason,
-@@ -7409,6 +7429,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -7409,6 +7430,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                        settings.contextWindowMeterEnabled ? activeContextWindow : null
                      }
                      reserveContextWindowMeter={reserveContextWindowMeter}
@@ -11121,6 +11128,93 @@ index 80f146569..5c9bd32c8 100644
            activeWorkEntryIds.has(nextEntry.id) ||
            collapsedEntryIds.has(nextEntry.id) ||
            collapsedSupersededEntryIds.has(nextEntry.id) ||
+diff --git a/apps/web/src/components/chat/nativeUsageCost.logic.test.ts b/apps/web/src/components/chat/nativeUsageCost.logic.test.ts
+new file mode 100644
+index 000000000..a83f7844b
+--- /dev/null
++++ b/apps/web/src/components/chat/nativeUsageCost.logic.test.ts
+@@ -0,0 +1,69 @@
++import { describe, expect, it } from "vite-plus/test";
++import type { NativeThreadUsageReport, NativeUsageTotals } from "@t3tools/contracts";
++
++import { shouldShowNativeCostSummary } from "./nativeUsageCost.logic";
++
++const totals = (overrides: Partial<NativeUsageTotals> = {}): NativeUsageTotals => ({
++  turns: 0,
++  completeTurns: 0,
++  partialTurns: 0,
++  unavailableTurns: 0,
++  inputTokens: 0,
++  cachedInputTokens: 0,
++  cacheCreationTokens: 0,
++  outputTokens: 0,
++  reasoningTokens: 0,
++  costUsd: 0,
++  costKnownTurns: 0,
++  costUnavailableTurns: 0,
++  costStatus: "unavailable",
++  ...overrides,
++});
++
++const report = (
++  own: NativeUsageTotals,
++  subtree: NativeUsageTotals = own,
++): NativeThreadUsageReport => ({
++  own,
++  subtree,
++  descendantThreadIds: [],
++});
++
++describe("shouldShowNativeCostSummary", () => {
++  it("hides empty homepage usage before any turn is recorded", () => {
++    expect(shouldShowNativeCostSummary(null)).toBe(false);
++    expect(shouldShowNativeCostSummary(report(totals()))).toBe(false);
++  });
++
++  it("shows a legitimately zero-priced recorded turn", () => {
++    const zeroPriced = totals({
++      turns: 1,
++      completeTurns: 1,
++      costKnownTurns: 1,
++      costStatus: "complete",
++    });
++
++    expect(shouldShowNativeCostSummary(report(zeroPriced))).toBe(true);
++  });
++
++  it("shows unavailable cost when a real recorded turn lacks a price", () => {
++    const unknownCost = totals({
++      turns: 1,
++      unavailableTurns: 1,
++      costUnavailableTurns: 1,
++    });
++
++    expect(shouldShowNativeCostSummary(report(unknownCost))).toBe(true);
++  });
++
++  it("shows activity recorded only in the delegated subtree", () => {
++    const subtreeOnly = totals({
++      turns: 1,
++      completeTurns: 1,
++      costKnownTurns: 1,
++      costStatus: "complete",
++    });
++
++    expect(shouldShowNativeCostSummary(report(totals(), subtreeOnly))).toBe(true);
++  });
++});
+diff --git a/apps/web/src/components/chat/nativeUsageCost.logic.ts b/apps/web/src/components/chat/nativeUsageCost.logic.ts
+new file mode 100644
+index 000000000..d3855ebb6
+--- /dev/null
++++ b/apps/web/src/components/chat/nativeUsageCost.logic.ts
+@@ -0,0 +1,6 @@
++import type { NativeThreadUsageReport } from "@t3tools/contracts";
++
++/** Only show cost once this thread or its delegated subtree has recorded a provider turn. */
++export function shouldShowNativeCostSummary(usage: NativeThreadUsageReport | null): boolean {
++  return usage !== null && (usage.own.turns > 0 || usage.subtree.turns > 0);
++}
 diff --git a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx b/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
 index f19e41599..bc569dd38 100644
 --- a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
