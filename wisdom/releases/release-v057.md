@@ -13,3 +13,7 @@ Passed before release commit/tag:
 - `bun run lint` exited 0 with existing warnings/infos
 
 No local install requested.
+
+## Published
+
+Release workflow https://github.com/tnfssc/die/actions/runs/35743710810 and CI https://github.com/tnfssc/die/actions/runs/35743706424 both SUCCESS. Published https://github.com/tnfssc/die/releases/tag/v0.5.7 at 2026-09-22T15:03:08Z; draft=false, prerelease=false. Confirmed expected assets present from release metadata and set release notes from wisdom/releases/release-v0.5.7.md. Per user preference, no binary download or local install.
