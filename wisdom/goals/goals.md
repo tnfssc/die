@@ -1,10 +1,9 @@
 # Goal mode
 
-Goal mode is an opt-in way to keep one objective and its acceptance criteria in the
-active session branch. It supplies persistent state to each model turn and can request
-another turn after the agent settles. It does not prove that the objective is correct,
-make provider behavior deterministic, or turn model-written evidence into independent
-verification.
+Goal mode is opt-in. It keeps one objective and acceptance criteria in active
+session branch. Each model turn gets saved state. It can ask for another turn after
+agent settles. It does not prove objective is right or make provider deterministic.
+Model-written evidence is not independent proof.
 
 ## Start and control a goal
 
@@ -14,9 +13,10 @@ In the interactive TUI, set a goal with explicit criteria and constraints:
 /goal set Create the report --criteria report.md exists; links were checked --constraints do not publish; keep source files unchanged
 ```
 
-Semicolons separate criteria and constraints. The slash form requires both segments;
-criteria are required, and use `none` when there are no constraints. Goal mode begins when a goal is set (through `/goal set` or the helper below); ordinary sessions do not get automatic
-goal continuations.
+Semicolons split criteria and constraints. Slash form needs both segments.
+Criteria are required. Use `none` when no constraints. Goal mode starts when goal
+is set through `/goal set` or helper below. Ordinary sessions get no automatic goal
+continuations.
 
 | Command | Behavior |
 | --- | --- |
@@ -25,20 +25,19 @@ goal continuations.
 | `/goal resume` | Persist an active state and request a continuation. |
 | `/goal clear` | Append a durable clear marker on the current branch. |
 
-Goal records are custom entries in the normal session JSONL. They survive process
-restart and follow Pi's branch semantics: navigating to another branch restores the
-latest valid goal entry on that branch. A malformed or unsupported newer goal entry
-fails closed rather than reviving older state.
+Goal records are custom entries in normal session JSONL. They survive process
+restart. They follow Pi's branch semantics. Moving to another branch restores latest
+valid goal entry there. Malformed or unsupported newer goal entry fails closed. It
+does not revive old state.
 
 ## Helpers available to the agent
 
-Goal helpers are available only inside `execute`, alongside `shell`, `subagent`,
-and `jobs`. Their model-facing guidance lives in `src/prompts/goal.md` and is supplied
-with goal state only when a goal exists, including non-active states. `/goal set`
-lets the user activate it without always-on API instructions in ordinary chat.
-Activation, updates, and clearing leave the system prompt and tool definitions
-unchanged; only the goal context message changes. This preserves the system prefix,
-not a guarantee of a provider cache hit.
+Goal helpers work only inside `execute`, next to `shell`, `subagent`, and `jobs`.
+Model guidance lives in `src/prompts/goal.md`. It comes with goal state only when goal
+exists, including non-active states. `/goal set` lets user start it without API
+instructions in every normal chat. Start, update, and clear do not change system prompt
+or tool definitions. Only goal context message changes. This keeps system prefix. It
+does not promise provider cache hit.
 
 Helpers:
 
@@ -56,24 +55,21 @@ await goal.update({ status: "completed", evidence: "Read report.md and checked 1
 await goal.clear();
 ```
 
-`goal.get()` returns the current goal or `null`; runtime-owned `waiting` status and
-`pendingJobIds` remain visible there as read-only state. `goal.set()` replaces it with a
-new active goal. `goal.update()` requires one of the model-controlled statuses
-`active`, `blocked`, `paused`, or `completed`. Completion requires `evidence`,
-blocking requires `blocker`, and pausing accepts `reason`. An active update may add
-one `progress` milestone. Manual `waiting` status and `pendingJobIds` inputs are
-rejected because the runtime owns that bookkeeping. `goal.clear()` removes the active
-goal by appending a clear entry.
+`goal.get()` returns current goal or `null`. Runtime-owned `waiting` status and
+`pendingJobIds` stay visible as read-only state. `goal.set()` replaces it with new
+active goal. `goal.update()` needs one model-owned status: `active`, `blocked`,
+`paused`, or `completed`. Completion needs `evidence`. Blocking needs `blocker`.
+Pausing accepts `reason`. Active update may add one `progress` milestone. Runtime
+owns waiting bookkeeping, so manual `waiting` status and `pendingJobIds` inputs fail.
+`goal.clear()` removes active goal by appending clear entry.
 
-A successful explicit `handoff()` while an active goal has running jobs snapshots all
-currently owned running IDs and changes the goal to `waiting`. This is the sole
-automatic entry to waiting: ordinary replies do not trigger it, and the runtime does not
-infer dependencies on persistent services or other jobs. When any tracked job settles,
-the goal
-returns to `active` and continuation can resume. Jobs themselves are process-owned,
-not reconstructed from JSONL: resuming a session whose goal was waiting pauses it when
-those IDs are unavailable. Inspect what remains and use `/goal resume` only when it is
-safe to continue.
+Successful explicit `handoff()` with active goal and running jobs saves all owned
+running IDs. Goal changes to `waiting`. This is only automatic path to waiting.
+Ordinary replies do not trigger it. Runtime does not guess dependencies on persistent
+services or other jobs. Any tracked job settles? Goal returns to `active` and can
+continue. Jobs belong to process. JSONL does not rebuild them. Resume session with
+waiting goal but missing IDs? It pauses. Check what remains. Use `/goal resume` only
+when safe.
 
 ## Evidence and automatic-continuation limits
 
@@ -85,18 +81,17 @@ Goal state is bounded so it cannot become an unbounded evidence store:
 - up to eight distinct progress milestones are retained, each at most 500 characters;
 - the aggregate textual goal payload is at most 12,000 characters.
 
-These are storage limits, not quality guarantees. Completion evidence is a concise
-model-authored claim. Verify important acceptance criteria with tests, file inspection,
-or external review. Repeated automatic turns that add no new explicit, verified progress
-milestone are paused. Waiting-state changes and revision bumps do not count as milestone evidence;
-interrupted turns and queued user intervention also pause automatic continuation.
+These limit storage, not promise quality. Completion evidence is short model-written
+claim. Check key acceptance criteria with tests, files, or outside review. Repeated
+automatic turns pause when no new explicit, checked progress milestone. Waiting-state
+changes and revision bumps do not count as milestone evidence. Interrupted turns and
+queued user input pause automatic continuation too.
 
 ## Running jobs, attention, and resume
 
-Use `/ps` in the TUI to view jobs currently running in this session. It shows a
-bounded recent-output preview and offers an explicit stop action; it does not claim that
-a quiet process is hung. For exact programmatic inspection, use `jobs.list()` and the
-cursor-based `jobs.inspect()` helper.
+Use `/ps` in TUI to see jobs running in this session. It shows limited recent output
+and direct stop action. It does not call quiet process hung. Need exact programmatic
+check? Use `jobs.list()` and cursor-based `jobs.inspect()`.
 
 The job-attention defaults are:
 
@@ -107,33 +102,30 @@ The job-attention defaults are:
   service, and `jobs.setWatch(id, { enabled: true })` to re-enable it with a fresh grace
   period.
 
-Attention messages contain bounded observations and recent output; jobs continue
-running until they finish or are explicitly stopped. These intervals are current
-built-in defaults, not a provider liveness signal.
+Attention messages have limited observations and recent output. Jobs keep running
+until done or stopped. These intervals are current built-in defaults. They do not show
+provider liveness.
 
-`/resume` restores durable conversation and goal entries. It does not revive shell
-processes or sub-agent processes from an earlier die process. Child sessions retain
-their saved role/depth restrictions and are visibly labeled in the TUI picker.
+`/resume` restores saved conversation and goal entries. It does not revive shell or
+sub-agent processes from older die process. Child sessions keep saved role/depth limits.
+TUI picker labels them.
 
 ## Mode and cache indicators
 
-`/mode fast|normal|orchestrator` changes the main agent's session-scoped instruction
-frame. It does **not** switch the selected model, alter the thinking level, or grant a
-child different delegation capabilities. Fast and normal have the same no-extra-guidance
-behavior; orchestrator supplies its coordination guidance. The mode selection remains durable
-on the active session branch.
+`/mode fast|normal|orchestrator` changes main agent session instruction frame. It
+does **not** switch chosen model, change thinking level, or give child new delegation
+powers. Fast and normal both add no extra guidance. Orchestrator adds coordination
+guidance. Mode choice stays saved on active session branch.
 
-The footer's `cache est` countdown and `/cache-ttl` are informational. The default
-TTL estimate is one hour; accepted values range from one minute to seven days and are
-stored in `~/.die/cache-settings.json`. A recorded provider request and a positive
-countdown do not establish cache creation, compatibility, retention, a cache hit, or a
-lower bill.
+Footer `cache est` countdown and `/cache-ttl` are only information. Default TTL
+estimate is one hour. Accepted values run from one minute to seven days. They live in
+`~/.die/cache-settings.json`. Recorded provider request and positive countdown do not
+prove cache creation, compatibility, retention, hit, or lower bill.
 
 ## Validation scope
 
-Deterministic store, SDK, and TUI fixtures verify the lifecycle and persistence
-contracts without claiming model quality. The real-model goal smoke fixture is gated by
-`DIE_RUN_LLM_TESTS=1`, makes paid requests only when explicitly enabled, and records a
-bounded run artifact. A passing smoke run demonstrates that one configured model
-completed one harmless temporary-file scenario; it is not evidence that arbitrary
-goals will complete correctly.
+Deterministic store, SDK, and TUI fixtures check lifecycle and persistence contracts.
+They make no model-quality claim. Real-model goal smoke fixture needs
+`DIE_RUN_LLM_TESTS=1`. It makes paid requests only when directly enabled. It records
+limited run artifact. Pass means one configured model completed one harmless temporary-
+file case. It does not show any goal will finish right.

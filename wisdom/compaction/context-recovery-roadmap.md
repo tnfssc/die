@@ -2,9 +2,9 @@
 
 ## Current decision
 
-Build an explicit `/shake` command. Keep automatic compaction as the default, including current-context plaintext and provider-native Codex behavior. This change does not add automatic shake, turn off compaction, or add a silent fallback.
+Build explicit /shake command. Keep automatic compaction default, including current-context plaintext and provider-native Codex behavior. This adds no automatic shaking. Do not change compaction trigger policy.
 
-Shake removes execution traces from active context. It does not summarize or rewrite dialogue. The full transcript stays on disk. Pruning needs no inference request.
+Shake drops execution traces from active context. It does not sum up or rewrite dialogue. Full transcript stays on disk. Pruning needs no inference request.
 
 ## Manual shake requirements
 
@@ -21,21 +21,21 @@ Shake removes execution traces from active context. It does not summarize or rew
 
 ### Searchable original history: priority follow-up
 
-Use stable transcript refs, branch-local search by default, bounded pages, and provenance. Prefer original evidence to repeated summaries, handoffs, and retrieval echoes. Keep deliberate context exclusions. Access to another session must be explicit. Retrieved text enters the selected provider's context. These controls protect excluded or private material. They do not hide the user's own instructions.
+Use stable transcript refs. Search current branch by default. Bound pages and keep provenance. Prefer original evidence over repeated summaries, handoffs, and retrieval echoes. Keep delivery deterministic and testable without provider.
 
 ### Verbatim intent plus execution-state summary
 
-Earlier proposal: retain user messages verbatim alongside a generated summary of current state. Exact wording preserves conditions, corrections, priorities and withdrawals. Later instructions can supersede earlier ones; preserved does not mean still applicable. Avoid duplication/nesting over repeated compactions. Expose capacity limits rather than silently truncate text labeled verbatim.
+Earlier idea: keep user messages word for word next to generated summary of current state. Exact words keep conditions, fixes, priorities, and withdrawals. Later design must keep this value even if summary format changes.
 
-The subsequent shake proposal retains both user input and assistant conversational/final replies, while dropping tool traces and thinking. These approaches can complement each other, but shake itself does not generate a summary.
+Later shake idea keeps user input and assistant conversational/final replies. It drops tool traces and thinking. Both ideas can work together: verbatim dialogue plus optional state summary.
 
 ### Recovery manifest / handoff
 
-A small index of authoritative notes, goals, unresolved questions and job/history IDs could help recovery. The user was uncertain about this; it is not committed scope. A previewable/editable handoff for a deliberately chosen new thread is a separate possible UX. Mechanically assembled emergency records and worker claims are not verified current state.
+Small index of trusted notes, goals, open questions and job/history IDs may help recovery. User was unsure. It is not committed scope. Any index must be previewable, editable and traceable. It must not become second hidden truth store.
 
 ### Automatic shake as a possible future default
 
-Automatic shake was discussed as a replacement for automatic compaction. The latest decision leaves that switch for later. Long threads may become mostly verbatim dialogue, with little trace left to remove.
+Automatic shake was discussed to replace automatic compaction. Latest choice leaves switch for later. Long threads may become mostly verbatim dialogue with little tool output to remove. Shake alone may not control context growth.
 
 Possible future UX:
 - Quiet automatic pruning when effective, with a compact before/after estimate.
@@ -47,13 +47,13 @@ Possible future UX:
 
 ### Cache-aware policy
 
-Prompt caches generally depend on matching prefixes. Removing an old tool trace can invalidate much of the following conversation, though unchanged system/tool prefixes may remain reusable. A 90% to 70% reduction may still require processing a large uncached prompt. Smaller context is not automatically cheaper; cache behavior, TTL and prices vary by provider.
+Prompt caches usually need matching prefixes. Dropping old tool trace may invalidate much later conversation. Unchanged system/tool prefixes may still be reusable. Shaking every turn can trade token count for repeated cache misses.
 
-Possible future policy: estimate yield before mutation, preserve append-only cached prefixes while there is room, batch reductions into occasional substantial shakes, and offer explicit choices for weak reductions. No universal savings promise or fixed percentage claimed as optimal. Aim for enough headroom for useful continued work at reasonable cost, not minimum token count.
+Possible later policy: estimate gain before change. Keep append-only cached prefixes while room remains. Batch cuts into rare large shakes. Offer explicit force option. Compare uncached-input cost before and after. This is research, not current requirement.
 
 ## Posthorse research context
 
-Source-reviewed pi-posthorse v0.4.5 at 6cdb50a42a3474a9b89d6fed1e86c831425ed9e2 and Pi fork baseline f9b06177e565f70cd243a785d088d1c491830dbd. It combines fresh windows, notes/history and mechanically assembled recovery records. No-summary automatic rollover is conditional; otherwise Pi compaction may proceed. Logical batch atomicity is not a crash-safe filesystem transaction. Our installed Pi 0.85 lacks its native context-window APIs despite the matching version. No installation, runtime validation, fork adoption or compaction replacement was approved.
+Reviewed pi-posthorse v0.4.5 source at 6cdb50a42a3474a9b89d6fed1e86c831425ed9e2 and Pi fork base f9b06177e565f70cd243a785d088d1c491830dbd. It combines fresh windows, notes/history, exact retrieval, optional internal workers, and token budgets. Useful ideas: searchable history, original text retrieval, semantic summaries as aids, and staged context reduction. Do not copy parts or add embeddings/workers without separate design and license review.
 
 Sources:
 - https://github.com/fitchmultz/pi-posthorse/tree/6cdb50a42a3474a9b89d6fed1e86c831425ed9e2

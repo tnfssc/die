@@ -1,6 +1,6 @@
 # Compaction and cache reuse — investigation
 
-Status: Phase 1 and Phase 2 were built and checked. The later current-conversation plaintext revision replaces Phase 1's old snapshot-eligibility rules. These source changes were built but not installed. The installed release was still v0.2.3. This work studied Pi 0.85.0.
+Status: Phase 1 and Phase 2 built and checked. Later current-conversation plaintext revision replaces Phase 1 old snapshot-eligibility rules. Source changes built but not installed. Installed release still v0.2.3. Work studied Pi 0.85.0.
 
 Research date: 2026-09-05. The comparison used official docs and Codex source at commit 588b781ab4924ce7352488394028e63d74cf807f. Public docs and defaults can change.
 
@@ -14,15 +14,14 @@ The current parent session has three default compaction records:
 | 06:03:31 | 95,501 | 0 | 3,417 | $1.12586 |
 | 13:52:09 | 54,510 | 0 | 4,023 | $0.74625 |
 
-Total: 244,937 uncached input tokens and $2.96917 in recorded cost. These numbers come from client usage and pricing records, not a provider billing audit. The normal responses just before them reported 241,920, 253,696, and 152,448 cached input tokens. The third came after several idle hours. It does not prove that the earlier cache entry was still available when compaction ran.
+Total: 244,937 uncached input tokens and $2.96917 recorded cost. Numbers come from client usage and price records. They are not provider billing audit. Normal responses right before reported 241,920, 253,696, and 152,448 cached input tokens. Third came after several idle hours. It does not prove earlier cache entry still existed when compaction ran.
 
-An offline run of the production Pi summarizer through the production Codex
-serializer confirms the payload mismatch. Fixture-only artifacts:
+Offline run sent production Pi summarizer through production Codex serializer. It confirms payload mismatch. Fixture-only artifacts:
 
 - artifacts/compaction/capture.ts
 - artifacts/compaction/provider-payloads.json
 
-The capture intercepted `onPayload`, used a dummy JWT, and asserted zero fetch calls. This proves behavior at the serializer boundary. It is not a live view of provider traffic.
+Capture intercepted onPayload, used dummy JWT, and checked zero fetch calls. This proves serializer-boundary behavior. It does not show live provider traffic.
 
 | Component | Ordinary fixture request | Default compaction |
 | --- | --- | --- |
@@ -32,47 +31,23 @@ The capture intercepted `onPayload`, used a dummy JWT, and asserted zero fetch c
 | Prompt cache key | Stable session key | Omitted in serialized JSON |
 | SDK options | Normal session | cacheRetention: none and fresh routing session ID |
 
-The text transcript truncates tool results, so it is not even a byte-preserving
-rendering of the original messages. Re-enabling a cache setting alone cannot
-repair these prefix differences. SDK cache policy names are not a universal
-provider-level cache-disable switch; the exact emitted fields matter.
+Text transcript cuts tool results. It is not byte-for-byte copy of original messages. Turning cache setting back on cannot fix prefix changes. SDK cache policy names are not universal provider cache-disable switch. Exact sent fields matter.
 
 ## Candidate evaluation criteria
 
-A cache-affine summarization fork should preserve the **actual model-facing**
-instructions, native message encoding, tool definitions/order, model, and cache
-identity, then append the summarization request after that existing prefix. Do
-not reconstruct the prefix from a nominal base prompt and assume it matches.
-Provider-specific parameters (including tool choice and thinking settings) must
-be checked for their own cache invalidation behavior.
+Cache-affine summary fork must keep **actual model-facing** instructions, native message encoding, tool definitions/order, model, and cache identity. Then append summary request after existing prefix. Do not rebuild prefix from nominal base prompt and assume match. Check each provider-specific parameter, including tool choice and thinking settings, for cache invalidation.
 
-No tool executions should be dispatched from the summarization fork. Keeping
-schemas for prefix identity and executing tools are separate decisions.
+Summary fork must not dispatch tools. Keeping schemas for prefix identity and running tools are different choices.
 
-Measure three phases separately: ordinary request, summarization request, and
-first resumed request. Compaction necessarily changes the conversation prefix
-for continuation; a cache hit while generating the summary does not mean the
-entire old history stays reusable afterward.
+Measure three phases apart: normal request, summary request, first resumed request. Compaction changes conversation prefix for continuation. Cache hit during summary does not mean whole old history stays reusable later.
 
-Compare warm and cold caches, manual/threshold/overflow triggers, split turns,
-model switches, cancellation, malformed summaries, and recent tool-call/result
-boundaries. Preserve pending job IDs/ownership, user constraints, unresolved
-failures, file state, and the last actionable request. Keep durable JSONL history
-and persisted summary usage/costs.
+Compare warm/cold caches, manual/threshold/overflow triggers, split turns, model switches, cancellation, bad summaries, and recent tool-call/result boundaries. Keep pending job IDs/ownership, user constraints, open failures, file state, and last actionable request. Keep durable JSONL history and saved summary usage/costs.
 
-An illustrative input-only break-even calculation: let the native request have
-F tokens, the flattened request S tokens, cached-input price be fraction r of
-uncached price, and native hit fraction h. Native input is cheaper when
-h > (1 - S/F) / (1-r). At F=250k, S=95k, and r=0.1, the hit rate must exceed
-about 69%. At a fully warm cache and illustrative rates of $10/M uncached and
-$1/M cached, these inputs cost $0.25 versus $0.95. This excludes new suffix,
-output, retries, cache-write charges, and post-compaction warm-up. It is not a
-measured saving or a universal pricing claim.
+Example input-only break-even: native request F tokens, flattened request S tokens, cached-input price fraction r of uncached, native hit fraction h. Native input costs less when h > (1 - S/F) / (1-r). At F=250k, S=95k, and r=0.1, hit rate must exceed about 69%. With fully warm cache and example $10/M uncached, $1/M cached, inputs cost $0.25 versus $0.95. This leaves out new suffix, output, retries, cache-write charges, and post-compaction warm-up. It is not measured saving or universal price claim.
 
 ## What Pi sends and keeps
 
-The active path is pi-coding-agent's classic AgentSession, not the separate new
-pi-agent-core harness implementation. Source paths below are under node_modules:
+Active path is pi-coding-agent classic AgentSession. It is not separate new pi-agent-core harness code. Source paths below are under node_modules:
 
 - @earendil-works/pi-coding-agent/dist/core/agent-session.js:1451–1454,
   1495–1543, 1756–1830: direct summarizer calls, hooks, persistence/rebuild.
@@ -85,36 +60,17 @@ pi-agent-core harness implementation. Source paths below are under node_modules:
 - @earendil-works/pi-coding-agent/dist/core/session-manager.js:191–236,
   817–832: summary plus retained entries, append-only checkpoint persistence.
 
-Pi uses the current session model, not a cheaper dedicated model. The default
-request contains a summarization-only system prompt and one user message with
-conversation text, optional previous summary, summary-format instructions, and
-optional manual focus instructions. It calls the ordinary provider inference API,
-not a provider-native compact endpoint. In Codex SSE mode, suppressing the cache
-identity also omits session-id/x-client-request-id headers; the fresh SDK UUID
-is not a usable cache identity in the resulting request.
+Pi uses current session model, not cheaper dedicated model. Default request has summary-only system prompt and one user message. User message has conversation text, optional old summary, summary-format instructions, and optional manual focus instructions. It calls normal provider inference API, not provider-native compact endpoint. In Codex SSE mode, hiding cache identity also drops session-id/x-client-request-id headers. Fresh SDK UUID is not usable cache identity in sent request.
 
-It receives an ordinary assistant result, rejects provider errors, incomplete
-length-limited responses and tool calls, extracts text, and records usage. A
-split turn can require two summarization calls; usage is combined into the single
-compaction record. The structured summary includes goals, constraints, progress,
-decisions, next steps and critical context, plus file-operation lists.
+It gets normal assistant result. It rejects provider errors, incomplete length-limited replies, and tool calls. It takes text and records usage. Split turn may need two summary calls. Usage joins into one compaction record. Structured summary includes goals, constraints, progress, decisions, next steps, critical context, and file-operation lists.
 
-The checkpoint stores summary, firstKeptEntryId, tokensBefore, details, and usage.
-Future requests see the normal system prompt + a synthetic summary user message
-+ retained recent messages. Default keepRecentTokens is about 20k; auto-compaction
-reserves 16,384 tokens before the model's context limit. The current tail setting
-must not be confused with Codex's different retained-message policies.
+Checkpoint stores summary, firstKeptEntryId, tokensBefore, details, and usage. Later requests see normal system prompt + fake summary user message + retained recent messages. Default keepRecentTokens is about 20k. Auto-compaction reserves 16,384 tokens before model context limit. Do not confuse current tail setting with different Codex retained-message policies.
 
 The computed summary output limit is approximately 80% of reserveTokens, capped
 by model.maxTokens. However, this Codex serializer does not emit a max-output
 field, so that computed cap is not enforced on this provider path.
 
-Default compaction bypasses before_agent_start and the ordinary context transform.
-It also does not receive the normal Agent-level payload/response callbacks;
-header hooks still run through the SDK stream wrapper. Therefore ordinary-request
-telemetry alone will miss important compaction details. session_before_compact can
-supply a replacement checkpoint for both manual and automatic paths without
-patching node_modules. At the investigation outset this was the likely, not-yet-implemented integration seam; the implementation sections below record how it was subsequently used and revised.
+Default compaction skips before_agent_start and normal context transform. It also misses normal Agent-level payload/response callbacks. Header hooks still run through SDK stream wrapper. So normal-request telemetry misses key compaction facts. session_before_compact can provide replacement checkpoint for manual and automatic paths without patching node_modules. At research start this looked like integration seam but was not built yet. Implementation sections below say how it was later used and changed.
 
 The installed session-format documentation also describes a different harness
 retainedTail representation. That is not the checkpoint format currently used by
@@ -134,16 +90,9 @@ Thus the conceptual Messages request is:
     same model/system/tools + same native history + final user summary instruction
     -> ordinary assistant summary
 
-The docs say a warm request reads the existing prefix from cache. A cold request
-reprocesses the full history at uncached rates. The exact private summary prompt
-and complete CLI wire envelope are not published; the request shape above is
-explicitly documented, not reverse-engineered from a closed-source binary.
+Docs say warm request reads existing prefix from cache. Cold request reprocesses full history at uncached rates. Exact private summary prompt and full CLI wire envelope are not public. Shape above is directly documented, not guessed from closed binary.
 
-After compaction, Claude Code replaces old conversation history with the summary,
-keeps the system layer, and reloads project context. That context cache-hits only
-if the reloaded instructions/memory are unchanged. It rebuilds the shorter
-conversation cache on continuation. Caching does not retain omitted context for
-the model and does not reduce context-window occupancy.
+After compaction, Claude Code replaces old conversation with summary. It keeps system layer and reloads project context. Context hits cache only when reloaded instructions/memory are unchanged. Continuation rebuilds shorter conversation cache. Caching does not keep omitted context for model or reduce context-window use.
 
 [What survives compaction](https://code.claude.com/docs/en/context-window#what-survives-compaction)
 distinguishes lossy summarization from deterministic re-injection: root CLAUDE.md,
@@ -182,16 +131,11 @@ before it from the effective model context. Custom summary instructions replace,
 not supplement, this API feature's default instructions. This does not establish
 how Claude Code combines its own custom /compact instructions.
 
-The same requested model does the API summarization. usage.iterations separates
-compaction and subsequent message iterations; top-level token counters exclude
-compaction iteration usage. A future integration must aggregate correctly without
-double-counting message usage. The API recommends a stable system cache breakpoint
-and optionally marking the compaction block for subsequent reuse.
+Same requested model does API summary. usage.iterations separates compaction and later message iterations. Top-level token counts leave out compaction iteration usage. Future integration must add correctly without double-counting message use. API recommends stable system cache breakpoint. It may mark compaction block for later reuse.
 
 ## Codex: native compaction, plus a local fallback
 
-Pinned source: [openai/codex 588b781](https://github.com/openai/codex/tree/588b781ab4924ce7352488394028e63d74cf807f).
-This describes that source version, not every released CLI or compatible gateway.
+Pinned source: [openai/codex 588b781](https://github.com/openai/codex/tree/588b781ab4924ce7352488394028e63d74cf807f). This covers that source version. It does not cover every released CLI or compatible gateway.
 
 ### Default remote V2 on supported providers
 
@@ -202,10 +146,7 @@ retains native history, base instructions and model-visible tools, and appends:
 
     {"type": "compaction_trigger"}
 
-It streams through the ordinary Responses endpoint, retaining the normal model,
-reasoning configuration, and session-derived prompt_cache_key. This trigger is
-also specified in the public API reference as an input item that must be last;
-it is not merely a private Codex protocol guessed from source.
+It streams through normal Responses endpoint. It keeps normal model, reasoning config, and session-derived prompt_cache_key. Public API also defines this trigger as last input item. It is not private Codex protocol guessed from source.
 
 The client expects exactly one encrypted compaction output item:
 
@@ -241,17 +182,9 @@ previous_response_id carries conversation state; prompt_cache_key does not.
 
 ### Local fallback
 
-Unsupported providers use ordinary model summarization instead of hosted opaque
-compaction. Local means client-orchestrated, not necessarily on-device inference.
-The [local compaction source](https://github.com/openai/codex/blob/588b781ab4924ce7352488394028e63d74cf807f/codex-rs/core/src/compact.rs#L248-L400)
-appends a user checkpoint prompt, uses current instructions/model/thinking, but
-does not populate the normal tool list in that Prompt construction. Therefore
-it is not identical to Claude Code's tool-prefix-preserving workflow.
+Unsupported providers use normal model summary, not hosted opaque compaction. Local means client-run flow. It does not mean inference runs on device. [local compaction source](https://github.com/openai/codex/blob/588b781ab4924ce7352488394028e63d74cf807f/codex-rs/core/src/compact.rs#L248-L400) starts separate turn with dedicated summary prompt and no tools. It serializes native Responses items through normal client. This Prompt has no normal tool list, so it does not match Claude Code tool-prefix-keeping flow.
 
-The text response becomes a summary user message. It retains recent real user
-messages under an approximately 20k total budget and reinjects canonical initial
-context. That is not Pi's 20k recent mixed-role/tool-message tail. Codex persists
-replacement history in an append-only rollout checkpoint for resume.
+Text reply becomes summary user message. It keeps recent real user messages under about 20k total budget and adds canonical initial context again. This differs from Pi 20k recent mixed-role/tool tail. Codex saves replacement history in append-only rollout checkpoint for resume.
 
 ## OpenAI cache implications
 
@@ -274,24 +207,15 @@ Responses parser already maps both fields (openai-responses-shared.js:441–448)
 Account/backend/model compatibility and current pricing must be checked before a
 live cost experiment, especially for Codex subscription versus public API use.
 
-At investigation time the guide and API reference disagreed about the maximum
-read-breakpoint count (50 versus 80). We should not depend on either number without
-confirmation. This does not affect the core prefix-preservation conclusion.
+At research time guide and API reference disagreed on max read-breakpoint count: 50 versus 80. Do not rely on either without checking. Core prefix-preservation result is unchanged.
 
 ## Historical agreed implementation sequence
 
-User decision: implement Claude-style compaction first. Implement Codex-native
-compaction afterward as the intended Codex-provider strategy, not an optional
-optimization to consider indefinitely. The user prioritizes Codex native
-compaction quality; this is a product requirement, not a measured quality result
-from this investigation.
+User choice: build Claude-style compaction first. Then build Codex-native compaction as intended Codex-provider path, not endless optional idea. User puts Codex native compaction quality first. This is product requirement, not measured quality result from this research. This is staged delivery, not choice to leave native path out.
 
 ### Phase 1 — Claude-style cache-affine plaintext compaction
 
-Build the portable, prefix-preserving summarization path first. It is not the
-final compaction strategy for the Codex provider. Keep provider strategy selection
-separate from checkpoint/lifecycle plumbing so the native path can follow without
-rewriting the shared machinery.
+Build portable prefix-keeping summary path first. It is not final Codex provider compaction. Keep provider strategy apart from checkpoint/lifecycle plumbing. Then native path can come without rewriting shared flow.
 
 
 1. Prototype a **cache-affine plaintext compaction fork**, following Claude Code's
@@ -318,18 +242,11 @@ Codex-style request/response flow for the actual backend. Preserve native opaque
 compaction items through serialization, checkpoints, and resume; do not convert
 them into a plaintext summary or put encrypted content into Pi's summary string.
 
-Required integration work includes capability/auth compatibility, correct token
-and cost accounting, retained-history reconstruction, cancellation/retry behavior,
-and explicit cross-provider resume/model-switch handling. Validate quality and
-cost on the actual provider rather than assuming source/API parity. Any interim
-plaintext behavior or unsupported-backend fallback must remain distinguishable
-from successful native compaction.
+Need capability/auth matching, right token and cost counts, retained-history rebuild, cancellation/retry behavior, and direct cross-provider resume/model-switch handling. Test quality and cost on actual provider. Do not assume source/API parity. Interim plaintext behavior or unsupported-backend fallback must look different from successful native compaction.
 
 At this planning milestone, Phase 2 was deliberately deferred until after Phase 1 but remained required. The later “Phase 2 implemented” section preserves the completed implementation and evidence; this paragraph is not a current status claim.
 
-No production code, provider behavior or installation was changed in this
-investigation. External sources were fetched publicly; the serializer experiment
-made no model request. Detailed worker wisdom are in artifacts/compaction/.
+Research changed no production code, provider behavior, or install. Outside sources were public. Serializer experiment made no model request. Detailed worker wisdom is in artifacts/compaction/.
 
 ## Phase 1 implementation and evidence
 
