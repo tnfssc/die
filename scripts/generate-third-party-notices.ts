@@ -25,6 +25,7 @@ const fallbackNotices: Record<string, string> = {
   "@aws-sdk/nested-clients": "aws-sdk-js-v3.LICENSE",
   "@aws-sdk/credential-provider-login": "aws-sdk-js-v3.LICENSE",
   "@esbuild/linux-x64": "esbuild.LICENSE",
+  "@esbuild/darwin-arm64": "esbuild.LICENSE",
   "data-uri-to-buffer": "data-uri-to-buffer.LICENSE",
 };
 

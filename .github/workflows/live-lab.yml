@@ -56,7 +56,8 @@ jobs:
           bun install --frozen-lockfile
           bun run build
           mkdir -p dist/live-lab-candidate
-          cp dist/die dist/live-lab-audio LICENSE THIRD_PARTY_NOTICES.md native/live-lab/README.md dist/live-lab-candidate/
+          cp dist/die dist/live-lab-audio LICENSE THIRD_PARTY_NOTICES.md dist/live-lab-candidate/
+          cp support/live-lab-candidate.md dist/live-lab-candidate/README.md
           bun scripts/generate-third-party-notices.ts dist/live-lab-candidate/THIRD_PARTY_LICENSES.txt
           cat dist/die-web/LICENSE-T3CODE >> dist/live-lab-candidate/THIRD_PARTY_LICENSES.txt
           while IFS= read -r -d '' license; do cat "$license" >> dist/live-lab-candidate/THIRD_PARTY_LICENSES.txt; done < <(find dist/die-web/node_modules/.pnpm -type f \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'NOTICE*' \) -print0)
