@@ -20,7 +20,8 @@
     "lint": "biome lint .",
     "generate:notices": "bun ./scripts/generate-third-party-notices.ts",
     "prompt:preview": "bun ./scripts/prompt-preview.ts",
-    "build:web": "bun ./scripts/build-web.ts"
+    "build:web": "bun ./scripts/build-web.ts",
+    "smoke:live-onboarding": "bun ./scripts/live-onboarding-smoke.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.87.1",
