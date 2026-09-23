@@ -7,3 +7,11 @@ Version bumped to 0.5.8 with user-facing notes release-v0.5.8.md. Combined forma
 Initial combined run: format, typecheck and build passed; tests 722 pass/14 skip/1 fail in existing job-attention heap-growth threshold (27,480,475 bytes vs 20 MiB). Focused job-attention suite immediately passed all 10. Full suite rerun plus smoke/tag/lint underway in task_d50752ae; logs /tmp/die-v058-{tests,smoke,lint}.log. Do not mistake initial run for passing.
 
 Final local gates passed: full suite 723 pass, 14 skip, 0 fail (4630 assertions); standalone smoke, tag validation, lint (existing warnings), format/typecheck/build and diff check. Paid-provider tests not run. Preparing release commit/tag/push.
+
+Pushed develop and annotated v0.5.8 tag at 05f714eb9cd4434a4ddca4df3638dae010bd76b6. Release run 35820481468 and CI run 35820479228 queued/running, watched via gh run watch. Pending successful publication, asset metadata check and release-note edit. SSH reports unsupported id_rsa but fallback authentication succeeded; push completed.
+
+CI run 35820479228 completed successfully. Release workflow still watched by task_8ef80359.
+
+## Published
+
+Release workflow 35820481468 and CI 35820479228 succeeded. Published https://github.com/tnfssc/die/releases/tag/v0.5.8 at 2026-09-23T05:08:32Z; draft=false, prerelease=false. Verified uploaded binary/checksum assets for Linux x64/arm64, macOS arm64, Android arm64 plus license/notices/source metadata. Release notes set from release-v0.5.8.md. No binary downloads or local installation. Remaining caveats: existing heap-threshold test was flaky on first local run; third-party extensions calling pi.setModel in root TUI share explicit-selection event source (documented in model wisdom).
