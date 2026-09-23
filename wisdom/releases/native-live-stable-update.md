@@ -120,3 +120,25 @@ are mandatory workflow gates, NOT evidence already obtained.
 Publication remains unattempted. Physical acoustic/provider tests and signing /
 notarization are not claimed. Values unchanged: no new general lesson beyond the
 existing truthful-evidence, simple-design and bounded-ownership rules.
+
+## Authorized stable release execution (2026-09-23)
+
+User explicitly authorized normal stable v0.8.0 publication and plain die update.
+Release coordinator worktree: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_89057c53
+(branch recorded by git; source head 54f24fc8c6d9aca601844e31b8629266c8a72326).
+Remote develop e6f0597570881f186d625f8fcd6549e0894d7353 is an ancestor;
+push must remain fast-forward, preserving all parent commits. v0.8.0 absent at preflight.
+Independent review: task_394e7ce8, branch
+die/independent-stable-release-packaging-rev-394e7ce8, worktree
+/home/tnfssc/.die/worktrees/die-a86675007a5e-task_89057c53-a86675007a5e-task_394e7ce8.
+
+To honor gates-before-tag, Release now also runs on develop push, using the exact
+same native helper, release matrix, and actual Mac/updater gates. Publication is
+explicitly tag-only; develop produces workflow artifacts, never a GitHub release.
+No prerelease workflow or user install added. Stable tag will rerun all gates.
+Local locked Bun 1.4.1 install, format, lint, typecheck and focused release/updater/
+Live Lab tests: 67 pass, 0 fail, 567 assertions. Logs artifacts/release-local.
+Full CI and real Mac evidence pending at this point. No audio/API used, and no
+local installation. Physical acoustic/provider validation and signing/notarization
+remain unclaimed. Values unchanged: existing truthful-evidence and simple-design
+rules cover this release; no new general lesson yet.

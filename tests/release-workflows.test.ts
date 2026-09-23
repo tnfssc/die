@@ -87,7 +87,7 @@ describe("release automation", () => {
     expect(workflow).toContain("--live-lab-self-test");
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).toContain("contents: write");
-    expect(workflow).toContain('validate-release-tag.ts "$GITHUB_REF_NAME"');
+    expect(workflow).toContain('validate-release-tag.ts "$tag"');
     expect(workflow).toContain("apt-get install -y tmux");
     expect(workflow).toContain("bun run lint");
     expect(workflow.indexOf("bun run build")).toBeLessThan(workflow.indexOf("bun test ./tests"));
@@ -132,10 +132,12 @@ describe("release automation", () => {
       on: Record<string, unknown>;
       jobs: Record<
         string,
-        { needs?: string | string[]; permissions?: Record<string, string>; steps: { run?: string }[] }
+        { if?: string; needs?: string | string[]; permissions?: Record<string, string>; steps: { run?: string }[] }
       >;
     };
     expect(Object.keys(workflow.on)).toEqual(["push"]);
+    expect(workflow.on.push).toEqual({ branches: ["develop"], tags: ["v*"] });
+    expect(workflow.jobs.publish!.if).toBe("${{ startsWith(github.ref, 'refs/tags/v') }}");
     expect(workflow.jobs.publish!.needs).toEqual(["release", "mac-release-smoke"]);
     expect(workflow.jobs["mac-release-smoke"]!.needs).toBe("release");
     expect(workflow.jobs.release!.permissions?.contents).not.toBe("write");

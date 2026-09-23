@@ -2,6 +2,7 @@ name: Release
 
 on:
   push:
+    branches: [develop]
     tags:
       - "v*"
 
@@ -13,7 +14,7 @@ jobs:
     name: Native macOS arm64 helper (no devices)
     runs-on: macos-15
     timeout-minutes: 10
-    if: ${{ !contains(github.ref_name, '-') }}
+    if: ${{ github.ref == 'refs/heads/develop' || !contains(github.ref_name, '-') }}
     steps:
       - uses: actions/checkout@v4
       - name: Sanitized, device-free native ring tests
@@ -44,8 +45,8 @@ jobs:
           if-no-files-found: error
           retention-days: 2
   release:
-    # Prerelease tags use explicitly prepared candidate bundles, not stable assets.
-    if: ${{ !contains(github.ref_name, '-') }}
+    # Develop runs the same gates without publishing; prerelease tags stay excluded.
+    if: ${{ github.ref == 'refs/heads/develop' || !contains(github.ref_name, '-') }}
     needs: mac-helper
     name: Linux, macOS, and Android release
     runs-on: ubuntu-24.04
@@ -73,7 +74,12 @@ jobs:
         run: mkdir -p artifacts/release dist/release
       - name: Validate tag matches package version
         shell: bash
-        run: bun scripts/validate-release-tag.ts "$GITHUB_REF_NAME" 2>&1 | tee artifacts/release/version.log
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if [[ "$GITHUB_REF" == refs/heads/develop ]]; then
+            tag="v$(bun -p 'require("./package.json").version')"
+          fi
+          bun scripts/validate-release-tag.ts "$tag" 2>&1 | tee artifacts/release/version.log
       - name: Install locked dependencies
         shell: bash
         run: bun install --frozen-lockfile 2>&1 | tee artifacts/release/install.log
@@ -216,6 +222,7 @@ jobs:
           env -i HOME="$home" PATH=/usr/bin:/bin "$GITHUB_WORKSPACE/dist/release/die-darwin-arm64" --live-lab-self-test
 
   publish:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     name: Publish stable release after native and updater gates
     needs: [release, mac-release-smoke]
     runs-on: ubuntu-24.04
