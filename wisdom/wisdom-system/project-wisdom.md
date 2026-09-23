@@ -12,17 +12,11 @@ There is no required `index.md`. Create a short orientation file only when it ge
 
 ## Prompt contract
 
-The root prompt says:
+The canonical root guidance is in [src/prompts/wisdom.md](../../src/prompts/wisdom.md). It asks agents to preserve decisions, reasons, status, and handoff context with the feature they explain.
 
-```md
-Next agent not hear whole talk. Save decisions, reasons, and where work stopped. No need copy whole conversation.
+[Derived values](../values.md) provide the concise cross-system layer. Read them before substantial work; review new wisdom at substantial completion/handoff and across affected systems after releases or broad reviews. Revise or merge existing principles before adding more, preserve evidence links and tradeoffs, and leave values unchanged when the review finds no new lesson. Briefly report the consolidation outcome at completion, including why no values change was needed when applicable.
 
-Work not done if next person cannot pick it up. Leave code and wisdom together, where others can get both. Say what finished and what still needs care.
-
-Project wisdom lives in wisdom/. Put it with the feature or system it explains. Need past context? Read the wisdom that helps with this task.
-```
-
-That prompt is the source of truth for agent behavior. Implementation should stay simple enough to match it.
+This is a standing agent responsibility, not a background consolidation worker or mandatory index. See [derivation and coverage](derived-values.md) and the [practice audit](consolidation-practice-audit.md).
 
 ## Integration
 
