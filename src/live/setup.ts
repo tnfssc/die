@@ -35,8 +35,9 @@ const sharedOverview =
 
 function platformOverview(platform: NodeJS.Platform): string {
   if (platform === "darwin") {
-    return `Gemini Live uses local macOS SoX with your default microphone and output. Install SoX with \`brew install sox\`. In System Settings > Privacy & Security > Microphone, allow access for Terminal (or the app running die), then restart Terminal or the app if necessary. ${sharedOverview}`;
+    return `Gemini Live uses local macOS SoX with your default microphone and output. Install SoX with \`brew install sox\`. In System Settings > Privacy & Security > Microphone, allow access for Terminal (or the app running die), then restart Terminal or the app if necessary. If the app is not listed yet, macOS may ask when you explicitly start Live; setup does not request microphone access. ${sharedOverview}`;
   }
+  if (platform !== "linux") return `Local Live audio supports Linux and macOS only (not SSH). ${sharedOverview}`;
   return `Gemini Live uses local Linux SoX with your default microphone and speakers. Install SoX with your distribution package manager and make sure the default input and output devices work. ${sharedOverview}`;
 }
 

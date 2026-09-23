@@ -21,6 +21,7 @@ function harness(choices: Array<string | undefined | boolean>, overrides: Partia
     },
   };
   const deps: LiveSetupDependencies = {
+    platform: () => "linux",
     async status() {
       calls.status++;
       return status;
@@ -81,6 +82,23 @@ describe("Live setup wizard", () => {
     expect(rendered).toContain("no echo cancellation");
     expect(rendered).toContain("Opening setup does not connect to Google or open audio devices");
     expect(h.calls).toEqual({ status: 1, capabilities: 1, importKey: 0, testConnection: 0, start: 0 });
+  });
+
+  test("Darwin readiness stays device-untested and never starts automatically", async () => {
+    const h = harness([undefined], { platform: () => "darwin" });
+    await runLiveSetup(h.ui, h.deps);
+    expect(text(h.events)).toContain("devices untested");
+    expect(text(h.events)).toContain("macOS may ask when you explicitly start Live");
+    expect(text(h.events)).not.toContain("local Linux");
+    expect(h.calls).toEqual({ status: 1, capabilities: 1, importKey: 0, testConnection: 0, start: 0 });
+  });
+
+  test("unsupported platforms are not described as Linux", async () => {
+    const h = harness([undefined], { platform: () => "win32" });
+    await runLiveSetup(h.ui, h.deps);
+    expect(text(h.events)).toContain("supports Linux and macOS only");
+    expect(text(h.events)).not.toContain("local Linux SoX");
+    expect(h.calls.start).toBe(0);
   });
 
   test("missing credentials offer instructions and safe back without key input", async () => {
