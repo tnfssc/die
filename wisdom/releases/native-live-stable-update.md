@@ -1,4 +1,7 @@
-# Native Live via plain die update (proposal, not published)
+# Native Live via plain die update — stable v0.8.0 published
+
+Current status: **published and verified stable**. See final publication proof below.
+Earlier proposal/hold notes are historical, superseded by that proof.
 
 Worktree: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_98aeea31
 Branch: die/make-native-live-release-work-with-die-u-98aeea31
@@ -157,3 +160,59 @@ runner-images README (macos-15 = arm64, Intel = macos-15-intel) and successful
 actual arm64 Mac build gate. Its old-updater caveat is valid: exact pinned source
 is compiled with current Bun, NOT the historic published full v0.7.1 executable.
 No tag created; publication skipped as designed.
+
+## Final publication proof — 2026-09-23
+
+- Release: https://github.com/tnfssc/die/releases/tag/v0.8.0
+- GitHub release ID: 395012775; published 2026-09-23T20:00:15Z.
+- Annotated v0.8.0 tag targets c5b6101a708a7e1f560002ad95299f05b2c089dd.
+- Integration: 54f24fc source, 39ebe0f pre-tag develop gates, c5b6101 portable
+  file(1) correction. Develop fast-forwarded safely; no force pushes, tag moves,
+  prerelease changes, or local installation.
+- CI passed: https://github.com/tnfssc/die/actions/runs/35910725281
+- Pre-tag full Release gates passed (publication correctly skipped):
+  https://github.com/tnfssc/die/actions/runs/35910725315
+- Tag/publication run all four jobs passed:
+  https://github.com/tnfssc/die/actions/runs/35911787187
+  Native Mac sanitizer/helper tests, Linux full build/test/web/PTY/release matrix,
+  actual Mac raw executable/updater/embedded-helper smoke, then publish.
+- Logs confirm Linux and Mac exact pinned v0.7.1 updater source compiled in the
+  current toolchain preserves the executable on checksum failure, atomically
+  replaces it with staged bytes, verifies SHA256 and compiled --version 0.8.0.
+  This is NOT a test of the historic published full v0.7.1 binary.
+- Mac release executable self-test + protocol v1 passed with clean HOME and
+  unrelated cwd. Embedded helper SHA256:
+  71092e078150d443bc0d2761813decfa76bb15ad2002e738b32c78f32f99717b.
+- /releases/latest verified v0.8.0, prerelease=false, draft=false. All 12 expected
+  assets nonempty: four raw binaries, four SHA256 files, LICENSE,
+  THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES.txt, SOURCE.txt. Downloaded checksum
+  files match GitHub binary digests; downloaded metadata sizes/digests match API.
+  SOURCE.txt identifies exact tag/commit, T3 revision/patch and native helper hash.
+
+| Raw asset | Bytes | SHA256 |
+| --- | ---: | --- |
+| die-linux-x64 | 200963552 | 51171f5bcb08db2dd2f71af49b076d37200dc9acda05ffa894135f2824c45e59 |
+| die-linux-arm64 | 200853800 | d5f9fa2226c5f5669ef66ed385c12d1baa440e3e7df81cf2b5581337f179756c |
+| die-darwin-arm64 | 182979170 | 65fc54c386072e1f85aec0a8920bdf2307a9f33d5e8a00064b43a54768418beb |
+| die-android-arm64 | 208074496 | 5f07d798adc61e6a92161ac16ec082fbabcc07ff0afb620bdb42cc1ba778b58b |
+
+Update: run plain die update, then die --version (0.8.0) and start a fresh die
+session. Mac arm64 helper is embedded, no separate installation. Optional
+die --live-lab-self-test uses no devices; explicitly opt into /live-lab only
+when ready. /live-lab remains experimental voice-only, separate from /live.
+
+Physical microphone/speaker behavior, acoustic echo quality, interruption latency,
+real provider sessions, signing/notarization remain **not validated**. No real
+audio, secrets, paid provider calls, or user-local installation were used here.
+Linux/Android bundled native helper support is not promised. Values unchanged:
+truthful evidence, bounded ownership and simple design already cover this work.
+
+Final artifact comparison: downloaded stable-release-assets from publication run
+35911787187 (artifact ID 10773643997, ZIP metadata digest
+84db531a8a017cfaecd9e072c28fa0a9fbd1dc754786b11e3a0a56f19f975c54).
+All 12 extracted file sizes and locally calculated SHA256 hashes exactly match
+published release API assets. Downloaded metadata/checksums verified separately.
+Local evidence: artifacts/release-local/{latest.json,publication-run.json,
+publication.log,published-artifacts.json,verification.txt,published,workflow-assets}.
+Artifacts are ignored and workflow retention is finite; durable proof is this
+note, release assets and linked workflow runs. No published binary installed locally.
