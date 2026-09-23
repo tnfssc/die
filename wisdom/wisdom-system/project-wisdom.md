@@ -1,29 +1,23 @@
 # Project wisdom
 
-Project wisdom is durable project context for future agents. It is not a model memory database and it does not grant permissions or override the user.
+Project wisdom is context saved for the next agent. It is not a model memory database. It gives no permission. User's words come first.
 
 ## Shape
 
-Project wisdom lives in `wisdom/` at the repository root.
+Project wisdom lives in `wisdom/` at repo root.
 
-Organize wisdom by feature or system. Put the decision, reason, current state, and handoff with the area it explains. Do not split files only because one is a decision, audit, release note, or handoff.
+Put wisdom with the feature or system it explains. Keep the choice, reason, current state, and handoff together. Do not split files only because one part is a decision, audit, release note, or handoff.
 
-There is no required `index.md`. Create a short orientation file only when it genuinely helps. There is no pending queue and no consolidation worker; agents write useful durable context directly into the relevant wisdom file.
+No `index.md` is required. Make a short map only when it helps. There is no pending queue or cleanup worker. Agents write useful context straight into the right wisdom file.
 
 ## Prompt contract
 
-The root prompt says:
+Root guidance lives in [src/prompts/wisdom.md](../../src/prompts/wisdom.md). It tells agents to save choices, reasons, state, and handoff context with the feature they explain.
 
-```md
-Next agent not hear whole talk. Save decisions, reasons, and where work stopped. No need copy whole conversation.
+[Values](../values.md) hold lessons that help across the project. Read them before big work. At a big finish or handoff, review new wisdom. After a release or wide review, check all affected systems. Merge or change old lessons before adding more. Link where each lesson came from. Say when it helps and when it does not. No new lesson? Leave values alone. At finish, say what wisdom changed and what values changed. Values stayed same? Say why.
 
-Work not done if next person cannot pick it up. Leave code and wisdom together, where others can get both. Say what finished and what still needs care.
-
-Project wisdom lives in wisdom/. Put it with the feature or system it explains. Need past context? Read the wisdom that helps with this task.
-```
-
-That prompt is the source of truth for agent behavior. Implementation should stay simple enough to match it.
+This is the agent's job. It is not a background cleanup worker or required index. See [how values were derived and what was covered](derived-values.md) and the [practice audit](consolidation-practice-audit.md).
 
 ## Integration
 
-`src/wisdom/extension.ts` appends the wisdom guidance for root agents and registers `/wisdom`, which reports the durable location. Child agents do not receive the root wisdom prompt.
+`src/wisdom/extension.ts` adds wisdom guidance for root agents. It also registers `/wisdom`, which reports the durable location. Child agents do not get the root wisdom prompt.

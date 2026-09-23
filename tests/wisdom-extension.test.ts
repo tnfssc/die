@@ -35,6 +35,11 @@ describe("project wisdom extension", () => {
     expect(result.systemPrompt).toContain("Leave code and wisdom together");
     expect(result.systemPrompt).toContain("Project wisdom lives in wisdom/.");
     expect(result.systemPrompt).toContain("Put it with the feature or system it explains.");
+    expect(result.systemPrompt).toContain("Values live in wisdom/values.md.");
+    expect(result.systemPrompt).toContain("Write prompts and wisdom in same voice as rest.");
+    expect(result.systemPrompt).toContain("Before big work ends or changes hands");
+    expect(result.systemPrompt).toContain("At end, say what wisdom changed and what values changed.");
+    expect(result.systemPrompt).toContain("Nothing new? No need change values.");
     expect(result.systemPrompt).not.toContain(".agents/notes");
     expect(result.systemPrompt).not.toContain("pending");
     expect(result.systemPrompt).not.toContain("index.md");
