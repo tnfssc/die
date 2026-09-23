@@ -58,3 +58,7 @@ Live is opt-in, Linux local SoX only, needs Gemini credentials and can incur pai
 No real user credentials were read or imported for runtime checks; tests use isolated HOME/fake credentials. No paid acceptance, physical microphone/speaker, acoustic quality, or end-to-end real coding-agent voice acceptance was run for this release.
 
 Values reviewed and unchanged: existing real-path checks, safe ownership, truthful proof, and clear handoff principles cover this work. No new recurring principle found.
+
+## Parent publication
+
+Integrated through 7ea0853 on develop. Parent checked notes/version diff, clean diff, and v0.7.0 tag validation. Remote default is develop, latest is v0.6.0, and v0.7.0 tag was absent. Preparing push and annotated tag; publication is not yet confirmed.
