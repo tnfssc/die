@@ -12,7 +12,16 @@ User approved the macOS Live patch release. Parent owns integration, push, annot
 
 ## Validation
 
-Pending in this worktree.
+Validated on Linux with Bun 1.4.1. Logs are retained under the ignored `artifacts/release/` directory in this worktree.
+
+- `bun install --frozen-lockfile`: passed (131 packages); no lockfile or tracked-file change.
+- `bun scripts/validate-release-tag.ts v0.7.1`: passed. The compiled standalone reported `0.7.1`.
+- `bun run format:check`, `bun run check`, and `bun run lint`: passed. Lint retained existing warning/information diagnostics and reported no errors.
+- `bun run build`: passed using the existing pinned T3 source checkout. This rebuilt the web client/server, portable dependencies, embedded archive, and standalone Linux binary.
+- Full offline `bun test ./tests` under an isolated temporary HOME, explicit environment, and `DIE_RUN_LLM_TESTS=0`: 795 pass, 15 skip, 0 fail, 4,943 assertions across 110 files. Optional paid Live/LLM tests and interactive acceptance tests skipped as designed.
+- Standalone smoke copied `dist/die` outside the repository and ran it with `env -i`-equivalent `HOME=<temporary> PATH=/nonexistent`: `--version` was 0.7.1, help had the expected header, `.die` was created, and legacy `.pi` was not.
+- `bun run smoke:live-onboarding` passed against the newly built binary with an isolated parent HOME: fake credential import only, no paid provider connection and no audio command.
+- `git diff --check` and final release-surface/status checks passed. No microphone, physical audio device, real credential, paid API, downloaded release binary, or local install was used.
 
 ## Scope and limitations
 
