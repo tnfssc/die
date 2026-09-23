@@ -25,7 +25,7 @@ Scope: isolated experiment gates for **Die orchestrator → execute → exactly 
 - Do not need a normal sidebar row: upstream filters subagent lineage (apps/web/src/components/Sidebar.logic.ts:493-508). Native entry points are chat/V2ItemInspector.tsx:210-212 and chat/ThreadRelationshipsControl.tsx:173-182,230-252.
 
 ### 5. Result delivered exactly once across both ACK systems
-- Complete with a unique marker. Assert one parent completion wake/message, one stable published summary, and one subagent_result transfer. Repeated task_status, refresh, and a later child follow-up cannot duplicate or replace the published result. LatestTerminal* may advance separately.
+- Complete with a unique marker. Assert one parent completion wake/message, one stable published summary, and one subagent_result transfer. Repeated task_status, refresh, and a later child follow-up cannot duplicate or replace the published result. latestTerminal* may advance separately.
 - Disconnect at: (a) before child terminal, (b) after terminal persistence/before wake, (c) after response bytes/before worker ACK, and (d) after ACK. Reconnect: marker appears once and delivery reaches one terminal delivery state.
 - Hazard: T3 acknowledges terminal observation during task reads (apps/server/src/mcp/OrchestratorMcpService.ts:1007-1050) and repairs pending/claimed/delivered/acknowledged delivery (orchestration-v2/DelegatedCompletionDelivery.test.ts). Die separately keeps bridge ACK provisional until clean worker completion and restores notification ownership on disconnect (src/typescript/execution.ts:200-204. src/tasks/task-manager.ts:356-394). Prove the layers do not each deliver once.
 

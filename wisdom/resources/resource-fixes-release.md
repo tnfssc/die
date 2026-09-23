@@ -50,7 +50,7 @@ Auditdocs/scripts will ship as reproduction evidence.
 Distinguish pre-fix leakassertions from newregressions.
 
 First workers done: launcher task_536d50e4 (16targetedtests including compiledprocessfixtures) and joboutput task_bb96b777 (8,000,000-byte default aggregate completed budget incl agentfinalstrings, oldestprefixeviction with outputLost.
-Activeperjob1MB unchanged. 57relatedtests pass).
+activeperjob1MB unchanged. 57relatedtests pass).
 Main reviewed diffs: reasonable, awaiting integratedcompile.
 Launcher guard own detachedpgid,5sKILL, firstsignalstatus130/143, leaderexitgroupKILL, idempotentlistener/timercleanup.
 Guarantee applies ownedPOSIXgroup, not arbitrarydaemonized escapedgroups.
@@ -108,7 +108,7 @@ Awaithistoryfinalworker andfreshbuild, then rootcompiled/fulltests/browser.
 MUSTFIX beforetag.
 Independenthistoryreview task_07dc6a9f active.
 Main alsofixedfooter cheaprevision: identity+leaf alonemissesappend-then-branchbackbetweenrenders.
-AddedweakfileEntriesidentity+count (pinnedSDKmetadataarray) tocachekey, nofullbodyretention, fallbackuncachedunknownmanager.
+addedweakfileEntriesidentity+count (pinnedSDKmetadataarray) tocachekey, nofullbodyretention, fallbackuncachedunknownmanager.
 Regression+16footertests+rootcheckpass.
 Freshwebbuild task_5b836f3b PASS, archiveSHA2d2077ba1076d11784e99f84af2f60e055a1e64ac17f961b2765f0a5dd266552.
 Mainwebgates task_1581944e PASS: server146tests+tsc, web115+tsc, clientruntime34+tsc.
@@ -132,7 +132,7 @@ Followupnotes resource-fixes-history-followup.md.
 Mustawaitfollowup before finalcompiledcandidate.
 
 20:10Z: all4candidatebrowserfixtures PASS oncompiledv0.4.0 (generalHTTP+terminal/chat/tasks4localrequests.
-ModelA/B/A2. Stop. Modefast/normal/orchestrator5), logsartifacts/resource-web-{smoke,model-smoke,stop-smoke,mode-smoke}.
+modelA/B/A2. Stop. Modefast/normal/orchestrator5), logsartifacts/resource-web-{smoke,model-smoke,stop-smoke,mode-smoke}.
 These precede finalhistorycleanup fixes.
 Rerunatleastgeneralbrowserafterfinalcompile.
 Standaloneweb-runtime5tests PASS withTMPDIR=/var/tmp.
@@ -168,14 +168,14 @@ Annotated immutable tagv0.4.0 pushed.
 ReleaseCI35391157155 queued.
 Watch job monitors artifacts/release-v040-ci.log.
 Need awaitCI,download officialLinuxbinary+sha+SOURCE,verify isolated version.
-EditGitHubrelease body fromartifacts/release-v040-notes.md thencommit/push publication notes.
+editGitHubrelease body fromartifacts/release-v040-notes.md thencommit/push publication notes.
 Installed binary unchanged.
 
 COMPLETE: https://github.com/tnfssc/die/releases/tag/v0.4.0 published.
 ReleaseCI35391157155 SUCCESS.
 Allfourplatformbinaries/checksums/licenses/SOURCE present.
 Official Linux x64 downloaded artifacts/official-v040, SHA25623bf393b43eea6d078a2b964b127493ac7c856134963ea1ad7959bfc4a43cb81 verified.
-IsolatedHOME/PATH=/nonexistent reports0.4.0.
+isolatedHOME/PATH=/nonexistent reports0.4.0.
 SOURCE confirms147a6d97424b45b9c2239146ddf1c3a947a7845d.
 GitHub release body updated with policies/limits.
 Installedbinary/userprocesses untouched.

@@ -2,7 +2,7 @@
 
 Focused tests live in `tests/history-storage-io.test.ts` for the disk-backed entry store.
 
-## What the tests cover
+## Covered invariants
 
 - `scanJsonl` propagates exceptions from its visitor; only malformed JSON records may be ignored.
 - UTF-8 content (including multibyte text crossing the 64 KiB scanner boundary), CRLF records, malformed intervening records, and a valid final unterminated record scan correctly. Opening and appending repairs the final delimiter so the tail and appended record both survive reopen.
@@ -10,7 +10,7 @@ Focused tests live in `tests/history-storage-io.test.ts` for the disk-backed ent
 - A failed flushed replacement (forced through JSON serialization failure) does not discard a pending spool. The same store remains appendable and can publish the original header/body plus the later assistant record.
 - Duplicate IDs preserve distinct physical records when materialized by metadata, while string ID lookup resolves to the last physical record. Cache hits cannot substitute one duplicate body for another.
 
-## Failures found
+## Failure observations
 
 All four direct tests failed against the first concurrent store draft:
 

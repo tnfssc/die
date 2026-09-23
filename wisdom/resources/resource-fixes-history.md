@@ -75,7 +75,7 @@ Data cache now exact-size serialized Buffers <=4 MiB (no retained parsed object 
 Incremental append index update avoids O(n²) rebuild.
 Added skeleton-safe streaming rewrite retaining active leaf, sorted/self-root tree parity, initial-header validation before migration, unique legacy IDs, tail repair on open, path/fileURL/tilde parity, no-overwrite forks, symlink-preserving atomic replacement, nonmutating recent-session filtering, partial-write retry+rollback, recoverable failed reset/switch/branch.
 New tests history-storage-lifecycle + disk-retrieval + expanded IO test pass.
-Node_modules restored with frozen install/check pass.
+node_modules restored with frozen install/check pass.
 No installed binary/user state touched.
 Final affected suites/probes running task_e2c84525, task_3d966412, task_89fbb710.
 Parent can review now.

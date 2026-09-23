@@ -52,7 +52,7 @@ stopSession/stopAll (2397-2401) never retire locks.
 
 Real source-copy instrumentation with read-only observers:
 - Unique rejected starts, stopSession each, stopAll every 100: **locks 100 → 200 → 300. Sessions=0. Leases=0. Zero process spawns**.
-- 100 successful fake-provider start/stop cycles: **locks=100. Sessions=0. Leases=0. Client.close called 100 times**.
+- 100 successful fake-provider start/stop cycles: **locks=100. Sessions=0. Leases=0. client.close called 100 times**.
 
 Service-lifetime small-key retention, not a live-process leak.
 Naive lock deletion while callers wait would break serialization.

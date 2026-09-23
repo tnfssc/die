@@ -10,7 +10,7 @@ No product edits or paid calls.
 ### Low: Pi adapter retains one semaphore per distinct thread, even rejected starts
 
 apps/server/src/provider/Layers/PiAdapter.ts:411-423 memoizes locks, with no delete/clear. startSession obtains the lock before runtime-mode validation (1859 onward).
-SendTurn also locks. stopSession/stopAll (2397-2401) close sessions but never retire locks.
+sendTurn also locks. stopSession/stopAll (2397-2401) close sessions but never retire locks.
 Server/provider instance lifetime growth, not an active-session count.
 
 Durable repro: node scripts/leak-audit/current-web-provider.mjs.

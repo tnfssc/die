@@ -4,7 +4,7 @@ All four deeper reports complete: t3-v2-upstream-research.md, t3-thread-executio
 
 Corrections: .cache/die-t3code is stale 6f00d388. .cache/die-t3code-v0042 matches pin 719a76ca + web/t3.patch (backend worker verified reverse patch). T3 orchestration-v2 is real and distinct from Codex multi-agent v2. Implemented on unmerged PR #2829, research head a9b49a7d. #4779 historical observability stack, #5219 merged v1 observability bridge. Current pin has no v2 runtime/API.
 
-Real v2 supplies session-scoped MCP delegate_task/task_status/task_cancel, T3-owned child threads/runs and result delivery. Create_threads/top-level launch is distinct. Adopting branch is broad migration. Do not cherry-pick task tool in isolation.
+Real v2 supplies session-scoped MCP delegate_task/task_status/task_cancel, T3-owned child threads/runs and result delivery. create_threads/top-level launch is distinct. Adopting branch is broad migration. Do not cherry-pick task tool in isolation.
 
 Lead directly verified upstream source in .agents/research-t3-v2-pr2829:
 - docs/orchestration-v2/orchestrator-mcp-server.md: purpose, ownership, credentials.

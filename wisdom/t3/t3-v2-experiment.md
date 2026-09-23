@@ -24,7 +24,7 @@ No root change was necessary to expose delegation FROM execute. The experiment l
 
 ## Reproduce / next work
 
-See experiments/t3-v2/README.md. Core commands: setup.sh. Run.sh test-harness. Run.sh test-ui. Bun test the three bridge/client/isolation suites. Audit-isolation.ts. Run.sh dev uses isolated HOME/XDG/T3 state and separate loopback ports with standard pairing. Combined-probe.sh is deliberately expected-failing and bounded.
+See experiments/t3-v2/README.md. Core commands: setup.sh. run.sh test-harness. run.sh test-ui. Bun test the three bridge/client/isolation suites. Audit-isolation.ts. run.sh dev uses isolated HOME/XDG/T3 state and separate loopback ports with standard pairing. Combined-probe.sh is deliberately expected-failing and bounded.
 
 Resolve adapter subprocess/scope teardown and connect the real MCP session credential + generated extension + execute bridge to real Orchestrator-v2 lifecycle in one test. Then verify UI Open subagent thread and actual transcript/result, cancellation and network reconnect using a functioning browser. A real bounded model smoke can follow. Scope reconstructed-session replay is not full server restart recovery. Finally assess broad shipped v0.0.42 patch rebase/migration, Pi tool permission semantics, provider model catalog, and robust protocol/session error behavior before adoption.
 

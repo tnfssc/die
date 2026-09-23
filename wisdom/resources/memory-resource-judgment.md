@@ -39,7 +39,7 @@ The lead made the calls below. They are not a vote.
 
 ### Why the transcript verdict differs from the skeptical reviewer
 
-The history reviewer is right. This is a product rule, not a correctness bug. Keeping 32 MiB of source text in about 32 MiB of heap is no surprise. Compaction promises a smaller model context. It does not promise flat process memory.
+The history reviewer is right. This is a product rule, not a correctness bug. Keeping 32 MiB of source text in about 32 MiB of heap is no surprise. Compaction promises a smaller model context. It does not promise flat process heap use.
 
 Still, I would bound how much old history stays in RAM for long and resumed sessions.
 It is not necessary to erase originals or force a new session.
