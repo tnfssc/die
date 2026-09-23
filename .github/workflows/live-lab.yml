@@ -1,6 +1,11 @@
 name: Native Live Lab
 on:
   workflow_dispatch:
+    inputs:
+      bundle:
+        description: Build a downloadable experimental CLI and native helper bundle
+        type: boolean
+        default: false
   push:
     branches: [develop]
     paths:
@@ -13,7 +18,7 @@ jobs:
   macos-helper:
     name: macOS native helper (no devices)
     runs-on: macos-15
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - name: Test bounded audio rings
@@ -30,5 +35,41 @@ jobs:
         with:
           name: live-lab-audio-macos-arm64-experimental
           path: dist/live-lab-audio
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/setup-node@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.bundle
+        with:
+          node-version: 24.13.1
+      - uses: pnpm/action-setup@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.bundle
+        with:
+          version: 11.10.0
+      - uses: oven-sh/setup-bun@v2
+        if: github.event_name == 'workflow_dispatch' && inputs.bundle
+        with:
+          bun-version: 1.4.1
+      - name: Build opt-in CLI candidate (no devices or API)
+        if: github.event_name == 'workflow_dispatch' && inputs.bundle
+        shell: bash
+        run: |
+          bun install --frozen-lockfile
+          bun run build
+          mkdir -p dist/live-lab-candidate
+          cp dist/die dist/live-lab-audio LICENSE THIRD_PARTY_NOTICES.md native/live-lab/README.md dist/live-lab-candidate/
+          bun scripts/generate-third-party-notices.ts dist/live-lab-candidate/THIRD_PARTY_LICENSES.txt
+          cat dist/die-web/LICENSE-T3CODE >> dist/live-lab-candidate/THIRD_PARTY_LICENSES.txt
+          while IFS= read -r -d '' license; do cat "$license" >> dist/live-lab-candidate/THIRD_PARTY_LICENSES.txt; done < <(find dist/die-web/node_modules/.pnpm -type f \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'NOTICE*' \) -print0)
+          git rev-parse HEAD > dist/live-lab-candidate/SOURCE.txt
+          home=$(mktemp -d)
+          trap 'rm -rf "$home"' EXIT
+          env -i HOME="$home" PATH=/usr/bin:/bin dist/live-lab-candidate/die --help > /dev/null
+          env -i HOME="$home" PATH=/usr/bin:/bin dist/live-lab-candidate/live-lab-audio --self-test
+          tar -czf dist/live-lab-macos-arm64-experimental.tar.gz -C dist/live-lab-candidate .
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch' && inputs.bundle
+        with:
+          name: live-lab-macos-arm64-experimental
+          path: dist/live-lab-macos-arm64-experimental.tar.gz
           if-no-files-found: error
           retention-days: 7

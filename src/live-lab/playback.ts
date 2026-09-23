@@ -147,7 +147,7 @@ export class PlaybackScheduler {
         if (this.closed || epoch !== this.epochValue) return;
         this.flushing = false;
         this.blocked = true;
-        this.options.onError(new Error("Playback flush failed: " + String(cause)));
+        this.options.onError(new Error("Playback flush failed"));
       },
     );
   }
@@ -222,7 +222,7 @@ export class PlaybackScheduler {
           return;
         } // cancellation is expected
         this.blocked = true;
-        this.options.onError(new Error("Playback write failed: " + String(cause)));
+        this.options.onError(new Error("Playback write failed"));
       },
     );
   }

@@ -163,11 +163,13 @@ describe("opt-in voice-only lab", () => {
     expect([t.launches, t.keyCalls, t.starts]).toEqual([1, 1, 1]);
     t.voice.onInputTranscript?.({ text: "hello\x1b[2J\nworld" });
     t.voice.onOutputTranscript?.({ text: "reply\u202eok" }, 0);
-    expect(t.widgets.at(-1)?.join(" ")).toContain("You: hello [2J world");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(t.widgets.at(-1)?.join(" ")).toContain("You: hello world");
     expect(t.widgets.at(-1)?.join(" ")).not.toContain("\x1b");
-    t.voice.onAudio?.(Buffer.alloc(20000).toString("base64"), 0);
-    await tick();
-    expect(t.played.map((p) => p.length)).toEqual([9600, 9600, 800]);
+    t.voice.onAudio?.(Buffer.alloc(2000).toString("base64"), 0);
+    t.voice.onTurnComplete?.(0);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(t.played.map((p) => p.length)).toEqual([960, 960, 80]);
     t.capture.capture?.(Buffer.alloc(640));
     expect(t.sends).toBe(1);
     t.voice.onTurnComplete?.(0);
@@ -214,11 +216,10 @@ describe("opt-in voice-only lab", () => {
     };
     await t.run("start");
     await tick();
-    expect(t.played.map((p) => p.length)).toEqual([9600]);
-    t.voice.onAudio?.(Buffer.alloc(96000).toString("base64"), 0);
-    t.voice.onAudio?.(Buffer.alloc(96000).toString("base64"), 0);
+    expect(t.played.map((p) => p.length)).toEqual([960]);
+    t.voice.onAudio?.(Buffer.alloc(2_880_002).toString("base64"), 0);
     expect(t.status.at(-1)).toBeUndefined();
-    expect(t.notices.join(" ")).toContain("backlog exceeded");
+    expect(t.notices.join(" ")).toContain("bounded audio budget");
   });
   test("platform gate precedes consent, and session shutdown stops without touching agent", async () => {
     const t = setup({ local: () => false });
@@ -228,5 +229,38 @@ describe("opt-in voice-only lab", () => {
     await x.run("start");
     x.shutdown();
     expect(x.status.at(-1)).toBeUndefined();
+  });
+  test("transcript deltas join without invented spaces and capture keeps running while speaking", async () => {
+    const t = setup();
+    await t.run("start");
+    t.voice.onInputTranscript?.({ text: "Hel" });
+    t.voice.onInputTranscript?.({ text: "lo world", finished: true });
+    t.voice.onAudio?.(Buffer.alloc(1920).toString("base64"), 0);
+    t.capture.played?.(40);
+    for (let i = 0; i < 20; i++) t.capture.capture?.(Buffer.alloc(640));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(t.widgets.at(-1)?.join(" ")).toContain("You: Hello world");
+    expect(t.sends).toBe(20);
+    expect(t.status.at(-1)).toContain("speaking");
+    t.voice.onTurnComplete?.(0);
+    t.capture.played?.(0);
+    expect(t.status.at(-1)).toContain("listening");
+    await t.run("stop");
+  });
+  test("stop invalidates pending consent and concurrent starts have one owner", async () => {
+    const t = setup();
+    let accept!: (value: boolean) => void;
+    t.ctx.ui.confirm = () =>
+      new Promise<boolean>((resolve) => {
+        accept = resolve;
+      });
+    const first = t.run("start");
+    await tick();
+    await t.run("start");
+    expect(t.launches).toBe(0);
+    await t.run("stop");
+    accept(true);
+    await first;
+    expect(t.launches).toBe(0);
   });
 });

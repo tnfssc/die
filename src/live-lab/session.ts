@@ -101,6 +101,8 @@ export class VoiceSession {
       connecting = this.adapter(apiKey).live.connect({
         model: VOICE_MODEL,
         config: {
+          systemInstruction:
+            "You are the voice-only conversation prototype in die. Talk naturally and keep replies brief unless asked for more. You have no access to the coding agent, project files, or tools in this prototype. Never claim to have started or completed work. If asked to act on the project, explain that the work handoff is not connected yet. Do not ask for API keys.",
           responseModalities: [Modality.AUDIO],
           inputAudioTranscription: {},
           outputAudioTranscription: {},

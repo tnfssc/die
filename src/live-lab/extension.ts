@@ -1,19 +1,19 @@
+import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createDefaultLiveCredentialService } from "../live/credentials";
 import { liveLocalOnly } from "../live/status";
 import { LiveLabAudio, type AudioCallbacks } from "./audio";
 import { VoiceSession } from "./session";
+import { PlaybackScheduler } from "./playback";
 import { VOICE_MODEL, type VoiceCallbacks } from "./types";
 
 const ID = "die-live-lab";
-const FRAME_BYTES = 9600; // 200ms, mono 24k PCM16; helper's MAX_PLAY
-const MAX_PENDING_BYTES = 96000; // 2s SDK packet; never silently drop speech
 const MAX_VISIBLE = 8;
 const clean = (value: string) =>
-  value
+  stripVTControlCharacters(value)
+    .replace(/\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))?/g, "")
     .replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]/g, " ")
-    .replace(/\s+/g, " ")
-    .slice(0, 180);
+    .replace(/\s+/g, " ");
 
 export interface LabDependencies {
   local(mode: string): boolean;
@@ -41,103 +41,129 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
   const deps = { ...defaults, ...injected };
   let current: Run | undefined;
   let sequence = 0;
+  let confirmation: number | undefined;
   class Run {
     readonly id = ++sequence;
     readonly controller = new AbortController();
     voice?: LabVoice;
     audio?: LabAudio;
-    state = "starting";
-    pending: Buffer[] = [];
+    state = "starting"; // lifecycle only: capture and pump run regardless of presentation
+    speaking = false;
+    generationFinished = false;
+    heardQueue = false;
+    private renderTimer?: ReturnType<typeof setTimeout>;
+    private lastRender = 0;
+    private lastStatus?: string;
+    private lastWidget?: string;
+    private readonly utterances: Record<"You" | "Voice", string> = { You: "", Voice: "" };
     pendingBytes = 0;
-    pumping = false;
-    flushing: Promise<void> = Promise.resolve();
+    inFlight = false;
+    readonly playback: PlaybackScheduler;
     generation = 0;
     inputFrames = 0;
     outputBytes = 0;
     turns = 0;
     queuedMs = 0;
     readonly lines: string[] = [];
-    constructor(readonly ctx: ExtensionContext) {}
+    constructor(readonly ctx: ExtensionContext) {
+      this.playback = new PlaybackScheduler({
+        send: (frame, epoch) =>
+          this.audio ? this.audio.play(frame, epoch) : Promise.reject(new Error("Audio not ready")),
+        flush: (epoch) => (this.audio ? this.audio.flush(epoch) : Promise.reject(new Error("Audio not ready"))),
+        onError: () => this.fail("Playback failed or response exceeded the bounded audio budget"),
+        onState: (s) => {
+          if (!this.alive) return;
+          this.pendingBytes = s.pendingBytes;
+          this.inFlight = s.inFlight;
+          this.drain();
+          this.render();
+        },
+      });
+    }
     get alive() {
       return current === this && !this.controller.signal.aborted;
     }
-    render() {
+    render(immediate = false) {
       if (!this.alive) return;
-      this.ctx.ui.setStatus(
-        ID,
-        "voice lab " +
-          this.state +
-          " · " +
-          VOICE_MODEL +
-          " · input " +
-          this.inputFrames +
-          " frames · output " +
-          Math.floor(this.outputBytes / 48) +
-          "ms · turns " +
-          this.turns +
-          " · queued " +
-          Math.round(this.queuedMs) +
-          "ms · pending " +
-          Math.floor(this.pendingBytes / 48) +
-          "ms (no agent tools)",
-      );
-      this.ctx.ui.setWidget(ID, this.lines.length ? [...this.lines] : undefined);
+      if (!immediate && Date.now() - this.lastRender < 100) {
+        if (!this.renderTimer)
+          this.renderTimer = setTimeout(
+            () => {
+              this.renderTimer = undefined;
+              this.render(true);
+            },
+            100 - (Date.now() - this.lastRender),
+          );
+        return;
+      }
+      if (this.renderTimer) {
+        clearTimeout(this.renderTimer);
+        this.renderTimer = undefined;
+      }
+      this.lastRender = Date.now();
+      const presentation = this.state === "running" ? (this.speaking ? "speaking" : "listening") : "connecting";
+      const status = "Voice " + VOICE_MODEL + " · " + presentation;
+      if (status !== this.lastStatus) {
+        this.ctx.ui.setStatus(ID, status);
+        this.lastStatus = status;
+      }
+      const lines = [...this.lines];
+      for (const label of ["You", "Voice"] as const)
+        if (this.utterances[label]) lines.push(label + ": " + this.utterances[label]);
+      const visible = lines.slice(-MAX_VISIBLE);
+      const widget = JSON.stringify(visible);
+      if (widget !== this.lastWidget) {
+        this.ctx.ui.setWidget(ID, visible.length ? visible : undefined);
+        this.lastWidget = widget;
+      }
     }
-    transcript(label: string, text: string) {
-      if (!this.alive || !text) return;
-      this.lines.push(label + ": " + clean(text));
-      if (this.lines.length > MAX_VISIBLE) this.lines.splice(0, this.lines.length - MAX_VISIBLE);
+    transcript(label: "You" | "Voice", text: string, finished?: boolean) {
+      if (!this.alive) return;
+      const fragment = clean(text);
+      const previous = this.utterances[label];
+      // Transcript events are deltas. Keep boundaries legible without removing supplied spaces.
+      const separator = "";
+      this.utterances[label] = (previous + separator + fragment).slice(0, 180);
+      if (finished) {
+        if (this.utterances[label]) this.lines.push(label + ": " + this.utterances[label]);
+        this.lines.splice(0, Math.max(0, this.lines.length - MAX_VISIBLE));
+        this.utterances[label] = "";
+      }
       this.render();
     }
-    async pump() {
-      if (this.pumping) return;
-      this.pumping = true;
-      try {
-        while (this.alive && this.state === "listening" && this.audio && this.pending.length) {
-          const frame = this.pending.shift()!;
-          this.pendingBytes -= frame.length;
-          const gen = this.generation;
-          await this.flushing;
-          if (!this.alive || gen !== this.generation) continue;
-          try {
-            await this.audio.play(frame, gen);
-          } catch {
-            if (this.alive && gen === this.generation) throw new Error("Playback failed");
-          }
-        }
-      } catch {
-        if (this.alive) this.fail("Playback helper failed");
-      } finally {
-        this.pumping = false;
-        if (this.alive && this.state === "listening" && this.pending.length) void this.pump();
+    drain() {
+      if (
+        this.generationFinished &&
+        this.pendingBytes === 0 &&
+        !this.inFlight &&
+        this.queuedMs === 0 &&
+        this.heardQueue &&
+        this.speaking
+      ) {
+        this.speaking = false;
+        this.render(true);
       }
     }
     output(base64: string, epoch: number) {
       if (!this.alive || epoch !== this.generation) return;
-      // SDK checked PCM16/base64 and bounded each turn. Split without collecting entire turn.
       const pcm = Buffer.from(base64, "base64");
-      if (this.pendingBytes + pcm.length > MAX_PENDING_BYTES || this.queuedMs > 1200) {
-        this.fail("Playback backlog exceeded 2 seconds; voice stopped rather than dropping speech");
-        return;
-      }
       this.outputBytes += pcm.length;
-      for (let i = 0; i < pcm.length; i += FRAME_BYTES) {
-        const frame = pcm.subarray(i, i + FRAME_BYTES);
-        this.pending.push(frame);
-        this.pendingBytes += frame.length;
+      if (pcm.length) {
+        this.speaking = true;
+        this.generationFinished = false;
       }
-      void this.pump();
+      this.playback.enqueue(pcm, epoch);
       this.render();
     }
     interrupt(epoch: number) {
-      if (!this.alive) return;
+      if (!this.alive || epoch <= this.generation) return;
       this.generation = epoch;
-      this.pending = [];
       this.pendingBytes = 0;
-      if (this.state === "listening")
-        this.flushing = this.audio!.flush(epoch).catch(() => {
-          if (this.alive) this.fail("Playback flush failed");
-        });
+      this.queuedMs = 0;
+      this.speaking = false;
+      this.generationFinished = false;
+      this.heardQueue = false;
+      this.playback.interrupt(epoch);
       this.render();
     }
     fail(message: string) {
@@ -150,9 +176,11 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
       current = undefined;
       this.controller.abort();
       this.state = "off";
-      this.pending = [];
+      this.playback.close();
       this.pendingBytes = 0;
       this.lines.length = 0;
+      if (this.renderTimer) clearTimeout(this.renderTimer);
+      this.renderTimer = undefined;
       this.voice?.close();
       const audio = this.audio;
       this.audio = undefined;
@@ -171,7 +199,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
         this.audio = await deps.audio(
           {
             capture: (pcm) => {
-              if (this.alive && this.state === "listening") {
+              if (this.alive && this.state === "running") {
                 this.inputFrames++;
                 this.voice?.sendAudio(pcm.toString("base64"));
                 this.render();
@@ -180,6 +208,9 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
             played: (ms) => {
               if (this.alive) {
                 this.queuedMs = ms;
+                if (ms > 0) this.heardQueue = true;
+                this.playback.nativeQueued(ms);
+                this.drain();
                 this.render();
               }
             },
@@ -202,11 +233,14 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           onTurnComplete: () => {
             if (this.alive) {
               this.turns++;
+              this.generationFinished = true;
+              this.playback.turnComplete(this.generation);
+              this.drain();
               this.render();
             }
           },
-          onInputTranscript: (t) => this.transcript("You", t.text),
-          onOutputTranscript: (t) => this.transcript("Voice", t.text),
+          onInputTranscript: (t) => this.transcript("You", t.text, t.finished),
+          onOutputTranscript: (t) => this.transcript("Voice", t.text, t.finished),
           onError: (e) => this.fail("Provider " + e.code),
         });
         await this.voice.connect(key);
@@ -215,12 +249,11 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           this.fail("Provider did not accept session");
           return;
         }
+        this.state = "running"; // capture may arrive synchronously inside audio.start()
         await this.audio.start();
         if (!this.alive) return;
-        this.state = "listening";
-        if (this.generation) await this.audio.flush(this.generation);
+        this.playback.start();
         if (!this.alive) return;
-        void this.pump();
         this.render();
       } catch {
         if (this.alive) this.fail("Startup failed; check Google API-key auth and the local audio helper");
@@ -254,7 +287,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
         ctx.ui.notify(
           current
             ? "Voice lab " +
-                current.state +
+                (current.state === "running" ? (current.speaking ? "speaking" : "listening") : "connecting") +
                 " · " +
                 VOICE_MODEL +
                 " · input " +
@@ -270,6 +303,8 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           "info",
         );
       } else if (action === "stop") {
+        sequence++;
+        confirmation = undefined;
         current?.stop();
         ctx.ui.notify("Voice lab off; agent work unchanged.", "info");
       } else if (action === "start") {
@@ -277,23 +312,40 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           ctx.ui.notify("Voice lab requires local interactive macOS or Linux CLI.", "warning");
           return;
         }
-        if (current) {
-          ctx.ui.notify("Voice lab already " + current.state + ".", "info");
+        if (current || confirmation !== undefined) {
+          ctx.ui.notify("Voice lab already starting or running.", "info");
           return;
         }
-        const consent = await ctx.ui.confirm(
-          "Paid Google voice + microphone",
-          "Start a paid Google Gemini voice session and open the microphone/speakers? Voice-only: NO agent tools or bridge. Transcripts are temporary on screen, not saved to chat. /live-lab stop closes voice only.",
-        );
+        const owner = ++sequence;
+        confirmation = owner;
+        let consent: boolean;
+        try {
+          consent = await ctx.ui.confirm(
+            "Paid Google voice + microphone",
+            "Start a paid Google Gemini voice session and open the microphone/speakers? Voice-only: NO agent tools or bridge. Transcripts are temporary on screen, not saved to chat. /live-lab stop closes voice only.",
+          );
+        } catch {
+          if (confirmation === owner) confirmation = undefined;
+          return;
+        }
+        if (confirmation !== owner || owner !== sequence) return;
+        confirmation = undefined;
         if (!consent || current) return;
         const run = new Run(ctx);
         current = run;
-        run.render();
+        run.render(true);
         await run.start();
       } else if (action) ctx.ui.notify("Usage: /live-lab [start|stop|status]", "info");
     },
   });
   pi.on("session_shutdown", () => {
+    sequence++;
+    confirmation = undefined;
+    current?.stop();
+  });
+  pi.on("session_start", () => {
+    sequence++;
+    confirmation = undefined;
     current?.stop();
   });
 }
