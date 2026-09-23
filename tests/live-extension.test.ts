@@ -5,6 +5,9 @@ import type { LiveCallbacks } from "../src/live/transport";
 
 const flush = () => new Promise<void>((done) => setTimeout(done, 0));
 function fixture(local = true) {
+  const choices: (string | undefined)[] = [];
+  let credentialChecks = 0,
+    imports = 0;
   const handlers = new Map<string, Set<(event: any) => unknown>>();
   let command: any;
   const sent: { text: string; options: unknown }[] = [];
@@ -43,6 +46,13 @@ function fixture(local = true) {
   liveExtension(api, {
     local: () => local,
     capabilities: async () => ({ supported: true, requirements: "fake devices" }),
+    credentialStatus: async () => {
+      credentialChecks++;
+      return { configured: true, canImport: false, message: "Google key configured" };
+    },
+    importKey: async () => {
+      imports++;
+    },
     key: async () => {
       keyReads++;
       return "FAKE-never-used-key";
@@ -89,9 +99,12 @@ function fixture(local = true) {
       notify: (text: string) => notices.push(text),
       setStatus: (key: string, value: string | undefined) => statuses.set(key, value),
       confirm: async () => true,
+      select: async () => choices.shift(),
     },
   } as unknown as ExtensionCommandContext;
   return {
+    choices,
+    credentialState: () => ({ credentialChecks, imports }),
     action: (name: string) => command.handler(name, ctx),
     emit: (name: string, event: unknown = {}) => {
       for (const handler of [...(handlers.get(name) ?? [])]) handler(event);
@@ -197,5 +210,43 @@ test("confirmed background resumption reaches the live channel and completed ass
   expect(JSON.stringify(result)).toContain("current_session");
   expect(result[0]![0]).toBe("google-11");
   expect(result[0]![2]).toBe(true);
+  await f.action("stop");
+});
+
+test("setup refuses nonlocal contexts and active Live without inspecting credentials", async () => {
+  const remote = fixture(false);
+  await remote.action("setup");
+  expect(remote.credentialState().credentialChecks).toBe(0);
+  expect(remote.state().connects).toBe(0);
+  const local = fixture();
+  await local.action("start");
+  await local.action("setup");
+  expect(local.credentialState().credentialChecks).toBe(0);
+  await local.action("stop");
+});
+
+test("wizard paid test never creates audio/bridge and closes on session shutdown", async () => {
+  const f = fixture();
+  f.choices.push("Test paid connection (no microphone or speakers)");
+  const pending = f.action("setup");
+  await flush();
+  expect(f.state()).toMatchObject({ connects: 1, audioStarts: 0 });
+  expect(f.sent).toHaveLength(0);
+  f.emit("session_shutdown");
+  await pending;
+  expect(f.state()).toMatchObject({ socketCloses: 1, audioStarts: 0, aborts: 0 });
+  await f.action("setup");
+  expect(f.credentialState().credentialChecks).toBe(2);
+});
+test("wizard explicit start keeps the existing configured agent wiring", async () => {
+  const f = fixture();
+  f.choices.push("Start Live");
+  await f.action("setup");
+  expect(f.state()).toMatchObject({ connects: 1, audioStarts: 0 });
+  f.ready();
+  await flush();
+  expect(f.state().audioStarts).toBe(1);
+  f.call("wizard-handoff", "inspect a failure");
+  expect(f.sent).toHaveLength(1);
   await f.action("stop");
 });

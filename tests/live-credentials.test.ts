@@ -45,3 +45,16 @@ describe("Live credentials", () => {
     }
   });
 });
+
+test("credential file reads reject oversized and non-regular sources with opaque errors", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-live-key-bounds-"));
+  try {
+    const path = join(dir, "large");
+    await writeFile(path, "GEMINI_API_KEY=" + fake + "\n#" + "x".repeat(16_384), { mode: 0o600 });
+    await expect(loadLiveKey(path)).rejects.toThrow("0600");
+    await expect(loadLiveKey(dir)).rejects.toThrow("0600");
+    await expect(loadLiveKey(join(dir, "missing"))).rejects.toThrow("0600");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

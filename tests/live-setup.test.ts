@@ -1,10 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  runLiveSetup,
-  type LiveSetupDependencies,
-  type LiveSetupStatus,
-  type LiveSetupUI,
-} from "../src/live/setup";
+import { runLiveSetup, type LiveSetupDependencies, type LiveSetupStatus, type LiveSetupUI } from "../src/live/setup";
 
 type Event = { type: "select" | "confirm" | "notify"; title: string; detail?: string; options?: string[] };
 
@@ -48,7 +43,8 @@ function harness(choices: Array<string | undefined | boolean>, overrides: Partia
   return { ui, deps, events, calls };
 }
 
-const text = (events: Event[]) => events.map((event) => [event.title, event.detail, ...(event.options ?? [])].join(" ")).join("\n");
+const text = (events: Event[]) =>
+  events.map((event) => [event.title, event.detail, ...(event.options ?? [])].join(" ")).join("\n");
 const menus = (events: Event[]) => events.filter((event) => event.type === "select");
 
 describe("Live setup wizard", () => {
@@ -71,7 +67,7 @@ describe("Live setup wizard", () => {
     const rendered = text(h.events);
     expect(rendered).toContain("~/.die/live.env");
     expect(rendered).toContain("0600");
-    expect(rendered).toContain("exactly one GEMINI_API_KEY assignment");
+    expect(rendered).toContain("exactly one literal GEMINI_API_KEY=your-key assignment");
     expect(rendered).toContain("external local editor");
     expect(rendered).toContain("Never paste a key into chat");
     expect(rendered).toContain("shell command containing the key");
@@ -81,7 +77,7 @@ describe("Live setup wizard", () => {
     expect(h.calls.importKey).toBe(0);
   });
 
-  test("offers import only when inspection says a file can be imported", async () => {
+  test("offers import only when Google auth can accept an import", async () => {
     let configured = false;
     const h = harness(["Import key from ~/.die/live.env", true, "Done"], {
       async status() {
@@ -117,11 +113,20 @@ describe("Live setup wizard", () => {
   });
 
   test("configured setup is reused and paid test requires separate consent", async () => {
-    const h = harness(["Test paid connection (no microphone or speakers)", false, "Test paid connection (no microphone or speakers)", true, "Done"], {
-      async status() {
-        return { configured: true, canImport: false, message: "Existing Google provider auth is ready." };
+    const h = harness(
+      [
+        "Test paid connection (no microphone or speakers)",
+        false,
+        "Test paid connection (no microphone or speakers)",
+        true,
+        "Done",
+      ],
+      {
+        async status() {
+          return { configured: true, canImport: false, message: "Existing Google provider auth is ready." };
+        },
       },
-    });
+    );
     await runLiveSetup(h.ui, h.deps);
 
     expect(h.calls.testConnection).toBe(1);
@@ -180,13 +185,7 @@ describe("Live setup wizard", () => {
 
   test("operation failures are static and never expose exception secrets", async () => {
     const secret = "AIza-DO-NOT-RENDER";
-    const h = harness([
-      "Import key from ~/.die/live.env",
-      true,
-      "Import key from ~/.die/live.env",
-      true,
-      "Done",
-    ], {
+    const h = harness(["Import key from ~/.die/live.env", true, "Import key from ~/.die/live.env", true, "Done"], {
       async status() {
         return { configured: false, canImport: true, message: "Import available." };
       },
@@ -204,28 +203,31 @@ describe("Live setup wizard", () => {
   test("connection and start failures can be retried without automatic retries", async () => {
     let testAttempts = 0;
     let startAttempts = 0;
-    const h = harness([
-      "Test paid connection (no microphone or speakers)",
-      true,
-      "Test paid connection (no microphone or speakers)",
-      true,
-      "Start Live",
-      true,
-      "Start Live",
-      true,
-    ], {
-      async status() {
-        return { configured: true, canImport: false, message: "Ready." };
+    const h = harness(
+      [
+        "Test paid connection (no microphone or speakers)",
+        true,
+        "Test paid connection (no microphone or speakers)",
+        true,
+        "Start Live",
+        true,
+        "Start Live",
+        true,
+      ],
+      {
+        async status() {
+          return { configured: true, canImport: false, message: "Ready." };
+        },
+        async testConnection() {
+          h.calls.testConnection++;
+          if (testAttempts++ === 0) throw new Error("private network response");
+        },
+        async start() {
+          h.calls.start++;
+          if (startAttempts++ === 0) throw new Error("private audio response");
+        },
       },
-      async testConnection() {
-        h.calls.testConnection++;
-        if (testAttempts++ === 0) throw new Error("private network response");
-      },
-      async start() {
-        h.calls.start++;
-        if (startAttempts++ === 0) throw new Error("private audio response");
-      },
-    });
+    );
     await runLiveSetup(h.ui, h.deps);
     expect(h.calls.testConnection).toBe(2);
     expect(h.calls.start).toBe(2);

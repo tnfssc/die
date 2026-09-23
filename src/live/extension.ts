@@ -1,7 +1,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { checkAudioCapabilities, createLocalAudioAdapter } from "./audio";
 import { createCurrentSessionBridge, type CurrentSessionBridge, type LiveBridgeEvent } from "./bridge";
-import { loadLiveKey } from "./credentials";
+import { createDefaultLiveCredentialService } from "./credentials";
+import { testLiveConnection } from "./connection-test";
+import { runLiveSetup, type LiveSetupStatus } from "./setup";
 import { liveLocalOnly, liveStatus } from "./status";
 import { LiveTransport, type LiveCall, type LiveCallbacks } from "./transport";
 
@@ -11,13 +13,30 @@ export interface LiveDependencies {
   local(mode: string): boolean;
   capabilities: typeof checkAudioCapabilities;
   key(): Promise<string>;
+  credentialStatus(): Promise<LiveSetupStatus>;
+  importKey(signal?: AbortSignal): Promise<void>;
   audio(): Audio;
   transport(callbacks: LiveCallbacks): Transport;
 }
 const defaults: LiveDependencies = {
   local: (mode) => liveLocalOnly(mode, process.env, Boolean(process.stdin.isTTY && process.stdout.isTTY)),
   capabilities: checkAudioCapabilities,
-  key: loadLiveKey,
+  key: async () => (await createDefaultLiveCredentialService()).loadKey(),
+  credentialStatus: async () => {
+    const status = await (await createDefaultLiveCredentialService()).status();
+    const configured = status.state === "stored_api_key" || status.state === "configured_api_key";
+    const message =
+      status.state === "oauth"
+        ? "Google OAuth is present and will not be replaced. Live needs a Google API key; manage provider auth separately."
+        : configured
+          ? "Google API key configured (hidden; account access not tested). Existing provider auth will be reused."
+          : "No Google API key configured. Add a secure local file, then explicitly import it into provider auth.";
+    return { configured, canImport: status.canImport, message };
+  },
+  importKey: async (signal) => {
+    const result = await (await createDefaultLiveCredentialService()).importLiveEnv(undefined, signal);
+    if (!result.imported) throw new Error("Google auth changed; refresh setup without overwriting it.");
+  },
   audio: createLocalAudioAdapter,
   transport: (callbacks) => new LiveTransport(callbacks),
 };
@@ -26,10 +45,13 @@ const defaults: LiveDependencies = {
 export default function liveExtension(pi: ExtensionAPI, dependencies: Partial<LiveDependencies> = {}): void {
   const deps = { ...defaults, ...dependencies };
   let active: { stop(): void } | undefined;
+  let setupController: AbortController | undefined;
   let epoch = 0;
   let sequence = 0;
   const stop = () => {
     epoch++;
+    setupController?.abort();
+    setupController = undefined;
     active?.stop();
     active = undefined;
   };
@@ -45,6 +67,8 @@ export default function liveExtension(pi: ExtensionAPI, dependencies: Partial<Li
       ctx.ui.notify("Live is local interactive CLI only (no SSH, web, or child agent sessions).", "warning");
       return;
     }
+    setupController?.abort();
+    setupController = undefined;
     const token = ++epoch;
     let audio: Audio | undefined;
     let transport: Transport | undefined;
@@ -228,12 +252,12 @@ export default function liveExtension(pi: ExtensionAPI, dependencies: Partial<Li
       });
       transport.connect(key);
     } catch {
-      fail("Live could not start. Check SoX and user-owned ~/.die/live.env (0600) with GEMINI_API_KEY.");
+      fail("Live could not start. Run /live setup to check Google credentials and local SoX audio.");
     }
   }
 
   pi.registerCommand("live", {
-    description: "Local live conversation: start, stop, status, setup, cancel-work (prototype)",
+    description: "Local live conversation: setup, start, stop, status, cancel-work",
     handler: async (args, ctx) => {
       let action = args.trim();
       if (!action) {
@@ -241,10 +265,10 @@ export default function liveExtension(pi: ExtensionAPI, dependencies: Partial<Li
           ctx.ui.notify("Live is local interactive CLI only.", "warning");
           return;
         }
-        const choice = await ctx.ui.select("Gemini Live prototype", [
+        const choice = await ctx.ui.select("Gemini Live", [
+          "Setup / review",
           "Start microphone + speakers (paid API)",
           "Stop Live (keep work running)",
-          "Setup / limits",
           "Cancel current agent turn",
         ]);
         action =
@@ -252,7 +276,7 @@ export default function liveExtension(pi: ExtensionAPI, dependencies: Partial<Li
             ? "start"
             : choice === "Stop Live (keep work running)"
               ? "stop"
-              : choice === "Setup / limits"
+              : choice === "Setup / review"
                 ? "setup"
                 : choice === "Cancel current agent turn"
                   ? "cancel-work"
@@ -278,10 +302,41 @@ export default function liveExtension(pi: ExtensionAPI, dependencies: Partial<Li
         return;
       }
       if (action === "setup") {
-        ctx.ui.notify(
-          "Prototype: Linux local SoX rec/play, default mic/speakers; headphones recommended (no echo cancellation). Audio and confirmed current-session replies are sent to Google. Key: user-owned ~/.die/live.env (0600), GEMINI_API_KEY. Existing provider auth is not changed. /live start explicitly starts paid audio. No automatic reconnect. /live stop keeps work running.",
-          "info",
-        );
+        if (!deps.local(ctx.mode)) {
+          ctx.ui.notify("Live setup is local interactive CLI only (no SSH, web, or child agent sessions).", "warning");
+          return;
+        }
+        if (active || setupController) {
+          ctx.ui.notify(
+            active
+              ? "Live is active. Stop Live before running setup; agent work will continue."
+              : "Live setup is already open.",
+            "info",
+          );
+          return;
+        }
+        const controller = new AbortController();
+        setupController = controller;
+        try {
+          await runLiveSetup(ctx.ui, {
+            status: deps.credentialStatus,
+            importKey: () => deps.importKey(controller.signal),
+            capabilities: deps.capabilities,
+            isCurrent: () => !controller.signal.aborted,
+            testConnection: async () => {
+              const key = await deps.key();
+              if (controller.signal.aborted) return;
+              await testLiveConnection(key, { signal: controller.signal, transport: deps.transport });
+            },
+            start: () => start(ctx),
+          });
+        } catch {
+          if (!controller.signal.aborted)
+            ctx.ui.notify("Live setup could not complete. Run /live setup to retry.", "warning");
+        } finally {
+          controller.abort();
+          if (setupController === controller) setupController = undefined;
+        }
         return;
       }
       if (action === "cancel-work") {

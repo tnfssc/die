@@ -32,7 +32,7 @@ const overview =
   "Gemini Live uses local Linux SoX with your default microphone and speakers. Audio and selected confirmed replies from this current session are shared with Google. Provider use is paid. There is no echo cancellation: use headphones (or an OS echo-cancelled default device). Opening setup does not connect to Google or open audio devices.";
 
 const credentialInstructions =
-  "In an external local editor, create ~/.die/live.env as a user-owned regular file with mode 0600 and exactly one GEMINI_API_KEY assignment. Never paste a key into chat, this wizard, ordinary CLI input, or a shell command containing the key. Return here and explicitly choose Import. Import saves the key in existing Google provider auth, preserves unrelated provider keys and OAuth, and leaves live.env in place.";
+  "In an external local editor, create ~/.die/live.env as a user-owned regular file with mode 0600 and exactly one literal GEMINI_API_KEY=your-key assignment. Set private permissions before entering the key (chmod 600 ~/.die/live.env); do not overwrite an existing file. Never paste a key into chat, this wizard, ordinary CLI input, or a shell command containing the key. Return here and explicitly choose Import. Import saves the key in existing Google provider auth, preserves unrelated provider keys and OAuth, and leaves live.env in place.";
 
 function alive(deps: LiveSetupDependencies): boolean {
   return deps.isCurrent?.() !== false;
@@ -80,7 +80,10 @@ export async function runLiveSetup(ui: LiveSetupUI, deps: LiveSetupDependencies)
     if (status?.canImport) options.push(IMPORT);
     options.push(INSTRUCTIONS, REFRESH, DONE);
 
-    const choice = await ui.select("Gemini Live setup", options);
+    const choice = await ui.select(
+      `Gemini Live setup\nKey: ${status?.configured ? "configured" : status ? "not configured" : "check failed"} | Audio tools: ${capability?.supported ? "ready (devices untested)" : capability ? "unavailable" : "check failed"}`,
+      options,
+    );
     if (!alive(deps) || choice === undefined || choice === DONE) return;
 
     if (choice === INSTRUCTIONS) {
@@ -97,7 +100,7 @@ export async function runLiveSetup(ui: LiveSetupUI, deps: LiveSetupDependencies)
 
     if (choice === IMPORT) {
       // The option is deliberately absent until a side-effect-free inspection
-      // confirms that a safe import source is available.
+      // confirms that Google provider auth can accept an import. The file is read only after consent.
       if (!status?.canImport) continue;
       const consent = await ui.confirm(
         "Import the Live key?",
@@ -123,6 +126,7 @@ export async function runLiveSetup(ui: LiveSetupUI, deps: LiveSetupDependencies)
         "This makes a paid Google setup connection only. It does not open the microphone or speakers and does not start Live.",
       );
       if (!alive(deps) || !consent) continue;
+      ui.notify("Testing paid setup connection (up to 15 seconds). No audio devices will open.", "info");
       try {
         await deps.testConnection();
         if (!alive(deps)) return;

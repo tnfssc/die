@@ -2,8 +2,10 @@ import { constants } from "node:fs";
 import { type FileHandle, open } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { AuthPrompt, CredentialInfo } from "@earendil-works/pi-ai";
-import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
+import type { CredentialInfo, CredentialStore } from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
+// Pinned Pi 0.87.1 storage seam: not re-exported by the package root. Static import is bundled by Bun.
+import { AuthStorage } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js";
 
 const GOOGLE_PROVIDER = "google";
 
@@ -25,7 +27,7 @@ export function parseLiveKey(source: string): string {
 export async function loadLiveKey(path = liveCredentialsPath()): Promise<string> {
   let file: FileHandle | undefined;
   try {
-    file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
     const stat = await file.stat();
     if (
       !stat.isFile() ||
@@ -35,7 +37,10 @@ export async function loadLiveKey(path = liveCredentialsPath()): Promise<string>
     ) {
       throw new Error("unsafe");
     }
-    return parseLiveKey(await file.readFile("utf8"));
+    const buffer = Buffer.alloc(16_385);
+    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+    if (bytesRead > 16_384) throw new Error("unsafe");
+    return parseLiveKey(buffer.subarray(0, bytesRead).toString("utf8"));
   } catch {
     throw new Error("Live key unavailable. Use a user-owned ~/.die/live.env (0600) with GEMINI_API_KEY.");
   } finally {
@@ -54,7 +59,7 @@ export interface LiveCredentialImportResult {
   status: LiveCredentialStatus;
 }
 
-type LiveCredentialRuntime = Pick<ModelRuntime, "checkAuth" | "getAuth" | "listCredentials" | "login">;
+type LiveCredentialRuntime = Pick<ModelRuntime, "checkAuth" | "getAuth" | "listCredentials">;
 
 export interface LiveCredentialService {
   /** Credential state suitable for UI; this never returns key or token material. */
@@ -62,10 +67,8 @@ export interface LiveCredentialService {
   /** Resolve Google's API key through ModelRuntime. OAuth access tokens are never returned. */
   loadKey(): Promise<string>;
   /** Explicitly migrate live.env into the runtime's existing AuthStorage, if Google is unconfigured. */
-  importLiveEnv(path?: string): Promise<LiveCredentialImportResult>;
+  importLiveEnv(path?: string, signal?: AbortSignal): Promise<LiveCredentialImportResult>;
 }
-
-class ExistingGoogleCredentialError extends Error {}
 
 function storedGoogle(credentials: readonly CredentialInfo[]): CredentialInfo | undefined {
   return credentials.find((credential) => credential.providerId === GOOGLE_PROVIDER);
@@ -75,7 +78,10 @@ function storedGoogle(credentials: readonly CredentialInfo[]): CredentialInfo | 
  * Share the application's ModelRuntime so Live uses the same canonical AuthStorage as every other model.
  * The legacy live.env file is consulted only by importLiveEnv(), never by status() or loadKey().
  */
-export function createLiveCredentialService(runtime: LiveCredentialRuntime): LiveCredentialService {
+export function createLiveCredentialService(
+  runtime: LiveCredentialRuntime,
+  credentials: CredentialStore,
+): LiveCredentialService {
   const status = async (): Promise<LiveCredentialStatus> => {
     const stored = storedGoogle(await runtime.listCredentials());
     if (stored) {
@@ -105,7 +111,8 @@ export function createLiveCredentialService(runtime: LiveCredentialRuntime): Liv
       }
       return key;
     },
-    async importLiveEnv(path = liveCredentialsPath()): Promise<LiveCredentialImportResult> {
+    async importLiveEnv(path = liveCredentialsPath(), signal?: AbortSignal): Promise<LiveCredentialImportResult> {
+      signal?.throwIfAborted();
       let current = await status();
       if (!current.canImport) return { imported: false, status: current };
 
@@ -115,22 +122,35 @@ export function createLiveCredentialService(runtime: LiveCredentialRuntime): Liv
       current = await status();
       if (!current.canImport) return { imported: false, status: current };
 
-      try {
-        await runtime.login(GOOGLE_PROVIDER, "api_key", {
-          async prompt(prompt: AuthPrompt): Promise<string> {
-            if (prompt.type !== "secret") throw new Error("Unexpected Google API-key login prompt.");
-            // login() serializes provider credential operations. Recheck from inside it so a
-            // login that won the race after file reading is never replaced by this import.
-            if (!(await status()).canImport) throw new ExistingGoogleCredentialError();
-            return key;
-          },
-          notify() {},
-        });
-      } catch (error) {
-        if (!(error instanceof ExistingGoogleCredentialError)) throw error;
-        return { imported: false, status: await status() };
-      }
-      return { imported: true, status: { state: "stored_api_key", canImport: false } };
+      let imported = false;
+      // ModelRuntime.login replaces a provider credential. Import is deliberately a
+      // conditional AuthStorage.modify instead: its lock also protects against other
+      // runtimes/processes installing Google OAuth or a key after our review.
+      await credentials.modify(
+        GOOGLE_PROVIDER,
+        async (existing) => {
+          signal?.throwIfAborted();
+          if (existing !== undefined) return existing;
+          imported = true;
+          return { type: "api_key", key };
+        },
+        { signal },
+      );
+      return { imported, status: await status() };
     },
   };
+}
+
+/** Lazy call-site factory: same canonical auth.json, stock Google provider, no catalogue/network refresh. */
+export async function createDefaultLiveCredentialService(): Promise<LiveCredentialService> {
+  const credentials = AuthStorage.create(
+    join(process.env.DIE_CODING_AGENT_DIR ?? join(homedir(), ".die", "agent"), "auth.json"),
+  );
+  const runtime = await ModelRuntime.create({
+    credentials,
+    modelsPath: null,
+    refreshOnCreate: false,
+    allowModelNetwork: false,
+  });
+  return createLiveCredentialService(runtime, credentials);
 }
