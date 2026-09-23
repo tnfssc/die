@@ -47,6 +47,17 @@ function fixture() {
 }
 
 describe("compact extension footer", () => {
+  test("Live reactive line stays in existing compact status row", () => {
+    const { ctx, data, statuses } = fixture();
+    statuses.set("die-live", "live ──━━──");
+    for (const width of [60, 90, 140]) {
+      const lines = plain(renderSingleRowFooter(ctx, data, theme, width));
+      expect(lines).toHaveLength(1);
+      expect(lines[0]).toContain("live ──━━──");
+      expect(lines[0]).not.toContain("+1 status");
+      expect(visibleWidth(lines[0]!)).toBeLessThanOrEqual(width);
+    }
+  });
   test("/status toggles details without replacing the editor or changing the draft", async () => {
     const { ctx, data } = fixture();
     let command!: Parameters<ExtensionAPI["registerCommand"]>[1];

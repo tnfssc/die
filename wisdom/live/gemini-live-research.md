@@ -42,8 +42,8 @@ The empty declaration list above is a placeholder: omit `tools` until there are 
 4. Input is raw signed 16-bit little-endian PCM, natively 16 kHz. Output is raw signed 16-bit little-endian PCM at 24 kHz. Own and bound an output playback queue.
 5. Match every server `toolCall.functionCalls[]` and client `toolResponse.functionResponses[]` by the server-issued `id`; do not match only by function name.
 6. Treat `generationComplete`, `turnComplete`, and `interrupted` as different states. An interrupted turn has no `generationComplete`; it proceeds through `interrupted` to `turnComplete`.
-7. Handle `toolCallCancellation.ids[]`. Cancel unfinished local work where possible. Never try a side effect again merely because cancellation made its result uncertain.
-8. Bound inbound audio, outbound audio, pending calls, and response sizes. Socket close/error owns cancellation and queue cleanup.
+7. Handle `toolCallCancellation.ids[]`. For this approved architecture it cancels only Live response tracking, **never** the die agent work. Speech interruption is not authorization to cancel coding. Never retry side effects because their result became uncertain.
+8. Bound inbound audio, outbound audio, pending calls, and response sizes. Socket close/error owns audio/socket queue cleanup, never agent cancellation.
 
 The four client envelopes are `setup`, `clientContent`, `realtimeInput`, and `toolResponse`. Realtime audio, video, and text are concurrent streams; ordering across modalities is not guaranteed. Input/output transcript messages are also independent and have no guaranteed ordering, so transcripts must not drive audio queue correctness.
 
@@ -115,7 +115,7 @@ The eventual integration should not parse `auth.json` itself. Create the existin
 
 Before that integration, a small `live.env` loader is acceptable as an explicit bridge:
 
-- fixed path `~/.die/agent/live.env`; do not search the repository or current directory;
+- fixed path `~/.die/live.env`; do not search the repository or current directory;
 - one supported assignment, `GEMINI_API_KEY=...`; blank lines and `#` comments may be allowed, but do not run a shell, variable expansion, command substitution, or a general dotenv package;
 - use `lstat`; require a regular file owned by the current uid, reject symlinks, and reject any group/other permission bits (require mode 0600 or stricter);
 - cap file size (16 KiB is ample), reject NUL, duplicate keys, empty values, and multiline values;
@@ -157,3 +157,7 @@ Other evidence:
 ## Decision
 
 Build the first slice as one server-owned raw Bun WebSocket, one bounded playback queue, automatic VAD with barge-in, and NON_BLOCKING tools defaulting completed results to `WHEN_IDLE`. Use strict `live.env` only as a short bridge, then resolve provider `google` through the existing `ModelRuntime`. This is the fewest new parts while preserving interruption, cancellation, and credential ownership.
+
+## Integration correction: raw scheduling shape
+
+The guide example above nests scheduling in response, but the canonical REST schema at https://ai.google.dev/api/generate-content (tvly extraction 2026-09-23), and installed Google SDK `FunctionResponse` declarations both put `scheduling` and `willContinue` **alongside** `id`, `name`, `response`. The prototype follows that typed wire schema. Generator responses are needed here because confirmed progress is an explicit requirement; they remain NON_BLOCKING. No network acceptance test was run.

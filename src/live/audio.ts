@@ -155,6 +155,8 @@ export class SoxAudioAdapter implements LiveAudioAdapter {
   private player?: AudioProcess;
   private active = false;
   private starting = false;
+  private generation = 0;
+  private pendingDrain?: { input: AudioWritable; listener: Listener };
   private waiting = false;
   private queue: Uint8Array[] = [];
   private queueBytes = 0;
@@ -172,9 +174,11 @@ export class SoxAudioAdapter implements LiveAudioAdapter {
   async start(audio: (pcm: string) => void, level: (level: number) => void, error: (error: Error) => void) {
     if (this.active || this.starting) throw new Error("Audio adapter is already started");
     this.starting = true;
+    const generation = ++this.generation;
     this.callbacks = { audio, level, error };
     try {
       const capability = await this.check();
+      if (generation !== this.generation) throw new Error("Audio start cancelled");
       if (!capability.supported || !capability.recorderPath || !capability.playerPath)
         throw new Error(capability.reason ?? LOCAL_AUDIO_REQUIREMENTS);
       this.recCommand = capability.recorderPath;
@@ -221,7 +225,7 @@ export class SoxAudioAdapter implements LiveAudioAdapter {
     if (!this.playCommand) throw new Error("SoX player command is unavailable");
     const child = this.spawn([this.playCommand, ...playArgs], ["pipe", "ignore", "ignore"]);
     if (!child.stdin) {
-      child.kill("SIGTERM");
+      child.kill("SIGKILL");
       throw new Error("SoX player did not provide stdin");
     }
     this.watch(child, "player");
@@ -231,7 +235,7 @@ export class SoxAudioAdapter implements LiveAudioAdapter {
     if (!this.recCommand) throw new Error("SoX recorder command is unavailable");
     const child = this.spawn([this.recCommand, ...recArgs], ["ignore", "pipe", "ignore"]);
     if (!child.stdout) {
-      child.kill("SIGTERM");
+      child.kill("SIGKILL");
       throw new Error("SoX recorder did not provide stdout");
     }
     const data: Listener = (value) => this.receive(value);
@@ -250,6 +254,7 @@ export class SoxAudioAdapter implements LiveAudioAdapter {
         );
     };
     child.on("error", error);
+    child.stdin?.on("error", error);
     child.on("exit", exit);
     (child as Watched).__audio = { error, exit, data };
   }
@@ -289,9 +294,11 @@ export class SoxAudioAdapter implements LiveAudioAdapter {
         this.waiting = true;
         const drain: Listener = () => {
           input.removeListener("drain", drain);
+          this.pendingDrain = undefined;
           this.waiting = false;
           this.flush();
         };
+        this.pendingDrain = { input, listener: drain };
         input.on("drain", drain);
         break;
       }
@@ -306,11 +313,14 @@ export class SoxAudioAdapter implements LiveAudioAdapter {
     } catch {}
   }
   private clearQueue() {
+    if (this.pendingDrain) this.pendingDrain.input.removeListener("drain", this.pendingDrain.listener);
+    this.pendingDrain = undefined;
     this.queue = [];
     this.queueBytes = 0;
     this.waiting = false;
   }
   private stop() {
+    this.generation++;
     this.active = false;
     this.clearQueue();
     this.remainder = undefined;
@@ -322,7 +332,8 @@ export class SoxAudioAdapter implements LiveAudioAdapter {
   private kill(child: AudioProcess) {
     const watched = (child as Watched).__audio;
     if (watched) {
-      child.removeListener("error", watched.error);
+      // Keep the inert error handlers through process exit: spawn/EPIPE errors
+      // may arrive after close, and EventEmitter errors must remain handled.
       child.removeListener("exit", watched.exit);
       if (watched.data && child.stdout) child.stdout.removeListener("data", watched.data);
     }
@@ -330,7 +341,7 @@ export class SoxAudioAdapter implements LiveAudioAdapter {
       child.stdin?.destroy?.();
     } catch {}
     try {
-      child.kill("SIGTERM");
+      child.kill("SIGKILL");
     } catch {}
   }
 }

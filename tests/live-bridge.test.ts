@@ -65,7 +65,9 @@ describe("current-session live bridge", () => {
     });
     returned = true;
     expect(result).toEqual({ status: "queued", requestId: "voice-1" });
-    expect(pi.sent).toEqual([{ message: "do this", options: { deliverAs: "followUp", expandPromptTemplates: false } }]);
+    expect(pi.sent).toEqual([
+      { message: "[Live request voice-1]\ndo this", options: { deliverAs: "followUp", expandPromptTemplates: false } },
+    ]);
 
     // input is preflight, and these lifecycle events belong to current work.
     pi.emit("input", { type: "input", source: "extension", text: "do this" });
@@ -80,7 +82,7 @@ describe("current-session live bridge", () => {
     await flush();
     expect(events).toEqual([]);
 
-    pi.emit("message_end", userMessage("do this"));
+    pi.emit("message_end", userMessage("[Live request voice-1]\ndo this"));
     await flush();
     expect(events).toEqual([{ type: "accepted", requestId: "voice-1" }]);
   });
@@ -91,7 +93,7 @@ describe("current-session live bridge", () => {
     const two: LiveBridgeEvent[] = [];
     const bridge = createCurrentSessionBridge(pi.api(), { maxReplyChars: 5 });
     bridge.handoff({ requestId: "one", message: "first", onEvent: (e) => one.push(e) });
-    pi.emit("message_end", userMessage("first"));
+    pi.emit("message_end", userMessage("[Live request one]\nfirst"));
     pi.emit("tool_execution_start", {
       type: "tool_execution_start",
       toolCallId: "t1",
@@ -113,7 +115,7 @@ describe("current-session live bridge", () => {
     pi.emit("input", { type: "input", source: "extension", text: "second" });
     pi.emit("turn_start", { type: "turn_start", turnIndex: 3 });
     pi.emit("tool_execution_start", { type: "tool_execution_start", toolCallId: "still-one", toolName: "read" });
-    pi.emit("message_end", userMessage("second"));
+    pi.emit("message_end", userMessage("[Live request two]\nsecond"));
     pi.emit("tool_execution_start", { type: "tool_execution_start", toolCallId: "now-two", toolName: "write" });
     pi.emit("agent_end", { type: "agent_end", messages: [] });
     await flush();
@@ -125,6 +127,7 @@ describe("current-session live bridge", () => {
       "turn_ended",
       "assistant_reply",
       "tool_started",
+      "association_ended",
     ]);
     expect(one.find((e) => e.type === "assistant_reply")).toEqual({
       type: "assistant_reply",
@@ -204,4 +207,23 @@ describe("current-session live bridge", () => {
     expect(bridge.activeCount).toBe(0);
     expect(bridge.handoff({ requestId: "c", message: "two", onEvent: noop }).status).toBe("stopped");
   });
+});
+
+test("same plain typed text cannot claim a queued voice request; unrelated delivery ends only association", async () => {
+  const pi = new FakePi();
+  const events: LiveBridgeEvent[] = [];
+  const bridge = createCurrentSessionBridge(pi.api());
+  bridge.handoff({ requestId: "tagged", message: "continue", onEvent: (event) => events.push(event) });
+  pi.emit("message_end", userMessage("continue"));
+  await flush();
+  expect(events).toEqual([]);
+  pi.emit("message_end", userMessage("[Live request tagged]\ncontinue"));
+  await flush();
+  pi.emit("message_end", userMessage("different typed task"));
+  pi.emit("message_end", assistantMessage("unrelated reply"));
+  await flush();
+  expect(events.map((event) => event.type)).toEqual(["accepted", "association_ended"]);
+  expect(bridge.activeCount).toBe(0);
+  expect(pi.aborts).toBe(0);
+  bridge.stop();
 });

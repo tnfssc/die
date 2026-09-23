@@ -261,8 +261,9 @@ export function renderCompactFooter(
         : nativeFast
           ? "fast?"
           : "";
+  const live = singleLine(statuses.get("die-live") ?? "");
   const otherCount = [...statuses.keys()].filter(
-    (key) => key !== "die-tasks" && key !== "die-mode" && key !== "die-native-fast",
+    (key) => key !== "die-tasks" && key !== "die-mode" && key !== "die-native-fast" && key !== "die-live",
   ).length;
   const extra = otherCount ? `+${otherCount} status` : "";
   const history = readFooterHistory(ctx);
@@ -281,6 +282,7 @@ export function renderCompactFooter(
   const candidates: [string[], string, string][] = [
     [
       [
+        accent(live),
         branch ? `${project}:${singleLine(branch)}` : project,
         accent(task),
         accent(mode),
@@ -294,12 +296,16 @@ export function renderCompactFooter(
       " · ",
     ],
     [
-      [project, accent(task), accent(mode), accent(nativeFast), cost, context("ctx "), cacheText, extra],
+      [accent(live), project, accent(task), accent(mode), accent(nativeFast), cost, context("ctx "), cacheText, extra],
       modelWithThinking,
       " · ",
     ],
-    [[accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, project, extra], model, " "],
-    [[accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, extra], model, " "],
+    [
+      [accent(live), accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, project, extra],
+      model,
+      " ",
+    ],
+    [[accent(live), accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, extra], model, " "],
   ];
   for (const [parts, right, separator] of candidates) {
     const left = parts.filter(Boolean).join(separator);

@@ -155,8 +155,8 @@ test("queue overflow is explicit and cleans up both children", async () => {
   adapter.play(Buffer.from([2, 0]).toString("base64"));
   adapter.play(Buffer.from([3, 0]).toString("base64"));
   expect(errors[0]?.message).toContain("queue exceeded");
-  expect(calls[0]!.process.killed).toEqual(["SIGTERM"]);
-  expect(calls[1]!.process.killed).toEqual(["SIGTERM"]);
+  expect(calls[0]!.process.killed).toEqual(["SIGKILL"]);
+  expect(calls[1]!.process.killed).toEqual(["SIGKILL"]);
 });
 
 test("interrupt immediately replaces only the persistent player and clears queued audio", async () => {
@@ -171,7 +171,7 @@ test("interrupt immediately replaces only the persistent player and clears queue
   adapter.play(Buffer.from([2, 0]).toString("base64"));
   adapter.interrupt();
   expect(calls).toHaveLength(3);
-  expect(calls[0]!.process.killed).toEqual(["SIGTERM"]);
+  expect(calls[0]!.process.killed).toEqual(["SIGKILL"]);
   expect(calls[1]!.process.killed).toEqual([]);
   expect(calls[2]!.command[0]).toBe("/tools/play");
   adapter.play(Buffer.from([3, 0]).toString("base64"));
@@ -190,8 +190,8 @@ test("an unexpected child exit reports once and cleans up every owned child", as
   calls[1]!.process.emit("exit", 7, null);
   expect(errors).toHaveLength(1);
   expect(errors[0]!.message).toContain("recorder exited unexpectedly");
-  expect(calls[0]!.process.killed).toEqual(["SIGTERM"]);
-  expect(calls[1]!.process.killed).toEqual(["SIGTERM"]);
+  expect(calls[0]!.process.killed).toEqual(["SIGKILL"]);
+  expect(calls[1]!.process.killed).toEqual(["SIGKILL"]);
   calls[0]!.process.emit("exit", 0, null);
   expect(errors).toHaveLength(1);
 });
@@ -213,4 +213,59 @@ test("failed capability check starts no process", async () => {
     ),
   ).rejects.toThrow("no audio");
   expect(spawned).toBe(false);
+});
+
+test("close during preflight cannot subsequently open microphone", async () => {
+  let resolve!: (value: Awaited<ReturnType<typeof capability>>) => void;
+  let spawned = 0;
+  const adapter = new SoxAudioAdapter({
+    checkCapabilities: () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+    spawn: () => {
+      spawned++;
+      throw new Error("must not spawn");
+    },
+  });
+  const starting = adapter.start(
+    () => {},
+    () => {},
+    () => {},
+  );
+  adapter.close();
+  resolve(await capability());
+  await expect(starting).rejects.toThrow("cancelled");
+  expect(spawned).toBe(0);
+});
+
+test("EPIPE stops audio and late process errors after close are harmless", async () => {
+  const { adapter, calls } = rig();
+  const errors: Error[] = [];
+  await adapter.start(
+    () => {},
+    () => {},
+    (error) => errors.push(error),
+  );
+  calls[0]!.process.stdin!.emit("error", new Error("EPIPE"));
+  expect(errors).toHaveLength(1);
+  expect(calls.every(({ process }) => process.killed.length === 1)).toBe(true);
+  expect(() => calls[1]!.process.emit("error", new Error("late spawn error"))).not.toThrow();
+  adapter.close();
+});
+
+test("interrupt detaches old playback drain listener", async () => {
+  const { adapter, calls } = rig();
+  await adapter.start(
+    () => {},
+    () => {},
+    () => {},
+  );
+  const old = calls[0]!.process.stdin!;
+  old.accept = false;
+  adapter.play(Buffer.alloc(8).toString("base64"));
+  expect(old.listenerCount("drain")).toBe(1);
+  adapter.interrupt();
+  expect(old.listenerCount("drain")).toBe(0);
+  adapter.close();
 });

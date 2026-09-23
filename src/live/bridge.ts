@@ -7,7 +7,8 @@ export type LiveBridgeEvent =
   | { type: "tool_finished"; requestId: string; toolCallId: string; toolName: string; isError: boolean }
   | { type: "assistant_reply"; requestId: string; text: string; truncated: boolean }
   | { type: "turn_ended"; requestId: string; outcome: "completed" | "aborted" | "error" }
-  | { type: "run_ended"; requestId: string };
+  | { type: "run_ended"; requestId: string }
+  | { type: "association_ended"; requestId: string; reason: "superseded" };
 
 export type CurrentSessionEvent =
   | { type: "tool_started"; scope: "current_session"; toolCallId: string; toolName: string }
@@ -162,6 +163,13 @@ export function createCurrentSessionBridge(
     dispatch(options.onSessionEvent ? () => options.onSessionEvent?.(event) : undefined);
   const current = () => (currentRequestId ? requests.get(currentRequestId) : undefined);
 
+  const endAssociation = () => {
+    const request = current();
+    if (!request) return;
+    emit(request, { type: "association_ended", requestId: request.requestId, reason: "superseded" });
+    retire(request.requestId);
+  };
+
   // input is only Pi's preflight hook. Acceptance is confirmed by the actual
   // user message entering the transcript below.
   unsubscribe.push(
@@ -172,11 +180,14 @@ export function createCurrentSessionBridge(
           const request = requests.get(id);
           return request?.state === "awaiting_acceptance" && request.message === delivered;
         });
-        if (index < 0) return;
+        if (index < 0) {
+          endAssociation();
+          return;
+        }
         const requestId = awaitingAcceptance.splice(index, 1)[0];
         const request = requestId === undefined ? undefined : requests.get(requestId);
         if (request?.state !== "awaiting_acceptance") return;
-        if (currentRequestId !== undefined && currentRequestId !== requestId) retire(currentRequestId);
+        if (currentRequestId !== undefined && currentRequestId !== requestId) endAssociation();
         request.state = "active";
         currentRequestId = requestId;
         emit(request, { type: "accepted", requestId });
@@ -280,7 +291,7 @@ export function createCurrentSessionBridge(
 
       const request: TrackedRequest = {
         requestId,
-        message,
+        message: "[Live request " + requestId + "]\n" + message,
         callback: onEvent,
         state: "awaiting_acceptance",
         reporting: true,
@@ -290,7 +301,7 @@ export function createCurrentSessionBridge(
       let delivery: Promise<void>;
       try {
         delivery = Promise.resolve(
-          pi.sendUserMessage(message, { deliverAs: "followUp", expandPromptTemplates: false }),
+          pi.sendUserMessage(request.message, { deliverAs: "followUp", expandPromptTemplates: false }),
         );
       } catch {
         request.reporting = false;
