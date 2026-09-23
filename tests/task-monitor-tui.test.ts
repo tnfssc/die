@@ -74,9 +74,9 @@ test("real TUI /ps selects live jobs and only stops the confirmed target", async
       },
     }),
   );
-  // This extension is a controlled, deliberately slow startup prerequisite. Its
-  // registration is not itself readiness: the harmless command handshake below
-  // proves that the normal submit handler actually accepts extension commands.
+  // This extension is a controlled slow startup step. Registration alone does not
+  // mean it is ready. The safe command handshake below proves that the normal
+  // submit handler accepts extension commands.
   const readinessMarker = join(home, "startup-readiness.marker");
   const readinessExtension = join(home, "startup-readiness.ts");
   await writeFile(

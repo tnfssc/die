@@ -24,7 +24,7 @@ function content(value: unknown): string {
     .join("\n")
     .slice(0, 5000);
 }
-/** Decode the public JSON event stream, never retaining partial messages/images/reasoning. */
+/** Decode public JSON events. Never keep partial messages, images, or reasoning. */
 export class AgentProgress {
   #decoder = new StringDecoder("utf8");
   #pending = "";

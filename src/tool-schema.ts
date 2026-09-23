@@ -1,8 +1,8 @@
 import * as z from "zod/mini";
 
-/** Pi accepts plain JSON Schema at runtime, but its TypeScript API still uses
- * TypeBox types. Keep that boundary here; infer/validate arguments with Zod in
- * each execute handler instead of pretending JSON Schema carries static types.
+/** Pi accepts plain JSON Schema at runtime, but its TypeScript API uses TypeBox.
+ * Keep that boundary here. Use Zod in each execute handler to infer and check
+ * arguments. Do not pretend JSON Schema has static types.
  */
 export function toolParameters(schema: z.ZodMiniType) {
   const {

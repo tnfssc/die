@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Production T3-v2 native integration acceptance launcher.
+ * Launch production T3-v2 native integration acceptance.
  *
- * The candidate-owned test composes the real production backend, a real Die
- * executable, and a deterministic loopback HTTP model fixture. This launcher
- * only supplies an isolated process environment and verifies provenance. It
- * never installs dependencies or starts the user-facing server.
+ * The candidate test joins the real production backend, a real Die executable,
+ * and a stable loopback HTTP model fixture. This launcher only gives it an
+ * isolated environment and checks its source. It never installs dependencies or
+ * starts the user-facing server.
  */
 import { createHash } from "node:crypto";
 import { access, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";

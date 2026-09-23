@@ -8,8 +8,8 @@ import { StringDecoder } from "node:string_decoder";
 
 export const EXECUTE_INLINE_OUTPUT_CHARS = 4_000;
 /**
- * Default cap for the complete, byte-for-byte stdout/stderr artifacts from one
- * execution. Inline previews have their own small, fixed character cap.
+ * Default cap for complete byte-for-byte stdout and stderr from one execution.
+ * Inline previews have a separate small character cap.
  */
 export const DEFAULT_EXECUTE_OUTPUT_BYTE_LIMIT = 10 * 1024 * 1024;
 const EXECUTE_INLINE_OUTPUT_LINES_PER_STREAM = 900;
@@ -30,9 +30,9 @@ export interface CapturedOutput {
   stdoutPath?: string;
   stderrPath?: string;
   outputArtifactErrors?: OutputArtifactErrors;
-  /** Combined stdout/stderr bytes observed, including bytes over the limit. */
+  /** Count all stdout and stderr bytes seen, including bytes over the limit. */
   outputBytes: number;
-  /** Combined bytes retained in complete-output artifacts/prefixes. */
+  /** Count bytes kept in complete-output artifacts and prefixes. */
   capturedOutputBytes: number;
   outputByteLimit: number;
   outputTruncated: boolean;
@@ -77,10 +77,10 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * Captures execute's text streams with a shared byte budget and a separate
- * bounded inline preview. Crossing the preview character budget promotes both
- * streams to files and flushes the bytes retained within the capture budget.
- * Excess bytes are drained for process liveness and counted, never persisted.
+ * Capture execute's text streams with one byte budget and a separate bounded
+ * inline preview. When the preview fills, move both streams to files and flush
+ * bytes kept within the capture budget. Drain and count extra bytes so the
+ * process stays live, but never save them.
  */
 export class ExecuteOutputCapture {
   readonly #states: Record<StreamName, StreamState> = {

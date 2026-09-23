@@ -23,7 +23,7 @@ interface AuthRuntime {
   getAuth(model: unknown, options: { minOAuthValidityMs: number }): Promise<unknown>;
 }
 
-/** Resolve and, where necessary, refresh credentials before starting a paid smoke. */
+/** Find credentials and refresh them if needed before a paid smoke test. */
 export async function assertLiveRuntimeReady(runtime: AuthRuntime, model: { provider: string }): Promise<void> {
   if (!runtime.hasConfiguredAuth(model.provider)) {
     throw new Error("Live smoke auth is not configured for provider: " + model.provider);
@@ -33,11 +33,10 @@ export async function assertLiveRuntimeReady(runtime: AuthRuntime, model: { prov
 }
 
 /**
- * Installs a hard synchronous guard at the concrete provider boundary. The
- * runtime wrapper disables retries before request preparation, while the
- * provider wrapper records only calls that actually survive preparation and
- * reach provider dispatch. A preparation/auth failure is therefore an
- * invocation, not falsely reported as a paid request.
+ * Put a hard sync guard at the real provider boundary. The runtime wrapper turns
+ * off retries before request setup. The provider wrapper records only calls that
+ * finish setup and reach dispatch. Setup or auth failure counts as an invocation,
+ * not a paid request.
  */
 export function installLiveDispatchBudget(
   runtime: StreamRuntime,

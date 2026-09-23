@@ -48,7 +48,7 @@ export interface EntryMetadata {
 
 type LocatedEntry = { entry: FileEntry; offset: number; length: number };
 
-/** Iterate valid JSONL records without retaining the complete file. */
+/** Read valid JSONL records without keeping the whole file. */
 export function scanJsonl(path: string, visit: (record: LocatedEntry, validIndex: number) => void): void {
   const fd = openSync(path, "r");
   const buffer = Buffer.allocUnsafe(64 * 1024);
@@ -158,7 +158,7 @@ function atomicReplace(target: string, write: (fd: number) => void, exclusive = 
   }
 }
 
-/** Upgrade old files with two streaming passes rather than a whole-file graph. */
+/** Upgrade old files in two streaming passes. Do not build a whole-file graph. */
 export function migrateSessionFile(path: string, version: number): void {
   if (version >= 3) return;
   const ids: Array<string | undefined> = [];
@@ -502,7 +502,7 @@ export class DiskEntryStore {
   }
 }
 
-/** Inspect the first parsed record without loading or modifying the journal. */
+/** Read the first parsed record without loading or changing the journal. */
 export function readSessionFileHeader(path: string): SessionHeader | undefined {
   const done = Symbol("session-header-found");
   let header: SessionHeader | undefined;

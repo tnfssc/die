@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Materialize upstream's deterministic subagent_v2_nested replay through its real orchestration harness.
+# Build upstream's deterministic subagent_v2_nested replay through its real orchestration harness.
 set -euo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 SOURCE="$HERE/.runtime/upstream"

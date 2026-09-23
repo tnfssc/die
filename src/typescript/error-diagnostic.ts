@@ -18,7 +18,7 @@ function boundDiagnostic(diagnostic: string): string {
   return diagnostic.slice(0, MAX_ERROR_DIAGNOSTIC_CHARACTERS - TRUNCATION_NOTICE.length) + TRUNCATION_NOTICE;
 }
 
-/** Format values escaping the isolated runner without trusting their accessors or conversion hooks. */
+/** Format values from the isolated runner without trusting accessors or conversion hooks. */
 export function formatThrownValue(value: unknown): string {
   let isError = false;
   try {

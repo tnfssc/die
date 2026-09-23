@@ -1,11 +1,11 @@
 const EMPTY = Buffer.alloc(0);
 
 /**
- * A bounded FIFO of process output.
+ * Keep process output in a bounded FIFO.
  *
- * Appends are O(1) in the common case. Old chunks are released as soon as the
- * byte limit is exceeded, avoiding repeated copies of the entire retained log.
- * Reads copy only the requested range.
+ * Most appends are O(1). Drop old chunks as soon as the buffer passes its byte
+ * limit, without copying the whole saved log each time. Reads copy only the
+ * requested range.
  */
 export class BoundedOutputBuffer {
   readonly #maxBytes: number;
@@ -57,7 +57,7 @@ export class BoundedOutputBuffer {
     if (this.#chunks.length - this.#head > 1024) this.#compact();
   }
 
-  /** Release up to `bytes` from the retained prefix without changing logical offsets. */
+  /** Drop up to `bytes` from the saved prefix without changing logical offsets. */
   discardPrefix(bytes: number): number {
     const discard = Math.min(this.#retainedBytes, Math.max(0, Math.trunc(bytes)));
     if (discard === 0) return 0;

@@ -1,4 +1,4 @@
-/** Match Pi's all-results-yield batch rule, not just an individual hint. */
+/** Match Pi's all-results-yield batch rule, not just one result hint. */
 export function yieldedEntries(entries: any[]): any[] {
   const results = new Map(
     entries

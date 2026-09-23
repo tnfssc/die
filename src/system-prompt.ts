@@ -9,8 +9,8 @@ function optionBoundary(args: string[]): number {
 }
 
 /**
- * Supply Die's base through Pi's --system-prompt path, so Pi performs normal
- * custom-prompt assembly. Explicit CLI, project, and global SYSTEM.md bases win.
+ * Give Die's base to Pi through --system-prompt so Pi can assemble the rest.
+ * Explicit CLI, project, and global SYSTEM.md bases still win.
  */
 export function withDieSystemPrompt(
   args: string[],

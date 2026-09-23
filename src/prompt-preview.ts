@@ -25,12 +25,12 @@ export const PREVIEW_ROLES = ["root", "fast", "normal", "orchestrator"] as const
 export type PreviewRole = (typeof PREVIEW_ROLES)[number];
 
 export interface PromptPreviewOptions {
-  /** Project context is excluded unless a project directory is selected explicitly. */
+  /** Include project context only when a project directory is chosen. */
   project?: string;
   role?: PreviewRole;
   rootMode?: MainAgentMode;
   message?: string;
-  /** Add a representative paused goal so the real context hook exposes its injected message. */
+  /** Add a paused sample goal so the real context hook shows its injected message. */
   goal?: string;
 }
 
@@ -71,8 +71,8 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
- * Capture the exact Context passed across Pi's provider stream boundary.
- * The stream is replaced before prompting, so this cannot make a model request.
+ * Capture the exact Context at Pi's provider stream boundary. Replace the stream
+ * before prompting so this cannot make a model request.
  */
 export async function createPromptPreview(options: PromptPreviewOptions = {}): Promise<PromptPreview> {
   const role = options.role ?? "root";

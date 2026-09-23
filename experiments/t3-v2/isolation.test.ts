@@ -8,7 +8,7 @@ const temporary: string[] = [];
 afterAll(async () => Promise.all(temporary.map((path) => rm(path, { recursive: true, force: true }))));
 
 async function run(offset: string, args: string[] = [], env: Record<string, string> = {}) {
-  // Fixture-only copies replace constants; the shipped runner has no pin/state override.
+  // Fixture copies replace constants. The shipped runner cannot override pin or state.
   const selectedScript = env.T3_TEST_SCRIPT ?? script;
   const p = Bun.spawn(["bash", selectedScript, "dry-run", ...args], {
     env: { ...process.env, ...env, T3_V2_PORT_OFFSET: offset },

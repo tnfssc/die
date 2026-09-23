@@ -18,13 +18,12 @@ function defaultSettingsFactory(cwd: string): ModelDefaultSettings {
 }
 
 /**
- * Persist only a direct model choice made in the root CLI TUI.
+ * Save only a direct model choice from the root CLI TUI.
  *
- * Pi also emits model_select while restoring session history. That event describes
- * session state, not a request to change the startup default. A cycle event in
- * the root TUI is a direct keyboard selection and is persisted. Non-TUI
- * sessions include spawned workers and automation,
- * whose routing choices must never leak into the user's default.
+ * Pi also emits model_select while restoring history. That describes session
+ * state, not a request to change the startup default. Save keyboard cycle events
+ * from the root TUI. Do not let worker or automation routing change the user's
+ * default.
  */
 export function isExplicitRootCliModelSelection(
   event: Pick<ModelSelectEvent, "source">,

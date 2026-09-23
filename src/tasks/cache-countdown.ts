@@ -68,7 +68,7 @@ export async function saveCacheSettings(settings: CacheSettings, path = cacheSet
   }
 }
 
-/** Parse an explicit, bounded duration. Bare numbers are minutes. */
+/** Parse a bounded duration. Treat bare numbers as minutes. */
 export function parseCacheTtl(input: string): number {
   const match = input
     .trim()
@@ -102,9 +102,9 @@ function validCall(value: unknown): value is CacheCall {
 }
 
 /**
- * Informational estimate only. A record means a provider request was observed
- * at an HTTP response or successful terminal message; it does not assert cache
- * creation, compatibility, or a cache hit.
+ * This is only an estimate. A record means an HTTP response or successful final
+ * message showed a provider request. It does not prove cache creation,
+ * compatibility, or a hit.
  */
 export class CacheCountdown {
   ttlMs = DEFAULT_CACHE_TTL_MS;

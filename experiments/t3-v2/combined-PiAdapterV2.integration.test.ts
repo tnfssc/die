@@ -83,7 +83,7 @@ describe("combined PiAdapterV2 -> Die -> mock MCP", () => {
       log("[combined] ensured");
       yield* Effect.addFinalizer(() => Effect.sync(() => log("[combined] scope-finalizer-enter")));
       assert.equal(providerThread.providerSessionId, SESSION);
-      // Initialization can occur during ensure; it is not tool execution.
+      // ensure may initialize this. That is not tool execution.
       assert.equal(fixture.mcpCalls.some(c => c.method === "tools/call"), false);
       const now = yield* DateTime.now;
       const appThread = {createdBy:"user",creationSource:"web",id:THREAD,projectId:"project-combined",title:"Combined",providerInstanceId:PI,modelSelection:selection,runtimeMode:"full-access",interactionMode:"default",branch:null,worktreePath:null,activeProviderThreadId:null,lineage:{parentThreadId:null,relationshipToParent:null,rootThreadId:THREAD},forkedFrom:null,createdAt:now,updatedAt:now,archivedAt:null,settledOverride:null,settledAt:null,lastVisitedAt:null,deletedAt:null} as OrchestrationV2AppThread;

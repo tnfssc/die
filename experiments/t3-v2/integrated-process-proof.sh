@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# OS-level negative spawn evidence for the scripted real-engine scenario only.
+# Check at the OS level that the scripted real-engine case did not spawn a process.
 set -euo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 command -v strace >/dev/null || { echo "error: strace required" >&2; exit 1; }

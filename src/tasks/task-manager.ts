@@ -13,7 +13,7 @@ const MAX_CAPTURE_BYTES = 1_000_000;
 const MAX_INSPECT_BYTES = 5_000;
 const DEFAULT_KILL_GRACE_MS = 5_000;
 const DEFAULT_SHUTDOWN_WATCHDOG_MS = 10_000;
-/** Aggregate RAM retained for output of finished jobs. Running jobs keep their own cap. */
+/** Cap total RAM used by finished-job output. Running jobs have their own cap. */
 export const DEFAULT_COMPLETED_OUTPUT_BUDGET_BYTES = 8_000_000;
 
 function utf8SequenceLength(byte: number): number {
@@ -49,7 +49,7 @@ export interface TaskTermination {
   cause: TaskTerminationCause;
   requestedAt: string;
 }
-/** Metadata-only integration hooks. Never receives command or captured output. */
+/** Integration hooks get metadata only, never commands or captured output. */
 export interface TaskManagerHooks {
   recordDiagnostic?: (input: {
     component: "jobs";
@@ -72,7 +72,7 @@ export interface TaskManagerHooks {
   completedOutputBudgetBytes?: number;
 }
 
-/** Lightweight lifecycle events. Payloads are snapshots; subscribers cannot mutate manager state. */
+/** Send small lifecycle events. Payloads are snapshots and cannot change manager state. */
 export type TaskEvent =
   | { type: "spawned"; task: TaskSummary }
   | { type: "updated"; task: TaskSummary }
@@ -121,11 +121,11 @@ export interface TaskSummary {
   baseOffset: number;
   outputEnd: number;
   timedOut: boolean;
-  /** Stable first request to terminate this task, exposed as soon as it is accepted. */
+  /** Keep the first request to stop this task. Expose it as soon as it is accepted. */
   termination?: TaskTermination;
-  /** Last observable output/input activity. This is evidence, not a liveness diagnosis. */
+  /** Last seen input or output activity. This is evidence, not a liveness check. */
   lastActivityAt?: string;
-  /** Whether the manager has not closed child stdin. The child may not be reading it. */
+  /** True while the manager has not closed child stdin. The child may not read it. */
   stdinOpen?: boolean;
 }
 
@@ -184,7 +184,7 @@ export class TaskManager {
     return this.#spawn(launch);
   }
 
-  /** Reserve the final child identity before workspace Git/setup begins. */
+  /** Reserve the final child ID before workspace Git and setup begin. */
   prepareAgent(launch: AgentPreparationLaunch): TaskSummary {
     if (this.#shuttingDown) throw new Error("Task manager is shutting down");
     if (this.#tasks.has(launch.id)) throw new Error("Duplicate task ID");
@@ -403,12 +403,12 @@ export class TaskManager {
     return this.#summary(task);
   }
 
-  /** Running snapshots for monitors/goal mode; no process handles are exposed. */
+  /** Give monitors and goal mode running snapshots, never process handles. */
   pending(): ReadonlyArray<TaskSummary> {
     return this.list().filter((task) => task.status === "running");
   }
 
-  /** Subscribe to event-driven state changes. The returned disposer is idempotent. */
+  /** Subscribe to state changes. The returned disposer is safe to call more than once. */
   subscribe(listener: TaskEventListener): () => void {
     this.#listeners.add(listener);
     return () => {
@@ -449,7 +449,7 @@ export class TaskManager {
     return task.completion!;
   }
 
-  /** Hand off notification ownership exactly once when a foreground wait expires. */
+  /** Hand off notification ownership once when a foreground wait ends. */
   async foreground(
     id: string,
     waitMs: number,

@@ -50,7 +50,7 @@ export function mainAgentGuidance(mode: MainAgentMode, owner: string): string {
   return start + "\n" + source + "\n" + end;
 }
 
-/** Replace only the region carrying this die session's unguessable owner marker. */
+/** Replace only the region with this Die session's unguessable owner marker. */
 export function replaceMainAgentGuidance(prompt: string, mode: MainAgentMode, owner: string): string {
   const [startMarker, endMarker] = mainModeMarkers(owner);
   const start = prompt.indexOf(startMarker);
@@ -61,15 +61,15 @@ export function replaceMainAgentGuidance(prompt: string, mode: MainAgentMode, ow
 }
 
 /**
- * Die's base prompt, supplied to Pi as its structured custom prompt. Pi remains
- * responsible for appending user additions, project context, skills, and cwd.
+ * Give Pi Die's base as a structured custom prompt. Pi still adds user text,
+ * project context, skills, and cwd.
  */
 export function dieSystemPrompt(): string {
   const guidelines = executeGuidance;
   return identity.trimEnd() + "\n\nGuidelines:\n" + guidelines.map((line) => "- " + line).join("\n");
 }
 
-/** True only for Die's injected base; all other custom prompts are user-owned. */
+/** Return true only for Die's injected base. All other custom prompts belong to the user. */
 export function isDieSystemPrompt(options: Pick<BuildSystemPromptOptions, "customPrompt"> | undefined): boolean {
   return options?.customPrompt === dieSystemPrompt();
 }

@@ -94,11 +94,10 @@ function fencedMarkdownLines(lines: string[]): boolean[] {
 }
 
 /**
- * OpenAI Responses accumulates all reasoning summary parts in one thinking
- * string, inserting two newlines after each part. Pi also joins adjacent
- * thinking blocks with two newlines. Compact plain-prose gaps from both paths,
- * but retain blank lines that delimit Markdown block structures or occur in
- * fenced code. The source message is never mutated.
+ * OpenAI Responses puts all reasoning summaries in one thinking string with two
+ * newlines between parts. Pi uses the same gap between nearby thinking blocks.
+ * Tighten plain prose from both paths. Keep blank lines around Markdown blocks
+ * and inside fenced code. Do not change the source message.
  */
 function compactThinkingProse(text: string): string {
   const lines = text.split("\n");
@@ -225,25 +224,23 @@ function isBlank(line: string): boolean {
 }
 
 /**
- * Pi 0.85 puts highlighted vertical padding inside each user message and gives
- * every native message ownership of leading transition space. InteractiveMode
- * additionally inserts a standalone one-line spacer before non-initial users,
- * but does not expose a transition-spacing hook on its chat container.
- * Container.addChild is global, so this adapts recognized message instances added
- * to any Container parent; it is not gated to the top-level
- * chat tree. Its assistant update wrapper compacts plain-prose gaps only in
- * displayed thinking (including provider-accumulated summaries and adjacent Pi
- * thinking parts), retaining the source message for streaming and restoration.
- * User Markdown stays inside its native background box with that box's vertical
- * padding replaced by one plain terminal row on each conversation boundary.
- * Structural leading rows are removed between non-user messages except for the
- * single requested status-to-prose boundary. Normal answer Markdown, structured
- * thinking Markdown, expanded tools, images, unrecognized
- * components, and editor layout are otherwise unchanged.
+ * Pi 0.85 puts highlighted vertical padding inside each user message. Each
+ * native message also owns the transition space before it. InteractiveMode adds
+ * another one-line spacer before later user messages but has no transition-space
+ * hook on its chat container.
  *
- * Remove this pinned compatibility seam when Pi exposes chat transition
- * spacing. Every patched method and component restoration is identity-checked
- * so wrappers installed later are never clobbered.
+ * Container.addChild is global, so this handles known messages added to any
+ * Container, not just the top-level chat tree. The assistant wrapper tightens
+ * plain-prose gaps only in shown thinking. It includes provider summaries and
+ * nearby Pi thinking parts, while keeping the source message for streaming and
+ * restore. User Markdown stays in its native background box. Replace that box's
+ * vertical padding with one plain terminal row at each conversation boundary.
+ * Remove leading layout rows between non-user messages except at the requested
+ * status-to-prose boundary. Leave answer Markdown, structured thinking, expanded
+ * tools, images, unknown components, and editor layout alone.
+ *
+ * Remove this pinned seam when Pi exposes chat transition spacing. Check method
+ * and component identity before each restore so later wrappers stay in place.
  */
 export function installConversationDensity(): () => void {
   const seam = [UserMessageComponent, AssistantMessageComponent, ToolExecutionComponent, CustomMessageComponent];

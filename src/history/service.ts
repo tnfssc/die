@@ -68,7 +68,7 @@ function cursorDecode(value: unknown, kind: Cursor["kind"]): Cursor | undefined 
     throw new Error("Invalid history cursor");
   return decoded as unknown as Cursor;
 }
-/** Read a session without the SDK's persistent open path, which may repair or migrate files. */
+/** Read a session without the SDK path that may repair or migrate files. */
 async function openReadonlySession(path: string): Promise<Manager> {
   const sessionFile = resolve(path);
   // O_NONBLOCK prevents a special file such as a FIFO from hanging before fstat.
@@ -203,7 +203,7 @@ function textParts(content: unknown): Array<{ part: number; text: string }> {
   return result;
 }
 
-/** Lowercase while retaining the source UTF-16 offset for each folded code unit. */
+/** Lowercase text and keep each folded code unit's source UTF-16 offset. */
 function foldWithOffsets(text: string): { text: string; offsets: number[] } {
   // Fold the complete string to retain context-sensitive mappings (for
   // example, Greek final sigma), while scalar lengths map expansion back to

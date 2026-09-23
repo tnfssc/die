@@ -143,7 +143,7 @@ function installPickerAdapter(root: string): () => void {
   };
 }
 
-/** Adds role labels to Pi's TUI picker projection and guards interactive child entry. */
+/** Add role labels to Pi's TUI picker and guard interactive child entry. */
 export function registerResumeSafeguards(pi: ExtensionAPI): void {
   let uninstall: (() => void) | undefined;
   pi.on("session_start", (_event, ctx) => {

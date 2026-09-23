@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
- * Isolated real die RPC lifecycle soak backed by a local OpenAI-compatible fake.
- * Owns only its temporary HOME, loopback listener, and spawned die PID.
+ * Soak the real Die RPC lifecycle against a local OpenAI-compatible fake. Touch
+ * only this run's temporary HOME, loopback listener, and spawned Die PID.
  */
 import { chmod, mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";

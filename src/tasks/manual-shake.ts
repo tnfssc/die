@@ -12,7 +12,7 @@ import { recordDiagnostic } from "../diagnostics.js";
 import { getInstructionContinuitySession } from "./instruction-continuity";
 import { withReadOnlyCompactionContext } from "./native-compaction";
 
-/** Durable, branch-scoped manual context projection. Session JSONL stays append-only. */
+/** Keep a durable manual context projection per branch. Session JSONL stays append-only. */
 export const MANUAL_SHAKE_ENTRY = "die-manual-shake";
 export const MANUAL_SHAKE_VERSION = 1;
 const MAX_IDS_PER_KIND = 2048;
@@ -185,8 +185,8 @@ export class InvalidShakeRecordError extends Error {
   }
 }
 
-/** The newest marker is authoritative. Forked JSONL copies inherit its projection,
- * but the effective record is rebased to the fork's session identity. */
+/** The newest marker wins. Forked JSONL copies inherit its projection, but the
+ * effective record is rebased to the fork's session identity. */
 export function latestShakeRecord(entries: readonly SessionEntry[], sessionId: string): ShakeRecord | undefined {
   for (let index = entries.length - 1; index >= 0; index--) {
     const entry = entries[index];
@@ -213,7 +213,7 @@ function removableAssistantBlockCount(message: AgentMessage): number {
     .length;
 }
 
-/** Build a deterministic protocol-paired plan from the active context entries. */
+/** Build a deterministic protocol-paired plan from active context entries. */
 export function buildShakePlan(
   entries: readonly SessionEntry[],
   sessionId: string,
@@ -301,8 +301,8 @@ export function buildShakePlan(
 
 type SourceMessage = { entry: SessionEntry; message: AgentMessage; json: string };
 
-/** Match only unambiguous, unchanged incoming occurrences. A redaction or rewrite
- * never causes raw session content to be restored. */
+/** Match only clear, unchanged incoming copies. Never restore raw session content
+ * because of a redaction or rewrite. */
 function exactOccurrenceMatches(
   incoming: readonly AgentMessage[],
   source: readonly SourceMessage[],
@@ -413,8 +413,8 @@ function projection(
   return { messages, removedAssistantBlocks, removedToolResults };
 }
 
-/** Project the actual incoming transformed messages. Ambiguous protocol batches
- * are retained whole rather than risking an orphan call/result. */
+/** Project the transformed messages that arrived. Keep unclear protocol batches
+ * whole rather than risk an orphan call or result. */
 export function projectShakenContext(
   incoming: readonly AgentMessage[],
   entries: readonly SessionEntry[],
@@ -456,9 +456,9 @@ async function currentTransformedContext(
 }
 
 let accountingAdapterInstalled = false;
-/** Pi's pre-prompt check normally trusts the last provider usage. A shake makes
- * that usage stale; skip it until a post-marker response exists. The separate
- * pre-provider estimator still sees the transformed/projected message list. */
+/** Pi's pre-prompt check trusts the last provider usage. A shake makes it stale,
+ * so skip it until a response follows the marker. The separate pre-provider
+ * estimate still sees the transformed message list. */
 export function installShakeAccountingAdapter(): void {
   if (accountingAdapterInstalled) return;
   const prototype = AgentSession.prototype as unknown as {

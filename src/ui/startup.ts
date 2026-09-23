@@ -1,11 +1,11 @@
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 
 /**
- * Scoped presentation policy for Pi's CLI, which has no settings-injection hook.
- * A one-time applyOverrides() is insufficient: startup saves/reloads rebuild the
- * settings snapshot. Adapt the public presentation getter instead, without
- * mutating stored preferences, skill discovery, or command registration.
- * Pi still honors --verbose as an explicit diagnostic override.
+ * Keep Pi CLI presentation policy here because Pi has no settings injection
+ * hook. One applyOverrides() call is not enough: startup saves and reloads rebuild
+ * the settings snapshot. Wrap the public presentation getter instead. Do not
+ * change saved preferences, skill discovery, or command registration. Pi still
+ * honors --verbose as an explicit diagnostic override.
  */
 export function installQuietStartup(): () => void {
   const original = SettingsManager.prototype.getQuietStartup;

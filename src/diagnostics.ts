@@ -1,4 +1,4 @@
-/** Privacy-bounded operational diagnostics shared by extension components. */
+/** Keep shared operational diagnostics within a strict privacy boundary. */
 export const DIAGNOSTIC_ENTRY_TYPE = "die-diagnostic";
 
 export const DIAGNOSTIC_CODES = [
@@ -162,7 +162,7 @@ function state(owner: object): State {
   return value;
 }
 
-/** Returns only the allowlisted projection. Any invalid allowlisted value rejects the whole record. */
+/** Return only allowlisted fields. One invalid field rejects the whole record. */
 function validate(input: unknown, durable = false): DiagnosticRecord | undefined {
   if (!input || typeof input !== "object" || Array.isArray(input)) return;
   const source = input as Record<string, unknown>;
@@ -256,7 +256,7 @@ export function recordDiagnostic(owner: object, input: DiagnosticInput): void {
   }
 }
 
-/** Captures the current attachment generation so work from an old session cannot write after a switch. */
+/** Capture the attachment generation so an old session cannot write after a switch. */
 export function diagnosticRecorder(owner: object): DiagnosticRecorder {
   const current = state(owner);
   const generation = current.generation;
@@ -267,7 +267,7 @@ export function diagnosticRecorder(owner: object): DiagnosticRecorder {
   };
 }
 
-/** Attaches one session's append function and seeds its lifetime durable cap from persisted entries. */
+/** Attach one session's append function. Use saved entries to seed its durable lifetime cap. */
 export function attachDiagnosticSink(
   owner: object,
   append: (type: string, data: unknown) => void,
@@ -312,7 +312,7 @@ export function inspectDiagnostics(owner: object): DiagnosticsSnapshot {
   });
 }
 
-/** Bounded backward replay. scanLimited reports possible loss when the entry scan cap was reached. */
+/** Replay backward up to the scan cap. scanLimited reports possible loss at that cap. */
 export function scanDiagnosticRecords(
   entries: readonly unknown[],
   recordLimit = RING_LIMIT,
