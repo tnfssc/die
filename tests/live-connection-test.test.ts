@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { testLiveConnection } from "../src/live/connection-test";
-import { LiveTransport, type LiveCallbacks, type LiveSocket } from "../src/live/transport";
+import { type LiveCallbacks, type LiveSocket, LiveTransport } from "../src/live/transport";
 
 function fixture() {
   let callbacks!: LiveCallbacks;

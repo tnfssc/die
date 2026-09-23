@@ -97,3 +97,7 @@ Parent integrated acceptance commit 6db75c6 from /home/tnfssc/.die/worktrees/die
 ## Safety setting request in progress
 
 User requests least restrictive supported Gemini safety thresholds. task_3e323a91 checks official Live schema before changing anything. Worktree /home/tnfssc/.die/worktrees/die-a86675007a5e-task_3e323a91, branch die/configure-supported-gemini-live-safety-t-3e323a91. Do not assume generateContent safetySettings are accepted by Live. Mandatory provider protections and die permissions unchanged. Completed: official Live schema has no documented safetySettings field; runtime unchanged. Merged 3cece86 research and regression tests; parent confirmed 5 tests pass. See gemini-live-safety-settings.md.
+
+## Onboarding replacement awaiting parent review
+
+See [CLI Live onboarding](cli-live-onboarding.md) for the terminal wizard, canonical provider-auth import/reuse, explicit setup-only paid test, and offline lifecycle evidence. That feature supersedes the informational-only setup and live.env direct-start credential path described above. It preserves the configured-agent/concurrent-loop architecture and compact status line. Parent review is required before merge.

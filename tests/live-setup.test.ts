@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { runLiveSetup, type LiveSetupDependencies, type LiveSetupStatus, type LiveSetupUI } from "../src/live/setup";
+import { type LiveSetupDependencies, type LiveSetupStatus, type LiveSetupUI, runLiveSetup } from "../src/live/setup";
 
 type Event = { type: "select" | "confirm" | "notify"; title: string; detail?: string; options?: string[] };
 
@@ -197,7 +197,7 @@ describe("Live setup wizard", () => {
     await runLiveSetup(h.ui, h.deps);
     expect(h.calls.importKey).toBe(2);
     expect(text(h.events)).not.toContain(secret);
-    expect(text(h.events)).toContain("Check the file, ownership, and mode, then retry");
+    expect(text(h.events)).toContain("Check the file, ownership, and mode; refresh provider status");
   });
 
   test("connection and start failures can be retried without automatic retries", async () => {

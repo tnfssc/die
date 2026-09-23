@@ -114,7 +114,10 @@ export async function runLiveSetup(ui: LiveSetupUI, deps: LiveSetupDependencies)
         await refresh();
       } catch {
         if (!alive(deps)) return;
-        ui.notify("Could not import the Live key. Check the file, ownership, and mode, then retry.", "error");
+        ui.notify(
+          "Could not import the Live key. Check the file, ownership, and mode; refresh provider status before retrying. An existing Google credential is never replaced.",
+          "error",
+        );
       }
       continue;
     }

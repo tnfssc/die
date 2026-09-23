@@ -1,19 +1,19 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { checkAudioCapabilities, createLocalAudioAdapter } from "./audio";
-import { createCurrentSessionBridge, type CurrentSessionBridge, type LiveBridgeEvent } from "./bridge";
-import { createDefaultLiveCredentialService } from "./credentials";
+import { type CurrentSessionBridge, createCurrentSessionBridge, type LiveBridgeEvent } from "./bridge";
 import { testLiveConnection } from "./connection-test";
-import { runLiveSetup, type LiveSetupStatus } from "./setup";
+import { createDefaultLiveCredentialService } from "./credentials";
+import { type LiveSetupStatus, runLiveSetup } from "./setup";
 import { liveLocalOnly, liveStatus } from "./status";
-import { LiveTransport, type LiveCall, type LiveCallbacks } from "./transport";
+import { type LiveCall, type LiveCallbacks, LiveTransport } from "./transport";
 
 type Audio = ReturnType<typeof createLocalAudioAdapter>;
 type Transport = Pick<LiveTransport, "connect" | "sendAudio" | "respond" | "close">;
 export interface LiveDependencies {
   local(mode: string): boolean;
   capabilities: typeof checkAudioCapabilities;
-  key(): Promise<string>;
-  credentialStatus(): Promise<LiveSetupStatus>;
+  key(signal?: AbortSignal): Promise<string>;
+  credentialStatus(signal?: AbortSignal): Promise<LiveSetupStatus>;
   importKey(signal?: AbortSignal): Promise<void>;
   audio(): Audio;
   transport(callbacks: LiveCallbacks): Transport;
@@ -21,9 +21,9 @@ export interface LiveDependencies {
 const defaults: LiveDependencies = {
   local: (mode) => liveLocalOnly(mode, process.env, Boolean(process.stdin.isTTY && process.stdout.isTTY)),
   capabilities: checkAudioCapabilities,
-  key: async () => (await createDefaultLiveCredentialService()).loadKey(),
-  credentialStatus: async () => {
-    const status = await (await createDefaultLiveCredentialService()).status();
+  key: async (signal) => (await createDefaultLiveCredentialService(signal)).loadKey(signal),
+  credentialStatus: async (signal) => {
+    const status = await (await createDefaultLiveCredentialService(signal)).status(signal);
     const configured = status.state === "stored_api_key" || status.state === "configured_api_key";
     const message =
       status.state === "oauth"
@@ -34,7 +34,7 @@ const defaults: LiveDependencies = {
     return { configured, canImport: status.canImport, message };
   },
   importKey: async (signal) => {
-    const result = await (await createDefaultLiveCredentialService()).importLiveEnv(undefined, signal);
+    const result = await (await createDefaultLiveCredentialService(signal)).importLiveEnv(undefined, signal);
     if (!result.imported) throw new Error("Google auth changed; refresh setup without overwriting it.");
   },
   audio: createLocalAudioAdapter,
@@ -319,12 +319,12 @@ export default function liveExtension(pi: ExtensionAPI, dependencies: Partial<Li
         setupController = controller;
         try {
           await runLiveSetup(ctx.ui, {
-            status: deps.credentialStatus,
+            status: () => deps.credentialStatus(controller.signal),
             importKey: () => deps.importKey(controller.signal),
             capabilities: deps.capabilities,
             isCurrent: () => !controller.signal.aborted,
             testConnection: async () => {
-              const key = await deps.key();
+              const key = await deps.key(controller.signal);
               if (controller.signal.aborted) return;
               await testLiveConnection(key, { signal: controller.signal, transport: deps.transport });
             },

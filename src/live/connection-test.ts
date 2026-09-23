@@ -1,4 +1,4 @@
-import { LiveTransport, type LiveCallbacks } from "./transport";
+import { type LiveCallbacks, LiveTransport } from "./transport";
 
 type TestTransport = Pick<LiveTransport, "connect" | "close">;
 /** Explicitly paid setup handshake only. Never creates audio, sends input, or dispatches tools. */

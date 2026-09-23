@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 // Pinned Pi 0.87.1 storage seam: not re-exported by the package root. Static import is bundled by Bun.
 import { AuthStorage } from "../node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js";
-import { createLiveCredentialService } from "../src/live/credentials";
+import { createDefaultLiveCredentialService, createLiveCredentialService } from "../src/live/credentials";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -176,4 +176,27 @@ test("stored key status is metadata only and does not resolve command references
     throw new Error("must not resolve");
   };
   expect(await service.status()).toEqual({ state: "stored_api_key", canImport: false });
+});
+
+test("default factory honors die's configured auth directory and reuses the canonical provider key", async () => {
+  const { dir } = await fixture({ google: { type: "api_key", key: "fake-canonical-google-key" } });
+  const previous = process.env.DIE_CODING_AGENT_DIR;
+  process.env.DIE_CODING_AGENT_DIR = dir;
+  try {
+    const service = await createDefaultLiveCredentialService();
+    expect(await service.status()).toEqual({ state: "stored_api_key", canImport: false });
+    expect(await service.loadKey()).toBe("fake-canonical-google-key");
+  } finally {
+    if (previous === undefined) delete process.env.DIE_CODING_AGENT_DIR;
+    else process.env.DIE_CODING_AGENT_DIR = previous;
+  }
+});
+
+test("cancelled credential inspection and factory calls fail before resolving key material", async () => {
+  const { service } = await fixture({ google: { type: "api_key", key: "fake-never-resolve" } });
+  const controller = new AbortController();
+  controller.abort();
+  await expect(service.status(controller.signal)).rejects.toThrow();
+  await expect(service.loadKey(controller.signal)).rejects.toThrow();
+  await expect(createDefaultLiveCredentialService(controller.signal)).rejects.toThrow();
 });

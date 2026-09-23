@@ -63,9 +63,9 @@ type LiveCredentialRuntime = Pick<ModelRuntime, "checkAuth" | "getAuth" | "listC
 
 export interface LiveCredentialService {
   /** Credential state suitable for UI; this never returns key or token material. */
-  status(): Promise<LiveCredentialStatus>;
+  status(signal?: AbortSignal): Promise<LiveCredentialStatus>;
   /** Resolve Google's API key through ModelRuntime. OAuth access tokens are never returned. */
-  loadKey(): Promise<string>;
+  loadKey(signal?: AbortSignal): Promise<string>;
   /** Explicitly migrate live.env into the runtime's existing AuthStorage, if Google is unconfigured. */
   importLiveEnv(path?: string, signal?: AbortSignal): Promise<LiveCredentialImportResult>;
 }
@@ -82,15 +82,16 @@ export function createLiveCredentialService(
   runtime: LiveCredentialRuntime,
   credentials: CredentialStore,
 ): LiveCredentialService {
-  const status = async (): Promise<LiveCredentialStatus> => {
-    const stored = storedGoogle(await runtime.listCredentials());
+  const status = async (signal?: AbortSignal): Promise<LiveCredentialStatus> => {
+    signal?.throwIfAborted();
+    const stored = storedGoogle(await runtime.listCredentials({ signal }));
     if (stored) {
       return stored.type === "api_key"
         ? { state: "stored_api_key", canImport: false }
         : { state: "oauth", canImport: false };
     }
 
-    const configured = await runtime.checkAuth(GOOGLE_PROVIDER);
+    const configured = await runtime.checkAuth(GOOGLE_PROVIDER, { signal });
     if (!configured) return { state: "missing", canImport: true };
     return configured.type === "api_key"
       ? { state: "configured_api_key", canImport: false }
@@ -99,12 +100,12 @@ export function createLiveCredentialService(
 
   return {
     status,
-    async loadKey(): Promise<string> {
-      const current = await status();
+    async loadKey(signal?: AbortSignal): Promise<string> {
+      const current = await status(signal);
       if (current.state === "oauth") {
         throw new Error("Live requires a Google API key; OAuth credentials cannot be used.");
       }
-      const result = await runtime.getAuth(GOOGLE_PROVIDER);
+      const result = await runtime.getAuth(GOOGLE_PROVIDER, { signal });
       const key = result?.auth.apiKey;
       if (typeof key !== "string" || key.length === 0) {
         throw new Error("Live requires a configured Google API key.");
@@ -113,13 +114,13 @@ export function createLiveCredentialService(
     },
     async importLiveEnv(path = liveCredentialsPath(), signal?: AbortSignal): Promise<LiveCredentialImportResult> {
       signal?.throwIfAborted();
-      let current = await status();
+      let current = await status(signal);
       if (!current.canImport) return { imported: false, status: current };
 
       // Reading is deliberately after the guard: an existing provider credential means the
       // migration file is not touched at all.
       const key = await loadLiveKey(path);
-      current = await status();
+      current = await status(signal);
       if (!current.canImport) return { imported: false, status: current };
 
       let imported = false;
@@ -136,13 +137,14 @@ export function createLiveCredentialService(
         },
         { signal },
       );
-      return { imported, status: await status() };
+      return { imported, status: await status(signal) };
     },
   };
 }
 
 /** Lazy call-site factory: same canonical auth.json, stock Google provider, no catalogue/network refresh. */
-export async function createDefaultLiveCredentialService(): Promise<LiveCredentialService> {
+export async function createDefaultLiveCredentialService(signal?: AbortSignal): Promise<LiveCredentialService> {
+  signal?.throwIfAborted();
   const credentials = AuthStorage.create(
     join(process.env.DIE_CODING_AGENT_DIR ?? join(homedir(), ".die", "agent"), "auth.json"),
   );
@@ -151,6 +153,7 @@ export async function createDefaultLiveCredentialService(): Promise<LiveCredenti
     modelsPath: null,
     refreshOnCreate: false,
     allowModelNetwork: false,
+    signal,
   });
   return createLiveCredentialService(runtime, credentials);
 }
