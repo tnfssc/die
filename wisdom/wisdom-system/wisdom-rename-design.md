@@ -1,13 +1,13 @@
 # Wisdom rename design discussion
 
-User wants the durable project context system renamed/reframed as **wisdom**, driven by prompt language rather than the current wisdom/memory implementation.
+The user wants the durable project context system called **wisdom**. Prompt language should drive the design, not the old wisdom/memory code.
 
 Current direction:
-- Concept and user-facing language: wisdom, not memory/notes.
+- Call it wisdom in concepts and user-facing text, not memory or notes.
 - Location should be root `wisdom/`, not `wisdom/`.
-- Organize wisdom by feature/system, not by artifact type (not decisions/audits/handoffs buckets).
-- No mandatory index. Agents should search/read relevant feature wisdom.
-- No pending wisdom/consolidation ceremony; agents write directly to the relevant wisdom files.
+- Organize wisdom by feature or system, not into decision, audit, and handoff buckets.
+- Do not require an index. Agents should find and read the feature wisdom they need.
+- Do not add a pending queue or consolidation ceremony. Agents write straight to the relevant wisdom files.
 - `docs/` is confusing as an agent storage target; durable written project context should live in wisdom. Source/tests/config stay in their normal locations.
 - Prompt style must follow existing vetted prompts: short, direct, operational. Do not derive language from current wisdom/index mechanics.
 

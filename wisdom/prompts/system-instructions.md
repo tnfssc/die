@@ -1,8 +1,8 @@
 # Model input source map
 
-Start with [Editing prompts](./prompts.md) when reviewing wording. This map explains **what can reach the model, where it comes from, and when it is included**. Linked source files are the canonical wording; the map is not a second copy of every prompt. Runtime templates below explain additional message shapes, not messages guaranteed to appear on every request.
+Read [Editing prompts](./prompts.md) before reviewing wording. This map shows **what can reach the model, where it comes from, and when it appears**. The linked source files own the wording. This map does not copy every prompt. The runtime templates below show other message shapes. They do not appear on every request.
 
-For a concrete first-request view, use `bun run prompt:preview`; options and exclusions are documented in [Inspect the assembled input](./prompts.md#inspect-the-assembled-input). This uses the real assembly/hooks with a local fake stream, not a live-provider call.
+Run `bun run prompt:preview` to see a real first-request assembly. [Inspect the assembled input](./prompts.md#inspect-the-assembled-input) explains its options and limits. The preview uses the real assembly and hooks with a fake local stream. It does not call a live provider.
 
 ## Scope and terminology
 

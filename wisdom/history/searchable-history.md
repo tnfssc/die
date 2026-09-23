@@ -1,11 +1,11 @@
 # Searchable original history
 
-Die's history service retrieves bounded, attributable text from the append-only Pi session transcript. It is intended for recovering exact user-visible evidence without copying an arbitrary full transcript into a provider request.
+Die's history service reads bounded text with clear sources from the append-only Pi session transcript. Use it to recover exact user-visible evidence without putting a whole transcript into a provider request.
 
 ## Scope and exclusions
 
-- Search defaults to the current session's **active branch**. It uses the original branch rather than the compaction-aware context window, so exact dialogue remains discoverable after compaction.
-- Inactive branches and other sessions are not searched implicitly.
+- Search starts with the current session's **active branch**. It reads the original branch, not the compaction-aware context window. Exact dialogue can still be found after compaction.
+- Search does not silently include inactive branches or other sessions.
 - Cross-session calls must provide both an explicit `sessionFile` and `allowCrossSession: true` on each search or read. A ref alone never grants cross-session access. Cross-session files are opened through a read-only parser rather than the SDK persistent manager, so history reads do not create, repair, migrate, or rewrite sessions. The descriptor is opened read-only and nonblocking before it is checked, so FIFOs and other non-regular paths are rejected instead of blocking.
 - Assistant thinking and tool-call payloads are never indexed.
 - Hidden custom messages and `bashExecution` messages marked `excludeFromContext` are never indexed.
@@ -24,7 +24,7 @@ Returns at most 20 matches by default (maximum 50), each with a bounded excerpt,
 
 Returns at most 8,000 characters by default (maximum 16,000), an exact range and provenance. Continue long text with `nextCursor`. Reads refuse refs outside the selected active branch or refs that are now excluded.
 
-Only returned search excerpts/read pages enter the model through the ordinary execute tool result; the service does not inject history into context automatically.
+Only the search excerpts and read pages returned through the normal execute result enter model context. The service never injects history on its own.
 
 ## Runtime integration
 

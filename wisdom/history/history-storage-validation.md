@@ -1,6 +1,6 @@
 # Disk-backed history storage validation
 
-Validated 2026-09-18 against the concurrently implemented adapter in `src/history/session-manager.ts`. I did not edit the adapter or its store.
+Checked on 2026-09-18 against the adapter being built at the same time in `src/history/session-manager.ts`. This work did not edit the adapter or its store.
 
 ## Compatibility coverage
 
@@ -16,7 +16,7 @@ Validated 2026-09-18 against the concurrently implemented adapter in `src/histor
 - original full text available through `getEntry` after reopen,
 - compacted context containing summary/kept/tail text but not the older original body.
 
-This is API behavior validation, not merely an internal cache-size assertion. The direct compaction scenario also verifies the authoritative JSONL is larger than the original body.
+These tests check API behavior, not just an internal cache-size number. The direct compaction case also proves that the authoritative JSONL is larger than the original body.
 
 ## Runtime retention probe
 

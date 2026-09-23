@@ -2,12 +2,12 @@
 
 ## Ownership and baseline
 
-- Owner: this parallel task; integration remains with main / `task_b210d06d`.
-- Edited source only in isolated `/var/tmp/die-last-used-model`.
+- This parallel task owned the work. Main / `task_b210d06d` still owned integration.
+- Source edits stayed in isolated `/var/tmp/die-last-used-model`.
 - Canonical T3 source: `a9b49a7df0a4261dcc438d4493cc3154a1d9819e` plus a snapshot of `web/t3.patch`.
 - Baseline patch SHA-256: `62d76004e90bb4b95ca7b1477049f1a9f0c149ccc9eb2ca5280ac32c6f47bbf0`.
 - Incremental artifact: `.agents/patches/last-used-model-incremental.patch` (SHA-256 `3322fbb4399ecb1d0c0035a481e1c1889239823872c9cb31c63c76c9ba8e3024`).
-- Root source, shared cache/canonical checkout, `web/t3.patch`, index, native/workspace files, user state, credentials, installs, commits and releases were not touched.
+- The work did not touch root source, the shared cache or canonical checkout, `web/t3.patch`, indexes, native or workspace files, user state, credentials, installs, commits, or releases.
 
 ## Confirmed web bug and fix
 

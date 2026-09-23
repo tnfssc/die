@@ -1,8 +1,8 @@
 # Compaction and cache reuse — investigation
 
-Status: Phase 1 and Phase 2 were implemented and validated; the later current-conversation plaintext revision supersedes Phase 1's old snapshot-eligibility rules. These source revisions were built, not installed; the currently installed release is the older v0.2.3. Pi version investigated: 0.85.0.
-Investigated 2026-09-05. Comparison verified against official documentation and Codex source at commit
-588b781ab4924ce7352488394028e63d74cf807f. Public docs and defaults may evolve.
+Status: Phase 1 and Phase 2 were built and checked. The later current-conversation plaintext revision replaces Phase 1's old snapshot-eligibility rules. These source changes were built but not installed. The installed release was still v0.2.3. This work studied Pi 0.85.0.
+
+Research date: 2026-09-05. The comparison used official docs and Codex source at commit 588b781ab4924ce7352488394028e63d74cf807f. Public docs and defaults can change.
 
 ## Direct evidence from die
 
@@ -14,11 +14,7 @@ The current parent session has three default compaction records:
 | 06:03:31 | 95,501 | 0 | 3,417 | $1.12586 |
 | 13:52:09 | 54,510 | 0 | 4,023 | $0.74625 |
 
-Total: 244,937 uncached input tokens and $2.96917 in recorded cost. These are
-client usage/pricing records, not a provider billing audit. The preceding normal
-responses reported 241,920, 253,696, and 152,448 cached input tokens respectively.
-The third followed a multi-hour idle period, so this does not establish that its
-earlier cache entry remained available at compaction time.
+Total: 244,937 uncached input tokens and $2.96917 in recorded cost. These numbers come from client usage and pricing records, not a provider billing audit. The normal responses just before them reported 241,920, 253,696, and 152,448 cached input tokens. The third came after several idle hours. It does not prove that the earlier cache entry was still available when compaction ran.
 
 An offline run of the production Pi summarizer through the production Codex
 serializer confirms the payload mismatch. Fixture-only artifacts:
@@ -26,8 +22,7 @@ serializer confirms the payload mismatch. Fixture-only artifacts:
 - artifacts/compaction/capture.ts
 - artifacts/compaction/provider-payloads.json
 
-The capture intercepted onPayload, used a dummy JWT, and asserted zero fetch
-calls. This is serializer-boundary evidence, not live provider-wire observation.
+The capture intercepted `onPayload`, used a dummy JWT, and asserted zero fetch calls. This proves behavior at the serializer boundary. It is not a live view of provider traffic.
 
 | Component | Ordinary fixture request | Default compaction |
 | --- | --- | --- |

@@ -8,7 +8,7 @@
 - Final canonical `web/t3.patch`: SHA-256 `973b265252c61b33d056c51da8ce15d628f3fa7632fde31af63fd8e08399b686`, 100 paths, clean-apply verified.
 - Running the private-index exporter twice produced the same hash. The canonical and root indexes remain untouched.
 
-The five incremental files are `DraftHeroHeadline.tsx`, `composerDraftStore.test.ts`, `useHandleNewThread.ts`, `chatThreadActions.test.ts`, and `chatThreadActions.ts`. Existing workspace/native source remained in the canonical checkout. No root CLI/docs source or index was edited.
+The incremental patch changed five files: `DraftHeroHeadline.tsx`, `composerDraftStore.test.ts`, `useHandleNewThread.ts`, `chatThreadActions.test.ts`, and `chatThreadActions.ts`. Existing workspace and native source stayed in the canonical checkout. It did not edit root CLI or docs source, or any index.
 
 ## Behavior and coverage review
 

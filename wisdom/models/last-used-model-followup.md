@@ -1,8 +1,8 @@
 # Last-used model follow-up (2026-09-23)
 
-User reports last-used model still does not work; surface not yet specified. Asked terminal vs web. Earlier fix covered web and intentionally left CLI ordinary /model session-only (Ctrl+S saves defaults), a likely expectation gap, not yet confirmed.
+The user said the last-used model still did not work, but had not yet said whether this meant terminal or web. We asked. The earlier fix covered web. It deliberately kept ordinary CLI `/model` changes local to one session; Ctrl+S saved defaults. That looked like the likely expectation gap, but was not yet proven.
 
-Investigation/implementation delegated to task_13898849 in /home/tnfssc/.die/worktrees/die-a86675007a5e-task_13898849, branch die/investigate-last-used-model-persistence-13898849, base 0834f2b76ea0a1b20ed36ba0f954e977c23d6101. Worker to inspect both paths, test focused explicit-selection persistence fix, avoid user settings and installed executable changes. Pending worker findings, user clarification, and integration/review.
+Investigation and implementation went to `task_13898849` in `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_13898849`, branch `die/investigate-last-used-model-persistence-13898849`, base `0834f2b76ea0a1b20ed36ba0f954e977c23d6101`. The worker was to check both paths and test a narrow explicit-selection persistence fix. It was not to change user settings or the installed executable. Worker findings, user clarification, integration, and review were still pending.
 
 User clarified: **terminal**. Scope is CLI, not web. Implement automatic persistence of explicit user model choices.
 

@@ -1,8 +1,8 @@
 # History storage I/O validation
 
-Added focused coverage in `tests/history-storage-io.test.ts` for the disk-backed entry store.
+Focused tests live in `tests/history-storage-io.test.ts` for the disk-backed entry store.
 
-## Covered invariants
+## What the tests cover
 
 - `scanJsonl` propagates exceptions from its visitor; only malformed JSON records may be ignored.
 - UTF-8 content (including multibyte text crossing the 64 KiB scanner boundary), CRLF records, malformed intervening records, and a valid final unterminated record scan correctly. Opening and appending repairs the final delimiter so the tail and appended record both survive reopen.
@@ -10,16 +10,16 @@ Added focused coverage in `tests/history-storage-io.test.ts` for the disk-backed
 - A failed flushed replacement (forced through JSON serialization failure) does not discard a pending spool. The same store remains appendable and can publish the original header/body plus the later assistant record.
 - Duplicate IDs preserve distinct physical records when materialized by metadata, while string ID lookup resolves to the last physical record. Cache hits cannot substitute one duplicate body for another.
 
-## Failure observations
+## Failures found
 
-Against the initial concurrent store revision, all four direct tests failed:
+All four direct tests failed against the first concurrent store draft:
 
 1. scanner visitor exceptions were swallowed;
 2. append concatenated onto a valid unterminated final JSON value;
 3. failed replacement deleted the pending backing file (subsequent publish target was absent);
 4. duplicate-ID cache lookup returned the first body for the second physical record.
 
-The adapter worker updated the store while validation was in progress. Those regressions now pass, as does the isolated short-write test.
+The adapter worker changed the store while these checks ran. Those cases now pass. The isolated short-write test passes too.
 
 ## Commands
 

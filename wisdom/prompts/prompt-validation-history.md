@@ -1,6 +1,6 @@
 # Prompt validation history
 
-Historical evidence from September 5, 2026, preserved from `wisdom/prompts/prompts.md`. References to "current", "next", examples, and candidate wording below describe those experiments, not today's prompt. Start with [the prompt editing guide](./prompts.md) for new work and [the source map](./system-instructions.md) for current assembly. Passing assembly tests never established that a model would follow the guidance. Failed behavioral runs remain evidence.
+This file keeps evidence from the September 5, 2026 prompt work, first written in `wisdom/prompts/prompts.md`. Words such as "current" and "next", plus examples and draft wording below, belong to those old experiments. They do not describe today's prompt. For new work, start with [the prompt editing guide](./prompts.md). Use [the source map](./system-instructions.md) for today's assembly. Assembly tests never proved that a model would follow the text. Failed behavior runs still count as evidence.
 
 ## Evaluation
 

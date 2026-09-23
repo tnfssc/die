@@ -2,9 +2,9 @@
 
 ## Current decision
 
-Implement an explicit /shake command. Keep existing automatic compaction as the default, including current-context plaintext and provider-native Codex behavior. No automatic shake, compaction disablement, or silent fallback policy in this change.
+Build an explicit `/shake` command. Keep automatic compaction as the default, including current-context plaintext and provider-native Codex behavior. This change does not add automatic shake, turn off compaction, or add a silent fallback.
 
-Shake prunes execution traces from active context without summarizing or rewriting dialogue. Preserve the full transcript on disk. Pruning itself needs no inference request.
+Shake removes execution traces from active context. It does not summarize or rewrite dialogue. The full transcript stays on disk. Pruning needs no inference request.
 
 ## Manual shake requirements
 
@@ -21,7 +21,7 @@ Shake prunes execution traces from active context without summarizing or rewriti
 
 ### Searchable original history: priority follow-up
 
-Stable transcript references, branch-local search by default, bounded paged reads and provenance. Prefer original evidence over repeated summaries, handoffs and retrieval echoes. Preserve deliberate context exclusions; explicitly scope access to other sessions. Retrieved material enters the selected provider's context. These controls protect excluded/private material, not hide the user's own instructions.
+Use stable transcript refs, branch-local search by default, bounded pages, and provenance. Prefer original evidence to repeated summaries, handoffs, and retrieval echoes. Keep deliberate context exclusions. Access to another session must be explicit. Retrieved text enters the selected provider's context. These controls protect excluded or private material. They do not hide the user's own instructions.
 
 ### Verbatim intent plus execution-state summary
 
@@ -35,7 +35,7 @@ A small index of authoritative notes, goals, unresolved questions and job/histor
 
 ### Automatic shake as a possible future default
 
-Discussed replacing automatic compaction with automatic shake, but the latest decision defers that switch. Long threads may become mostly verbatim dialogue, leaving little removable trace.
+Automatic shake was discussed as a replacement for automatic compaction. The latest decision leaves that switch for later. Long threads may become mostly verbatim dialogue, with little trace left to remove.
 
 Possible future UX:
 - Quiet automatic pruning when effective, with a compact before/after estimate.

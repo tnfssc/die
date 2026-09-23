@@ -1,6 +1,6 @@
 # Disk-backed original session history
 
-Die's CLI installs an owned adapter for the pinned Pi 0.85.1 SessionManager before creating sessions. Original JSONL remains authoritative and SDK-readable. Compaction does **not** delete originals or replace them with summaries. IDs, branches, labels, compaction details, and history refs survive reopen.
+Before it creates a session, Die's CLI installs its own adapter for pinned Pi 0.85.1 `SessionManager`. The original JSONL stays authoritative and readable by the SDK. Compaction does **not** delete originals or replace them with summaries. Reopening keeps IDs, branches, labels, compaction details, and history refs.
 
 ## Memory contract
 
