@@ -4,6 +4,7 @@ import { createDefaultLiveCredentialService } from "../live/credentials";
 import { liveLocalOnly } from "../live/status";
 import { LiveLabAudio, type AudioCallbacks } from "./audio";
 import { VoiceSession } from "./session";
+import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
 import { PlaybackScheduler } from "./playback";
 import { VOICE_MODEL, type VoiceCallbacks } from "./types";
 
@@ -42,6 +43,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
   let current: Run | undefined;
   let sequence = 0;
   let confirmation: number | undefined;
+  let probe: AbortController | undefined;
   class Run {
     readonly id = ++sequence;
     readonly controller = new AbortController();
@@ -214,9 +216,9 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
                 this.render();
               }
             },
-            error: () => this.fail("Audio helper error"),
+            error: (code) => this.fail(audioDiagnostic(code)),
             closed: () => {
-              if (this.alive) this.fail("Audio helper closed");
+              if (this.alive) this.fail(audioDiagnostic("helper_failure"));
             },
           },
           this.controller.signal,
@@ -256,7 +258,12 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
         if (!this.alive) return;
         this.render();
       } catch {
-        if (this.alive) this.fail("Startup failed; check Google API-key auth and the local audio helper");
+        if (this.alive)
+          this.fail(
+            this.audio
+              ? "Voice or audio startup failed [startup]; try /live-lab mic-check without a provider and check provider auth separately"
+              : audioLaunchDiagnostic(),
+          );
       }
     }
   }
@@ -273,6 +280,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           "Status",
           "Start paid Google voice + microphone",
           "Stop voice lab",
+          "Check mic/speakers (no provider; explicit consent)",
         ]);
         action =
           choice === "Status"
@@ -281,7 +289,9 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
               ? "start"
               : choice === "Stop voice lab"
                 ? "stop"
-                : "";
+                : choice === "Check mic/speakers (no provider; explicit consent)"
+                  ? "mic-check"
+                  : "";
       }
       if (action === "status") {
         ctx.ui.notify(
@@ -302,7 +312,67 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
             : "Voice lab off. No key, network, microphone or helper opened. No agent bridge or tools.",
           "info",
         );
+      } else if (action === "mic-check") {
+        if (!deps.local(ctx.mode)) {
+          ctx.ui.notify("Mic check requires a local interactive terminal.", "warning");
+          return;
+        }
+        if (current || confirmation !== undefined || probe) {
+          ctx.ui.notify("Voice lab is busy; stop it first.", "info");
+          return;
+        }
+        const owner = ++sequence;
+        confirmation = owner;
+        let consent = false;
+        try {
+          consent = await ctx.ui.confirm(
+            "Local microphone and speaker check",
+            "Open microphone and speakers briefly? No Google key, network, playback or agent tools. Captured audio is discarded, not saved or sent. macOS may request microphone permission.",
+          );
+        } catch {
+          /* dialog closed */
+        }
+        if (confirmation !== owner || owner !== sequence) return;
+        confirmation = undefined;
+        if (!consent) return;
+        const controller = new AbortController();
+        probe = controller;
+        let audio: LabAudio | undefined;
+        let code: string | undefined;
+        try {
+          audio = await deps.audio(
+            {
+              error: (value) => {
+                code = value;
+              },
+            },
+            controller.signal,
+          );
+          if (controller.signal.aborted) return;
+          await audio.start();
+          if (!controller.signal.aborted)
+            ctx.ui.notify(
+              code
+                ? "Mic check: " + audioDiagnostic(code)
+                : "Audio route ready [ready]. No provider or recording saved; this does not prove sound quality.",
+              code ? "warning" : "info",
+            );
+        } catch {
+          if (!controller.signal.aborted)
+            ctx.ui.notify(
+              "Mic check: " +
+                (code ? audioDiagnostic(code) : audio ? audioDiagnostic("helper_failure") : audioLaunchDiagnostic()),
+              "warning",
+            );
+        } finally {
+          if (audio) {
+            await audio.stop().catch(() => {});
+            audio.close();
+          }
+          if (probe === controller) probe = undefined;
+        }
       } else if (action === "stop") {
+        probe?.abort();
         sequence++;
         confirmation = undefined;
         current?.stop();
@@ -312,7 +382,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           ctx.ui.notify("Voice lab requires local interactive macOS or Linux CLI.", "warning");
           return;
         }
-        if (current || confirmation !== undefined) {
+        if (current || confirmation !== undefined || probe) {
           ctx.ui.notify("Voice lab already starting or running.", "info");
           return;
         }
@@ -335,12 +405,13 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
         current = run;
         run.render(true);
         await run.start();
-      } else if (action) ctx.ui.notify("Usage: /live-lab [start|stop|status]", "info");
+      } else if (action) ctx.ui.notify("Usage: /live-lab [start|stop|status|mic-check]", "info");
     },
   });
   pi.on("session_shutdown", () => {
     sequence++;
     confirmation = undefined;
+    probe?.abort();
     current?.stop();
   });
   pi.on("session_start", () => {

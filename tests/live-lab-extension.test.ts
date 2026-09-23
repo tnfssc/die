@@ -202,10 +202,37 @@ describe("opt-in voice-only lab", () => {
     expect(t.starts).toBe(0);
     expect(t.closes).toBe(1);
     expect(t.notices.join(" ")).not.toContain("SECRET");
-    await t.run("start");
-    t.capture.error?.("bad", "SECRET");
+    const running = setup();
+    await running.run("start");
+    running.capture.error?.("permission", "SECRET");
+    expect(running.notices.join(" ")).toContain("Microphone access denied [permission]");
     expect(t.notices.join(" ")).not.toContain("SECRET");
     expect(t.status.at(-1)).toBeUndefined();
+  });
+  test("mic-check requires consent, never uses key/provider and discards capture", async () => {
+    const declined = setup();
+    declined.decline();
+    await declined.run("mic-check");
+    expect([declined.launches, declined.keyCalls, declined.starts]).toEqual([0, 0, 0]);
+    const t = setup();
+    await t.run("mic-check");
+    expect([t.launches, t.keyCalls, t.starts, t.closes]).toEqual([1, 0, 1, 1]);
+    expect(t.notices.join(" ")).toContain("Audio route ready [ready]");
+    const denied = setup({
+      audio: async () => {
+        throw new Error("SECRET");
+      },
+    });
+    await denied.run("mic-check");
+    expect(denied.notices.join(" ")).toContain("[launch]");
+    expect(denied.notices.join(" ")).not.toContain("SECRET");
+  });
+  test("unknown helper code never reaches UI", async () => {
+    const t = setup();
+    await t.run("start");
+    t.capture.error?.("SECRET", "SECRET");
+    expect(t.notices.join(" ")).toContain("[unclassified]");
+    expect(t.notices.join(" ")).not.toContain("SECRET");
   });
   test("provider output during setup is held until audio ready; overflow fails visibly", async () => {
     const t = setup();

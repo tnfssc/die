@@ -145,18 +145,22 @@ final class Lab {
     func open() {
         guard starting else { return }
         let audio = AVAudioEngine()
+        var phase = "voice_processing"
+        var tapInstalled = false
         do {
             try audio.inputNode.setVoiceProcessingEnabled(true)
             guard audio.inputNode.isVoiceProcessingEnabled else { throw NSError(domain: "voice-processing", code: 1) }
+            phase = "input_format"
             let inputFormat = audio.inputNode.outputFormat(forBus: 0)
             guard inputFormat.channelCount > 0, inputFormat.commonFormat == .pcmFormatFloat32,
                   !inputFormat.isInterleaved, inputFormat.sampleRate >= 8000,
                   inputFormat.sampleRate <= 192000 else { throw NSError(domain: "input-format", code: 1) }
             captureRate = inputFormat.sampleRate
             let mixFormat = audio.mainMixerNode.outputFormat(forBus: 0)
-            guard let sourceFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                sampleRate: mixFormat.sampleRate, channels: 1, interleaved: false),
-                mixFormat.sampleRate >= 24000 else { throw NSError(domain: "output-format", code: 1) }
+            phase = "output_format"
+            guard mixFormat.sampleRate >= 24000, mixFormat.sampleRate <= 192000,
+                let sourceFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                    sampleRate: mixFormat.sampleRate, channels: 1, interleaved: false) else { throw NSError(domain: "output-format", code: 1) }
             let source = AVAudioSourceNode { [core, rate = mixFormat.sampleRate] _, _, frameCount, buffers -> OSStatus in
                 let list = UnsafeMutableAudioBufferListPointer(buffers)
                 guard list.count == 1, let first = list.first, let memory = first.mData,
@@ -165,6 +169,7 @@ final class Lab {
                 ll_render(core, memory.assumingMemoryBound(to: Float.self), Int32(frames), rate)
                 return noErr
             }
+            phase = "audio_start"
             audio.attach(source)
             audio.connect(source, to: audio.mainMixerNode, format: sourceFormat)
             audio.inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [core] buffer, _ in
@@ -177,6 +182,7 @@ final class Lab {
                     offset += n
                 }
             }
+            tapInstalled = true
             notification = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: audio, queue: .main) { [weak self] _ in
                 self?.error("route_lost", "Audio device route changed; restart with start after stop")
                 self?.stop()
@@ -205,10 +211,10 @@ final class Lab {
             }
             timer = t; t.resume()
         } catch {
-            audio.inputNode.removeTap(onBus: 0)
+            if tapInstalled { audio.inputNode.removeTap(onBus: 0) }
             if let notification { NotificationCenter.default.removeObserver(notification); self.notification = nil }
             audio.stop(); starting = false
-            self.error("audio_start", "Could not start default audio route with voice processing")
+            self.error(phase, "Could not start default audio route with voice processing")
         }
     }
     func drainCapture() {
