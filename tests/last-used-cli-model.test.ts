@@ -1,5 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import type { ExtensionAPI, ExtensionContext, ModelSelectEvent } from "@earendil-works/pi-coding-agent";
+import { mkdtemp, mkdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  SettingsManager,
+  type ExtensionAPI,
+  type ExtensionContext,
+  type ModelSelectEvent,
+} from "@earendil-works/pi-coding-agent";
 import {
   isExplicitRootCliModelSelection,
   registerLastUsedCliModel,
@@ -84,4 +92,32 @@ describe("last-used CLI model", () => {
     await handler!(event("set"), context("tui"));
     expect(creates).toBe(0);
   });
+});
+
+test("saved choice survives a fresh settings instance without changing unrelated settings", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "die-model-default-"));
+  try {
+    const cwd = join(dir, "project");
+    const agentDir = join(dir, "agent");
+    await mkdir(cwd);
+    await mkdir(agentDir);
+    await Bun.write(
+      join(agentDir, "settings.json"),
+      JSON.stringify({ defaultProvider: "old", defaultModel: "old-model", theme: "light" }),
+    );
+    let handler: ((event: ModelSelectEvent, ctx: ExtensionContext) => Promise<void>) | undefined;
+    const pi = { on: (_name: string, candidate: typeof handler) => (handler = candidate) } as unknown as ExtensionAPI;
+    registerLastUsedCliModel(
+      pi,
+      () => true,
+      () => SettingsManager.create(cwd, agentDir),
+    );
+    await handler!(event(), context());
+    const fresh = SettingsManager.create(cwd, agentDir);
+    expect(fresh.getDefaultProvider()).toBe("anthropic");
+    expect(fresh.getDefaultModel()).toBe("claude-test");
+    expect((await Bun.file(join(agentDir, "settings.json")).json()).theme).toBe("light");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

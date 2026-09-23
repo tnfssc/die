@@ -32,3 +32,7 @@ Caveat: Pi 0.87's public `model_select` event identifies `set | cycle | restore`
 - `git diff --check`: passed.
 
 Validation used the existing dependency tree from the main checkout via a temporary symlink because this worktree had no `node_modules`; the symlink was removed afterward. No dependency was installed, no executable was built/installed, and no user settings were read or changed by tests.
+
+## Main integration
+
+User additionally requested dependency updates (worker task_65e8e889, worktree /home/tnfssc/.die/worktrees/die-a86675007a5e-task_65e8e889, branch die/update-project-dependencies-65e8e889) and authorized push and release once complete. Main cherry-picked CLI fix; combined validation/release pending. Anticipated release v0.5.8, subject to remote check.
