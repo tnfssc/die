@@ -128,8 +128,8 @@ test("real SDK defaults main frame to orchestrator and switches to a prose-free 
   expect(f.requests[0]).toContain("shell 3 seconds");
   expect(f.requests[0]).toContain("<cwd>\n" + f.manager.getCwd() + "\n</cwd>");
   expect(f.requests[0]).toContain("Project wisdom lives in wisdom/.");
-  expect(f.requests[0]).toContain("Derived values live in wisdom/values.md.");
-  expect(f.requests[0]).toContain("Before finishing substantial work or handing it off");
+  expect(f.requests[0]).toContain("Values live in wisdom/values.md.");
+  expect(f.requests[0]).toContain("Before big work ends or changes hands");
   expect(f.requests[0]).not.toContain("Pi documentation (read only");
   expect(f.requests[0]).toContain("FRAME_BEFORE");
   expect(f.requests[0]).toContain("FRAME_AFTER");

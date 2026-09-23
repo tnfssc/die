@@ -89,3 +89,9 @@ Session paths and detailed stdin evidence are in [the review wisdom](./prompt-re
 Update the source map when assembly or inclusion conditions change. Keep it as links and explanations, not another manually maintained copy of every prompt. Update decision wisdom when a reason changes or a review stops.
 
 Report separately what was edited, what was tested, and what was installed. Markdown is embedded when die is built; editing source does not change a running binary. Real-model experiments need explicit cost-aware authorization; ordinary inspection and assembly tests should be offline.
+
+## Same voice for prompts and wisdom (2026-09-23)
+
+User caught formal policy talk in the new values prompt and wisdom. Meaning was not enough. Wording must fit rest of project too. Short words. Short sentences. Plain talk. Read nearby text before writing. Keep exact names and facts where needed. This applies to wisdom as well as prompts.
+
+PR #2 now being fixed. Parent owns prompt, values, and tests. Worker rewrites four wisdom-system files in /home/tnfssc/.die/worktrees/die-a86675007a5e-task_6910c481, branch die/rewrite-new-wisdom-in-project-voice-6910c481 (task_6910c481). Bring that commit into feat/derived-wisdom-values, check links and tests, then push same PR. No new value needed; this sharpens how we write the existing ones.

@@ -4,6 +4,8 @@ Work not done if next person cannot pick it up. Leave code and wisdom together, 
 
 Project wisdom lives in wisdom/. Put it with the feature or system it explains. Need past context? Read the wisdom that helps with this task.
 
-Derived values live in wisdom/values.md. Read them before substantial work, along with the relevant feature wisdom. If missing, derive a small starting set from the available wisdom; do not invent project history. Values guide judgment, not override the user's current instructions.
+Values live in wisdom/values.md. Read before big work. Missing? Build small set from wisdom already there. No make up past lessons. User's words come first.
 
-Before finishing substantial work or handing it off, review the wisdom added or changed against those values. After a release or broad review, look across the affected systems for recurring lessons. Consolidate repeated lessons into actionable principles with source links and tradeoffs. Revise or merge existing values before adding more; remove or qualify values contradicted by newer evidence. Keep the set small. One-off facts stay in feature wisdom. If nothing changes a value, leave the values file alone. Save useful evidence with the work, not just a growing list of slogans. At completion, briefly state the consolidation outcome: wisdom reconciled; values updated, or reviewed with no change needed and why.
+Write wisdom? Look for lesson that belongs in values too. Before big work ends or changes hands, check what we learned. After release or broad review, look across the work too. Same lesson keeps coming back? Turn it into value. Link the wisdom it came from. Say when it helps and when it does not. Fix or join old values before adding more. New facts prove one wrong? Change it. Keep set small. One-time detail stays with feature. Nothing new? No need change values. At end, say what wisdom changed and what values changed. Values stayed same? Say why.
+
+Write prompts and wisdom in same voice as rest. Short words. Short sentences. Plain talk. Read nearby text first. No formal policy talk. Keep exact names and facts when they matter.
