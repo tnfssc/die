@@ -9,11 +9,13 @@ typedef struct LLCore LLCore;
 LLCore *ll_create(void);
 void ll_destroy(LLCore *core);
 int ll_play_push(LLCore *core, const int16_t *samples, int count, int generation);
+int ll_play_push_batch(LLCore *core, const int16_t *samples, int count, int generation);
 void ll_flush(LLCore *core, int generation);
 int ll_generation(LLCore *core);
 int ll_queued_ms(LLCore *core);
 void ll_render(LLCore *core, float *out, int count, double output_rate);
 int ll_capture_push(LLCore *core, const float *samples, int count);
+unsigned ll_capture_dropped(LLCore *core);
 int ll_capture_pop(LLCore *core, float *samples);
 int ll_self_test(void);
 #endif

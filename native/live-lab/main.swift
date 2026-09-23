@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import Darwin
 
 // Input tap never emits JSON or allocates: it copies at most 1024 mono frames into a bounded SPSC ring.
 // Output callback only pulls from the bounded PCM ring. The command queue alone produces playback.
@@ -101,13 +102,28 @@ final class Lab {
     var notification: NSObjectProtocol?
     var starting = false
     var captureRate: Double = 0
-    var reportedQueuedMs = 0
-    func event(_ object: [String: Any]) {
-        output.async {
-            guard let bytes = try? JSONSerialization.data(withJSONObject: object),
-                  let text = String(data: bytes, encoding: .utf8) else { return }
-            print(text); fflush(stdout)
+    var reportedQueuedMs = 0 // output queue only
+    var running = false // output queue only
+    var zeroSince: DispatchTime? // output queue only
+    let inputSlots = DispatchSemaphore(value: 8)
+    let eventSlots = DispatchSemaphore(value: 32)
+    // A blocked stdout cannot buffer audio indefinitely: fail closed on backpressure.
+    func writeEvent(_ object: [String: Any]) {
+        guard let bytes = try? JSONSerialization.data(withJSONObject: object) else { _exit(74) }
+        var line = bytes; line.append(10)
+        line.withUnsafeBytes { raw in
+            var offset = 0
+            while offset < raw.count {
+                let n = Darwin.write(STDOUT_FILENO, raw.baseAddress!.advanced(by: offset), raw.count - offset)
+                if n > 0 { offset += n }
+                else if n < 0 && errno == EINTR { continue }
+                else { _exit(74) }
+            }
         }
+    }
+    func event(_ object: [String: Any]) {
+        eventSlots.wait() // never called from a realtime callback or the output queue
+        output.async { self.writeEvent(object); self.eventSlots.signal() }
     }
     func error(_ code: String, _ message: String) { event(["type":"error", "code":code, "message":message]) }
     func start() {
@@ -118,6 +134,7 @@ final class Lab {
         case .notDetermined:
             AVCaptureDevice.requestAccess(for: .audio) { granted in
                 DispatchQueue.main.async {
+                    if !self.starting { return }
                     if granted { self.open() }
                     else { self.starting = false; self.error("permission", "Microphone permission denied") }
                 }
@@ -126,6 +143,7 @@ final class Lab {
         }
     }
     func open() {
+        guard starting else { return }
         let audio = AVAudioEngine()
         do {
             try audio.inputNode.setVoiceProcessingEnabled(true)
@@ -136,21 +154,28 @@ final class Lab {
                   inputFormat.sampleRate <= 192000 else { throw NSError(domain: "input-format", code: 1) }
             captureRate = inputFormat.sampleRate
             let mixFormat = audio.mainMixerNode.outputFormat(forBus: 0)
+            guard let sourceFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                sampleRate: mixFormat.sampleRate, channels: 1, interleaved: false),
+                mixFormat.sampleRate >= 24000 else { throw NSError(domain: "output-format", code: 1) }
             let source = AVAudioSourceNode { [core, rate = mixFormat.sampleRate] _, _, frameCount, buffers -> OSStatus in
                 let list = UnsafeMutableAudioBufferListPointer(buffers)
-                guard let first = list.first, let memory = first.mData else { return -1 }
+                guard list.count == 1, let first = list.first, let memory = first.mData,
+                      first.mDataByteSize >= frameCount * 4 else { return -1 }
                 let frames = Int(frameCount)
                 ll_render(core, memory.assumingMemoryBound(to: Float.self), Int32(frames), rate)
-                for channel in list.dropFirst() {
-                    if let data = channel.mData { memcpy(data, memory, frames * MemoryLayout<Float>.size) }
-                }
                 return noErr
             }
             audio.attach(source)
-            audio.connect(source, to: audio.mainMixerNode, format: mixFormat)
+            audio.connect(source, to: audio.mainMixerNode, format: sourceFormat)
             audio.inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [core] buffer, _ in
-                guard let channel = buffer.floatChannelData?[0], buffer.frameLength <= 1024 else { return }
-                _ = ll_capture_push(core, channel, Int32(buffer.frameLength))
+                guard let channel = buffer.floatChannelData?[0] else { return }
+                var offset = 0
+                let length = Int(buffer.frameLength)
+                while offset < length {
+                    let n = min(Int(LL_CAPTURE_SAMPLES), length - offset)
+                    _ = ll_capture_push(core, channel + offset, Int32(n))
+                    offset += n
+                }
             }
             notification = NotificationCenter.default.addObserver(forName: .AVAudioEngineConfigurationChange, object: audio, queue: .main) { [weak self] _ in
                 self?.error("route_lost", "Audio device route changed; restart with start after stop")
@@ -161,17 +186,24 @@ final class Lab {
             starting = false
             let t = DispatchSource.makeTimerSource(queue: output)
             t.schedule(deadline: .now() + .milliseconds(10), repeating: .milliseconds(10))
+            output.sync { self.resampler.reset(); self.running = true; self.reportedQueuedMs = 0; self.zeroSince = nil }
+            event(["type":"ready"])
             t.setEventHandler { [weak self] in
-                guard let self else { return }
+                guard let self, self.running else { return }
                 self.drainCapture()
+                let dropped = ll_capture_dropped(self.core)
+                if dropped > 0 { self.writeEvent(["type":"error", "code":"capture_overflow", "message":"Capture ring overflow: \(dropped) frames lost"]) }
                 let queued = Int(ll_queued_ms(self.core))
-                if queued != self.reportedQueuedMs {
-                    self.reportedQueuedMs = queued
-                    self.event(["type":"played", "queuedMs":queued])
+                if queued > 0 { self.zeroSince = nil }
+                else if self.zeroSince == nil { self.zeroSince = .now() }
+                // Ring drained does not certify mixer/OS/hardware silence.
+                let visible = queued == 0 && .now().uptimeNanoseconds - (self.zeroSince?.uptimeNanoseconds ?? 0) < 200_000_000 ? max(1, self.reportedQueuedMs) : queued
+                if visible != self.reportedQueuedMs {
+                    self.reportedQueuedMs = visible
+                    self.writeEvent(["type":"played", "queuedMs":visible])
                 }
             }
             timer = t; t.resume()
-            event(["type":"ready"])
         } catch {
             audio.inputNode.removeTap(onBus: 0)
             if let notification { NotificationCenter.default.removeObserver(notification); self.notification = nil }
@@ -180,17 +212,14 @@ final class Lab {
         }
     }
     func drainCapture() {
-        guard engine != nil else { return }
+        guard running else { return }
         var samples = [Float](repeating: 0, count: 1024)
         samples.withUnsafeMutableBufferPointer { ptr in
             while true {
                 let n = Int(ll_capture_pop(core, ptr.baseAddress!))
                 if n <= 0 { break }
                 resampler.feed(UnsafeBufferPointer(start: ptr.baseAddress!, count: n), rate: captureRate) { data in
-                    // Already on output queue: preserve order and avoid accumulating a second queue.
-                    let object: [String: Any] = ["type":"capture", "data":data.base64EncodedString()]
-                    if let bytes = try? JSONSerialization.data(withJSONObject: object),
-                       let line = String(data: bytes, encoding: .utf8) { print(line); fflush(stdout) }
+                    self.writeEvent(["type":"capture", "data":data.base64EncodedString()])
                 }
             }
         }
@@ -202,12 +231,19 @@ final class Lab {
         engine?.inputNode.removeTap(onBus: 0)
         engine?.stop(); engine = nil
         ll_flush(core, ll_generation(core) + 1)
-        output.async {
+        output.sync {
+            self.running = false
             self.resampler.reset()
             self.reportedQueuedMs = 0
-            self.event(["type":"played", "queuedMs":0])
+            self.zeroSince = nil
+            var discarded = [Float](repeating: 0, count: Int(LL_CAPTURE_SAMPLES))
+            discarded.withUnsafeMutableBufferPointer { ptr in
+                while ll_capture_pop(self.core, ptr.baseAddress!) > 0 {}
+            }
+            _ = ll_capture_dropped(self.core)
+            self.writeEvent(["type":"played", "queuedMs":0])
+            self.writeEvent(["type":"stopped"])
         }
-        event(["type":"stopped"])
     }
     func command(_ c: [String: Any]) {
         guard let type = c["type"] as? String else { error("protocol", "Missing type"); return }
@@ -219,7 +255,7 @@ final class Lab {
                 error("generation", "Flush generation must increase"); return
             }
             ll_flush(core, Int32(generation))
-            event(["type":"played", "queuedMs":0])
+            output.sync { self.zeroSince = nil; self.reportedQueuedMs = 0; self.writeEvent(["type":"played", "queuedMs":0]) }
         case "play":
             guard engine != nil else { error("state", "Start audio before play"); return }
             guard let generation = integer(c["generation"]), generation == ll_generation(core),
@@ -229,31 +265,27 @@ final class Lab {
             let count = bytes.count / 2
             var samples = [Int16](repeating: 0, count: count)
             for i in 0..<count { samples[i] = Int16(bitPattern: UInt16(bytes[i*2]) | (UInt16(bytes[i*2+1]) << 8)) }
-            var accepted = true
-            samples.withUnsafeBufferPointer { ptr in
-                var offset = 0
-                while offset < count {
-                    let n = min(480, count - offset)
-                    if ll_play_push(core, ptr.baseAddress! + offset, Int32(n), Int32(generation)) == 0 {
-                        accepted = false; break
-                    }
-                    offset += n
-                }
+            let accepted = samples.withUnsafeBufferPointer { ptr in
+                ll_play_push_batch(core, ptr.baseAddress!, Int32(count), Int32(generation)) != 0
             }
-            if !accepted { error("playback_full", "Playback ring full; tail dropped") }
-            event(["type":"played", "queuedMs":ll_queued_ms(core)])
+            if !accepted { error("playback_full", "Playback ring full; entire play command rejected"); return }
+            event(["type":"played", "queuedMs":max(1, ll_queued_ms(core))])
         default: error("protocol", "Unknown command")
         }
     }
 }
+let flags = fcntl(STDOUT_FILENO, F_GETFL)
+if flags < 0 || fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK) < 0 { _exit(74) }
 let lab = Lab()
 lab.event(["type":"hello", "protocol":1])
 DispatchQueue.global(qos: .userInitiated).async {
     while let line = readLine() {
+        lab.inputSlots.wait()
         let parsed = parse(line)
         DispatchQueue.main.async {
             if let parsed { lab.command(parsed) }
             else { lab.error("protocol", "Invalid JSON command") }
+            lab.inputSlots.signal()
         }
     }
     DispatchQueue.main.async { lab.stop(); exit(0) }
