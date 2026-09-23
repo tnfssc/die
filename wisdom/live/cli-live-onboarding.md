@@ -62,3 +62,7 @@ Read-only review task_87f0e3e5 ran in /home/tnfssc/.die/worktrees/die-a86675007a
 - Final regression command: env -u GEMINI_API_KEY -u DIE_RUN_GEMINI_LIVE_ACCEPTANCE bun test tests/live-*.test.ts tests/audio.test.ts tests/footer.test.ts tests/prompt-delivery.test.ts tests/subagent-extension.test.ts tests/last-used-cli-model.test.ts. Result: 112 pass, 1 paid acceptance skip, 0 fail, 543 assertions across 15 files.
 
 Parent review is still required before merge. No parent integration was performed.
+
+## Parent integration
+
+Reviewed credential import, wizard consent and setup-test lifecycle; fast-forwarded 20a6584 into develop. Parent reran 112 offline tests (one paid acceptance skip) and whole-repo typecheck successfully. Real user key was not imported. Installed binary still needs rebuilding before using this flow there. Physical terminal visual acceptance is still open. Values unchanged; existing safe ownership and truthful state guidance applies.
