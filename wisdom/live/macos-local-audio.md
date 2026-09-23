@@ -42,3 +42,7 @@ Reuse the existing rec/play command contract: capture mono signed little-endian 
 ## Parent integration
 
 Integrated 346a496 on develop after reviewing audio/preflight, setup and macOS workflow changes. Parent passed 90 offline tests (1 paid skip) and whole-repo typecheck. Push to run native macOS CI is next. No new version/tag/release yet; v0.7.0 remains Linux-only. Physical CoreAudio, TCC permission and acoustic behavior unverified.
+
+Pushed 307bd0d; CI run 35887687980 includes native macOS job. Watch /tmp/die-macos-ci-watch.log. Check outcome before claiming native platform validation.
+
+CI 35887687980 passed both native macOS Live and full Linux jobs. macOS verified Homebrew SoX CoreAudio support and deterministic Live tests without opening devices/API. Physical permissions/audio still untested. No new release published; next distribution step is a patch release if requested. Values unchanged; platform assumptions and proof gaps are recorded here under existing real-path-check guidance.
