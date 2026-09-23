@@ -1,1 +1,1 @@
-**Opaque Codex checkpoint:** conversation state is encrypted and can only be resumed by the original provider and model.
+**Opaque Codex checkpoint:** Its conversation state is encrypted. Only the original provider and model can resume it.
