@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           scripts/build-live-lab-helper.sh
-          file dist/live-lab-audio | grep 'Mach-O 64-bit executable arm64'
+          file dist/live-lab-audio | grep -E 'Mach-O 64-bit (executable arm64|arm64 executable)'
           dist/live-lab-audio --self-test
           python3 - <<'PY'
           import json, select, subprocess
@@ -111,7 +111,7 @@ jobs:
         shell: bash
         run: |
           test -s artifacts/release/mac-helper/live-lab-audio
-          file artifacts/release/mac-helper/live-lab-audio | grep 'Mach-O 64-bit executable arm64'
+          file artifacts/release/mac-helper/live-lab-audio | grep -E 'Mach-O 64-bit (executable arm64|arm64 executable)'
       - name: Build release binaries with embedded web application
         shell: bash
         run: |

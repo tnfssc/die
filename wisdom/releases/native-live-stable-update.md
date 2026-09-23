@@ -142,3 +142,18 @@ Full CI and real Mac evidence pending at this point. No audio/API used, and no
 local installation. Physical acoustic/provider validation and signing/notarization
 remain unclaimed. Values unchanged: existing truthful-evidence and simple-design
 rules cover this release; no new general lesson yet.
+
+### First real gate result and fix
+
+39ebe0f safely fast-forwarded develop from e6f0597. Release gate run
+https://github.com/tnfssc/die/actions/runs/35909683064 passed actual Mac native
+sanitizers/build/self-test/protocol, Linux format/lint/typecheck/build/deterministic
+tests/smoke, then failed a portable file(1) text-match: Linux says "Mach-O 64-bit
+arm64 executable", Mac says "Mach-O 64-bit executable arm64". Downloaded actual
+helper artifact confirms Linux output; accept both word orders. Binary header
+validation in nativeHelperPlugin remains unchanged and strict.
+Independent review's macos-15 Intel concern is disproved by current upstream
+runner-images README (macos-15 = arm64, Intel = macos-15-intel) and successful
+actual arm64 Mac build gate. Its old-updater caveat is valid: exact pinned source
+is compiled with current Bun, NOT the historic published full v0.7.1 executable.
+No tag created; publication skipped as designed.

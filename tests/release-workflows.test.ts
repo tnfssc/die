@@ -78,6 +78,7 @@ describe("release automation", () => {
     expect(workflow).toContain("!contains(github.ref_name, '-')");
     expect(workflow).toContain("needs: mac-helper");
     expect(workflow).toContain("scripts/build-live-lab-helper.sh");
+    expect(workflow).toContain("Mach-O 64-bit (executable arm64|arm64 executable)");
     expect(workflow).toContain("-fsanitize=address,undefined");
     expect(workflow).toContain("actions/download-artifact@v4");
     expect(workflow).toContain("--live-lab-helper=./artifacts/release/mac-helper/live-lab-audio");
