@@ -5,7 +5,7 @@
 - Candidate validation executable SHA256: 8e277017a3cd05d46d00bc6f563a57875ecb7793bd19fa792e4b4645e36ec0ec
 - Final canonical executable SHA256: 8932d0e7561c0b79d6647c0f617ae548087e7d74bb27c740011ad245b16bb716
 
-The export matches canonical web/t3.patch byte for byte. An unowned Pi triggerTurn caused the ordinary local-shell completion → next-turn failure. Durable, idempotent T3-owned notification admission fixed it; EOF suppression did not.
+The export matches canonical web/t3.patch byte for byte. An unowned Pi triggerTurn caused the ordinary local-shell completion → next-turn failure. Durable, idempotent T3-owned notification admission fixed it. EOF suppression did not.
 
 The final canonical executable passed every concrete blocking gate: root 721
 pass / 14 expected skips, full workspace types, native integration, same-server

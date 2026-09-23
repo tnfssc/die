@@ -50,7 +50,7 @@ Subagents share the current checkout by default. Work that needs isolation can u
 
 Run die in a Herdr-managed terminal pane and it automatically reports whether it is working, idle, or waiting for input. Background jobs and sub-agents keep the pane marked as working even after the foreground turn ends.
 
-The integration is built in. It needs no extra extension or setup. Herdr is optional; die also works on its own. See [Herdr integration](./wisdom/integrations/herdr.md) for lifecycle and compatibility details.
+The integration is built in. It needs no extra extension or setup. Herdr is optional. Die also works on its own. See [Herdr integration](./wisdom/integrations/herdr.md) for lifecycle and compatibility details.
 
 ## Build from source
 

@@ -42,7 +42,7 @@ fixture must remain discovered and skipped when `DIE_RUN_LLM_TESTS` is unset rat
 than disappearing behind conditional test registration.
 
 Goal lifecycle changes should test the pure store/controller contract. Where the Pi boundary matters, also use an offline SDK or TUI fixture. The natural real-model goal smoke
-is `tests/goals-live.test.ts`; run it only with `DIE_RUN_LLM_TESTS=1` and configured
+is `tests/goals-live.test.ts`. Run it only with `DIE_RUN_LLM_TESTS=1` and configured
 credentials. It creates temporary local resources and writes bounded evidence under
 ignored `artifacts/goals/`. Do not describe a mocked SDK stream as live-model evidence.
 

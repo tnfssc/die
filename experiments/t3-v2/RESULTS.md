@@ -28,4 +28,4 @@
 
 Primary reports: integrated-real-report.md, combined-report.md, clock-report.md, browser-live-followthrough.md, bridge-followthrough.md. Earlier browser-followthrough.md is only a provider-replay fixture and is superseded for actual-child proof.
 
-All owned experiment ports/processes were stopped after capture. Root progress-note updates remain coordinator-owned; followthrough-progress.md contains the reviewed-note source.
+All owned experiment ports/processes were stopped after capture. Root progress-note updates remain coordinator-owned. followthrough-progress.md contains the reviewed-note source.

@@ -6,7 +6,7 @@ Date: 2026-09-20. Scope: isolated T3-v2 experiment only.
 
 **PASS for rendered parent → durable child navigation using upstream's deterministic replay fixture.** This is **not** a live-provider, Die-adapter, MCP-auth, or full combined-chain pass. The fixture was materialized by the real upstream `subagent_v2_nested/codex` orchestration replay harness (1 test passed, 72 skipped), written into only the experiment's durable SQLite state, and truthfully labeled in the screenshot.
 
-Chromium 148.0.7778.96 (Playwright build 1223) rendered the full T3 web app with a fresh isolated profile. Normal one-time pairing succeeded; the token is not recorded. The run used private offset 23000: UI 28733, backend 36773. Both were stopped afterward.
+Chromium 148.0.7778.96 (Playwright build 1223) rendered the full T3 web app with a fresh isolated profile. Normal one-time pairing succeeded. The token is not recorded. The run used private offset 23000: UI 28733, backend 36773. Both were stopped afterward.
 
 ## Browser evidence
 
@@ -23,7 +23,7 @@ Observed IDs/state:
 - subagent result and child assistant item: `Subagent says: “Hello.”` (one occurrence in child projection)
 - fixture command marker: `command:fixture:subagent_v2_nested:thread-create:ea50ea93-b0ab-4c77-a9e4-4fcde38dabb3`
 - materialized stream: 88 events, four thread projections, three nested subagent projections
-- parent browser URL and child browser URL are retained in ignored `.runtime/browser-followthrough.log`; no credential is present.
+- parent browser URL and child browser URL are retained in ignored `.runtime/browser-followthrough.log`. No credential is present.
 
 ## Reproduce
 
@@ -48,12 +48,12 @@ PLAYWRIGHT_BROWSERS_PATH="$PWD/.runtime/browser-cache" \
 node browser-followthrough.mjs
 ```
 
-`capture-browser-fixture.sh` temporarily instruments the replay integration test, always restores it with a trap, and emits the ignored JSON snapshot. `seed-browser-fixture.ts` refuses missing inputs/database and targets the experiment state by default. `browser-followthrough.mjs` uses the server's normal pairing link without printing it, an isolated persistent profile, clicks parent → relationship child, asserts target and marker, and captures both images.
+`capture-browser-fixture.sh` temporarily instruments the replay integration test. A trap always restores the test. The script emits the ignored JSON snapshot. `seed-browser-fixture.ts` refuses missing inputs/database and targets the experiment state by default. `browser-followthrough.mjs` uses the server's normal pairing link without printing it, an isolated persistent profile, clicks parent → relationship child, asserts target and marker, and captures both images.
 
-The host `/tmp` was 99% full and initially caused Chromium `ERR_INSUFFICIENT_RESOURCES`; setting `TMPDIR` to the experiment runtime fixed it. Firefox's prior SWGL blocker is so bypassed by an actual Chromium renderer.
+The host `/tmp` was 99% full and initially caused Chromium `ERR_INSUFFICIENT_RESOURCES`. Setting `TMPDIR` to the experiment runtime fixed it. Firefox's earlier SWGL blocker is so bypassed by an actual Chromium renderer.
 
 ## Explicit non-claims / blockers
 
-This proves acceptance scenario 4's **rendered navigation surface** against a durable upstream replay-derived child, not the main agent's changing adapter/engine integration. There was no live provider process spawn, no active model tool list, no T3 MCP scoped bearer exercise, no clientRequestId, and no delivery/ACK/reconnect fault injection in this browser run. Codex is visibly unauthenticated, as expected for replay data. Those observables cannot truthfully be supplied from this fixture and remain required for a full combined acceptance claim.
+This proves acceptance scenario 4's **rendered navigation surface** against a durable upstream replay-derived child. It does not prove the main agent's changing adapter/engine integration. There was no live provider process spawn, no active model tool list, no T3 MCP scoped bearer exercise, no clientRequestId, and no delivery/ACK/reconnect fault injection in this browser run. Codex is visibly unauthenticated, as expected for replay data. This fixture cannot truthfully provide those observables. A full combined acceptance claim still needs them.
 
 No root README/RESULTS, pins, dist, shared state, credentials, or `upstream.patch` were changed. `upstream.patch` remained SHA-256 `87c48ebfbc6e97bbf832b3e52031eecb06955a9248a4caa528b71de80720370f`.
