@@ -2,13 +2,13 @@
 
 ## Policy implemented
 
-A CLI-created worktree now runs the repository `t3.json` script with `runOnWorktreeCreate: true` on its own. Setup does not wait for confirmation, project trust, or approval.
+A CLI-created worktree now runs the repository `t3.json` script with `runOnWorktreeCreate` is `true` on its own. Setup does not wait for confirmation, project trust, or approval.
 
-Project trust stays separate. The child agent still gets the parent's explicit `--approve` or `--no-approve` continuity argument. An untrusted child still runs in denied trust mode, but repository setup now runs anyway.
+Project trust stays separate. The child agent still gets the parent's explicit `--approve` or `--no-approve` continuity argument. An untrusted child still runs in denied trust mode. But repository setup now runs anyway.
 
 ## Owned changes
 
-- `src/tasks/job-service.ts`: removed the `sourceTrusted` conditional around worktree setup spawning; retained trust handling only for child-agent continuity.
+- `src/tasks/job-service.ts`: removed the `sourceTrusted` conditional around worktree setup spawning. Retained trust handling only for child-agent continuity.
 - `src/tasks/worktree-workspace.ts`: removed obsolete `skipped-untrusted` setup status.
 - `tests/worktree-workspace.test.ts`: replaced the old skip assertion with deterministic coverage proving setup completes and creates its marker even when `isProjectTrusted()` is false, while the child still receives `--no-approve`.
 - `src/prompts/execute.md`: explicitly states CLI `t3.json` setup is automatic and has no confirmation/trust/approval gate.

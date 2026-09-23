@@ -15,7 +15,7 @@ await subagent({
 `{ kind: "worktree", baseRef?, branch? }`. `title` gives the task or thread a
 readable name. Worktrees need a Git repository. By default, each starts from the
 parent's current commit. Use `baseRef` to pick another local commit or ref. Leave
-out `branch` to get a unique readable name. An explicit branch must be new. Die
+out branch to get a unique readable name. An explicit branch must be new. Die
 never resets an existing branch.
 
 A `prompts: string[]` batch makes one worktree per child. All children start from
@@ -25,7 +25,7 @@ secret do not go into the child worktree.
 
 One local setup failure does not cancel the other children. A native batch
 transport failure reports the IDs that already launched. Those children stay
-owned, so you can inspect or cancel them.
+owned. So you can inspect or cancel them.
 
 ## Setup
 
@@ -35,7 +35,7 @@ repository's `t3.json` and uses the first script with
 the project. The CLI does not silently import a web-only action.
 
 Setup runs inside the new worktree. With `async: false`, the child starts only
-after setup succeeds. If `async` is omitted or true, the current background rule
+after setup succeeds. If async is omitted or true, the current background rule
 still applies. No setup declaration means no setup script. The CLI runs declared
 setup on its own. It does not ask for confirmation, project trust, or approval.
 Project trust still controls the child agent's trust mode, not setup.

@@ -24,18 +24,18 @@ Update the launch signature to the final built shape, for example:
 Beside it, document the type exactly rather than explaining it loosely:
 
 - `title`: optional short task label.
-- `workspace`: `{ kind: "inherit" } | { kind: "worktree", baseRef?, branch? }`; defaults to `{ kind: "inherit" }`.
+- `workspace`: `{ kind: "inherit" } | { kind: "worktree", baseRef?, branch? }`. Defaults to `{ kind: "inherit" }`.
 
-Keep `prompts: string[]` batch wording, but say exactly whether one supplied `title`/`workspace` applies to every child. The approved behavior says each worktree child is separate and the batch base is pinned once; that is runtime/API behavior worth documenting if the final schema supports a batch with these fields.
+Keep `prompts: string[]` batch wording. But say exactly whether one supplied `title`/`workspace` applies to every child. The approved behavior says each worktree child is separate and the batch base is pinned once. That is runtime/API behavior worth documenting if the final schema supports a batch with these fields.
 
 Do not put setup implementation detail into the signature bullet. Add at most two capability bullets, phrased by execution context rather than internal product/code names:
 
 - Worktree launch creates a Git worktree and starts the child there. In CLI use, repository `t3.json` supplies worktree setup when configured. In configured web use, the web project's configured setup applies.
-- Worktree launch needs a Git repository. State any other current unsupported combinations from the final implementation exactly; do not freeze phrases such as “server-scoped native”, internal task IDs, or backend ownership if those distinctions are already changing.
+- Worktree launch needs a Git repository. State any other current unsupported combinations from the final implementation exactly. Do not freeze phrases such as “server-scoped native”, internal task IDs, or backend ownership if those distinctions are already changing.
 
 The current native-limitations bullets in `execute.md` are precise for today's native async feature but are likely to become stale around this combined PR. Recheck them against the final routing matrix. Describe observable behavior: which options are accepted, whether launch is async-only, and which `jobs.*` calls work. Avoid architecture labels when a user-facing condition such as “configured web session” is sufficient.
 
-Do not teach agents Git commands, branch naming recipes, setup ordering, cleanup, or PR procedure here. The structured option requests the workspace; runtime owns safe preparation.
+Do not teach agents Git commands, branch naming recipes, setup ordering, cleanup, or PR procedure here. The structured option requests the workspace. Runtime owns safe preparation.
 
 ### 2. Add one judgment sentence only to delegation-capable role prose
 
@@ -55,7 +55,7 @@ After final runtime names and limitations settle:
 - update the source/inclusion map in `wisdom/prompts/prompts.md` only if source or inclusion conditions changed;
 - do not add hardcoded workspace prose to `src/prompts.ts`.
 
-CLI setup and web setup are deliberately different sources: CLI directly uses Git and the repository's existing `t3.json` declaration without starting/reading the web server or DB; web uses the already configured project setup. Say “when configured” so absence of setup is not represented as failure or as a hidden shared setting. Do not promise import/export, a new config format, auto cleanup, sidebar grouping, PR automation, or repeated follow-up sync.
+CLI setup and web setup are deliberately different sources: CLI directly uses Git and the repository's existing `t3.json` declaration without starting/reading the web server or DB. Web uses the already configured project setup. Say “when configured” so absence of setup is not represented as failure or as a hidden shared setting. Do not promise import/export, a new config format, auto cleanup, sidebar grouping, PR automation, or repeated follow-up sync.
 
 ## Offline verification without a paid model
 
@@ -81,7 +81,7 @@ Check the captured JSON, not terminal presentation:
 - custom base replaces Die's base as today, append is still appended, while extension-owned role/API injection follows the existing contract;
 - no network/model request occurs.
 
-Add focused assertions to `tests/prompts.test.ts` for source text/API/default and role guidance, and to `tests/prompt-preview.test.ts` for real assembly across root orchestrator, child orchestrator, normal child, and custom SYSTEM/APPEND. Keep schema/runtime acceptance tests with the implementation owner (local CLI, configured web, batch propagation, invalid workspace fields, Git/setup behavior). Existing `tests/prompt-delivery.test.ts`, `tests/system-prompt.test.ts`, and `tests/provider-prompt.test.ts` cover delivery boundaries and provider serialization; include them in the offline run if touched.
+Add narrow assertions in `tests/prompts.test.ts` for source text, API, defaults, and role guidance. Add `tests/prompt-preview.test.ts` coverage for real assembly in the root orchestrator, child orchestrator, normal child, and custom SYSTEM/APPEND cases. Leave schema and runtime acceptance with the implementation owner: local CLI, configured web, batch propagation, invalid workspace fields, and Git/setup behavior. Existing `tests/prompt-delivery.test.ts`, `tests/system-prompt.test.ts`, and `tests/provider-prompt.test.ts` already cover delivery boundaries and provider serialization. Run them offline if this work touches them.
 
 Suggested targeted run:
 
@@ -93,4 +93,4 @@ No `DIE_RUN_LLM_TESTS`, credentials, paid provider, build, install, or live web 
 
 No new user decision is needed for prompt wording. The current request resolves the earlier note conflict in favor of structured `workspace.kind` with optional `baseRef`/`branch`, default inherit.
 
-One implementation fact must be confirmed before final prose lands: the exact accepted combinations and limitations for root/local/configured-web/nested orchestrator and batch calls. This is not a product-feature question; derive it from the merged schemas and tests, then document only what is true. If implementation and approved behavior differ, ask the user rather than papering over the mismatch in prompt text.
+One implementation fact must be confirmed before final prose lands: the exact accepted combinations and limitations for root/local/configured-web/nested orchestrator and batch calls. This is not a product-feature question. Derive it from the merged schemas and tests, then document only what is true. If implementation and approved behavior differ, ask the user rather than papering over the mismatch in prompt text.
