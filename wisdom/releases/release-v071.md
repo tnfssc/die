@@ -32,3 +32,7 @@ The release-verification preference was followed: do not download published bina
 ## Parent next steps
 
 After integrating the preparation and evidence commits, recheck the final diff, remote `develop`, latest release, and absence of `v0.7.1`. Push `develop`, confirm CI, create and push annotated tag `v0.7.1` at the integrated release commit, watch the Release workflow, replace generated notes with `wisdom/releases/release-v0.7.1.md`, and verify the published latest release and expected nonempty assets without downloading binaries solely for hash reassurance.
+
+## Parent integration
+
+Integrated through 1be0458, reviewed notes/version-only diff and validated v0.7.1 tag/version. Pushing release commit to develop for CI before tagging. Native physical audio remains untested.
