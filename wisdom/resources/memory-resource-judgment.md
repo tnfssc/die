@@ -1,14 +1,27 @@
-> Historical v0.3.4 audit/decision record. The selected v0.4.0 fixes and current policies are documented in [resource limits](./resource-limits.md) and [disk-backed history](../history/disk-backed-history.md). Measurements below describe the pre-fix investigation unless stated otherwise.
+> Historical v0.3.4 audit/decision record.
+The selected v0.4.0 fixes and current policies are documented in [resource limits](./resource-limits.md) and [disk-backed history](../history/disk-backed-history.md).
+Measurements below describe the pre-fix investigation unless stated otherwise.
 
 # Which audit findings deserve action?
 
-2026-09-18. Judgment only. No implementation authorized/applied. Companion evidence: [audit](./memory-resource-audit.md).
+2026-09-18.
+Judgment only.
+No implementation authorized/applied.
+Companion evidence: [audit](./memory-resource-audit.md).
 
 ## Standard
 
-Engineering size is not a veto. Judge expected supported workloads, user-visible harm, lifecycle/contract violations, evidence confidence, and whether the retained resource is actually needed in that form. A large useful dataset is not a leak. Redundant lifetime ownership can be. An unbounded collection alone is insufficient evidence. Do not improve memory by silently damaging history, output ordering, task-delivery guarantees, or locking correctness.
+A fix is not wrong just because it is large.
+Ask what normal work needs. Ask what harm users can see. Check who owns the resource, how strong the proof is, and whether the data must stay in that form.
+A large set of useful data is not a leak.
+Keeping the same data after its owner is done can be one.
+A collection has no cap? That alone does not prove a bug.
+Do not save memory by quietly breaking history, output order, task delivery, or locks.
 
-Two independent reviewers examined intentional-history and lifecycle findings. Their notes are in wisdom/resources/leak-audit-judgment-history.md and leak-audit-judgment-lifecycle.md. They disagreed on some policy/defense-in-depth items. The decisions below are the lead's synthesis, not a vote.
+Two independent reviewers examined intentional-history and lifecycle findings.
+Their notes are in wisdom/resources/leak-audit-judgment-history.md and leak-audit-judgment-lifecycle.md.
+They disagreed on some policy/defense-in-depth items.
+The lead made the calls below. They are not a vote.
 
 ## Worth addressing in Die
 
@@ -26,29 +39,47 @@ Two independent reviewers examined intentional-history and lifecycle findings. T
 
 ### Why the transcript verdict differs from the skeptical reviewer
 
-The history reviewer correctly classifies this as a product policy rather than a correctness defect: 32 MiB of original text retaining roughly 32 MiB of heap is unsurprising, and compaction currently promises a smaller model context, not a flat process heap. I accept that evidence assessment.
+The history reviewer is right. This is a product rule, not a correctness bug. Keeping 32 MiB of source text in about 32 MiB of heap is no surprise. Compaction promises a smaller model context. It does not promise flat process memory.
 
-My recommendation nevertheless favors bounded resident historical data for this product's long-running/resumable workload. It is not necessary to erase originals or force a new session. The reason to undertake a potentially large history/index redesign would be that explicit scalability goal, not a false claim that proportional memory itself is a leak. Before implementation set a working-set target and performance tests, and preserve branch navigation, stable refs, exclusion/privacy policy, and append durability. Do not promise infinite history on finite total storage.
+Still, I would bound how much old history stays in RAM for long and resumed sessions.
+It is not necessary to erase originals or force a new session.
+That scale goal may justify a large history and index redesign. A false leak claim does not.
+Before coding, set a RAM target and performance tests. Keep branch moves, stable refs, privacy and exclusion rules, and durable appends.
+Do not promise infinite history on finite total storage.
 
 ## Needs an explicit product policy, not a guessed cleanup rule
 
-- **Artifact lifetime / cumulative disk usage:** stored evidence consuming disk is legitimate. Provide discoverability, usage accounting, and explicit cleanup/session ownership. Do not silently expire artifacts that a valid retained session still references. A per-run capture limit and a cumulative retention policy are different decisions.
-- **Active-job working memory/concurrency:** memory for work actually in progress is expected. Scheduling/resource budgets can limit parallelism but are not leak repairs. Do not impose a generic helper concurrency cap as a confirmed fix from the audit alone; first measure realistic fan-out, queues, and parent latency. Keep this separate from the proven sequential ACK retention bug.
+- **Artifact lifetime / cumulative disk usage:** stored evidence consuming disk is legitimate.
+  Provide discoverability, usage accounting, and explicit cleanup/session ownership.
+  Do not silently expire artifacts that a valid retained session still references.
+  A per-run capture limit and a cumulative retention policy are different decisions.
+- **Active-job working memory/concurrency:** memory for work actually in progress is expected.
+  Scheduling/resource budgets can limit parallelism but are not leak repairs.
+  Do not impose a generic helper concurrency cap as a confirmed fix from the audit alone. First measure realistic fan-out, queues, and parent latency.
+  Keep this separate from the proven sequential ACK retention bug.
 
 ## Do not prioritize as Die fixes now
 
-- **Desktop recording timeout registration:** real correctness bug (late stale capture is worse than its small memory footprint), but unreachable in normal Die web. previewBridge resolves window.desktopBridge?.preview or null; startBrowserRecording rejects immediately with no bridge. Recommend upstream fix; not a current Die CLI/web release blocker. Earlier advice putting this in Die's top five was overbroad.
-- **Tiny navigation/error/favicon/icon sets:** no material impact measured; typical cardinality is modest. Accept current behavior pending evidence rather than add eviction state everywhere.
-- **Terminal internal processing queue, preview PubSub, VCS maps, successful preview host assignments:** source shapes justify targeted measurements, not blanket queue/cache rewrites. Their workload/rate/owner semantics differ from high-volume terminal subscriber buffering.
-- **Windows process-tree handling:** not a current shipped-platform target here. Revisit with a Windows ownership design when supporting it.
-- **RSS growth that settles/reclaims:** not a defect by itself. Mixed CLI RSS drift remains unresolved; profile retained objects before treating it as a leak.
-- **Old preview timeout allegation:** reject it; the current implementation disconnects and clears the queue.
+- **Desktop recording timeout registration:** real correctness bug (late stale capture is worse than its small memory footprint), but unreachable in normal Die web. previewBridge resolves window.desktopBridge?.preview or null. startBrowserRecording rejects immediately with no bridge.
+  Recommend upstream fix. Not a current Die CLI/web release blocker.
+  Earlier advice putting this in Die's top five was overbroad.
+- **Tiny navigation/error/favicon/icon sets:** no real impact measured. Typical number of keys is modest.
+  Accept current behavior pending evidence rather than add eviction state everywhere.
+- **Terminal internal processing queue, preview PubSub, VCS maps, successful preview host assignments:** source shapes justify targeted measurements, not blanket queue/cache rewrites.
+  Their workload/rate/owner semantics differ from high-volume terminal subscriber buffering.
+- **Windows process-tree handling:** not a current shipped-platform target here.
+  Revisit with a Windows ownership design when supporting it.
+- **RSS growth that settles/reclaims:** not a defect by itself.
+  Mixed CLI RSS drift remains unresolved. Profile retained objects before treating it as a leak.
+- **Old preview timeout allegation:** reject it. The current implementation disconnects and clears the queue.
 
 ## Priority order
 
-1. Bound high-volume retained/completed job output and terminal subscriber memory; restore provider log retention.
+1. Bound high-volume retained/completed job output and terminal subscriber memory. Restore provider log retention.
 2. Repair request and shutdown ownership, and put explicit safety bounds on automatic output capture.
-3. Make original-history resident-memory scalability an explicit architecture goal; address lower-impact obsolete caches/extension records without sacrificing semantics.
-4. Keep normal storage growth and genuinely active working memory; measure the uncertain cases instead of manufacturing fixes.
+3. Make original-history RAM scalability an explicit architecture goal. Address lower-impact obsolete caches/extension records without breaking behavior.
+4. Keep normal storage growth and genuinely active working memory. Measure the uncertain cases instead of manufacturing fixes.
 
-Unlimited saved data, bounded total storage, and zero data loss cannot all be promised simultaneously. Bounded RAM plus durable disk-backed history is achievable. Total storage eventually requires an explicit user-visible retention decision.
+We cannot promise endless saved data, fixed total storage, and no data loss at once.
+We can keep RAM bounded and put durable history on disk.
+Disk still fills. Users need a clear rule for what happens then.
