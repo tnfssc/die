@@ -11,6 +11,8 @@ export interface LiveSetupStatus {
 }
 
 export interface LiveSetupDependencies {
+  /** Injectable for deterministic platform-specific setup guidance. */
+  platform?(): NodeJS.Platform;
   status(): Promise<LiveSetupStatus>;
   importKey(): Promise<void>;
   capabilities(): Promise<{ supported: boolean; reason?: string }>;
@@ -28,8 +30,15 @@ const REFRESH = "Refresh / recheck";
 const DONE = "Done";
 const BACK = "Back";
 
-const overview =
-  "Gemini Live uses local Linux SoX with your default microphone and speakers. Audio and selected confirmed replies from this current session are shared with Google. Provider use is paid. There is no echo cancellation: use headphones (or an OS echo-cancelled default device). Opening setup does not connect to Google or open audio devices.";
+const sharedOverview =
+  "Audio and selected confirmed replies from this current session are shared with Google. Provider use is paid. Use headphones: there is no echo cancellation. Opening setup does not connect to Google or open audio devices.";
+
+function platformOverview(platform: NodeJS.Platform): string {
+  if (platform === "darwin") {
+    return `Gemini Live uses local macOS SoX with your default microphone and output. Install SoX with \`brew install sox\`. In System Settings > Privacy & Security > Microphone, allow access for Terminal (or the app running die), then restart Terminal or the app if necessary. ${sharedOverview}`;
+  }
+  return `Gemini Live uses local Linux SoX with your default microphone and speakers. Install SoX with your distribution package manager and make sure the default input and output devices work. ${sharedOverview}`;
+}
 
 const credentialInstructions =
   "In an external local editor, create ~/.die/live.env as a user-owned regular file with mode 0600 and exactly one literal GEMINI_API_KEY=your-key assignment. Set private permissions before entering the key (chmod 600 ~/.die/live.env); do not overwrite an existing file. Never paste a key into chat, this wizard, ordinary CLI input, or a shell command containing the key. Return here and explicitly choose Import. Import saves the key in existing Google provider auth, preserves unrelated provider keys and OAuth, and leaves live.env in place.";
@@ -44,7 +53,7 @@ function alive(deps: LiveSetupDependencies): boolean {
  */
 export async function runLiveSetup(ui: LiveSetupUI, deps: LiveSetupDependencies): Promise<void> {
   if (!alive(deps)) return;
-  ui.notify(overview, "info");
+  ui.notify(platformOverview(deps.platform?.() ?? process.platform), "info");
 
   let status: LiveSetupStatus | undefined;
   let capability: { supported: boolean; reason?: string } | undefined;

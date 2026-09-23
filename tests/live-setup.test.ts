@@ -54,10 +54,33 @@ describe("Live setup wizard", () => {
 
     expect(h.calls).toEqual({ status: 1, capabilities: 1, importKey: 0, testConnection: 0, start: 0 });
     expect(text(h.events)).toContain("local Linux SoX");
+    expect(text(h.events)).toContain("Install SoX with your distribution package manager");
     expect(text(h.events)).toContain("default microphone and speakers");
     expect(text(h.events)).toContain("paid");
     expect(text(h.events)).toContain("no echo cancellation");
     expect(text(h.events)).toContain("current session");
+  });
+
+  test("Darwin setup failure shows install and microphone privacy guidance without connecting", async () => {
+    const h = harness([undefined], {
+      platform: () => "darwin",
+      async capabilities() {
+        h.calls.capabilities++;
+        return { supported: false, reason: "SoX is unavailable." };
+      },
+    });
+    await runLiveSetup(h.ui, h.deps);
+
+    const rendered = text(h.events);
+    expect(rendered).toContain("brew install sox");
+    expect(rendered).toContain("default microphone and output");
+    expect(rendered).toContain("Privacy & Security > Microphone");
+    expect(rendered).toContain("Terminal (or the app running die)");
+    expect(rendered).toContain("restart Terminal or the app if necessary");
+    expect(rendered).toContain("Use headphones");
+    expect(rendered).toContain("no echo cancellation");
+    expect(rendered).toContain("Opening setup does not connect to Google or open audio devices");
+    expect(h.calls).toEqual({ status: 1, capabilities: 1, importKey: 0, testConnection: 0, start: 0 });
   });
 
   test("missing credentials offer instructions and safe back without key input", async () => {
