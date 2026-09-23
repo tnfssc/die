@@ -14,6 +14,7 @@ import { CompletionBatcher } from "./completion-batcher";
 import { formatCompletionNotification } from "./completion-notification";
 import { clearInstructionContinuity, scopeInstructionContinuity } from "./instruction-continuity";
 import { registerInstructionMode } from "./instruction-mode";
+import { registerLastUsedCliModel } from "./last-used-cli-model";
 import {
   type AttentionNotice,
   type AttentionOptions,
@@ -101,6 +102,7 @@ export default function asynchronousTasksExtension(
   let subagentDepth = environmentDepth;
   let agentType = environmentType;
   const instructionMode = registerInstructionMode(pi, () => subagentDepth === 0);
+  registerLastUsedCliModel(pi, () => subagentDepth === 0);
   let identityDiagnosticSession: object | undefined;
   let identityDiagnosticId: string | undefined;
   const restoreAgentIdentity = (ctx: ExtensionContext) => {
