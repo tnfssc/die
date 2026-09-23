@@ -4,9 +4,9 @@
 
 ## Readiness verdict
 
-**Not production-ready for T3 delegation yet, but now fail-closed rather than leak-prone.** The latest patch deliberately rejects `subagent()` whenever a scoped T3 environment is present (`src/tasks/job-service.ts`) and does not yet connect `T3McpClient` to the job/task lifecycle. This prevents duplicate local fallback but means no production T3 child can launch. The standalone client has a useful 1 MB response cap and response-body cancellation, but it has no owner that cancels/awaits in-flight requests and DELETE-closes the session. Final readiness needs the lifecycle contract and bounded-memory/process-cleanup evidence below.
+**Not production-ready for T3 delegation yet, but now fail-closed rather than leak-prone.** The latest patch rejects `subagent()` whenever a scoped T3 environment is present (`src/tasks/job-service.ts`). It does not yet connect `T3McpClient` to the job/task lifecycle. This prevents duplicate local fallback, but no production T3 child can launch. The standalone client has a useful 1 MB response cap and response-body cancellation. No owner cancels or awaits in-flight requests and DELETE-closes the session. Final readiness needs the lifecycle contract and the bounded-memory/process-cleanup proof below.
 
-An earlier in-flight snapshot briefly contained `T3TaskBackend`/external TaskManager adoption. It had deterministic record, polling, and shutdown-order defects. That code was removed before this latest review; those issues are recorded below as rejected-design guardrails, **not current-source findings**.
+An earlier in-flight snapshot briefly had `T3TaskBackend`/external TaskManager adoption. It had deterministic record, polling, and shutdown-order defects. That code was removed before this review. The issues below are rejected-design guardrails, **not current-source findings**.
 
 ## High-value findings
 

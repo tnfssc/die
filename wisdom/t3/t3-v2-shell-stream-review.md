@@ -4,7 +4,7 @@ Date: 2026-09-21
 
 ## Verdict
 
-**No concrete production stream bug is established by the preserved acceptance artifact, and no candidate source fix is warranted.** The reported `ProviderAdapterEventStreamError: Provider event stream ended unexpectedly` is not present in the preserved JSON proof (including its page snapshots or captured server output). The proof was also produced before the completed-shell timeline fix was declared ready for export. The actual recorded normal shell turn settled successfully; its missing card was the independently diagnosed historical-grouping bug.
+**The preserved acceptance artifact does not prove a production stream bug, so candidate source needs no fix.** The reported `ProviderAdapterEventStreamError: Provider event stream ended unexpectedly` is absent from the preserved JSON proof, including its page snapshots and captured server output. The proof also predates the completed-shell timeline fix being ready for export. The recorded normal shell turn settled successfully. Its missing card came from the separately diagnosed historical-grouping bug.
 
 No candidate production source was edited.
 

@@ -4,7 +4,7 @@
 
 ## Inventory read
 
-Read the production inventory, independent requirements/resource warning, experiment acceptance/code review, current task/execute lifecycle and resource audits, product guidance, prototype client, and the pinned candidate's actual orchestration MCP schemas/tool descriptions. Prototype code is evidence only and is not imported at runtime.
+Reviewed the production inventory, independent requirements/resource warning, experiment acceptance/code review, current task/execute lifecycle and resource audits, product guidance, prototype client, and the pinned candidate's actual orchestration MCP schemas/tool descriptions. Prototype code is evidence only. Runtime does not import it.
 
 ## Implemented safe stage
 
@@ -15,7 +15,7 @@ Read the production inventory, independent requirements/resource warning, experi
 
 ## Backend interface required before routing can be enabled
 
-The candidate's actual `OrchestratorMcpDelegateTaskInput` accepts only `task`, `target`, `title`, semantic `role` (implementation/research/review/design/test/general), `mode`, wait-only `timeoutMs`, `clientRequestId`, `runtimeMode`, and `interactionMode`. `target` accepts provider instance/driver, model, and advertised model options. It does **not** accept Die profile, thinking, cwd, depth, or parent task IDs. Result metadata includes task/child thread/run/node IDs, work state, pending descendants, terminal run/status/summary/transfer ID, provider/model, summary/result transfer ID, and wait timeout.
+The candidate's actual `OrchestratorMcpDelegateTaskInput` accepts: `task`, `target`, `title`, semantic `role` (implementation/research/review/design/test/general), `mode`, wait-only `timeoutMs`, `clientRequestId`, `runtimeMode`, and `interactionMode`. `target` accepts provider instance/driver, model, and advertised model options. It does **not** accept Die profile, thinking, cwd, depth, or parent task IDs. Result metadata includes task/child thread/run/node IDs, work state, pending descendants, terminal run/status/summary/transfer ID, provider/model, summary/result transfer ID, and wait timeout.
 
 The web/backend owner must publish and enforce this scoped contract before root adoption:
 

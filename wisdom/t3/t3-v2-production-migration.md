@@ -2,9 +2,9 @@
 
 ## Verdict
 
-Candidate `a9b49a7df0a4261dcc438d4493cc3154a1d9819e` migrates a fresh synthetic canonical `719a76ca1dbf5490f1aa33ffb9966301e02be9a9` (v0.4) state successfully. Thread metadata, all six messages, old provider-session/runtime rows, old turn/checkpoint history, and source DB immutability survived two candidate starts. Existing V2 provider-session replay, restart continuation, and cross-thread native-subagent graph rebuild tests also pass.
+Candidate `a9b49a7df0a4261dcc438d4493cc3154a1d9819e` successfully migrates a fresh synthetic canonical `719a76ca1dbf5490f1aa33ffb9966301e02be9a9` (v0.4) state. Two candidate starts kept thread metadata, all six messages, old provider-session/runtime rows, old turn/checkpoint history, and source DB immutability. Existing V2 tests also pass for provider-session replay, restart continuation, and cross-thread native-subagent graph rebuild.
 
-A real packaging incompatibility was found and fixed in candidate source: upstream split the CLI into `bin.ts` / `binCli.ts`, so the embedded launcher’s documented `import("./dist/bin.mjs").runCli(args)` returned `undefined`. `apps/server/src/bin.ts` now exports the lazy bridge and `binCli.ts` supports the explicit-argument, teardown-aware promise contract while retaining normal Node entry behavior.
+Found and fixed a real packaging mismatch in candidate source: upstream split the CLI into `bin.ts` / `binCli.ts`, so the embedded launcher’s documented `import("./dist/bin.mjs").runCli(args)` returned `undefined`. `apps/server/src/bin.ts` now exports the lazy bridge and `binCli.ts` supports the explicit-argument, teardown-aware promise contract while retaining normal Node entry behavior.
 
 Did not change canonical pin/patch, installed binary, release artifact, user DB/session, or user process. `dist/die-t3-v2-root` was not overwritten and the coordinated full `dist/die-t3-v2-candidate` was not produced.
 

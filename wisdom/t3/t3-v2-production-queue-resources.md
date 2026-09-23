@@ -2,7 +2,7 @@
 
 ## Source confirmation
 
-Read `wisdom/t3/t3-v2-production-resource-review.md` before changing the candidate. The reachable hazards confirmed there were present in `.cache/die-t3code-v2-production`: unbounded Pi RPC event/write queues, unbounded terminal PTY callback backlog, unbounded continuation requests plus one retry fiber per failed delegated completion, and unbounded live provider-event subscriber queues. The actual Pi transport is `apps/server/src/orchestration-v2/Adapters/PiRpc.ts` (not `provider/Services/PiRpcClient.ts`).
+Before changing the candidate, read `wisdom/t3/t3-v2-production-resource-review.md`. Its reachable hazards were present in `.cache/die-t3code-v2-production`: unbounded Pi RPC event/write queues, unbounded terminal PTY callback backlog, unbounded continuation requests plus one retry fiber per failed delegated completion, and unbounded live provider-event subscriber queues. The actual Pi transport is `apps/server/src/orchestration-v2/Adapters/PiRpc.ts` (not `provider/Services/PiRpcClient.ts`).
 
 ## Implemented in candidate
 
@@ -23,7 +23,7 @@ PiAdapterV2 model/usage policy was not changed. ProviderSessionManager release/h
 - server tsc reached concurrent hard-stop test/type mismatches in ProviderSessionManager (including `hardStopOwnedProcess` absent from the runtime contract). No diagnostic named the queue/resource files changed here.
 - `git diff --check` passed for the scoped files.
 
-The repeated subscriber lifecycle test performs 100 subscribe/deliver/close cycles and checks registration count returns to zero each cycle. These focused tests establish bounded queue/listener behavior only. They are not a broad zero-leak or whole-process FD claim. No FD-owning primitive was added by these changes.
+The repeated subscriber lifecycle test runs 100 subscribe/deliver/close cycles. After each cycle, it checks that registration count returns to zero. These focused tests show only bounded queue/listener behavior. They do not make a broad zero-leak or whole-process FD claim. These changes add no FD-owning primitive.
 
 ## Head-of-line / PiRpc saturation follow-up
 

@@ -4,7 +4,7 @@ Status: complete (2026-09-21)
 
 ## Edit ownership / concurrency
 
-This worker edited only the candidate checkout `.cache/die-t3code-v2-production` files listed below. Did not change native acceptance, root implementation source, browser/web source, or build configuration. Browser work was concurrent.
+This worker edited only the candidate checkout files listed below in `.cache/die-t3code-v2-production`. Did not change native acceptance, root implementation source, browser/web source, or build configuration. Browser work ran at the same time.
 
 ## Baseline
 

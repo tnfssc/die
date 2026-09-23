@@ -1,6 +1,6 @@
 # T3 v2 production continuation P1 fixes
 
-Built in the isolated production tree at `.cache/die-t3code-v2-production`. Did not re-export or adopt it, install dependencies, or change the NativeDieIntegration production test.
+Built in the isolated production tree at `.cache/die-t3code-v2-production`. Did not re-export or adopt it. Did not install dependencies or change the NativeDieIntegration production test.
 
 ## Changes
 

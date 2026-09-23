@@ -28,12 +28,10 @@ shared process/state was changed.
 
 ## Harness contract for the two upstream workers
 
-The fixture configures a deterministic local HTTP model as the candidate's Pi provider.
+The fixture uses a deterministic local HTTP model as the candidate's Pi provider.
 The parent model calls only the native execute tool. Its execute code launches
 `subagent({type: "orchestrator", waitSeconds: 0})`. It does not call T3 MCP directly,
-seed a database, or fake projection rows. The candidate backend must inject its scoped
-`T3_MCP_URL`/bearer pair into that provider and map the native helper to a T3-owned
-child thread. Credentials must remain out of transcript, logs, errors, and proof.
+seed a database, or fake projection rows. The candidate backend must inject its scoped `T3_MCP_URL`/bearer pair into that provider. It must map the native helper to a T3-owned child thread. Keep credentials out of transcripts, logs, errors, and proof.
 
 The UI/backend must expose:
 

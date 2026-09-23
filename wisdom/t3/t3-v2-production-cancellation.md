@@ -22,9 +22,9 @@ The command is accepted only for an existing `app_owned` task of `parentThreadId
 4. removes the task from a pending completion cohort, and
 5. cancels a queued completion-wake run when that task was its final member.
 
-A repeated command is a successful event-store idempotent operation. A late child settlement does not overwrite a cancelled/disposed task and cannot publish a result wake.
+Repeating the command succeeds as an idempotent event-store operation. Late child settlement cannot overwrite a cancelled/disposed task or publish a result wake.
 
-After authority is persisted, `OrchestratorMcpService.cancelTask` interrupts an active child run when one exists. No active run is needed: an idle child thread waiting for descendants is still cancellable. Terminal tasks retain the existing completion-delivery disposal path and are not rewritten.
+After saving authority, `OrchestratorMcpService.cancelTask` interrupts the active child run, if any. Cancellation does not need an active run. It can still cancel an idle child thread waiting for descendants. Terminal tasks keep the existing completion-delivery disposal path. Do not rewrite them.
 
 `DieTaskService.cancel` walks only the selected app-owned subtree, ancestor first. This establishes each ancestor's disposed delivery before descendant interruption can race to wake it. Siblings are not visited. Ordinary parent runs/handoffs are not interrupted.
 

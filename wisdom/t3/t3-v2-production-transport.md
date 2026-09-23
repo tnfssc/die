@@ -4,9 +4,9 @@ Date: 2026-09-21
 
 ## Scope and disposition
 
-Follow-up ownership was limited to `src/tasks/t3-mcp-client.ts` and `tests/t3-production-bridge.test.ts`. Production delegation remains intentionally fail-closed in `JobService`. This work does not add a remote-job adapter or change web/root routing.
+Follow-up ownership covered only `src/tasks/t3-mcp-client.ts` and `tests/t3-production-bridge.test.ts`. Production delegation stays fail-closed in `JobService`. This work does not add a remote-job adapter or change web/root routing.
 
-The staged MCP client is now a bounded, session-owning transport rather than an unsafe “safe-stage” placeholder:
+The staged MCP client now owns its bounded session. It is no longer an unsafe “safe-stage” placeholder:
 
 - `close()` stops admission first, aborts the client-owned controller, waits (with a bound) for admitted requests to settle, captures a session acquired by concurrent initialization, and only then sends session `DELETE`. Calls cannot report success after close.
 - Request timeout controllers, caller/owner abort listeners, response readers, timers, and reader locks have explicit ownership and cleanup.

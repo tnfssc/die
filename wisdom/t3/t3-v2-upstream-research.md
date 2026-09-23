@@ -9,7 +9,7 @@
 
 ## Executive conclusion
 
-The local comment in packages/client-runtime/src/state/subagentRuntime.ts is directionally accurate but easy to overread.
+The local comment in packages/client-runtime/src/state/subagentRuntime.ts points the right way, but says less than it may seem.
 
 1. **T3 orchestration-v2 is real and substantially implemented upstream**, with an event-sourced server runtime, projections, provider adapters, durable app-owned child tasks, a WebSocket command/RPC surface, and an authenticated MCP surface. The actual current source is on the still-open t3code/codex-turn-mapping branch in PR #2829, not in Die's pinned main revision.
 2. **PR #4779 was not the v2 orchestrator and was never merged.** It was one stacked observability slice on top of the v2 branch: richer subagent identities, activations, usage, workflows, persistence, and provider projections. It was closed after being folded into the larger unmerged stack PR #4664. Exact PR #4779 commits are not ancestors of either the pinned revision or the current #2829 head.
@@ -29,7 +29,7 @@ The local comment in packages/client-runtime/src/state/subagentRuntime.ts is dir
 | Current v2 subagent model | Implemented on current #2829 head; schema has since evolved and is not identical to #4779 | No | [current OrchestrationV2Subagent](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/packages/contracts/src/orchestrationV2.ts#L541-L579) |
 | Codex MultiAgent V2 | Provider-native Codex runtime behavior, integrated by T3 | Provider integration yes; not T3 v2 | [pinned CodexAdapter.ts](https://github.com/pingdotgg/t3code/blob/719a76ca1dbf5490f1aa33ffb9966301e02be9a9/apps/server/src/provider/Layers/CodexAdapter.ts#L1037-L1304), [issue #3875](https://github.com/pingdotgg/t3code/issues/3875) |
 
-The pin's commit is feat(web): choose queue or steer for follow-up messages (#11964), authored 2026-09-15. It contains merge commit a2ca89aa for #5219, but git merge-base --is-ancestor returned false for both #4779's head and #4664's head. Conversely, the current #2829 branch contains the Die pin as an ancestor, because that branch continues to merge/rebase main while remaining unmerged itself.
+The pin's commit is feat(web): choose queue or steer for follow-up messages (#11964), authored 2026-09-15. It contains merge commit a2ca89aa for #5219. But git merge-base --is-ancestor returned false for both #4779's head and #4664's head. The current #2829 branch does contain the Die pin as an ancestor. That branch keeps merging or rebasing main while it remains unmerged.
 
 ## What PR #4779 actually was
 

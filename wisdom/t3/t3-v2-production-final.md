@@ -2,7 +2,7 @@
 
 # Final integration record (2026-09-21)
 
-Implementation is production code, not a disabled stub: root scoped execute routes native Die-specific MCP; T3 owns durable child processes, graph, results and completion delivery. Ordinary CLI/shell TaskManager remains separate.
+This is production code, not a disabled stub. Root scoped execute routes native Die-specific MCP. T3 owns durable child processes, the graph, results, and completion delivery. Ordinary CLI/shell TaskManager stays separate.
 
 ## Exact source/artifact
 - Upstream: a9b49a7df0a4261dcc438d4493cc3154a1d9819e
@@ -32,4 +32,4 @@ Did not release, install, bump a version, or push. No user live servers/credenti
 ## Final decision: NOT ADOPTED
 Canonical web/t3-source.json stays719a76ca and web/t3.patch is unchanged. Real native acceptance PASS; same-server browserPASS; relocated package securityPASS on9fde1b1d...; preservation FAIL. Completed shellcard now remains visible (Ran printf), but after completed local shell, a second user turn fails ProviderAdapterEventStreamError: Provider event stream ended unexpectedly. The RPCagent_end synchronous batch flush patch passes its unit test but did NOT resolve live failure. Do not label it a validated final fix. Current proof artifacts/t3-v2-preservation-acceptance.json and /var/tmp/t3-final-preservation-acceptance.log record9fde... failure before harness teardown.
 
-This is a reproduced internal lifecycle blocker, not an external dependency excuse. The prior DB trace showed unowned Pi activity approximately250ms after first-run settlement. Likely boundary to investigate next: RPC agent_end forwarding order vs extension hook/steer, and making local-job wake owned by the T3 turn/continuation boundary. Do not suppress unexpected EOF or allow arbitrary unowned provider activity. No release-readiness/adoption claim despite implemented and repeatedly proven native contract.
+This blocker reproduces inside the lifecycle. It is not an external dependency excuse. The prior DB trace showed unowned Pi activity approximately250ms after first-run settlement. Next, inspect RPC agent_end forwarding order vs extension hook/steer. Also make the T3 turn/continuation boundary own local-job wake. Do not suppress unexpected EOF or allow arbitrary unowned provider activity. The native contract is implemented and repeatedly proven, but this does not claim release readiness or adoption.

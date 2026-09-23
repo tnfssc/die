@@ -2,9 +2,9 @@
 
 ## 2026-09-21 initial audit / executable request
 
-Browser owner audited the current root and upstream candidate. The candidate checkout is still a live dirty worktree at `.cache/die-t3code-v2-production` HEAD `a9b49a7df0a4261dcc438d4493cc3154a1d9819e`; root fails closed for scoped delegation in `JobService`, so it is not yet executable acceptance input. Do not build/adopt from this observation.
+Browser owner checked the current root and upstream candidate. The candidate checkout is still a dirty worktree at `.cache/die-t3code-v2-production`, HEAD `a9b49a7df0a4261dcc438d4493cc3154a1d9819e`. Root fails closed for scoped delegation in `JobService`. This is not executable acceptance input. Do not build or adopt from this observation.
 
-Coordinator handoff needed after implementation workers settle: publish the exact absolute candidate executable path, its SHA-256, the exact candidate checkout path/HEAD, and confirm the executable was built with that candidate worktree. Browser owner will independently recompute all identities and content hash. The harness does not install, build, mutate canonical pins, or choose source inputs.
+After implementation settles, the coordinator must publish the exact absolute candidate executable path and SHA-256, the exact candidate checkout path and HEAD, and confirmation that the executable came from that candidate worktree. Browser owner will recompute every identity and the content hash. The harness does not install or build. It does not change canonical pins or choose source inputs.
 
 Harness/current-candidate audit findings:
 

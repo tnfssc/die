@@ -6,7 +6,7 @@ Date: 2026-09-21 (UTC)
 
 **PASS for the exported NON-ADOPTED candidate. The canonical source was not adopted.**
 
-Canonical `web/t3.patch` and `web/t3-source.json` were not edited. The candidate remains isolated in `.cache/die-t3code-v2-production`, `.agents/patches/t3-v2-production-candidate.patch`, and `dist/die-t3-v2-candidate` pending coordinator disposition.
+Canonical `web/t3.patch` and `web/t3-source.json` stayed unchanged. The candidate is still isolated in `.cache/die-t3code-v2-production`, `.agents/patches/t3-v2-production-candidate.patch`, and `dist/die-t3-v2-candidate`. It waits for the coordinator.
 
 ## Final exact inputs and outputs
 

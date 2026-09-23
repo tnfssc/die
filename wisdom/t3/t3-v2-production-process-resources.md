@@ -31,7 +31,7 @@ The existing synthetic hung-close test now asserts the hard-stop callback runs b
 
 ## Operational invariant
 
-A release timeout is no longer treated as process cleanup. Released events and credential revocation happen only after ordinary scope close completes or the exact adapter-owned process handle confirms exit/reap. An unprovable cleanup remains tombstoned instead of becoming an invisible orphan.
+A release timeout no longer counts as process cleanup. Send released events and revoke credentials only after ordinary scope close finishes or the exact adapter-owned process handle confirms exit/reap. If cleanup cannot be proven, keep it tombstoned instead of hiding an orphan.
 
 
 ## 2026-09-21 follow-up: native child provider retention

@@ -2,7 +2,7 @@
 
 ## Native acceptance owner (task harness) — 2026-09-21
 
-Scope: only `scripts/t3-v2-production` native acceptance (excluding `browser-acceptance.ts`) and, if needed, newly named candidate integration-test/harness files. I will not modify backend/root implementation files. Coordinator retains export/adoption.
+Scope: only `scripts/t3-v2-production` native acceptance, excluding `browser-acceptance.ts`, plus newly named candidate integration-test/harness files if needed. Do not change backend/root implementation files. Coordinator keeps export/adoption ownership.
 
 Required stable hooks/contract for real acceptance:
 
@@ -15,7 +15,7 @@ Required stable hooks/contract for real acceptance:
 - Provider process PIDs (or spawn callback) must be observable so exact owned-PID teardown/no Die child session files can be asserted.
 - If execute ACK fault injection exists, expose test-only failure points after launch response persistence / before root consumes response. Because launch is async-only, acceptance will test replay/dedupe, not foreground result ACK.
 
-Harness will run only loopback listeners and exact owned processes with per-run temp HOME/state/credentials. It will not install, run a user server, import experiments, or use experiment runtime paths.
+Run the harness only with loopback listeners, exact owned processes, and per-run temporary HOME/state/credentials. Do not install, run a user server, import experiments, or use experiment runtime paths.
 
 ## Blocking integration finding — 2026-09-21 09:47
 

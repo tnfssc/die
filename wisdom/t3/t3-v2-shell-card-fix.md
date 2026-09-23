@@ -4,7 +4,7 @@
 
 Fixed in the non-adopted candidate source at `.cache/die-t3code-v2-production`. Did not change root/native routing.
 
-The Pi adapter was already emitting the correct lifecycle update: both `die_task_event started` and `completed` derive the same turn-item ID, node ID, native ref (`die-shell:<taskId>`), run ID, and ordinal. The client reducer also upserts the terminal payload by that stable ID. The production disappearance was in timeline presentation after settlement: the terminal command and its enclosing `execute` carrier were folded into the generic **Worked for ...** turn summary, so the running card vanished as soon as it became terminal. Reload faithfully reconstructed that collapsed presentation.
+The Pi adapter already emitted the right lifecycle update. Both `die_task_event started` and `completed` use the same turn-item ID, node ID, native ref (`die-shell:<taskId>`), run ID, and ordinal. The client reducer also upserts the terminal payload by that stable ID. The card disappeared in timeline presentation after settlement. The terminal command and its enclosing `execute` carrier folded into the generic **Worked for ...** turn summary, so the running card vanished as soon as it became terminal. Reload rebuilt the same collapsed view.
 
 The acceptance harness had a second, independently proven selector error: T3's canonical command lifecycle labels are **Running <program>** and **Ran <program>**, not **Completed <program>** (covered by existing `MessagesTimeline.logic.test.ts` assertions). The failed artifact contained no terminal card at all, so the selector error did not explain away the UI regression.
 

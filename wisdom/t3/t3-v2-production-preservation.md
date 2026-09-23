@@ -4,7 +4,7 @@ Date: 2026-09-21
 
 ## Ownership / coordination
 
-This worker changed only the v2 candidate at `.cache/die-t3code-v2-production` in the PiAdapterV2, loopback-auth/config/startup, and their focused tests. It did **not** edit root `src/tasks/**`, the backend-owned `DieTaskService`/MCP tool schemas/handlers/policy, canonical `web/t3.patch`, `web/t3-source.json`, or the exported candidate patch. Concurrent backend changes under `apps/server/src/mcp/**` and `packages/contracts/src/orchestratorMcp.ts` were left intact.
+This worker changed only PiAdapterV2, loopback auth/config/startup, and their focused tests in the v2 candidate at `.cache/die-t3code-v2-production`. It did **not** edit root `src/tasks/**`, the backend-owned `DieTaskService`/MCP tool schemas/handlers/policy, canonical `web/t3.patch`, `web/t3-source.json`, or the exported candidate patch. It left concurrent backend changes under `apps/server/src/mcp/**` and `packages/contracts/src/orchestratorMcp.ts` intact.
 
 ## Preserved / implemented
 

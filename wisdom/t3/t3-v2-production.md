@@ -3,8 +3,8 @@
 # Active continuation — 2026-09-21 06:29Z
 
 The preparatory-stage report below is historical. Production continuation now has
-actual root native routing + backend die_task_* contract; scoped calls are no longer
-a disabled stub. Canonical pin719a76ca is unchanged pending integrated evidence.
+real root native routing plus the backend die_task_* contract. Scoped calls are no
+longer a disabled stub. Canonical pin719a76ca stays unchanged pending integrated evidence.
 Read **t3-v2-production-design.md** for authoritative decisions/assignments and
 **wisdom/t3/t3-v2-delegation-status.md** for current user-facing semantics.
 

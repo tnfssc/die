@@ -17,7 +17,7 @@
 - Extracted runtime directory/content ID: `5b868e6071cbe1de68f344617de28bd06b39786bd6c6c21b39f16276a4d72d9b`
 - Extracted `bootstrap.mjs` SHA-256: `154fc94a56be176ef6f4e6591f594a5834fd81bc2afe101442cc0b8d6364ebc2`
 
-The candidate was refreshed while this task was beginning. The harness correctly rejected the earlier expected hash `3f6dc9…`; all PASS evidence is for the final hash above.
+The candidate changed as this task began. The harness correctly rejected the earlier expected hash `3f6dc9…`. All PASS evidence uses the final hash above.
 
 ## Rerun
 
@@ -41,4 +41,4 @@ Machine-readable evidence: `artifacts/t3-v2-packaged-smoke.json`.
 
 ## Deliberate boundary
 
-No actual browser was launched because the browser worker owns browser/candidate acceptance. So this run does **not** claim browser-rendered shell cards/liveness, interactive model or instruction-mode switching, populated session history/token accounting, or terminal delayed-input/resize behavior. Those are still the same-live-server browser/native harness gates. This result only establishes that their packaged server/runtime substrate, no-auth boundary, configuration preservation, and shutdown work from the exact artifact.
+No browser ran because the browser worker owns browser/candidate acceptance. This run does **not** claim browser-rendered shell cards/liveness, interactive model or instruction-mode switching, populated session history/token accounting, or terminal delayed-input/resize behavior. The same-live-server browser/native harness must still check those gates. This result shows only that the exact artifact supports the packaged server/runtime substrate, no-auth boundary, configuration preservation, and shutdown.

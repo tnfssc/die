@@ -4,7 +4,7 @@ Date: 2026-09-21
 
 ## Scope
 
-Added `scripts/t3-v2-production/preservation-acceptance.ts`. It treats the packaged executable as a black box, copies it into a fresh private temporary root, uses fresh HOME/TMP/web/agent state, removes Node/Bun/npm from the candidate PATH, and serves a deterministic loopback OpenAI-compatible model. It does not read user state or contact a live provider. No candidate source/build files or the existing browser acceptance script were edited.
+Added `scripts/t3-v2-production/preservation-acceptance.ts`. It treats the packaged executable as a black box. It copies the executable into a fresh private temporary root, uses fresh HOME/TMP/web/agent state, removes Node/Bun/npm from the candidate PATH, and serves a deterministic loopback OpenAI-compatible model. It does not read user state or contact a live provider. Did not edit candidate source/build files or the existing browser acceptance script.
 
 ## Candidate and rerun
 

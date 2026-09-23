@@ -4,9 +4,9 @@
 
 ## Baseline and interpretation
 
-The production baseline is current root source plus pinned T3 719a76ca1dbf5490f1aa33ffb9966301e02be9a9 and web/t3.patch. The authorized migration may move **web delegation** to T3 orchestration-v2 child threads, but cannot silently redesign the root CLI or erase shipped Die behavior. Sources reviewed include README.md, PRODUCT.md, current source/tests, the canonical patch and patched pin, and the web/mode/history/compaction/cost/handoff/lifecycle/security/packaging notes.
+The production baseline is current root source plus pinned T3 719a76ca1dbf5490f1aa33ffb9966301e02be9a9 and web/t3.patch. The authorized migration may move **web delegation** to T3 orchestration-v2 child threads. It cannot silently redesign the root CLI or erase shipped Die behavior. Reviewed sources: README.md, PRODUCT.md, current source/tests, the canonical patch and patched pin, and the web/mode/history/compaction/cost/handoff/lifecycle/security/packaging notes.
 
-Upstream v2 is not a task-widget swap. PR #2829 has a durable thread/run graph, scoped MCP delegate_task/task_status/task_cancel, separate child Pi processes/sessions, result transfer/ACK, replay/reconnect, and navigable child transcripts. Current production instead runs Die's execute helper and projects bounded local TaskManager start/completion records. Their APIs are not interchangeable.
+Upstream v2 is not a task-widget swap. PR #2829 has a durable thread/run graph, scoped MCP delegate_task/task_status/task_cancel, separate child Pi processes/sessions, result transfer/ACK, replay/reconnect, and navigable child transcripts. Current production instead runs Die's execute helper and projects bounded local TaskManager start/completion records. Cannot swap one API for the other.
 
 ## Regression matrix
 

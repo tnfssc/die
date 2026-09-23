@@ -2,7 +2,7 @@
 
 # Production continuation design (2026-09-21)
 
-Owner: delegation/adoption coordinator. These are implementation decisions, not claims of completion.
+Owner: delegation/adoption coordinator. These are implementation decisions. They do not claim completion.
 
 - T3 is sole child process, graph, transcript, durable result and model-delivery owner. Root jobs expose bounded read-through projections only. No second completion injection or child session files.
 - Add Die-specific authenticated MCP contract rather than invent unsupported delegate_task fields. Backend binds parent and profile/depth policy to provider-issued credentials. Client profile is a request, never authorization. Fast/normal cannot delegate; orchestrator may within backend depth limit. Backend resolves actual model/thinking/role from trusted Die config.
@@ -73,7 +73,7 @@ Direct root vp test exercised 18,103 tests:18,077 passed/9 failed/17 skipped;13 
 ## 07:40Z real native flow first PASS
 /var/tmp/native-run26.log and scripts/t3-v2-production/artifacts/native/proof.json report actual HTTP MCP/PiAdapterV2/compiled Die,4owned PIDs reaped,0Diechildsessions,1nestedchild,1completiontransfer,0foregroundACKs,parenthandoff survived,subtreecancel+siblingisolation,uniquecredentials,restartsamekey+0duplicatechildren. Binary root sha8fd3da7f26fa9f67f734ef4be53cd5c25f1281f1de19ccb82bcdd2738851971d. This is NOT browser/packaged candidate proof; final revised root/bundle needs rerun after review fixes.
 
-Build coordination: root review worker invokes bun run build for full tests, which writes shared dist/die-web from canonical pin. Browser builder must check dist/die-web/SOURCE.txt matches candidate patchHash immediately before compiling candidate; final candidate rebuild must occur after root full build completes. Separate candidate outfile alone does not isolate shared archive input.
+Build coordination: the root review worker runs bun run build for full tests. That writes shared dist/die-web from the canonical pin. Right before compiling the candidate, the browser builder must check that dist/die-web/SOURCE.txt matches candidate patchHash. Rebuild the final candidate after the full root build finishes. A separate candidate outfile does not isolate the shared archive input.
 
 ## 07:42Z backend independent review disposition underway
 Review task_2f82f274 found cancellation-vs-launch race, unusable task_status wake instructions for restricted Die credentials, and count-only continuation payload bounds. Repairs task_e2305db4 (serialized ancestor cancellation fence; also verify root identity concern against actual server-selected Die adapter) and task_902acfb5 (wake text+byte bounds). First review identity claim may conflate server-wide trusted Die replacement of pi with unrelated same-driver instance; worker must prove dispatch/config binding or fix. These new source edits require final export/build/native rerun, not reuse earlier hashes.

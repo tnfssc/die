@@ -2,7 +2,7 @@
 
 ## Immediate contract / implementation locations (2026-09-21)
 
-I will expose exactly four MCP tools in the existing authenticated `OrchestratorToolkit` route (so bearer-derived `McpInvocationContext`, never caller args/env):
+Expose exactly four MCP tools through the existing authenticated `OrchestratorToolkit` route. Use bearer-derived `McpInvocationContext`, never caller args or env:
 
 - `die_task_launch` input `{ clientRequestId: string; prompt: string; profile: "fast" | "normal" | "orchestrator"; timeoutMs?: number }`
 - `die_task_observe` input `{ taskId: string }`
@@ -10,7 +10,7 @@ I will expose exactly four MCP tools in the existing authenticated `Orchestrator
 - `die_task_list` input `{}`
 - task result exactly `{ version: 1; taskId; childThreadId; childRunId?; childNodeId?; status: "running" | "completed" | "failed" | "cancelled"; profile; depth; output?; transferId? }`; list result exactly `{ tasks: result[] }`.
 
-Locations owned/touched: `packages/contracts/src/orchestratorMcp.ts` (wire schemas), `apps/server/src/mcp/toolkits/orchestrator/{tools,handlers}.ts` (router), new `apps/server/src/mcp/DieTaskService.ts` and tests (policy/lifecycle), plus only the minimal runtime layer registration in `McpHttpServer.ts` and the async-launch non-ACK correction in `OrchestratorMcpService.ts`. Existing adapter transport/resource-owner files will not be touched.
+Owned paths: `packages/contracts/src/orchestratorMcp.ts` for wire schemas; `apps/server/src/mcp/toolkits/orchestrator/{tools,handlers}.ts` for routing; new `apps/server/src/mcp/DieTaskService.ts` and tests for policy and lifecycle; minimal runtime registration in `McpHttpServer.ts`; and the async-launch non-ACK fix in `OrchestratorMcpService.ts`. Do not touch existing adapter transport or resource-owner files.
 
 Refinements proposed to root contract immediately:
 
@@ -20,7 +20,7 @@ Refinements proposed to root contract immediately:
 4. `observe` and `list` perform projection reads only and never dispatch completion-delivery/ACK/dispose events. Native T3 completion delivery remains sole wake/transfer owner.
 5. Explicit cancel recursively interrupts only the target child subtree. Parent turn stop/settlement does not invoke it. Full server teardown uses provider-session ownership cleanup while durable lineage/events remain.
 
-Durable launch dedupe will derive a stable command ID from bearer providerSessionId + clientRequestId and additionally bind the canonical request fingerprint so conflicting replay is rejected rather than aliasing. Child lineage comes from the durable subagent/context-transfer graph; every child is a distinct T3 provider session.
+For durable launch dedupe, derive a stable command ID from bearer providerSessionId + clientRequestId. Bind the canonical request fingerprint too, so conflicting replay fails instead of aliasing. Read child lineage from the durable subagent/context-transfer graph. Give every child its own T3 provider session.
 
 ## Progress
 
