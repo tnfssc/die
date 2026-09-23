@@ -12,8 +12,10 @@ import { pathToFileURL } from "node:url";
 
 const names = ["die-linux-x64", "die-linux-arm64", "die-darwin-arm64", "die-android-arm64"] as const;
 const targets: [NodeJS.Platform, string, string][] = [
-  ["linux", "x64", names[0]], ["linux", "arm64", names[1]],
-  ["darwin", "arm64", names[2]], ["android", "arm64", names[3]],
+  ["linux", "x64", names[0]],
+  ["linux", "arm64", names[1]],
+  ["darwin", "arm64", names[2]],
+  ["android", "arm64", names[3]],
 ];
 const api = "https://api.github.com/repos/tnfssc/die/releases/latest";
 const root = "https://github.com/tnfssc/die/releases/download/v0.8.0/";
@@ -34,8 +36,10 @@ function fixture(name: string): Uint8Array {
 }
 function assertRawFixture(name: string, bytes: Uint8Array) {
   const magic = name === "die-darwin-arm64" ? [0xcf, 0xfa, 0xed, 0xfe] : [0x7f, 0x45, 0x4c, 0x46];
-  if (!magic.every((byte, index) => bytes[index] === byte) ||
-      !new TextDecoder().decode(bytes).includes("die fixture 0.8.0 " + name))
+  if (
+    !magic.every((byte, index) => bytes[index] === byte) ||
+    !new TextDecoder().decode(bytes).includes("die fixture 0.8.0 " + name)
+  )
     throw new Error("incompatible tar shape or version for " + name);
 }
 async function stageAssets(dir: string) {
@@ -47,25 +51,44 @@ async function stageAssets(dir: string) {
     await writeFile(join(dir, name + ".sha256"), digest(bytes) + "  " + name + "\n");
   }
 }
-type Override = { tag?: string; prerelease?: boolean; draft?: boolean; checksum?: string; fail?: string; missingRaw?: boolean;
-  onRequest?: (url: string) => void | Promise<void> };
+type Override = {
+  tag?: string;
+  prerelease?: boolean;
+  draft?: boolean;
+  checksum?: string;
+  fail?: string;
+  missingRaw?: boolean;
+  onRequest?: (url: string) => void | Promise<void>;
+};
 function localFetch(dir: string, options: Override = {}) {
   const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     expect(init?.headers).toEqual({
-      accept: url === api ? "application/vnd.github+json" : url.endsWith(".sha256") ? "text/plain" : "application/octet-stream",
+      accept:
+        url === api
+          ? "application/vnd.github+json"
+          : url.endsWith(".sha256")
+            ? "text/plain"
+            : "application/octet-stream",
       "user-agent": "die/0.7.1",
     });
     await options.onRequest?.(url);
     if (url === options.fail) throw new Error("offline fixture");
-    if (url === api) return Response.json({ tag_name: options.tag ?? "v0.8.0", prerelease: options.prerelease ?? false,
-      draft: options.draft ?? false, assets: names.flatMap((name) => [options.missingRaw && name === names[0] ? name + ".tar.gz" : name, name + ".sha256"])
-        .map((name) => ({ name, browser_download_url: root + name })) });
+    if (url === api)
+      return Response.json({
+        tag_name: options.tag ?? "v0.8.0",
+        prerelease: options.prerelease ?? false,
+        draft: options.draft ?? false,
+        assets: names
+          .flatMap((name) => [options.missingRaw && name === names[0] ? name + ".tar.gz" : name, name + ".sha256"])
+          .map((name) => ({ name, browser_download_url: root + name })),
+      });
     if (!url.startsWith(root) || !names.some((name) => url === root + name || url === root + name + ".sha256"))
       throw new Error("unexpected non-official URL: " + url);
     const name = url.slice(root.length);
-    return new Response(name.endsWith(".sha256") && options.checksum !== undefined
-      ? options.checksum : await readFile(join(dir, name)));
+    return new Response(
+      name.endsWith(".sha256") && options.checksum !== undefined ? options.checksum : await readFile(join(dir, name)),
+    );
   };
   return fetcher as typeof fetch;
 }
@@ -84,21 +107,35 @@ beforeAll(async () => {
   temp = await mkdtemp(join(tmpdir(), "die-v071-compat-"));
   await mkdir(join(temp, "src"));
   const source = git("src/update.ts");
-  expect(digest(new TextEncoder().encode(source))).toBe("589cf75c8bf9dc20f537128ca10ae84b90b7b7a03e9c4f0014578d61e4d4a259");
+  expect(digest(new TextEncoder().encode(source))).toBe(
+    "589cf75c8bf9dc20f537128ca10ae84b90b7b7a03e9c4f0014578d61e4d4a259",
+  );
   await writeFile(join(temp, "src/update.ts"), source);
   await writeFile(join(temp, "package.json"), git("package.json"));
   ({ updateDie } = await import(pathToFileURL(join(temp, "src/update.ts")).href));
   assets = join(temp, "release-assets");
   await stageAssets(assets);
 });
-afterAll(async () => { if (temp) await rm(temp, { recursive: true, force: true }); });
+afterAll(async () => {
+  if (temp) await rm(temp, { recursive: true, force: true });
+});
 
 for (const [platform, arch, name] of targets) {
   test("v0.7.1 replaces " + name + " using official URLs and staged raw asset + sha256", async () => {
     const target = await targetFor(name);
     const requests: string[] = [];
-    const result = await updateDie({ compiled: true, currentVersion: "0.7.1", platform, arch,
-      executable: target.path, fetch: localFetch(assets, { onRequest: (url) => { requests.push(url); } }) });
+    const result = await updateDie({
+      compiled: true,
+      currentVersion: "0.7.1",
+      platform,
+      arch,
+      executable: target.path,
+      fetch: localFetch(assets, {
+        onRequest: (url) => {
+          requests.push(url);
+        },
+      }),
+    });
     expect(result).toEqual({ status: "updated", version: "0.8.0", path: target.path });
     expect(requests).toEqual([api, root + name, root + name + ".sha256"]);
     expect(await readFile(target.path)).toEqual(Buffer.from(fixture(name)));
@@ -119,8 +156,16 @@ for (const [label, override] of [
 ] as const) {
   test(label + " leaves original unchanged", async () => {
     const target = await targetFor(names[0]);
-    await expect(updateDie({ compiled: true, currentVersion: "0.7.1", platform: "linux", arch: "x64",
-      executable: target.path, fetch: localFetch(assets, override) })).rejects.toThrow();
+    await expect(
+      updateDie({
+        compiled: true,
+        currentVersion: "0.7.1",
+        platform: "linux",
+        arch: "x64",
+        executable: target.path,
+        fetch: localFetch(assets, override),
+      }),
+    ).rejects.toThrow();
     expect(await readFile(target.path)).toEqual(Buffer.from(target.original));
     await noStage(target.dir);
   });
@@ -129,15 +174,25 @@ test("concurrent replacement after download is not overwritten", async () => {
   const target = await targetFor(names[0]);
   const replacement = Buffer.from("concurrent owner executable");
   let changed = false;
-  await expect(updateDie({ compiled: true, currentVersion: "0.7.1", platform: "linux", arch: "x64",
-    executable: target.path, fetch: localFetch(assets, { onRequest: async (url) => {
-      if (url === root + names[0] + ".sha256" && !changed) {
-        changed = true;
-        await writeFile(join(target.dir, "other"), replacement);
-        const { rename } = await import("node:fs/promises");
-        await rename(join(target.dir, "other"), target.path);
-      }
-    } }) })).rejects.toThrow("changed during the update");
+  await expect(
+    updateDie({
+      compiled: true,
+      currentVersion: "0.7.1",
+      platform: "linux",
+      arch: "x64",
+      executable: target.path,
+      fetch: localFetch(assets, {
+        onRequest: async (url) => {
+          if (url === root + names[0] + ".sha256" && !changed) {
+            changed = true;
+            await writeFile(join(target.dir, "other"), replacement);
+            const { rename } = await import("node:fs/promises");
+            await rename(join(target.dir, "other"), target.path);
+          }
+        },
+      }),
+    }),
+  ).rejects.toThrow("changed during the update");
   expect(changed).toBe(true);
   expect(await readFile(target.path)).toEqual(replacement);
   await noStage(target.dir);
@@ -148,8 +203,9 @@ test("fixture preflight rejects tar-shaped payload, even with valid checksum", a
   const validTarChecksum = digest(tar) + "  " + names[0] + "\n";
   expect(validTarChecksum).toMatch(new RegExp("^[a-f0-9]{64}  " + names[0]));
   expect(() => assertRawFixture(names[0], tar)).toThrow("incompatible tar shape");
-  expect(() => assertRawFixture(names[0], new TextEncoder().encode("die fixture 0.7.1 " + names[0])))
-    .toThrow("incompatible tar shape or version");
+  expect(() => assertRawFixture(names[0], new TextEncoder().encode("die fixture 0.7.1 " + names[0]))).toThrow(
+    "incompatible tar shape or version",
+  );
   // The old updater checks only SHA256; it does NOT inspect executable format.
   // Do not treat this preflight as an updater-level tar defense.
 });
