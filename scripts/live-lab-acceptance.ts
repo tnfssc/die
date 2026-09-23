@@ -10,9 +10,9 @@ import { PlaybackScheduler } from "../src/live-lab/playback";
 
 const paid = process.argv.includes("--provider");
 const args = process.argv.slice(2);
-if (process.platform !== "linux" || args.some(a => a !== "--provider") ||
+if (process.platform !== "linux" || process.env.DIE_LIVE_LAB_ISOLATED !== "1" || args.some(a => a !== "--provider") ||
     (paid && process.env.DIE_RUN_LIVE_LAB_ACCEPTANCE !== "1")) {
-  console.error("Linux required; paid mode requires --provider and DIE_RUN_LIVE_LAB_ACCEPTANCE=1");
+  console.error("Linux isolated wrapper required; paid mode additionally requires --provider and DIE_RUN_LIVE_LAB_ACCEPTANCE=1");
   process.exit(2);
 }
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
@@ -55,17 +55,17 @@ const pcmTone = (hz: number, seconds: number): Buffer => {
 };
 // A matched-frequency window proves the final marker reached the output monitor; queue=0 alone does not.
 const toneScore = (pcm: Buffer, hz: number, start: number): number => {
-  const count = 2400; let sine = 0, cosine = 0, energy = 0;
+  const count = 480; let sine = 0, cosine = 0, energy = 0;
   for (let i = 0; i < count; i++) {
     const x = pcm.readInt16LE((start + i) * 2);
     const phase = 2 * Math.PI * hz * i / 24000;
     sine += x * Math.sin(phase); cosine += x * Math.cos(phase); energy += x * x;
   }
-  return energy ? Math.min(1, 2 * (sine * sine + cosine * cosine) / (count * energy)) : 0;
+  return energy >= count * 1000 * 1000 ? Math.min(1, 2 * (sine * sine + cosine * cosine) / (count * energy)) : 0;
 };
 const peak = (pcm: Buffer, hz: number, from = 0): { score: number; atMs: number } => {
   let score = 0, atMs = -1;
-  for (let i = Math.max(0, from); i + 2400 <= pcm.length / 2; i += 1200) {
+  for (let i = Math.max(0, from); i + 480 <= pcm.length / 2; i += 240) {
     const s = toneScore(pcm, hz, i);
     if (s > score) { score = s; atMs = Math.round(i / 24); }
   }
@@ -96,26 +96,33 @@ function tailCorrelation(sent: Buffer, heard: Buffer): { score: number; atMs: nu
   return { score: Number(score.toFixed(3)), atMs };
 }
 
-// PipeWire stream-restore can silently override an explicit device. Check both actual
-// links BEFORE enqueueing any audio; fail closed instead of risking physical output.
+// Pulse JSON's numeric sink/source fields are authoritative; the text output's
+// indented labels also occur inside properties and are not safe to parse as routes.
+type Endpoint = { index: number; name: string };
+const listing = async (kind: string): Promise<any[]> => {
+  const value = JSON.parse((await run("pactl", ["-f", "json", "list", kind])).toString());
+  if (!Array.isArray(value)) throw new Error("Invalid Pulse endpoint listing");
+  return value;
+};
+const endpoint = (items: Endpoint[], name: string): number => {
+  const hits = items.filter(x => x.name === name && Number.isInteger(x.index));
+  if (hits.length !== 1) throw new Error("Virtual endpoint unavailable: " + name);
+  return hits[0].index;
+};
+async function assertRoute(kind: "sink-inputs" | "source-outputs", pid: number, expected: number) {
+  let matches: any[] = [];
+  for (let i = 0; i < 20; i++) {
+    matches = (await listing(kind)).filter(x => x.properties?.["application.process.id"] === String(pid));
+    if (matches.length) break;
+    await sleep(50);
+  }
+  const field = kind === "sink-inputs" ? "sink" : "source";
+  if (matches.length !== 1 || !Number.isInteger(matches[0][field]) || matches[0][field] !== expected)
+    throw new Error(kind + " was not routed to its virtual endpoint");
+}
 async function checkRoutes(pid: number, mic: string, output: string) {
-  const sinks = (await run("pactl", ["list", "short", "sinks"])).toString();
-  const sources = (await run("pactl", ["list", "short", "sources"])).toString();
-  const sinkIndex = sinks.split("\n").find(l => l.split("\t")[1] === output)?.split("\t")[0];
-  const sourceIndex = sources.split("\n").find(l => l.split("\t")[1] === mic + ".monitor")?.split("\t")[0];
-  if (!sinkIndex || !sourceIndex) throw new Error("Virtual endpoints unavailable");
-  const target = async (kind: "sink-inputs" | "source-outputs", line: "Sink" | "Source") => {
-    const blocks = (await run("pactl", ["list", kind])).toString().split(/(?=^(?:Sink Input|Source Output) #)/m);
-    const owned = blocks.filter(block => block.includes('application.process.id = "' + pid + '"'));
-    if (owned.length !== 1) throw new Error("Helper route unavailable");
-    const id = owned[0].match(/^(?:Sink Input|Source Output) #(\d+)/m)?.[1];
-    const route = owned[0].match(new RegExp("^\\s*" + line + ": (\\d+)$", "m"))?.[1];
-    if (!id || !route) throw new Error("Helper route unavailable");
-    return { id, route };
-  };
-  const sink = await target("sink-inputs", "Sink"), source = await target("source-outputs", "Source");
-  if (sink.route !== sinkIndex) throw new Error("Helper output was routed away from virtual sink; refusing playback");
-  if (source.route !== sourceIndex) throw new Error("Helper input was routed away from virtual monitor; refusing capture");
+  await assertRoute("sink-inputs", pid, endpoint(await listing("sinks"), output));
+  await assertRoute("source-outputs", pid, endpoint(await listing("sources"), mic + ".monitor"));
 }
 
 async function main() {
@@ -138,12 +145,7 @@ async function main() {
     }
     const monitor = listen("parec", ["--device=" + output + ".monitor", "--format=s16le", "--rate=24000", "--channels=1", "--raw"]);
     children.push(monitor);
-    const monitorSourceIndex = (await run("pactl", ["list", "short", "sources"])).toString().split("\n")
-      .find(line => line.split("\t")[1] === output + ".monitor")?.split("\t")[0];
-    const monitorRoute = (await run("pactl", ["list", "source-outputs"])).toString().split(/(?=^Source Output #)/m)
-      .find(block => block.includes('application.process.id = "' + monitor.pid + '"'));
-    if (!monitorSourceIndex || !monitorRoute || !monitorRoute.includes("Source: " + monitorSourceIndex + "\n"))
-      throw new Error("Monitor was routed away from virtual source");
+    await assertRoute("source-outputs", monitor.pid!, endpoint(await listing("sources"), output + ".monitor"));
     const outputParts: Buffer[] = []; let outputBytes = 0;
     monitor.stdout.on("data", (b: Buffer) => {
       outputBytes += b.length;
@@ -170,7 +172,7 @@ async function main() {
     playback.start();
     // Fixture injects ONLY provider messages; it does not replace the native helper or scheduler.
     if (!paid) {
-      const lead = pcmTone(430, 2.4), tail = pcmTone(830, 0.45);
+      const lead = pcmTone(430, 1.6), tail = pcmTone(830, 0.8);
       const result = Buffer.concat([lead, tail]);
       const adapter = (() => ({ live: { connect: async ({ callbacks }: any) => {
         setTimeout(() => {
@@ -193,25 +195,35 @@ async function main() {
       await within((async () => { while (!peak(Buffer.concat(outputParts), 830).score || peak(Buffer.concat(outputParts), 830).score < .65) {
         if (failures.length) throw new Error("Audio pipeline failed");
         await sleep(80);
-      } })(), 8500).catch(() => { const monitorPcm = Buffer.concat(outputParts); let maxSample = 0; for (let i=0;i+1<monitorPcm.length;i+=2) maxSample=Math.max(maxSample,Math.abs(monitorPcm.readInt16LE(i))); throw new Error("Tail not observed: " + JSON.stringify({ maxSample, sentFrames, nonzeroQueue, monitorBytes: outputBytes, tail: peak(Buffer.concat(outputParts), 830), captured, turns, outputAudio, failures, pending: playback!.state.pendingBytes, queuedMs: audio!.diagnostics.queuedMs })); });
+      } })(), 8500).catch(() => { const monitorPcm = Buffer.concat(outputParts); let maxSample = 0; for (let i=0;i+1<monitorPcm.length;i+=2) maxSample=Math.max(maxSample,Math.abs(monitorPcm.readInt16LE(i))); throw new Error("Tail not observed: " + JSON.stringify({ maxSample, sentFrames, nonzeroQueue, monitorBytes: outputBytes, tail: peak(Buffer.concat(outputParts), 830), lead: peak(Buffer.concat(outputParts), 430), nearby: [800,810,820,840,850,860].map(hz => [hz, peak(Buffer.concat(outputParts), hz)]), captured, turns, outputAudio, failures, pending: playback!.state.pendingBytes, queuedMs: audio!.diagnostics.queuedMs })); });
       await within((async () => { while (audio!.diagnostics.queuedMs !== 0 || playback!.state.pendingBytes !== 0 || playback!.state.inFlight) await sleep(50); })(), 3500);
       await checkRoutes(worker.pid!, mic, output);
       const rendered = Buffer.concat(outputParts);
       const tailProof = peak(rendered, 830);
-      if (tailProof.score < .65 || !turns || !outputAudio || !captured) throw new Error("Fixture tail/capture proof failed");
+      if (tailProof.score < .65 || !turns || !outputAudio || !captured || completeAt <= 0 || completeAt >= Date.now()) throw new Error("Fixture tail/capture proof failed");
       // Separate interruption: long old signal is queued, then deliberately flushed; capture stays open.
       const old = pcmTone(1130, 2.5), before = captured;
       if (!playback.enqueue(old, 0)) throw new Error("Cannot queue stale playback");
-      await sleep(180);
-      const flushAt = outputBytes / 2;
+      await within((async () => { while (peak(Buffer.concat(outputParts), 1130).score < .7) {
+        if (failures.length) throw new Error("Audio pipeline failed");
+        await sleep(60);
+      } })(), 3000);
+      const oldBefore = peak(Buffer.concat(outputParts), 1130);
       playback.interrupt(1);
-      await sleep(750);
+      if (!playback.enqueue(pcmTone(670, 0.75), 1)) throw new Error("Cannot queue new epoch");
+      playback.turnComplete(1);
+      await within((async () => { while (peak(Buffer.concat(outputParts), 670).score < .7) {
+        if (failures.length) throw new Error("Audio pipeline failed");
+        await sleep(80);
+      } })(), 5000);
+      await sleep(550);
       const after = Buffer.concat(outputParts);
-      const postFlush = peak(after, 1130, flushAt + 4800); // allow 200ms Pulse latency
-      if (postFlush.score > .4 || captured <= before || failures.length) throw new Error("Flush/capture proof failed");
+      const newEpoch = peak(after, 670);
+      const postFlush = peak(after, 1130, newEpoch.atMs * 24 + 2400);
+      if (postFlush.score > .4 || captured <= before || failures.length) throw new Error("Flush/capture proof failed: " + JSON.stringify({ postFlush, newEpoch, capturedBefore: before, capturedAfter: captured, failures }));
       console.log(JSON.stringify({ mode: "fixture", ok: true, outputTail: tailProof,
         turnCompleteBeforeTail: completeAt > 0 && completeAt < Date.now(),
-        queueDrained: queueDrainedAt > 0, postFlushOldTone: postFlush, captureContinued: captured > before }));
+        queueDrained: queueDrainedAt > 0, oldBefore, postFlushOldTone: postFlush, newEpoch, captureContinued: captured > before }));
     } else {
       const key = await (await createDefaultLiveCredentialService()).loadKey();
       voice = new VoiceSession({
@@ -232,12 +244,7 @@ async function main() {
       env.PULSE_SINK = mic;
       const speaker = listen("pacat", ["--playback", "--device=" + mic, "--format=s16le", "--rate=16000", "--channels=1", "--raw"]);
       children.push(speaker);
-      const sinkIndex = (await run("pactl", ["list", "short", "sinks"])).toString().split("\n")
-        .find(line => line.split("\t")[1] === mic)?.split("\t")[0];
-      const ownInput = (await run("pactl", ["list", "sink-inputs"])).toString().split(/(?=^Sink Input #)/m)
-        .find(block => block.includes('application.process.id = "' + speaker.pid + '"'));
-      if (!sinkIndex || !ownInput || !ownInput.includes("Sink: " + sinkIndex + "\n"))
-        throw new Error("Synthetic input was routed away from virtual sink");
+      await assertRoute("sink-inputs", speaker.pid!, endpoint(await listing("sinks"), mic));
       speaker.stdin.end(Buffer.concat(speechParts));
       await within(new Promise<void>((yes, no) => speaker.once("close", c => c === 0 ? yes() : no(new Error("Input injection failed")))), 8000);
       await sleep(500); voice.endAudio();

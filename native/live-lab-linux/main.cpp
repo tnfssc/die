@@ -151,7 +151,7 @@ struct Lab {
     pa_stream_set_read_callback(input, onRead, this);
     pa_buffer_attr ia{uint32_t(-1), uint32_t(-1), uint32_t(-1), uint32_t(-1), 320};
     pa_buffer_attr oa{1920, 960, uint32_t(-1), 480, uint32_t(-1)};
-    return pa_stream_connect_record(input, source, &ia, pa_stream_flags_t(PA_STREAM_ADJUST_LATENCY | PA_STREAM_DONT_MOVE)) >= 0 &&
+    return pa_stream_connect_record(input, source, &ia, pa_stream_flags_t(PA_STREAM_ADJUST_LATENCY | PA_STREAM_DONT_MOVE | PA_STREAM_START_CORKED)) >= 0 &&
            pa_stream_connect_playback(outputStream, sink, &oa, pa_stream_flags_t(PA_STREAM_ADJUST_LATENCY | PA_STREAM_DONT_MOVE),
                                       nullptr, nullptr) >= 0;
   }
@@ -267,14 +267,32 @@ struct Lab {
           fail("audio_device"); break;
         }
         if (!ready && a == PA_STREAM_READY && b == PA_STREAM_READY) {
+          // Pulse may choose a different endpoint even with an explicit name. Both streams
+          // remain corked until the server reports the actual device and index.
+          const char* actualSource = pa_stream_get_device_name(input);
+          const char* actualSink = pa_stream_get_device_name(outputStream);
+          if (!actualSource || !actualSink ||
+              pa_stream_get_device_index(input) == PA_INVALID_INDEX ||
+              pa_stream_get_device_index(outputStream) == PA_INVALID_INDEX ||
+              (source && strcmp(source, actualSource)) || (sink && strcmp(sink, actualSink))) {
+            fail("audio_device"); break;
+          }
           ready = true;
           event("{\"type\":\"ready\"}"); // never deliver capture before ready
+          pa_operation* inOp = pa_stream_cork(input, 0, nullptr, nullptr);
+          pa_operation* outOp = pa_stream_cork(outputStream, 0, nullptr, nullptr);
+          if (!inOp || !outOp) { if (inOp) pa_operation_unref(inOp); if (outOp) pa_operation_unref(outOp); fail("audio_device"); break; }
+          pa_operation_unref(inOp); pa_operation_unref(outOp);
         }
       }
       if (chrono::steady_clock::now() - startTime > chrono::seconds(5) && !ready) {
         fail("audio_start"); break;
       }
       if (ready) {
+        if ((source && (!pa_stream_get_device_name(input) || strcmp(source, pa_stream_get_device_name(input)))) ||
+            (sink && (!pa_stream_get_device_name(outputStream) || strcmp(sink, pa_stream_get_device_name(outputStream))))) {
+          fail("audio_device"); break;
+        }
         // Flush even if Pulse has no writable space.
         bool flush;
         { lock_guard<mutex> lock(queue); flush = flushPending; if (flush) flushPending = false; }
