@@ -1,6 +1,7 @@
 # Die → Pi RPC task event contract
 
-The Pi adapter needs lifecycle records for jobs started *inside* the `execute` tool. Tool results alone are insufficient: foreground `subagent` results are only rendered into execute stdout, and background launch details currently contain IDs but not kind/agent metadata.
+The Pi adapter needs lifecycle records for jobs started *inside* the `execute` tool.
+Tool results alone are insufficient: foreground `subagent` results are only rendered into execute stdout, and background launch details currently contain IDs but not kind/agent metadata.
 
 Emit one raw NDJSON RPC event for each TaskManager event (not a model-visible custom message):
 
@@ -15,4 +16,4 @@ Rules:
 - This is transport telemetry only: do not persist/inject it into the conversation and do not trigger a turn.
 - Existing Pi events and execute results remain unchanged.
 
-Adapter additionally bounds tracked die jobs to 50 per session and truncates displayed strings, so producer bursts cannot grow server state/UI without limit.
+Adapter also bounds tracked die jobs to 50 per session and truncates displayed strings, so producer bursts cannot grow server state/UI without limit.

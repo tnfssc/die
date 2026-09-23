@@ -25,7 +25,7 @@ artifacts), with tool calls/timestamps but without reasoning content.
 3. **Blocking through an inflated foreground wait.** After selecting shell(),
    the model chose waitSeconds:30 for the 25-second check. Internal parallelism
    again did not return control to the conversation.
-4. **Premature execution deadline.** A subsequent nested run yielded correctly,
+4. **Premature execution deadline.** A later nested run yielded correctly,
    but the parent selected a 30-second orchestrator lifetime, insufficient for
    model startup, two workers, a 15-second check, and synthesis.
 5. **Callback crash paths.** Source audit identified uncaught notification
