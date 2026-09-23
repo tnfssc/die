@@ -36,3 +36,13 @@ After integrating the preparation and evidence commits, recheck the final diff, 
 ## Parent integration
 
 Integrated through 1be0458, reviewed notes/version-only diff and validated v0.7.1 tag/version. Pushing release commit to develop for CI before tagging. Native physical audio remains untested.
+
+Pushed develop at 414c3b70c6206c9a5dd1a7e68d431bf47271793c. CI run 35891230807 underway; watch /tmp/die-v071-ci-watch.log. On success tag that exact commit v0.7.1, push tag and watch Release, apply notes and verify metadata/assets. Tag not created yet.
+
+CI 35891230807 passed Linux and native macOS. Annotated v0.7.1 created at 414c3b7 and pushed. Release workflow lookup underway; next watch workflow, apply release-v0.7.1.md notes, verify latest and 12 nonempty uploaded assets.
+
+Release run 35892216826 in progress. Watch /tmp/die-v071-release-watch.log.
+
+## Published
+
+CI 35891230807 and Release 35892216826 passed. v0.7.1 published at 2026-09-23T17:06:00Z, release ID 394882321, Latest, not draft/prerelease. Applied release-v0.7.1.md notes. API confirms all 12 nonempty assets uploaded (four binaries/checksums, LICENSE, SOURCE.txt, notices/licenses). No downloads or local install. Release complete. Physical Mac microphone permissions and audio quality still need user-device acceptance. Values unchanged after release review: existing real-path evidence and truthful limitations cover this work.
