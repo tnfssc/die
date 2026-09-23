@@ -7,7 +7,7 @@ Date: 2026-09-22
 - Canonical patch: `web/t3.patch` SHA-256 `3d343a59f2ca7a176ec2e93fc68200dea9e4ffd5fbce367e48903e2f70bd2530`.
 - Fresh private candidate copy: `.cache/t3-preview-final-live-candidate`, upstream HEAD `b488c57f3f9f1688e31c53daee99e29dd1d0baa2`, canonical patch applied. `verifyWebSource` passed.
 - Owner build completion was observed in `artifacts/t3-preview-adoption/build-final.log`: `Built .../dist/die`.
-- Exact copied package: `dist/die-final-reviewed`, SHA-256 `4cf4d17e1a52b2543ecbbbcea851c1adf17fd76bf2898ba8c0ae87888024dae0`. Every binary-driven harness was pinned to this digest; no package was modified between runs.
+- Exact copied package: `dist/die-final-reviewed`, SHA-256 `4cf4d17e1a52b2543ecbbbcea851c1adf17fd76bf2898ba8c0ae87888024dae0`. Every binary-driven harness was pinned to this digest. No package was modified between runs.
 - Owner packed web archive SHA-256: `0594b13e92bd5c60b48ee117b7ca78b128ab79601405a158d6288bc36ef979c9`.
 
 ## Build coordination evidence
@@ -21,14 +21,14 @@ All commands ran with `TMPDIR=/var/tmp` against the private candidate and exact 
 - `bun scripts/t3-v2-production/native-acceptance.ts`: **PASS** (actual `NativeDieIntegration.production.test.ts`).
 - `bun scripts/t3-v2-production/browser-acceptance.ts`: **PASS** (fresh state, same live server, live child route, one completion wake, browser stop and refresh persistence).
 - `bun scripts/t3-v2-production/preservation-acceptance.ts`: **PASS**.
-- `bun scripts/t3-v2-production/worktree-acceptance.ts`: **PASS**; state intentionally retained.
+- `bun scripts/t3-v2-production/worktree-acceptance.ts`: **PASS**. State intentionally kept.
 - `bun scripts/t3-v2-production/contract-conformance.ts`: **PASS** for launch/observe/cancel/list and structured workspace validation.
 
-Exact local evidence is under `artifacts/t3-preview-final-live/` (logs, JSON proofs, browser screenshots, candidate status/head, package and patch digests). No product defect was found and no release gate was waived. Current-production migration remains outside this assignment; historical migration had already passed in the preliminary worker.
+Exact local evidence is under `artifacts/t3-preview-final-live/` (logs, JSON proofs, browser screenshots, candidate status/head, package and patch digests). No product defect was found and no release gate was waived. Current-production migration is still outside this assignment. Historical migration had already passed in the preliminary worker.
 
 ## Retained worktree evidence
 
-Harness root: `/var/tmp/die-worktree-acceptance-W2LpsE`; fixture base OID: `c446e4c15a5898ac1b31324e1b505ccb64989664`. The proof records 14 retained worktrees and branches:
+Harness root: `/var/tmp/die-worktree-acceptance-W2LpsE`. Fixture base OID: `c446e4c15a5898ac1b31324e1b505ccb64989664`. The proof records 14 kept worktrees and branches:
 
 - `refs/heads/accept/setup-background` → `/var/tmp/die-worktree-acceptance-W2LpsE/home/.die/web/worktrees/repo/accept-setup-background`
 - `refs/heads/accept/setup-fail` → `/var/tmp/die-worktree-acceptance-W2LpsE/home/.die/web/worktrees/repo/accept-setup-fail`

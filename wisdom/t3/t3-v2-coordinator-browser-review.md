@@ -46,4 +46,4 @@ Source hashes recorded by the refreshed proof and independently rechecked after 
 - `.runtime/integrated-real-state.sqlite`: `ffe4d964bd08445ca0ee402aa9ddbc7a540e55457ea9d5ac0ee5f03077b35f1e`
 - `.runtime/integrated-real-result.json`: `6845fa9acadd1ddd5f484a7b16eaa28b7d8f976afba81e4efa77836e7b6355bd`
 
-These backend artifacts were not overwritten during this follow-up. The timestamped JSON above is historical and references the preceding run; the un-suffixed browser proof/screenshots are the current matching evidence.
+These backend artifacts were not overwritten during this follow-up. The timestamped JSON above is historical and references the preceding run. The un-suffixed browser proof/screenshots are the current matching evidence.

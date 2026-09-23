@@ -7,9 +7,9 @@ The canonical `web/t3.patch` now has one small presentation guard. The composer 
 This keeps the existing formatter and semantics after activity exists:
 
 - an empty/new homepage report is hidden instead of showing `Cost own unavailable · subtree unavailable`;
-- a recorded turn with an explicit zero price remains visible as zero;
-- a recorded turn without a price remains visible as `unavailable`;
-- subtree-only recorded activity remains visible.
+- a recorded turn with an explicit zero price is still visible as zero;
+- a recorded turn without a price is still visible as `unavailable`;
+- subtree-only recorded activity is still visible.
 
 Focused logic coverage was added in:
 
@@ -40,4 +40,4 @@ Using Node 24.15.0 and the independent source clone:
 - Exact tree comparison: candidate and verification indexes both produced tree `250da128a332443ccc2ae3908f0fc009dd08cdcc`.
 - Updated patch SHA-256: `672bf19d14f1ba9fe3d411855b1cb5d4795aaf80c886eb5307feea80935e5902`.
 
-No release, tag, push, install of die, paid-provider call, or ingestion/pricing change was performed.
+No release, tag, push, install of die, paid-provider call, or ingestion/pricing change was done.
