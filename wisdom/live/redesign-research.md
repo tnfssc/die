@@ -60,3 +60,15 @@ Reference sources:
 - SDK FunctionResponse source pinned above is authoritative evidence against unsupported-generator claim; schema conflict remains a verification task, not a confirmed bug.
 
 Values: strengthened existing “Finish what user needs” with user-platform/device interaction evidence. This repeated across Linux-only assumptions, protocol-only acceptance, and macOS device-free CI. Applies when physical interaction is central; does not require costly hardware tests for unrelated small edits. No new value added.
+
+## Approved phase one underway
+
+User approved proposed rebuild. task_9c806e5d leads voice-only macOS candidate before coding bridge. Worktree /home/tnfssc/.die/worktrees/die-a86675007a5e-task_9c806e5d; branch die/rebuild-live-macos-voice-first-prototype-9c806e5d; base 53fb9a8. Official SDK + native Apple voice processing, full-duplex, inline status/transcripts and metadata diagnostics. Keep isolated from shipped Live; no version bump/release. No physical mic/paid test without explicit start; no real key reads in model/logs. Need early packaging/Mac feasibility checkpoint, native CI validation and real-user baseline acceptance before phase two bridge. Parent reviews/integrates.
+
+## Worker restart
+
+Stopped task_9c806e5d after failed delegation syntax and no code changes (worktree clean). Parent now integrates three focused workers: task_53edad03 native helper at /home/tnfssc/.die/worktrees/die-a86675007a5e-task_53edad03 branch die/native-macos-voice-processing-helper-53edad03; task_f5f78fb2 SDK at /home/tnfssc/.die/worktrees/die-a86675007a5e-task_f5f78fb2 branch die/official-gemini-sdk-voice-only-session-l-f5f78fb2. Third controller/CI task path recorded in next entry. Shared helper protocol newline JSON v1, hello before start, explicit start, capture16k/play24k PCM16, generation-based flush, ready/played/stopped/error. CLI integration waits for these interfaces.
+
+Controller/CI worker task_4cc51088: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_4cc51088, branch die/native-audio-helper-controller-and-mac-c-4cc51088. Owns src/live-lab/audio.ts fake-process tests and optional focused Mac workflow. Parent owns final interface alignment and CLI wiring.
+
+Controller first commit 5867171 and SDK first commit 052374b ready but NOT integrated. Parent found concrete interruption/lifecycle gaps and assigned hardening before wiring: task_df78d881 /home/tnfssc/.die/worktrees/die-a86675007a5e-task_df78d881 branch die/harden-native-helper-controller-before-i-df78d881 (base controller), task_4e7e739f /home/tnfssc/.die/worktrees/die-a86675007a5e-task_4e7e739f branch die/harden-sdk-session-lifecycle-and-audio-g-4e7e739f (base SDK). Fixes needed: runtime helper failure visibility and cleanup, flush must not queue behind stale audio, startup cancellation; SDK interrupted packet audio must not refill flushed queue, normal turn completion distinct from cancellation generation, setup-ready and timeout semantics, transcript bounds/metadata. Await native helper and these fixes before CLI composition.

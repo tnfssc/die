@@ -55,9 +55,9 @@ describe("live lab audio protocol boundary", () => {
     const { worker, audio } = await rig(); worker.stdin.accept = false;
     const written = audio.play(Buffer.alloc(960), 0);
     const stale = audio.play(Buffer.alloc(960), 0);
-    const rejected = expect(stale).rejects.toThrow("interrupted");
+    const rejected = stale.then(() => "unexpected success", (error: Error) => error.message);
     const flushed = audio.flush(1);
-    await rejected; expect(worker.stdin.writes.length).toBe(2); // start + first play
+    expect(await rejected).toContain("interrupted"); expect(worker.stdin.writes.length).toBe(2); // start + first play
     worker.stdin.complete(); await written;
     expect(JSON.parse(worker.stdin.writes[2]).type).toBe("flush");
     worker.stdin.complete(); await flushed;

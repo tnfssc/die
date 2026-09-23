@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { LiveLabAudio } from "../src/live-lab/audio.ts";
+import { LiveLabAudio } from "../src/live-lab/audio";
 class Fake extends EventEmitter {
   stdin = new PassThrough(); stdout = new PassThrough(); stderr = new PassThrough(); killed = false; writes: string[] = [];
   constructor() { super(); this.stdin.on("data", data => this.writes.push(String(data))); }

@@ -39,6 +39,7 @@ function generation(value: number) {
   if (!Number.isSafeInteger(value) || value < 0 || value > 2147483647) throw new Error("Invalid audio generation");
 }
 export class LiveLabAudio {
+  private isClosed(): boolean { return this.state === "closed"; }
   private state: "hello" | "idle" | "starting" | "running" | "stopping" | "closed" = "hello";
   private line = Buffer.alloc(0);
   private pendingBytes = 0;
@@ -57,7 +58,7 @@ export class LiveLabAudio {
   private readonly onExit = () => this.fail(new Error("Audio helper exited"));
   private readonly onInputError = () => this.fail(new Error("Audio helper input failed"));
   private readonly onReaped = () => {
-    if (this.state !== "closed") this.fail(new Error("Audio helper exited"));
+    if (!this.isClosed()) this.fail(new Error("Audio helper exited"));
     if (this.reapTimer) clearTimeout(this.reapTimer);
     this.reapTimer = undefined;
     this.worker.off("error", this.onError);
@@ -120,7 +121,7 @@ export class LiveLabAudio {
     try {
       if (!Buffer.isBuffer(chunk) || chunk.length > MAX_LINE * 4) throw new Error("Oversized chunk");
       let start = 0;
-      while (start < chunk.length && this.state !== "closed") {
+      while (start < chunk.length && !this.isClosed()) {
         const end = chunk.indexOf(10, start);
         const part = chunk.subarray(start, end < 0 ? undefined : end);
         if (this.line.length + part.length > MAX_LINE) throw new Error("Oversized line");
@@ -212,7 +213,7 @@ export class LiveLabAudio {
         if (err) { this.fail(new Error("Audio helper input failed")); return; }
         callbackDone = true; finish();
       });
-      if (!drained && this.state !== "closed") {
+      if (!drained && !this.isClosed()) {
         this.drainListener = () => { drained = true; this.drainListener = undefined; finish(); };
         this.worker.stdin.once("drain", this.drainListener);
       }
