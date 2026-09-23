@@ -12,7 +12,7 @@ export function parseLiveKey(source: string): string {
   let value = lines[0]!.replace(/^\s*(?:export\s+)?GEMINI_API_KEY\s*=\s*/, "").trim();
   if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))
     value = value.slice(1, -1);
-  if (!/^[A-Za-z0-9_-]{10,256}$/.test(value)) throw new Error("Invalid GEMINI_API_KEY in live.env.");
+  if (!/^[A-Za-z0-9._-]{10,256}$/.test(value)) throw new Error("Invalid GEMINI_API_KEY in live.env.");
   return value;
 }
 

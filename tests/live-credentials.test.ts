@@ -8,6 +8,7 @@ const fake = "not-a-real-key-12345";
 describe("Live credentials", () => {
   test("parses literal assignment without executing shell", () => {
     expect(parseLiveKey('# comment\nexport GEMINI_API_KEY="' + fake + '"\n')).toBe(fake);
+    expect(parseLiveKey("GEMINI_API_KEY=dotted.private-key_12345")).toBe("dotted.private-key_12345");
     for (const source of [
       "GEMINI_API_KEY=$(danger)",
       "GEMINI_API_KEY=secret bad",

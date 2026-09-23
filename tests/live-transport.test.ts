@@ -26,6 +26,7 @@ function fixture() {
       ready: () => events.push("ready"),
       audio: (data) => events.push(["audio", data]),
       interrupted: () => events.push("interrupt"),
+      inputTranscript: (text) => events.push(["input_transcript", text]),
       call: (call) => events.push(["call", call]),
       cancelled: (ids) => events.push(["cancel", ids]),
       closed: (reason) => events.push(["closed", reason]),
@@ -45,11 +46,14 @@ describe("Live wire protocol (offline)", () => {
     socket.receive({ toolCall: { functionCalls: [{ id: "work", name: "handoff", args: { request: "fix tests" } }] } });
     live.respond("work", { status: "queued" }, true, "SILENT");
     live.sendAudio("AAAA");
+    live.sendTextTurn("typed acceptance");
+    live.endAudio();
     socket.receive({
-      serverContent: { modelTurn: { parts: [{ inlineData: { mimeType: "audio/pcm;rate=24000", data: "AAAA" } }] } },
+      serverContent: { inputTranscription: { text: "synthetic speech" }, modelTurn: { parts: [{ inlineData: { mimeType: "audio/pcm;rate=24000", data: "AAAA" } }] } },
     });
     live.respond("work", { status: "agent_turn_ended_not_work_complete" }, false);
     expect(events).toContainEqual(["audio", "AAAA"]);
+    expect(events).toContainEqual(["input_transcript", "synthetic speech"]);
     expect(socket.messages[1].toolResponse.functionResponses[0]).toMatchObject({
       id: "work",
       willContinue: true,
@@ -58,7 +62,11 @@ describe("Live wire protocol (offline)", () => {
     expect(socket.messages[2]).toEqual({
       realtimeInput: { audio: { data: "AAAA", mimeType: "audio/pcm;rate=16000" } },
     });
-    expect(socket.messages[3].toolResponse.functionResponses[0].willContinue).toBe(false);
+    expect(socket.messages[3]).toEqual({
+      clientContent: { turns: [{ role: "user", parts: [{ text: "typed acceptance" }] }], turnComplete: true },
+    });
+    expect(socket.messages[4]).toEqual({ realtimeInput: { audioStreamEnd: true } });
+    expect(socket.messages[5].toolResponse.functionResponses[0].willContinue).toBe(false);
     live.close();
   });
   test("interruption clears playback and cancellation reports IDs without doing work cancellation", () => {

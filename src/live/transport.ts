@@ -16,6 +16,7 @@ export interface LiveCallbacks {
   ready(): void;
   audio(data: string): void;
   interrupted(): void;
+  inputTranscript?(text: string): void;
   call(call: LiveCall): void;
   cancelled(ids: string[]): void;
   closed(reason: string): void;
@@ -34,6 +35,7 @@ interface LiveServerMessage {
   setupComplete?: unknown;
   serverContent?: {
     interrupted?: boolean;
+    inputTranscription?: { text?: string };
     modelTurn?: { parts?: { inlineData?: { data?: string; mimeType?: string } }[] };
   };
   toolCall?: { functionCalls?: LiveCall[] };
@@ -47,6 +49,7 @@ export function liveSetup(model = LIVE_MODEL) {
     setup: {
       model: "models/" + model,
       generationConfig: { responseModalities: ["AUDIO"] },
+      inputAudioTranscription: {},
       realtimeInputConfig: {
         automaticActivityDetection: { disabled: false },
         activityHandling: "START_OF_ACTIVITY_INTERRUPTS",
@@ -135,6 +138,8 @@ export class LiveTransport {
       this.callbacks.ready();
     }
     const content = message.serverContent;
+    if (typeof content?.inputTranscription?.text === "string")
+      this.callbacks.inputTranscript?.(content.inputTranscription.text);
     if (content?.interrupted) this.callbacks.interrupted();
     // Interrupted packets must not re-populate just-cleared playback.
     if (!content?.interrupted)
@@ -161,6 +166,17 @@ export class LiveTransport {
 
   sendAudio(data: string): void {
     if (this.ready && !this.ended) this.send({ realtimeInput: { audio: { data, mimeType: "audio/pcm;rate=16000" } } });
+  }
+
+  /** Send a finite text turn (used by opt-in protocol acceptance without another audio device). */
+  sendTextTurn(text: string): void {
+    if (this.ready && !this.ended)
+      this.send({ clientContent: { turns: [{ role: "user", parts: [{ text }] }], turnComplete: true } });
+  }
+
+  /** Mark a finite synthetic/input stream complete so server VAD can finalize its current turn. */
+  endAudio(): void {
+    if (this.ready && !this.ended) this.send({ realtimeInput: { audioStreamEnd: true } });
   }
 
   respond(id: string, response: unknown, continuing: boolean, scheduling: "SILENT" | "WHEN_IDLE" = "WHEN_IDLE"): void {
