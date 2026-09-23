@@ -197,7 +197,7 @@ final class Lab {
                 if queued > 0 { self.zeroSince = nil }
                 else if self.zeroSince == nil { self.zeroSince = .now() }
                 // Ring drained does not certify mixer/OS/hardware silence.
-                let visible = queued == 0 && .now().uptimeNanoseconds - (self.zeroSince?.uptimeNanoseconds ?? 0) < 200_000_000 ? max(1, self.reportedQueuedMs) : queued
+                let visible = queued == 0 && DispatchTime.now().uptimeNanoseconds - (self.zeroSince?.uptimeNanoseconds ?? 0) < 200_000_000 ? max(1, self.reportedQueuedMs) : queued
                 if visible != self.reportedQueuedMs {
                     self.reportedQueuedMs = visible
                     self.writeEvent(["type":"played", "queuedMs":visible])
