@@ -2,9 +2,9 @@
 
 ## Verdict
 
-**Isolated prototype delivered; full integration goal NOT yet validated. Do not adopt yet.** No root product changes, shipped pin/patch/binary changes, installed binary updates, release, commit or push. Existing sessions untouched; all tests used isolated state/projects. Main coordinator review required.
+**The isolated prototype is done. The full integration goal is NOT yet proven. Do not adopt it yet.** Root product code, the shipped pin and patch, binaries, and installed state did not change. There was no release, commit, or push. Tests used isolated state and projects, and did not touch current sessions. The main coordinator must review it.
 
-Deliverables: `experiments/t3-v2/README.md` (launch/reproduction), `RESULTS.md` (matrix), setup/run/combined-probe scripts, execute bridge client/extension/launcher, focused tests, `upstream.patch`, four detailed worker reports, protected baseline/audit and local regression proof. Research-only edits are captured: upstream.patch adds reconnect/idempotence assertions to the real v2 integration test. The retained combined diagnostic is tracked and staged by combined-probe.sh, not left as an untracked upstream-only artifact.
+Deliverables include `experiments/t3-v2/README.md` for launch and reproduction, `RESULTS.md` for the result matrix, setup/run/combined-probe scripts, the execute bridge client/extension/launcher, focused tests, `upstream.patch`, four worker reports, the protected baseline/audit, and local regression proof. The patch records research-only edits. It adds reconnect and idempotence assertions to the real v2 integration test. combined-probe.sh tracks and stages the retained diagnostic instead of leaving an untracked upstream-only artifact.
 
 ## Results
 

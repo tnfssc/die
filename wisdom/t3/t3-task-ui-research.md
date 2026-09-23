@@ -4,13 +4,13 @@
 
 Research target: T3 Code at `web/t3-source.json` revision `719a76ca1dbf5490f1aa33ffb9966301e02be9a9`, plus `web/t3.patch`.
 
-There is a cache provenance mismatch worth preserving as an assumption: `.cache/die-t3code` is a grafted checkout at `6f00d3881a197dd33c2cb43c6a11a9e759e56089`, with the patch represented as working-tree changes/untracked files, while the manifest names the later `719a76c` revision. I compared the central files directly against GitHub raw content at `719a76c`: `subagentRuntime.ts`, `AgentsPanel.tsx`, and `ThreadBackgroundLiveness.ts` are identical; task-related portions of `providerRuntime.ts`, `ProviderRuntimeIngestion.ts`, `ProjectionSnapshotQuery.ts`, `session-logic.ts`, and `ChatView.tsx` are materially unchanged (intervening changes concern Pi raw-source registration, title/worktree/queue behavior). The conclusions below therefore apply to the requested revision. Patch-specific Pi/die behavior is called out separately.
+There is a cache provenance mismatch worth preserving as an assumption: `.cache/die-t3code` is a grafted checkout at `6f00d3881a197dd33c2cb43c6a11a9e759e56089`, with the patch represented as working-tree changes/untracked files, while the manifest names the later `719a76c` revision. I compared the central files directly against GitHub raw content at `719a76c`: `subagentRuntime.ts`, `AgentsPanel.tsx`, and `ThreadBackgroundLiveness.ts` are identical; task-related portions of `providerRuntime.ts`, `ProviderRuntimeIngestion.ts`, `ProjectionSnapshotQuery.ts`, `session-logic.ts`, and `ChatView.tsx` are materially unchanged (intervening changes concern Pi raw-source registration, title/worktree/queue behavior). The conclusions below so apply to the target revision. Patch-specific Pi/die behavior is called out separately.
 
 No product files were changed for this research.
 
 ## Executive conclusion
 
-The current T3 UI can show **separate task identities as lifecycle/status summaries** inside one parent T3 thread. It can group workflow coordinators and workers, show status/model/role/latest summary/token totals/duration, expand timeline spawn summaries, and show a workflow script. It cannot show a full per-task transcript, navigate to a task as an independent T3 thread, send input to one task, or stop one task independently. Its only live control is the parent-thread interrupt/“stop everything” path.
+The current T3 UI can show **separate task identities as lifecycle and status summaries** inside one parent T3 thread. It can group workflow coordinators and workers. It can show status, model, role, latest summary, token totals, duration, expanded spawn summaries, and a workflow script. It cannot show a full transcript for each task. It cannot open a task as its own T3 thread, send input to one task, or stop one task alone. Its only live control is the parent-thread interrupt, or “stop everything” path.
 
 The implemented source of truth is:
 
@@ -57,7 +57,7 @@ Stable ids mean progress is **latest state, not a log**. SQL upsert replaces the
 
 Ingestion dispatches `thread.activity.append` (lines 2238-2251). The durable domain event is `thread.activity-appended`; `ProjectionPipeline` upserts it into `projection_thread_activities` (`ProjectionPipeline.ts:1276-1300`). The table stores activity/thread/turn/tone/kind/summary/full `payload_json`/sequence/time, keyed globally by activity id (migration `005_Projections.ts:49-58`, sequence migration 008, repository `ProjectionThreadActivities.ts:58-125`). Rows are removed on thread recreation/deletion and rewritten on revert; there is no ordinary age-based SQL deletion.
 
-The event store and SQL projection retain the full activity payload. Before data is sent to clients, `ActivityPayloadProjection` slims large tool data, but task lifecycle payloads have no `data` field and pass untouched; this is asserted at `ActivityPayloadProjection.test.ts:340-359`.
+The event store and SQL projection keep the full activity payload. Before data is sent to clients, `ActivityPayloadProjection` slims large tool data, but task lifecycle payloads have no `data` field and pass untouched; this is asserted at `ActivityPayloadProjection.test.ts:340-359`.
 
 ### Retention/read limits
 
@@ -65,7 +65,7 @@ Persistence is more durable than the delivered task roster:
 
 - Thread-detail reads cap activities at the newest **500 per requested page/window** (`ProjectionSnapshotQuery.ts:96, 1369-1515, 1837-1942`). Only unresolved approval/user-input rows are pinned outside the recent window; agent rows are not (lines 1700-1835).
 - The initial web thread window is the last **10 user-anchored turns** (`packages/client-runtime/src/state/threads.ts:49,785-810`). Older pages merge activities by id (lines 568-599), so manual “load earlier” can recover older rows, subject to each page’s 500-row cap.
-- The in-memory legacy projector independently retains 500 recent activities plus pending async questions (`apps/server/src/orchestration/projector.ts:58-84`).
+- The in-memory legacy projector independently keeps 500 recent activities plus pending async questions (`apps/server/src/orchestration/projector.ts:58-84`).
 - The client fold caps its roster at **100**, preferring live, then idle, then newest settled agents; each agent has a six-entry, 180-character deduped recent-activity ring (`subagentRuntime.ts:107-139,669-680`). Because persisted progress/tool heartbeats are stable-id snapshots, a reload generally reconstructs latest summaries, not all live-observed ring entries.
 - Every task lifecycle payload repeats identity to allow reconstruction after a start row leaves the 500-row window. Progress or completion can create an agent. This mitigates loss of the start, but if every row for an old settled task falls outside loaded history, that agent disappears from the roster.
 
@@ -86,7 +86,7 @@ Important state rules, all covered in `subagentRuntime.test.ts`:
 - terminal-first/order-robust reconstruction; late starts enrich but do not reopen;
 - duplicate terminal frames are first-write for status/timestamps/result;
 - terminal completion can still enrich missing result and usage;
-- idle is resumable and nonterminal; explicit running after idle/reactivation increments activation count and clears prior terminal detail;
+- idle is resumable and nonterminal; explicit running after idle/reactivation increments activation count and clears earlier terminal detail;
 - dead parent session derives interruption for live agents but preserves idle/settled;
 - workflow retries reuse stable member identity; coordinator settlement cascades to members missing terminal rows;
 - malformed rows are skipped individually; unsafe session URLs are dropped;
@@ -116,7 +116,7 @@ The “quiet timeline” deliberately removes child narration/internal tools and
 
 It does not render `recentActivity`, `outputFile`, `transcriptDir`, `sessionUrl`, or `runId`. Repository-wide non-test usage confirms the only consumed run handle is `runHandles.scriptPath` in `AgentsPanel`.
 
-The script RPC is narrowly contained to real `.js` files under `~/.claude/projects`, realpath/inode checked and capped at 256 KiB (`workflowScriptQuery.ts:1-35, 35-120`; containment tests in `workflowScriptQuery.test.ts`). The contract carries `threadId`, but `readWorkflowScript` currently receives/validates only the path; it does not verify that the path belongs to a run in that thread. Any transcript endpoint should improve on that ownership check rather than copy it blindly.
+The script RPC is narrowly contained to real `.js` files under `~/.claude/projects`, realpath/inode checked and capped at 256 KiB (`workflowScriptQuery.ts:1-35, 35-120`; containment tests in `workflowScriptQuery.test.ts`). The contract carries `threadId`, but `readWorkflowScript` now receives/validates only the path; it does not verify that the path belongs to a run in that thread. Any transcript endpoint should improve on that ownership check rather than copy it blindly.
 
 ### Capability matrix (current UI)
 
@@ -168,7 +168,7 @@ Repository-wide callers are decisive:
 - one ChatView comment saying it is null until v2 lands: `ChatView.tsx:2748-2751`;
 - the sole production call omits `v2Projection` entirely (lines 2753-2757).
 
-There is no adapter, atom, selector, contract decode, server query, or subscription that can supply it. It is therefore a **comments-and-function-parameter seam**, not latent production support. Even if a caller supplied data, the accepted type is the legacy `RuntimeSubagent[]`, not the richer historical v2 contract; an adapter would still have to map/discard fields such as `childThreadId` and activation records.
+There is no adapter, atom, selector, contract decode, server query, or subscription that can supply it. It is so a **comments-and-function-parameter seam**, not latent production support. Even if a caller supplied data, the accepted type is the legacy `RuntimeSubagent[]`, not the richer historical v2 contract; an adapter would still have to map/discard fields such as `childThreadId` and activation records.
 
 ### Codex multi-agent v2 (implemented provider protocol)
 
@@ -182,12 +182,12 @@ This integration does **not** create separate T3 `OrchestrationThread` rows, rou
 
 - only valid `started/running` and terminal `completed|failed|killed` snapshots are accepted;
 - at most 50 visible die tasks are tracked per Pi session;
-- `kind=agent` emits `taskType=subagent`; `kind=command` emits `taskType=shell` and therefore stays out of Agents;
+- `kind=agent` emits `taskType=subagent`; `kind=command` emits `taskType=shell` and so stays out of Agents;
 - title/role/model/effort are forwarded; the external id becomes `toolUseId`;
 - terminal output is bounded to 2,000 chars there and then to the generic 180-char activity summary during ingestion;
 - there are no progress frames, parent ids, transcript/run handles, usage, inspect offsets, attention, or task commands.
 
-The patch therefore makes die agent jobs appear as distinct lifecycle summaries in the existing Agents UI, but does not change any UI capability in the matrix. Pi’s separate workflow decoder does provide workflow phases/members/usage and `runHandles.runId` (lines 1299-1425), still summary-only.
+The patch so makes die agent jobs appear as distinct lifecycle summaries in the existing Agents UI, but does not change any UI capability in the matrix. Pi’s separate workflow decoder does provide workflow phases/members/usage and `runHandles.runId` (lines 1299-1425), still summary-only.
 
 Tests in `PiAdapter.test.ts:1044-1420` cover original-turn retention, idle Die web shutdown, stock Pi interruption, task caps/malformed frames, sparse terminal status, and agent-vs-command projection; later tests cover Pi subagent/workflow lifecycle. They do not assert transcript navigation or per-task controls because those contracts do not exist.
 
@@ -211,7 +211,7 @@ There are multiple viable product models; choosing one changes the correct persi
 - Should loading a parent’s old chat page also load its old task roster, or should task retention be independent of user-turn pagination and the 500-activity cap?
 - Which providers genuinely support per-task input/stop/resume? Codex has child provider threads and tracked live turns but current code only exposes stop-all. Claude historical work relied on undocumented `stopTask`. Pi/die patch supplies no command channel in the event contract.
 - Does die expose nested tasks, output pagination/offsets, attention, and routed control beyond the patch’s start/terminal snapshots? If not, T3 cannot manufacture full transcripts or independent controls.
-- Are `transcriptDir` and `outputFile` stable and structured across provider versions, or merely debugging artifacts? What server-side parser/authorization owns them?
+- Are `transcriptDir` and `outputFile` stable and structured across provider versions, or just debugging artifacts? What server-side parser/authorization owns them?
 - Should workflow `sessionUrl` be rendered as an external provider UI, or should all detail remain local? Current UI intentionally ignores it.
 - Is the closed orchestration-v2 stack expected to return, or should its comments/types be treated only as historical design evidence? No current production caller supports it.
 - For nested agents, is `parentAgentId` always workflow membership? Current panel assumes that when the parent id names a workflow coordinator; a general task tree needs an explicit hierarchy separate from workflow grouping.

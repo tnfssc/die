@@ -54,4 +54,4 @@ PASS: production browser WebSocket terminal APIs handled delayed input/output (1
 
 ## Scope boundary
 
-This task owns the actual archive/deploy, relocated-runtime substrate, no-auth HTTP/WS Host/Origin boundary, and packaged terminal preservation. It does not claim the separately owned native root/child lifecycle or broader live-browser acceptance gates.
+This task covers the actual archive/deploy, relocated-runtime substrate, no-auth HTTP/WS Host/Origin boundary, and packaged terminal preservation. It does not cover the separately owned native root/child lifecycle or broader live-browser acceptance gates.

@@ -2,7 +2,7 @@
 
 ## Change
 
-Updated the canonical `web/t3.patch` with a minimal presentation guard. The composer now renders the native cost summary only when the report contains at least one recorded own or subtree provider turn (`own.turns > 0 || subtree.turns > 0`). No ingestion, pricing, contract, projection, persistence, or release behavior changed.
+The canonical `web/t3.patch` now has one small presentation guard. The composer shows the native cost summary only when the report has at least one own or subtree provider turn (`own.turns > 0 || subtree.turns > 0`). Ingestion, pricing, contracts, projection, persistence, and release behavior did not change.
 
 This keeps the existing formatter and semantics after activity exists:
 

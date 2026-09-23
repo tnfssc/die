@@ -3,7 +3,7 @@
 - Owner worktree: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_bb27ba6d
 - Branch: die/switch-bundled-t3-code-to-nightly-bb27ba6d
 - Scope: update canonical source pin and rebase patch preserving production native integration; no release/tag/push (parent owns release).
-- Read production requirements, production/final history and prior v0.0.42 integration notes before changes. Historical non-adoption notes are not the current canonical implementation; preserve current patch and native root code.
+- Read production requirements, production/final history and earlier v0.0.42 integration notes before changes. Historical non-adoption notes are not the current canonical implementation; keep current patch and native root code.
 - Discovered latest official nightly tag via upstream git tags and GitHub release API: v0.0.43-nightly.20260922.2083, commit 0141bc2bf5fcf52a563240a6bce4b58050496db5. Official prerelease published 2026-09-22T02:07:57Z at https://github.com/pingdotgg/t3code/releases/tag/v0.0.43-nightly.20260922.2083.
 - In progress: clean checkout/apply assessment, upstream channel verification, rebase and tests.
 
@@ -24,7 +24,7 @@ The current pin is NOT the stable/nightly lineage: it is the orchestration-v2 in
 - Current canonical clean apply + reverse-check + verifyWebSource: passed.
 - Official nightly apply: failed as expected with missing v2/native source and context conflicts; not adopted.
 - No new patched nightly exists, so no nightly build/typecheck/runtime pass is claimed. Building unpatched nightly or rerunning unchanged current binaries would not validate the requested migration.
-- Product pin/patch remain unchanged; docs now explain channel incompatibility. Parent must decide between latest official preview preserving v2, waiting for v2 in nightly, or explicitly authorizing a much larger native migration. Do not release a claimed nightly upgrade from this result.
+- Product pin/patch do not change; docs now explain channel incompatibility. Parent must decide between latest official preview preserving v2, waiting for v2 in nightly, or explicitly authorizing a much larger native migration. Do not release a claimed nightly upgrade from this result.
 
 ## Delegation
 

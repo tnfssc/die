@@ -1,11 +1,11 @@
 # Approved T3 v2 experiment — active
 
-User authorized isolated runnable prototype after research, aiming for real separately openable web child threads and parent result delivery. Shipped backend/pin remains unchanged until validated.
+User authorized isolated runnable prototype after research, aiming for real separately openable web child threads and parent result delivery. Shipped backend/pin did not change until validated.
 
 Implementation owner: orchestrator job task_23c102b8 (may delegate workers), timeout 2h. Owns experiments/t3-v2/ reproducible scripts/patches/tests/README and wisdom/t3/t3-v2-experiment.md. Can edit isolated upstream research checkout but must capture patches. No installed binary changes, production session data, commits/releases/push. Root changes only narrow/gated if unavoidable and must be reviewed. Prefer deterministic tests then bounded live Die/model/browser smoke. Explicitly report mocked vs live proof.
 Independent acceptance research: normal job task_b24506be, timeout 20m. Only writes wisdom/t3/t3-v2-experiment-acceptance.md, no shared implementation edits. Main reviews deliverables against this after completion.
 
-Upstream head a9b49a7d in .agents/research-t3-v2-pr2829, real pin .cache/die-t3code-v0042. PiAdapterV2 already injects MCP tools; Die activates execute only. Resolve tool bridge without launching both Die-owned and T3-owned child. Preserve single writer per child session and session-scoped auth. v2 child threads open from relationships/inspector, intentionally hidden from normal sidebar.
+Upstream head a9b49a7d in .agents/research-t3-v2-pr2829, real pin .cache/die-t3code-v0042. PiAdapterV2 already injects MCP tools; Die activates execute only. Resolve tool bridge without launching both Die-owned and T3-owned child. Keep single writer per child session and session-scoped auth. v2 child threads open from relationships/inspector, intentionally hidden from normal sidebar.
 
 Next coordinator action: review completion reports/files, run available focused verification, resolve integration gaps, report pass/fail and reproducible launch instructions. Don't claim working UI from source or mocks alone.
 

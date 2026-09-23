@@ -23,4 +23,4 @@ The source gate checks each detached HEAD, reconstructs and hash-checks the pre-
 - user/assistant message history and visible turn-item order;
 - identical semantic snapshot after preview restart.
 
-Both revisions currently end at database migration 54 and have identical persistence migration sources. This is current-production-to-preview in-place startup/restart compatibility and preservation evidence, not a claim that a new numbered schema migration ran. No migration blocker remains. Packaging and browser acceptance are outside this task.
+Both revisions now end at database migration 54 and have identical persistence migration sources. This is current-production-to-preview in-place startup/restart compatibility and preservation evidence, not a claim that a new numbered schema migration ran. No migration blocker remains. Packaging and browser acceptance are outside this task.

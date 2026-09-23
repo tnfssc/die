@@ -3,7 +3,7 @@
 - Scope: web/t3-source.json, web/t3.patch, necessary web integration compatibility. Root package.json/bun.lock/notices are coordinated by main dependency-update agent. Existing release-v030.md untouched.
 - GitHub releases/latest reports stable v0.0.42, published 2026-09-16T04:59:02Z, target 719a76ca1dbf5490f1aa33ffb9966301e02be9a9. Previous pin: 6f00d3881a197dd33c2cb43c6a11a9e759e56089.
 - Rebase work isolated at .cache/die-t3code-v0042; previous patched checkout retained. No commits, installation, or release actions.
-- Validation must use TMPDIR=/var/tmp: shared /tmp currently 94% full. Browser tests use private HOME, random non-13773 loopback ports and fake provider only.
+- Validation must use TMPDIR=/var/tmp: shared /tmp now 94% full. Browser tests use private HOME, random non-13773 loopback ports and fake provider only.
 
 ## Results
 Pending rebase/build/backend and feasible browser smoke validation.
@@ -12,7 +12,7 @@ Pending rebase/build/backend and feasible browser smoke validation.
 
 ## Rebase
 - Verified v0.0.42 tag SHA against remote; all 50 patch files retained. Canonical regenerated patch reorders new-file blocks and uses full index hashes. Normalizing hashes/hunk positions leaves only serverRuntimeStartup.ts (upstream context) and ChatComposer.tsx changed.
-- One conflict: ChatComposer retains Die selector/conditional branch and new upstream data-composer-shortcut="composer.mode" on ordinary runtime-mode control.
+- One conflict: ChatComposer keeps Die selector/conditional branch and new upstream data-composer-shortcut="composer.mode" on ordinary runtime-mode control.
 - Worker reports full workspace typecheck and 365 targeted server/web/contracts/shared tests passed; clean reset/apply roundtrip and exact regenerated patch comparison passed. SHA256 c29170899a22f272012f14a9544014baf5dce835b55f69bca121c7dfc7643853.
 - Full build running via TMPDIR=/var/tmp DIE_T3_SOURCE=$PWD/.cache/die-t3code-v0042 bun scripts/build.ts --outfile=artifacts/die-t3-v0042; log artifacts/t3-v0042-build.log. Full backend suite delegated independently.
 

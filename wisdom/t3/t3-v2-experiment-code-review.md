@@ -10,7 +10,7 @@ Scope: read-only review of the experiment bridge, launcher/activation, setup/run
 
 **Sources:** `experiments/t3-v2/bridge-client.ts:52-69`, especially headers at 56-60; the same omission exists in `bridge-extension.ts:27-44`. Upstream's generated client explicitly sends `mcp-protocol-version: 2025-06-18` and says Effect HTTP MCP rejects post-initialize requests without it: `experiments/t3-v2/.runtime/upstream/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts:136-140`. Upstream's real-server client/tests also send it (for example `apps/server/src/mcp/toolkits/worktree/registration.test.ts:106-117`).
 
-The bridge can initialize, record the returned session ID, and then receive HTTP 400 on `tools/call`. Thus the central execute-to-real-T3 route is currently incompatible with the pinned real server even though the mock tests pass. `bridge-client.test.ts:8-14` and the mock MCP in `bridge.test.ts` accept post-initialize calls without validating the protocol header, so they cannot detect this.
+The bridge can initialize, record the returned session ID, and then receive HTTP 400 on `tools/call`. Thus the central execute-to-real-T3 route is now incompatible with the pinned real server even though the mock tests pass. `bridge-client.test.ts:8-14` and the mock MCP in `bridge.test.ts` accept post-initialize calls without validating the protocol header, so they cannot detect this.
 
 **Minimal fix:** send the negotiated protocol in `mcp-protocol-version` on post-initialize requests (matching the pinned generated client), and preferably send `notifications/initialized`. Consolidate the two tiny clients rather than allowing their protocol behavior to drift.
 
@@ -18,7 +18,7 @@ The bridge can initialize, record the returned session ID, and then receive HTTP
 
 ### P0 — single child ownership is guidance-only; one execute call can launch both children
 
-**Sources:** `bridge-activation.ts:14-17` keeps `execute` visible and merely tells the model not to call `subagent()`; `bridge-client.ts:99-110` is a separate importable helper, not a replacement/interceptor for execute's built-in subagent helper. `README.md:57` admits that local `subagent()` remains available. In contrast, `RESULTS.md:8` calls no duplicate local spawn a PASS and `bridge-report.md` says duplicate delegation is excluded by “architecture and explicit guidance.”
+**Sources:** `bridge-activation.ts:14-17` keeps `execute` visible and just tells the model not to call `subagent()`; `bridge-client.ts:99-110` is a separate importable helper, not a replacement/interceptor for execute's built-in subagent helper. `README.md:57` admits that local `subagent()` remains available. In contrast, `RESULTS.md:8` calls no duplicate local spawn a PASS and `bridge-report.md` says duplicate delegation is excluded by “architecture and explicit guidance.”
 
 A single execute program can call `delegateTask(...)` and `subagent(...)` for the same prompt. That creates one T3-owned child plus one Die-local child, with two completion paths into the parent. The deterministic fixture in `bridge.test.ts` only proves that an obedient scripted model chose one path; it does not meet acceptance sections 1-2, which require process-spawn evidence and zero local fallback/grandchildren.
 
@@ -48,7 +48,7 @@ There is no evidence for the concrete failure window where upstream has returned
 
 **Sources:** `setup.sh:7,14` defaults to a pre-existing untracked local repository at `.agents/research-t3-v2-pr2829`; it has no canonical remote/fetch/bootstrap path. `setup.sh:23` uses a shared clone, tying object availability to that local source repository. Separately, `bridge-launcher.ts:9-13` defaults to ignored `dist/die`, and `bridge.test.ts:82` exercises that ambient binary. README only says to build or select an already-built binary (lines 44-46); setup metadata (`setup.sh:39`) records neither Die commit nor binary hash.
 
-A clean checkout cannot run setup as documented, and two runs at the same upstream pin/patch can exercise different Die binaries. Deleting/moving the shared source repository can also invalidate the runtime clone's alternates. Therefore `RESULTS.md:6-7` overstates reproducibility.
+A clean checkout cannot run setup as documented, and two runs at the same upstream pin/patch can exercise different Die binaries. Deleting/moving the shared source repository can also invalidate the runtime clone's alternates. So `RESULTS.md:6-7` overstates reproducibility.
 
 **Minimal fix:** document/fetch a canonical upstream URL at the pin (or require an explicit source argument and copy/dissociate it), and build/copy the Die executable into the ignored experiment runtime with source commit + SHA-256 in `setup-info.txt`. Make launcher/tests consume that recorded artifact.
 
@@ -56,7 +56,7 @@ A clean checkout cannot run setup as documented, and two runs at the same upstre
 
 ### P1 — large research checkouts are unignored and are already visible to Git
 
-**Sources:** root `.gitignore` does not ignore `.agents/research-*`. Current `git status --short --untracked-files=all` reports `.agents/research-t3-v2/`, `-pr2829/`, and `-pr4779/`; measured sizes are approximately 474 MB, 310 MB, and 237 MB. The experiment runtime is correctly ignored by `experiments/t3-v2/.gitignore:1`, but the source research trees are not.
+**Sources:** root `.gitignore` does not ignore `.agents/research-*`. Current `git status --short --untracked-files=all` reports `.agents/research-t3-v2/`, `-pr2829/`, and `-pr4779/`; measured sizes are about 474 MB, 310 MB, and 237 MB. The experiment runtime is correctly ignored by `experiments/t3-v2/.gitignore:1`, but the source research trees are not.
 
 A routine `git add .` can stage about 1 GB of nested checkout/object data. The reports' “no commit/push” wording does not prevent this ownership/repository hygiene failure.
 
@@ -66,7 +66,7 @@ A routine `git add .` can stage about 1 GB of nested checkout/object data. The r
 
 ### P2 — setup/run accept a silently dirty runtime checkout
 
-**Sources:** source reuse is based only on stamp, directory existence, and HEAD (`setup.sh:19-20,33`); `run.sh:15` likewise checks only HEAD. Neither checks/reset tracked or untracked changes after the patch. Tests and diagnostics stage files into the checkout, and an interrupted/manual run can leave modifications while subsequent runs still report the pinned source.
+**Sources:** source reuse is based only on stamp, directory existence, and HEAD (`setup.sh:19-20,33`); `run.sh:15` likewise checks only HEAD. Neither checks/reset tracked or untracked changes after the patch. Tests and diagnostics stage files into the checkout, and an interrupted/manual run can leave modifications while later runs still report the pinned source.
 
 **Minimal fix:** verify the expected patched tree/index (plus an explicit allowlist for generated files), or rematerialize/reset before every evidence run. Record the resulting tree hash/status.
 

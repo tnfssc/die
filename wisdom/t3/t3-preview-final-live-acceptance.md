@@ -12,7 +12,7 @@ Date: 2026-09-22
 
 ## Build coordination evidence
 
-The first owner build attempt stopped in `pnpm` with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`. This was not waived: the owner retried the build in the appropriate CI/noninteractive mode, and this worker waited for both the later `Built .../dist/die` line and the file before hashing or launching any package acceptance. The successful package digest is the one recorded above.
+The first owner build stopped in `pnpm` with `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`. We did not waive it. The owner reran the build in CI/noninteractive mode. This worker waited for the later `Built .../dist/die` line and the file itself before hashing or starting package acceptance. The digest above is from that successful package.
 
 ## Release-gate result
 

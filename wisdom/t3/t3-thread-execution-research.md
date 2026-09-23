@@ -8,9 +8,9 @@ There are two generated trees. `.cache/die-t3code` is stale: its shallow HEAD is
 
 ## Executive finding
 
-Pinned T3 already has genuine backend-owned executable threads. A websocket command is durably decided into events, projected to SQL, reacted to by a provider reactor, and bound by thread ID to a provider session/process. Shell and detail websocket streams are reconnectable views of that backend state.
+Pinned T3 already has real backend-owned executable threads. A websocket command becomes durable events and SQL projections. A provider reactor then binds the thread ID to a provider session and process. Shell and detail websocket streams are reconnectable views of that backend state.
 
-The current Die patch uses that model only for the outer Die conversation. Each outer T3 thread owns one Pi adapter session launching one `die --mode rpc --session ...` process. When that Die process calls `subagent`, Die itself creates a separate session file and child process. T3 receives only bounded `die_task_event` lifecycle notices and projects them as task activities on the **parent T3 thread**. There is no child T3 `thread.create`, provider binding, detail subscription, or per-child T3 control.
+The current Die patch uses this model only for the outer Die conversation. Each outer T3 thread owns one Pi adapter session, which launches one `die --mode rpc --session ...` process. When that process calls `subagent`, Die creates a separate session file and child process. T3 receives only bounded `die_task_event` lifecycle notices. It projects them as task activity on the **parent T3 thread**. There is no child T3 `thread.create`, provider binding, detail subscription, or per-child T3 control.
 
 Two real alternatives follow:
 
@@ -61,7 +61,7 @@ Thus browser disconnect does not stop or own execution. The backend/provider pro
 
 ### Imported sessions
 
-Import currently supports only Claude Agent and Codex (`packages/contracts/src/agentSessions.ts:6-7`; `apps/server/src/project/AgentSessionScanner.ts:1093`). It creates deterministic imported threads, installs a **stopped** binding/cursor before visibility, then dispatches `thread.create(historyImport: true)` and history (`apps/server/src/project/AgentSessionImporter.ts:166-274`). It refuses modified or non-stopped bindings (`:206-240`).
+Import now supports only Claude Agent and Codex (`packages/contracts/src/agentSessions.ts:6-7`; `apps/server/src/project/AgentSessionScanner.ts:1093`). It creates deterministic imported threads, installs a **stopped** binding/cursor before visibility, then dispatches `thread.create(historyImport: true)` and history (`apps/server/src/project/AgentSessionImporter.ts:166-274`). It refuses modified or non-stopped bindings (`:206-240`).
 
 Tests prove import is dormant: no session/turn and no start/send until the first later prompt; that prompt resumes once with cursor/cwd (`AgentSessionImporter.test.ts:937-996`). A race test proves import cannot overwrite a concurrent running binding (`:1147-1205`). This proves safe post-ownership-transfer continuation, not live Pi/Die mirroring.
 
@@ -145,7 +145,7 @@ Semantics:
 - Stop: proxied to owner; unavailable if owner channel is gone.
 - Browser reconnect: projection works.
 - Backend restart: requires owner rediscovery; TaskManager recovery is not proven.
-- Nested children: descendant events must reach a common registrar or be forwarded with ancestry; root currently sees only direct jobs.
+- Nested children: descendant events must reach a common registrar or be forwarded with ancestry; root now sees only direct jobs.
 - Results: keep Die as sole result deliverer. If T3 also injects results, parent sees duplicates.
 
 This is valid for viewability and proxied control, but it must never open the live file as a second T3 provider writer.
@@ -204,4 +204,4 @@ Tests should crash/race at: request before create; create before provider start;
 
 ## Conclusion
 
-Pinned T3 already provides the execution substrate, but the canonical patch deliberately stops child visibility at provider task activities. The strongest route is backend-owned child execution: make web-mode `subagent` a durable T3 spawn request, create/start an ordinary child thread, let its own Pi/Die provider session own the process/file, and route results through a durable parent/child coordinator. Read-only projection is a legitimate alternative if preserving Die-local execution is more important, provided controls are explicitly proxied and T3 is barred from resuming the live file. The unsafe option is a hybrid that both retains the local child and starts a T3 session against the same execution/session.
+Pinned T3 already provides the execution substrate, but the canonical patch deliberately stops child visibility at provider task activities. The strongest route is backend-owned child execution: make web-mode `subagent` a durable T3 spawn request, create/start an ordinary child thread, let its own Pi/Die provider session own the process/file, and route results through a durable parent/child coordinator. Read-only projection is a legitimate alternative if preserving Die-local execution is more important, provided controls are explicitly proxied and T3 is barred from resuming the live file. The unsafe option is a hybrid that both keeps the local child and starts a T3 session against the same execution/session.

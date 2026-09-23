@@ -26,7 +26,7 @@ Clone: `.cache/t3-preview-semantic` (copied from read-only seed, seed never muta
 
 ## Blocker / non-claims
 
-`NativeDieIntegration.production.test.ts` did not execute its native root-to-child scenario: its Pi RPC spawn failed with `NotFound` for this wrapper worktree's absent `dist/die`, then the test hit its 45-second timeout. Therefore there is **no fresh real Die root→child/reconnect/cancel PID-shutdown acceptance claim** from this review. The failure occurred before provider PID creation and is an environment/artifact blocker, not a demonstrated candidate behavior failure. No portable binary/deploy, hostile auth matrix, migration/restart soak, universal-platform, or zero-leak claim was run.
+`NativeDieIntegration.production.test.ts` did not execute its native root-to-child scenario: its Pi RPC spawn failed with `NotFound` for this wrapper worktree's absent `dist/die`, then the test hit its 45-second timeout. So there is **no fresh real Die root→child/reconnect/cancel PID-shutdown acceptance claim** from this review. The failure occurred before provider PID creation and is an environment/artifact blocker, not a demonstrated candidate behavior failure. No portable binary/deploy, hostile auth matrix, migration/restart soak, universal-platform, or zero-leak claim was run.
 
 Persistent paths/branches:
 

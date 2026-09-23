@@ -4,7 +4,7 @@ Date: 2026-09-20 (UTC)
 
 ## Scope and result
 
-Independent UI-evidence refresh only. I did **not** rerun `integrated-process-proof.sh`, change feature/production code, or use a paid model. The existing browser-live scripts were run against the newly generated, closed real-engine SQLite database. Result: **PASS**.
+This pass only refreshed the independent UI evidence. I did **not** rerun `integrated-process-proof.sh`, change feature or production code, or use a paid model. I ran the current browser-live scripts against the new, closed real-engine SQLite database. Result: **PASS**.
 
 ## Procedure
 

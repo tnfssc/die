@@ -14,7 +14,7 @@ No preview cost regression confirmed. Do not interpret this as reproduction of t
 
 ## Pipeline and prior-version comparison
 
-Pi's assistant message_end carries per-message usage; compaction_end carries additive result usage. PiAdapterV2 stores these in ownUsages and normalizes on terminal settlement. Live token/context updates and get_session_stats are deliberately not monetary inputs (session totals would double count). A running turn without finalized usage can therefore display unavailable.
+Pi's assistant message_end carries per-message usage; compaction_end carries additive result usage. PiAdapterV2 stores these in ownUsages and normalizes on terminal settlement. Live token/context updates and get_session_stats are deliberately not monetary inputs (session totals would double count). A running turn without finalized usage can so display unavailable.
 
 normalizePiTurnTokenUsage accepts finite nonnegative input/output/cache token counts and all five cost fields (input, output, cacheRead, cacheWrite, total). The turn contract preserves input/output/cache/total USD values. provider_turn.updated flows through the application event/projection persistence path. ProjectionStore reads durable provider turns only in the requested native subagent subtree. NativeUsageAccounting deduplicates turn IDs, excludes forks, and counts missing totalCostUsd separately. No known costs means unavailable; known plus unknown turns means partial. An explicit known zero is complete. The client projection passes the report to ChatComposer, whose formatter renders the status; it does not price tokens.
 
@@ -55,4 +55,4 @@ No paid-provider request, current-thread browser reproduction, new migration run
 
 ## Required follow-up
 
-Ask whether this is a new thread and whether at least one turn has finished; provider/model identifier; whether it persists after reload; and an affected thread ID/time plus actual server state-directory path (not credentials). A fresh completed Pi turn with five valid cost fields but absent durable totalCostUsd would confirm a propagation bug; a raw message missing/invalid cost would require pricing/provider investigation. Old history and truly unknown price must remain honest unavailable. Parent owns integration/release decisions.
+Ask whether this is a new thread and whether at least one turn has finished; provider/model identifier; whether it persists after reload; and an affected thread ID/time plus actual server state-directory path (not credentials). A fresh completed Pi turn with five valid cost fields but absent durable totalCostUsd would confirm a propagation bug; a raw message missing/invalid cost would need pricing/provider investigation. Old history and truly unknown price must remain honest unavailable. Parent owns integration/release decisions.

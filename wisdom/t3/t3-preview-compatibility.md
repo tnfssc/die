@@ -23,7 +23,7 @@ Canonical source JSON SHA256: b4dc0142f8fc7a4558e45cc6ae7f406d21c7cc0d8bf5a6c548
 
 Independent tag recheck also found no newer preview. Merge base is dfbb11bdd7c3f1a5575cb55d3e3abb12be025727; current-only 585 commits, preview-only 659. Neither is ancestor of the other. Direct tree delta is 311 files (259 modified, 49 added, 3 deleted), +16,007/-4,113 lines. This is v2-compatible source, not the incompatible nightly architecture. Divergent ancestry requires review, not an assumption that preview contains every current commit.
 
-Canonical patch covers 102 files, 597,691 bytes; 21 overlap upstream delta. Plain apply fails in cli/config.ts, orchestration-v2/{Orchestrator,ProjectionStore}.ts, components/chat/MessagesTimeline.logic{,.test}.ts and contracts/src/orchestrationV2.ts. Three-way application reduces this to five regions in three files: Orchestrator (3), ProjectionStore (1), timeline test (1). Preserve both preview usage-limit recovery/targeted control reads and Die owned-local-job fencing/native usage reporting; concatenate independent test suites rather than select one side.
+Canonical patch covers 102 files, 597,691 bytes; 21 overlap upstream delta. Plain apply fails in cli/config.ts, orchestration-v2/{Orchestrator,ProjectionStore}.ts, components/chat/MessagesTimeline.logic{,.test}.ts and contracts/src/orchestrationV2.ts. Three-way application reduces this to five regions in three files: Orchestrator (3), ProjectionStore (1), timeline test (1). Keep both preview usage-limit recovery/targeted control reads and Die owned-local-job fencing/native usage reporting; concatenate independent test suites rather than select one side.
 
 ## Feature/packaging audit (static evidence, not runtime acceptance)
 
@@ -38,7 +38,7 @@ Static audit full response and evidence were copied into owner artifacts/t3-prev
 
 ## Candidate validation
 
-The worker created an independent clone at its .cache/t3-preview-candidate, branch die-preview-probe, base b488c57f3f9f1688e31c53daee99e29dd1d0baa2. Changes are staged, uncommitted, disposable—not canonical. Candidate patch is worker artifacts/t3-preview-probe/candidate.patch, 544,611 bytes, 103 files (+8,649/-543), SHA256 **1c879cb723de12b3803b11c1772b9688267f65ee52d855f20fd7f658fcf9f4a0**, staged tree **2982abf686f6147c5c36f7cdad41cf9920b096a7**. Formatting was normalized after merging; this is not merely the original patch with shifted contexts.
+The worker created an independent clone at its .cache/t3-preview-candidate, branch die-preview-probe, base b488c57f3f9f1688e31c53daee99e29dd1d0baa2. Changes are staged, uncommitted, disposable—not canonical. Candidate patch is worker artifacts/t3-preview-probe/candidate.patch, 544,611 bytes, 103 files (+8,649/-543), SHA256 **1c879cb723de12b3803b11c1772b9688267f65ee52d855f20fd7f658fcf9f4a0**, staged tree **2982abf686f6147c5c36f7cdad41cf9920b096a7**. Formatting was normalized after merging; this is not just the original patch with shifted contexts.
 
 The focused projection test exposed a SQLite binding failure in preview's new recovery path: boolean options.autoResume/options.snooze cannot be bound by Node SQLite. Disposable candidate converts both to Number(...). Isolated test fails before and passes after this change; this is a required candidate fix, not evidence that the original official preview passes unchanged. No separate pristine-preview reproduction or live Bun-path claim is made.
 

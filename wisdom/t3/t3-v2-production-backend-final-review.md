@@ -12,7 +12,7 @@ This is a current source bug, not an obsolete design-note concern.
 
 Impact: an unrelated Pi root can call `die_task_launch` with orchestrator authority and consume the trusted server-side profile/model mapping. This is an authorization-boundary failure.
 
-Required fix/test: persist or otherwise supply a server-trusted Die root identity at thread/session creation and require it when deriving depth 0. Add a negative integration test: Die binary configured + ordinary root Pi thread => no `die-delegation`; genuine Die root => depth-0 orchestrator policy. Existing policy unit tests start from an already trusted boolean and therefore do not cover this minting flaw.
+Required fix/test: persist or otherwise supply a server-trusted Die root identity at thread/session creation and require it when deriving depth 0. Add a negative integration test: Die binary configured + ordinary root Pi thread => no `die-delegation`; genuine Die root => depth-0 orchestrator policy. Existing policy unit tests start from an already trusted boolean and so do not cover this minting flaw.
 
 ### P0 — a cancelled ancestor's bearer remains authoritative during teardown, so cancellation can miss a newly launched descendant
 
@@ -24,13 +24,13 @@ Required fix/test: launch authorization must revalidate durable ancestry under t
 
 ### P1 — delegated completion wakes instruct Die sessions to call a capability they deliberately do not have
 
-`ProviderContinuationService.ts:20-24` and the equivalent wake-detail path emit “Use task_status…”. Die credentials intentionally contain `die-delegation` rather than `orchestration` (`ProviderSessionManager.ts:480-523`), while `OrchestratorMcpService.requireCapability` requires `orchestration` (lines 751-759). Therefore `task_status` is denied for the recipient of a native Die completion wake; its supported read API is `die_task_observe`.
+`ProviderContinuationService.ts:20-24` and the equivalent wake-detail path emit “Use task_status…”. Die credentials intentionally contain `die-delegation` rather than `orchestration` (`ProviderSessionManager.ts:480-523`), while `OrchestratorMcpService.requireCapability` requires `orchestration` (lines 751-759). So `task_status` is denied for the recipient of a native Die completion wake; its supported read API is `die_task_observe`.
 
-This does not by itself show loss of the durable result—the projection/recovery path retains it—but the continuation delivered to the model gives an unusable ACK/read instruction and can make the completion turn fail to retrieve its result. Generate capability-aware wake text (native Die task IDs => `die_task_observe`) and test the actual restricted credential/tool call, not only the queued message shape.
+This does not by itself show loss of the durable result—the projection/recovery path keeps it—but the continuation delivered to the model gives an unusable ACK/read instruction and can make the completion turn fail to retrieve its result. Generate capability-aware wake text (native Die task IDs => `die_task_observe`) and test the actual restricted credential/tool call, not only the queued message shape.
 
 ### P1 — resident continuation limits are item-count-only, not memory bounds
 
-`ProviderContinuationRequests` and the retry scheduler cap each queue at 256 items, and the retry worker/fiber count is bounded. However a request retains arbitrary `detail` and `notification` payloads; neither admission nor queue accounting imposes a byte ceiling. Consequently the claimed resource bound is not a memory bound. The backpressure test only fills item slots. Add payload limits/byte-budget accounting and a large-payload retention test. For native delegated completions specifically the request uses `detail:null`, so this is a shared continuation-service production bound, not evidence that each Die completion is oversized.
+`ProviderContinuationRequests` and the retry scheduler cap each queue at 256 items, and the retry worker/fiber count is bounded. But a request keeps arbitrary `detail` and `notification` payloads; neither admission nor queue accounting imposes a byte ceiling. So the claimed resource bound is not a memory bound. The backpressure test only fills item slots. Add payload limits/byte-budget accounting and a large-payload retention test. For native delegated completions specifically the request uses `detail:null`, so this is a shared continuation-service production bound, not evidence that each Die completion is oversized.
 
 ## Reviewed areas that are currently supported (not blockers found here)
 

@@ -1,12 +1,12 @@
 # Independent review: T3 v2 production native root delegation
 
-Reviewed current root sources (`src/tasks/t3-*.ts`, `job-service.ts`, execute/job-bridge identity plumbing and focused tests), the exact fixture, current production candidate backend contract, and the prior requirements/resource/root notes. This is read-only review of implementation except for this requested note. I did not run the shared build/server or edit implementation.
+Reviewed current root sources (`src/tasks/t3-*.ts`, `job-service.ts`, execute/job-bridge identity plumbing and focused tests), the exact fixture, current production candidate backend contract, and the earlier requirements/resource/root notes. This is read-only review of implementation except for this note. I did not run the shared build/server or edit implementation.
 
 ## Concrete findings to feed implementation
 
 ### P0 — the scoped bearer is exposed directly to model-authored execute and shell code (claimed-complete bug)
 
-**Source:** `src/typescript/execution.ts:108-116` constructs the isolated runner environment with `{ ...process.env }`. The production provider process receives `T3_MCP_BEARER_TOKEN`, so every execute program receives it too. In addition, `job-service.ts:226-235` launches `shell` without a scrubbed `env`, so the shell inherits the same bearer. Local agent spawn at `job-service.ts:336` also explicitly copies all of `process.env` (relevant whenever that local path is used).
+**Source:** `src/typescript/execution.ts:108-116` constructs the isolated runner environment with `{ ...process.env }`. The production provider process receives `T3_MCP_BEARER_TOKEN`, so every execute program receives it too. Also, `job-service.ts:226-235` launches `shell` without a scrubbed `env`, so the shell inherits the same bearer. Local agent spawn at `job-service.ts:336` also explicitly copies all of `process.env` (relevant whenever that local path is used).
 
 **Minimal reproducer:** in an authorized T3-backed Die session, execute either:
 
@@ -14,15 +14,15 @@ Reviewed current root sources (`src/tasks/t3-*.ts`, `job-service.ts`, execute/jo
 
 or `await shell('printf %s "$T3_MCP_BEARER_TOKEN"')`. The credential enters tool output/model context. Model code can also call the MCP endpoint directly, bypassing root's client-side four-tool allowlist. The candidate now issues a narrower `die-delegation` capability, which improves server authorization, but does not satisfy the explicit requirement that the bearer be absent from execute output/model/logs.
 
-**Fix/test:** remove both `T3_MCP_URL` and `T3_MCP_BEARER_TOKEN` from the isolated runner and all model-directed local child environments; retain them only in the trusted parent-side JobService/MCP client. Add an execute test which seeds sentinel credentials and asserts JS and `shell` cannot read them while `subagent/jobs.*` still reach a parent-side fake adapter. This must not scrub unrelated local CLI environment variables.
+**Fix/test:** remove both `T3_MCP_URL` and `T3_MCP_BEARER_TOKEN` from the isolated runner and all model-directed local child environments; keep them only in the trusted parent-side JobService/MCP client. Add an execute test which seeds sentinel credentials and asserts JS and `shell` cannot read them while `subagent/jobs.*` still reach a parent-side fake adapter. This must not scrub unrelated local CLI environment variables.
 
 ### P1 — launch commit/lost-response recovery covers only reader/fetch exceptions, not other ambiguous post-dispatch failures (claimed-complete bug)
 
 **Source:** `t3-native-task.ts:80-87` retries only `McpAmbiguousResponseError`. `t3-mcp-client.ts:108-180` classifies a reader exception as ambiguous, but an EOF with an empty/truncated/invalid JSON or SSE body throws ordinary errors (`invalid JSON` / `no matching SSE response`). `t3-mcp-client.ts:248-265` also converts the client's own 30-second timeout after dispatch into ordinary `T3 MCP request aborted`. All can occur after `die_task_launch` committed. The stable request ID makes one replay safe, but these paths do not replay.
 
-**Minimal isolated reproducer:** mock `fetch` so initialize succeeds, then the launch POST returns HTTP 200 with an empty or truncated JSON body. `T3NativeTaskAdapter.launch` makes one launch call and rejects rather than replaying the same `clientRequestId`. A stream that stalls after the launch POST until the internal 30s timeout has the same property. Existing test at `tests/t3-native-routing.test.ts:179` injects the desired error class directly and therefore misses classification.
+**Minimal isolated reproducer:** mock `fetch` so initialize succeeds, then the launch POST returns HTTP 200 with an empty or truncated JSON body. `T3NativeTaskAdapter.launch` makes one launch call and rejects rather than replaying the same `clientRequestId`. A stream that stalls after the launch POST until the internal 30s timeout has the same property. Existing test at `tests/t3-native-routing.test.ts:179` injects the desired error class directly and so misses classification.
 
-**Fix/test:** distinguish caller cancellation/definitive JSON-RPC rejection from failures after launch dispatch. Classify malformed/truncated successful responses and owner timeout as ambiguous (or safely replay launch once on all non-definitive, non-caller-abort transport/protocol failures). Assert two launch POSTs with exactly the same request ID for empty JSON, truncated SSE, and internal timeout; preserve one call for typed/HTTP authorization rejection and caller abort.
+**Fix/test:** distinguish caller cancellation/definitive JSON-RPC rejection from failures after launch dispatch. Classify malformed/truncated successful responses and owner timeout as ambiguous (or safely replay launch once on all non-definitive, non-caller-abort transport/protocol failures). Assert two launch POSTs with exactly the same request ID for empty JSON, truncated SSE, and internal timeout; keep one call for typed/HTTP authorization rejection and caller abort.
 
 ### P1 — per-session launch-ledger cache is unbounded (claimed-complete resource bug)
 
@@ -55,4 +55,4 @@ or `await shell('printf %s "$T3_MCP_BEARER_TOKEN"')`. The credential enters tool
 
 ## In-progress distinction
 
-The tree is actively modified, so these may be fixed before integration. However, the current root status note describes credential-safe scoped routing, commit/lost-response replay, and bounded bookkeeping as completed and focused tests passing. Findings P0/P1 above are therefore bugs in the currently claimed-complete root path, not merely missing live integration gates. Browser/live/server soak and package acceptance remain separately unfinished as already documented and are not re-reported here.
+The tree is actively modified, so these may be fixed before integration. But the current root status note describes credential-safe scoped routing, commit/lost-response replay, and bounded bookkeeping as completed and focused tests passing. Findings P0/P1 above are so bugs in the now claimed-complete root path, not just missing live integration gates. Browser/live/server soak and package acceptance remain separately unfinished as already documented and are not re-reported here.

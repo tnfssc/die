@@ -16,7 +16,7 @@ As checked on 2026-09-22, the latest official nightly is
 at `0141bc2bf5fcf52a563240a6bce4b58050496db5`. It lacks the upstream
 orchestration-v2 backend, native MCP contracts, and Pi driver used by our current
 patch. Switching only the source pin fails patch application and would not
-preserve native delegation. Keep the canonical pin unchanged until an explicit
+keep native delegation. Keep the canonical pin unchanged until an explicit
 channel/migration decision is made; do not silently replace native children with
 local delegation or label the preview channel as nightly.
 
@@ -49,7 +49,7 @@ transport closure does not itself cancel a child.
 A launch may request `workspace: { kind: "worktree", baseRef?, branch? }`; omission
 means inherited workspace. Worktree results expose the immutable base revision,
 branch, preparation state, and worktree path when available. Batch preparation pins a
-common source revision, reports partial failures, and retains worktrees and branches
+common source revision, reports partial failures, and keeps worktrees and branches
 on failure or cancellation.
 
 Local CLI setup automatically runs the source checkout's configured `t3.json`
@@ -69,7 +69,7 @@ Focused deterministic coverage exists for:
 - profile/depth/tool scope, replay, cancellation, and read-only observation;
 - local no-auth Host/Origin checks;
 - native own/subtree usage accounting;
-- synthetic prior-version migration and restart;
+- synthetic earlier-version migration and restart;
 - worktree Git safety, automatic setup in untrusted projects, setup success/failure/timeout/cancellation,
   batch pinning and partial failure, replay ownership, and retained lifecycle;
 - same-server browser completion, cancellation, reload, and shell-card preservation.

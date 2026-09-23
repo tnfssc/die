@@ -10,7 +10,7 @@ Disposition of every finding in `wisdom/t3/t3-v2-native-root-review.md`. Root `s
 
 - Added one environment scrubber which copies the ordinary CLI environment while removing only `T3_MCP_URL` and `T3_MCP_BEARER_TOKEN`.
 - Applied it to the isolated execute runner and all model-directed local children (`shell` and local `subagent`).
-- The trusted parent `JobService` keeps its configured bridge context and therefore retains native `subagent` / `jobs.*` capability.
+- The trusted parent `JobService` keeps its configured bridge context and so keeps native `subagent` / `jobs.*` capability.
 - Tests prove execute JavaScript and shell cannot read sentinel bridge values, an unrelated environment value remains visible, and execute can still call a parent-side job handler.
 
 ### P1: ambiguous successful response / internal timeout replay — fixed
@@ -30,7 +30,7 @@ Disposition of every finding in `wisdom/t3/t3-v2-native-root-review.md`. Root `s
 
 - Mixed local/native listing now returns a bounded, validated opaque cursor containing a stable local boundary/offset, an explicit local/native phase, and the backend's own cursor.
 - Native progress no longer derives from the current local list length and backend `nextCursor` is no longer discarded. Local jobs appended after page one do not enter that pagination snapshot; local shrinkage cannot rewind native progress.
-- Numeric input remains accepted for initial/backward-compatible calls; subsequent mixed pages use the opaque cursor. Pure-local pagination keeps its existing numeric cursor.
+- Numeric input remains accepted for initial/backward-compatible calls; later mixed pages use the opaque cursor. Pure-local pagination keeps its existing numeric cursor.
 - Tests mutate local membership by both adding and removing between pages and verify native A is not duplicated and native B is not skipped.
 
 ### Completed stop marker — fixed

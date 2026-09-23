@@ -9,16 +9,16 @@ Added candidate source and focused tests in `.cache/die-t3code-v2-production`:
 - `apps/server/src/orchestration-v2/NativeUsageAccounting.ts`
 - `apps/server/src/orchestration-v2/NativeUsageAccounting.test.ts`
 
-`nativeThreadUsageReport` reports separately labeled `own` and `subtree` totals. It follows only durable `relationshipToParent === "subagent"` lineage (never forks), consumes only normalized per-provider-turn `usageScope: "main_agent"` records, and deduplicates by durable provider turn id. Consequently:
+`nativeThreadUsageReport` reports separately labeled `own` and `subtree` totals. It follows only durable `relationshipToParent === "subagent"` lineage (never forks), consumes only normalized per-provider-turn `usageScope: "main_agent"` records, and deduplicates by durable provider turn id. This means:
 
 - nested descendants contribute their own usage once;
 - a parent record with `hasSubagents` is not treated as an aggregate and is not multiplied;
 - retry attempts and compaction calls are additive own usage inside their provider turn, while distinct provider turns are counted once;
 - replay/resume/duplicate terminal records with the same provider-turn id count once;
 - a later complete record wins over a duplicate partial record;
-- failed/cancelled turns retain partial usage and missing usage remains explicitly counted as unavailable.
+- failed/cancelled turns keep partial usage and missing usage remains explicitly counted as unavailable.
 
-The production path now retains provider-reported monetary usage. Optional per-turn USD component fields on `TurnTokenUsage` remain backward-compatible with old stored events. PiAdapterV2 adds each completed assistant attempt and compaction result's own `usage.cost` exactly once into the provider turn; it never reads the cumulative `get_session_stats` snapshot for spend and never guesses pricing. Failed/interrupted turns retain observed usage as partial, while turns or legacy records without a provider cost remain explicitly unavailable.
+The production path now keeps provider-reported monetary usage. Optional per-turn USD component fields on `TurnTokenUsage` remain backward-compatible with old stored events. PiAdapterV2 adds each completed assistant attempt and compaction result's own `usage.cost` exactly once into the provider turn; it never reads the cumulative `get_session_stats` snapshot for spend and never guesses pricing. Failed/interrupted turns keep observed usage as partial, while turns or legacy records without a provider cost remain explicitly unavailable.
 
 `ProjectionStore.getThreadSnapshot` and its bounded variant now invoke `nativeThreadUsageReport` over durable thread lineage/provider turns and project the result through the existing authenticated read-only thread-detail HTTP boundary. The web composer renders distinctly labeled `Cost own` and `subtree` values, including partial/unavailable state. Root and child snapshots each expose their own/subtree boundary, and fork lineage is excluded. The existing transcript-scanned Die usage summary and local CLI session-cost totals are unchanged.
 

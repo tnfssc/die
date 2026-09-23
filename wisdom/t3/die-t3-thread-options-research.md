@@ -6,15 +6,15 @@ T3 source reviewed: pinned Die web revision `719a76ca1dbf5490f1aa33ffb9966301e02
 
 ## Executive conclusion
 
-There are three materially different products hidden behind “show orchestrator threads in T3”:
+“show orchestrator threads in T3” can mean three different products:
 
-1. **Richer task observability in the parent T3 thread**: improve the current task/agent cards. This is low-risk and preserves Die ownership, but it does **not** produce selectable T3 threads.
-2. **Selectable projection of Die-owned child sessions**: create T3 thread read models for child session files while Die remains the sole execution owner. This is the best incremental route to the requested selectable-thread experience, provided the first release is explicit that projected child threads are read-only (or stop-only) while active. It preserves current completion semantics and avoids two writers on a Pi session file.
-3. **T3-backend-owned child execution/delegation**: make every delegated child a native T3 provider session/thread and bridge its result back to the orchestrating Die session. This gives the cleanest long-term interactive UX, but is a delegation-runtime rewrite, not an observability change. It needs a durable bidirectional broker, result-delivery protocol, nested-delegation design, and restart semantics before it is safe.
+1. **Richer task observability in the parent T3 thread**: improve the current task and agent cards. This is low risk and keeps Die in control. It does **not** create selectable T3 threads.
+2. **Selectable projection of Die-owned child sessions**: create T3 thread read models for child session files. Die stays the sole execution owner. This is the best step toward selectable threads. The first release must say that projected child threads are read-only, or stop-only, while active. This keeps current completion behavior and avoids two writers on one Pi session file.
+3. **T3-backend-owned child execution/delegation**: make each delegated child a native T3 provider session and thread. Then bridge its result back to the orchestrating Die session. This gives the cleanest interactive UX in the long run. But it rewrites the delegation runtime rather than adding observability. It needs a durable two-way broker, result delivery, nested delegation, and restart behavior before it is safe.
 
-**Recommendation:** choose option 2 as the next architecture, with option 1's richer event payload as its transport foundation. Do not pretend user steering is supported in the first projection release: current child agents run in print/JSON mode with stdin closed, so there is no valid steering seam. Add individual stop through a narrow parent-owned control channel if required. Consider option 3 only if “compose in any child thread while it is running” and restartable delegated execution are hard requirements; those requirements justify the additional ownership machinery.
+**Recommendation:** choose option 2 next. Use option 1's richer event payload as the transport base. Do not claim steering in the first projection release. Current child agents run in print/JSON mode with stdin closed, so they have no valid steering seam. Add individual stop through a narrow parent-owned control channel if needed. Consider option 3 only if “compose in any child thread while it is running” and restartable delegated execution are hard requirements. Those requirements justify the extra ownership machinery.
 
-Do **not** replace the runtime with an in-process `AgentHarness`/embedded `AgentSessionRuntime` merely to get threads. The installed Pi package exposes useful embedded APIs, but T3 already has a functioning Pi RPC adapter and canonical event translation. No observed deficiency here is caused by process isolation itself; the missing pieces are identity projection, control routing, and durable result ownership.
+Do **not** replace the runtime with an in-process `AgentHarness`/embedded `AgentSessionRuntime` just to get threads. The installed Pi package exposes useful embedded APIs, but T3 already has a functioning Pi RPC adapter and canonical event translation. No observed deficiency here is caused by process isolation itself; the missing pieces are identity projection, control routing, and durable result ownership.
 
 ---
 
@@ -45,7 +45,7 @@ See `src/tasks/job-service.ts:153-205`, particularly lines 173-203. This is impo
 
 The sidecar `<owning-session>.jobs.jsonl` contains lifecycle-only records. Its own comment says it “never includes commands, prompts or output” and is bounded to 2 MiB (`src/tasks/task-lifecycle.ts:14-18`). Writes use a Linux/x64 nonblocking `flock`, validate inode/mode, append a bounded line, and may drop a record on contention (lines 88-174). The extension writes spawned/stopping/completed records with task ID, kind/status/timestamps/termination and child `sessionFile` (`src/tasks/extension.ts:312-370`).
 
-Therefore the journal can support reconciliation and identity recovery, but it cannot reconstruct a running `TaskManager`, output cursor, control handle, prompt, or final answer.
+So the journal can support reconciliation and identity recovery, but it cannot reconstruct a running `TaskManager`, output cursor, control handle, prompt, or final answer.
 
 ### 1.3 Session files have a single-writer assumption
 
@@ -67,7 +67,7 @@ The execute job bridge itself is a useful pattern but not a T3 IPC seam today. I
 
 Delegation is allowed only while `depth < 2`, and below the root only an `orchestrator` may delegate (`src/tasks/subagent-profiles.ts:70-72`). A spawned orchestrator may create only fast/normal workers (`src/tasks/job-service.ts:155-160`). Identity is restored from child session metadata on resume, not solely from environment variables (`src/tasks/extension.ts:552-559`).
 
-Any T3-backed alternative must preserve depth/type policy and parent-session lineage across backend launches; otherwise it silently changes safety boundaries.
+Any T3-backed alternative must keep depth/type policy and parent-session lineage across backend launches; otherwise it silently changes safety boundaries.
 
 ---
 
@@ -83,7 +83,7 @@ This means “make a task a thread” is not a cosmetic alias. Something must po
 
 `ProviderAdapterShape` owns `startSession`, `sendTurn`, `interruptTurn`, user-input responses, `stopSession`, session lookup/listing, snapshots/rollback, and a canonical `ProviderRuntimeEvent` stream (`apps/server/src/provider/Services/ProviderAdapter.ts:67-158`).
 
-The staged Pi adapter launches a Pi RPC process against a specific session file, tracks a lease per file, converts streaming assistant/reasoning deltas to canonical item/content events, supports prompt/steer and abort, and retains a Pi resume cursor. Relevant evidence:
+The staged Pi adapter launches a Pi RPC process against a specific session file, tracks a lease per file, converts streaming assistant/reasoning deltas to canonical item/content events, supports prompt/steer and abort, and keeps a Pi resume cursor. Relevant evidence:
 
 - session-file lease and `--session` launch: `PiAdapter.ts:1939-2058`
 - event stream attachment: lines 2104-2146
@@ -105,7 +105,7 @@ When only detached Die tasks remain, the patch's Stop behavior closes the whole 
 
 The session importer creates a T3 thread, writes a stopped provider binding/resume cursor, and imports user/assistant messages (`apps/server/src/project/AgentSessionImporter.ts:222-274`). The history-import command accepts user/assistant text records (`orchestration.ts:1438-1450`). This is strong evidence that projection-only threads fit T3's model.
 
-However the current scanner only recognizes `claudeAgent` and `codex` sources (`packages/contracts/src/agentSessions.ts:5-20`), not Pi/Die, and import is snapshot-oriented rather than live tailing. Also, imported threads are guarded against overwriting modified/active threads (`AgentSessionImporter.ts:196-220`), a useful precedent for ownership protection.
+But the current scanner only recognizes `claudeAgent` and `codex` sources (`packages/contracts/src/agentSessions.ts:5-20`), not Pi/Die, and import is snapshot-oriented rather than live tailing. Also, imported threads are guarded against overwriting modified/active threads (`AgentSessionImporter.ts:196-220`), a useful precedent for ownership protection.
 
 ### 2.5 Restart behavior is explicit but does not recover Die TaskManager children
 
@@ -153,7 +153,7 @@ A Die-owned child is outside that directory: after parent/server death there is 
 - **User steer:** not feasible for current agent launches. `jobs.input` is misleading here because `closeStdin: true`; arbitrary stdin would not become a Pi steer even if left open.
 - **Background result:** unchanged and strongest of all options; current completion batching remains authoritative.
 - **Restart:** cards/events can be reconstructed partially from lifecycle + child session files, but running work cannot be reattached.
-- **Nested orchestration:** unchanged and naturally represented as nested task metadata if child events are relayed upward; note that each nested child's events currently go to its own stdout/owner, so parent aggregation needs explicit relay or T3 discovery through lifecycle/session lineage.
+- **Nested orchestration:** unchanged and naturally represented as nested task metadata if child events are relayed upward; note that each nested child's events now go to its own stdout/owner, so parent aggregation needs explicit relay or T3 discovery through lifecycle/session lineage.
 
 ### Advantages
 
@@ -205,7 +205,7 @@ The tailer must handle partial lines, file replacement/migration, branch changes
 ### Stop and steer
 
 - **Stop:** feasible with a small authenticated backend→parent control request, routed to `TaskManager.kill(taskId)`. The projected thread Stop button should say it stops the Die task, not a T3 provider session. TERM→KILL remains owned by Die.
-- **Steer:** **not currently feasible.** The child is not RPC mode and stdin is closed. Options are: (a) leave composer disabled; (b) evolve Die's child runner so the parent owns a Pi RPC client and exposes `steer` through its control socket; or (c) move to option 3. (b) is still Die ownership and may be a later option-2 enhancement, but it is a substantial runner change.
+- **Steer:** **not now feasible.** The child is not RPC mode and stdin is closed. Options are: (a) leave composer disabled; (b) evolve Die's child runner so the parent owns a Pi RPC client and exposes `steer` through its control socket; or (c) move to option 3. (b) is still Die ownership and may be a later option-2 enhancement, but it is a substantial runner change.
 
 ### Background result return
 
@@ -221,11 +221,11 @@ On T3 restart while parent Die is alive, the parent NDJSON channel usually resta
 - default to terminal “interrupted by owner shutdown” after bounded process ownership cleanup;
 - do not claim restart continuation.
 
-A future safe handoff needs a coordinated lease release from Die and lease acquire by T3. File age/PID existence alone is not sufficient.
+A future safe handoff needs a coordinated lease release from Die and lease acquire by T3. File age/PID existence alone is not enough.
 
 ### Nested orchestration
 
-Each projected child can have projected children. The durable graph should use explicit parent task/thread IDs, not infer solely from `parentSession` paths. Preserve depth and agent type. The root T3 thread remains the result recipient for direct children; nested completion still flows through each child's own Die runtime exactly as today.
+Each projected child can have projected children. The durable graph should use explicit parent task/thread IDs, not infer solely from `parentSession` paths. Keep depth and agent type. The root T3 thread remains the result recipient for direct children; nested completion still flows through each child's own Die runtime exactly as today.
 
 ### Advantages
 
@@ -262,7 +262,7 @@ At minimum:
 5. parent → backend: acknowledgement that result was injected into the parent conversation;
 6. reconnect/restart: query unacknowledged results and current delegated tasks.
 
-The existing per-execute job bridge demonstrates acknowledgement semantics, but it is process-local and ephemeral. It would need a session-level durable counterpart. The existing Pi stdout custom event is one-way and cannot implement this protocol.
+The existing per-execute job bridge shows acknowledgement semantics, but it is process-local and ephemeral. It would need a session-level durable counterpart. The existing Pi stdout custom event is one-way and cannot implement this protocol.
 
 ### Transcript/progress streaming
 
@@ -280,13 +280,13 @@ That semantic decision affects when the parent considers the subagent complete.
 
 ### Background result return
 
-This is the hardest seam. A T3 thread completing is not enough; Die's orchestrator expects a bounded tool result or later model-visible completion notification. The backend must summarize/extract the child answer, deliver it to the owning parent extension, and preserve current foreground/background ownership transfer. Generic `PiAdapter.sendTurn` to the parent would look like a user message and is not equivalent to the current `customType: task-complete` steer. A custom extension-facing RPC/broker delivery command is needed.
+This is the hardest seam. A T3 thread completing is not enough; Die's orchestrator expects a bounded tool result or later model-visible completion notification. The backend must summarize/extract the child answer, deliver it to the owning parent extension, and keep current foreground/background ownership transfer. Generic `PiAdapter.sendTurn` to the parent would look like a user message and is not equivalent to the current `customType: task-complete` steer. A custom extension-facing RPC/broker delivery command is needed.
 
-If the parent is offline, the result needs a durable outbox. On resume, the extension must drain it exactly once (or idempotently) and trigger the parent turn. This is additional state beyond T3's child thread.
+If the parent is offline, the result needs a durable outbox. On resume, the extension must drain it exactly once (or idempotently) and trigger the parent turn. This adds state beyond T3's child thread.
 
 ### Restart constraints
 
-T3 has cursor-based provider restart machinery and a marked continuation path, but delegated-task correctness requires more:
+T3 has cursor-based provider restart machinery and a marked continuation path, but delegated-task correctness needs more:
 
 - whether an interrupted child turn is resumed with a synthetic continuation or marked failed;
 - preservation of delegation request/task/result IDs;
@@ -437,12 +437,12 @@ Embedding could reduce one process boundary, but would couple T3 to Die extensio
 
 19. Should external projected execution be a new provider adapter/binding type, or an orchestration projection with no provider session? Reusing “stopped imported session” while live would be misleading.
 20. Are server-internal thread creation/history commands stable enough for live projection, or should a first-class child-thread ingestion service own this behavior?
-21. How will upstream T3 updates preserve the extra projection/control contracts without expanding the already large patch surface?
+21. How will upstream T3 updates keep the extra projection/control contracts without expanding the already large patch surface?
 
 ---
 
 ## Final decision statement
 
-The runtime evidence does not support transferring existing child-session ownership merely to make the UI look threaded. Die already creates proper separate Pi sessions; the missing layer is a T3 projection and control bridge. Build that projection read-only first, preserve Die as sole process/transcript/result owner, and use an explicit owner lease. Add individual stop through a narrow control IPC. Do not advertise steering until children are launched under a real RPC owner.
+The runtime evidence does not support transferring existing child-session ownership just to make the UI look threaded. Die already creates proper separate Pi sessions; the missing layer is a T3 projection and control bridge. Build that projection read-only first, keep Die as sole process/transcript/result owner, and use an explicit owner lease. Add individual stop through a narrow control IPC. Do not advertise steering until children are launched under a real RPC owner.
 
 If writable live child threads are non-negotiable, skip half-measures and design backend-owned delegation as a durable broker with acknowledged result delivery. That is the point at which T3 ownership provides enough benefit to justify changing the runtime.
