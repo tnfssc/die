@@ -79,3 +79,5 @@
 - [v0.5.6 release](../releases/release-v056.md): published; empty homepage cost fix, CI/release successful, assets confirmed.
 
 - [Web startup warnings](../web/web-startup-warnings.md): Git 5s noninteractive fetch timeout/fallback traced; title warning isolates naming failure but hides cause. Research/testing status and Mac diagnostics.
+
+- [Pi 0.87.1 dependency update](../dependencies/pi-0.87.1-update.md): root Pi family advanced to current stable patch releases; lockfile, guard, notices, and full validation recorded; T3 pin/vendor unchanged.

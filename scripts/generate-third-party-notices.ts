@@ -3,7 +3,7 @@ import { dirname, join, resolve } from "node:path";
 
 const MAX_PACKAGES = 1000;
 const MAX_BYTES = 4 * 1024 * 1024;
-const PI_VERSION = "0.87.0";
+const PI_VERSION = "0.87.1";
 const pinnedPiPackages = new Set([
   "@earendil-works/chord",
   "@earendil-works/pi-agent-core",
@@ -146,7 +146,7 @@ export async function generateThirdPartyNotices(
   lines.push(
     "=".repeat(78),
     "PI UPSTREAM LICENSE (applies only to pinned Pi packages identified above)",
-    "Source: https://github.com/earendil-works/pi/tree/v0.87.0",
+    "Source: https://github.com/earendil-works/pi/tree/v0.87.1",
     "",
     piLicense.trimEnd(),
     "",

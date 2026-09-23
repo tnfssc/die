@@ -185,7 +185,7 @@ function openStore(path: string): DiskEntryStore {
 }
 
 /**
- * Install the 0.87.0-compatible disk-backed implementation on the SDK class.
+ * Install the 0.87.x-compatible disk-backed implementation on the SDK class.
  * Call this before importing/invoking the SDK CLI main function. In-memory managers
  * are deliberately untouched.
  */

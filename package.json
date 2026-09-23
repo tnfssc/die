@@ -23,10 +23,10 @@
     "build:web": "bun ./scripts/build-web.ts"
   },
   "dependencies": {
-    "@earendil-works/pi-ai": "0.87.0",
-    "@earendil-works/pi-coding-agent": "0.87.0",
-    "@earendil-works/pi-server": "0.87.0",
-    "@earendil-works/pi-tui": "0.87.0",
+    "@earendil-works/pi-ai": "0.87.1",
+    "@earendil-works/pi-coding-agent": "0.87.1",
+    "@earendil-works/pi-server": "0.87.1",
+    "@earendil-works/pi-tui": "0.87.1",
     "es-module-lexer": "^3.0.2",
     "resolve.exports": "2.0.3",
     "zod": "4.6.5"
