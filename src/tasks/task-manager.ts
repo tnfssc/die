@@ -449,7 +449,7 @@ export class TaskManager {
     return task.completion!;
   }
 
-  /** Hand off notification ownership once when a foreground wait ends. */
+  /** Hand off notification ownership exactly once when a foreground wait times out. */
   async foreground(
     id: string,
     waitMs: number,

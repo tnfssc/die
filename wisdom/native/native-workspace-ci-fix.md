@@ -1,6 +1,6 @@
 # Native workspace CI fix
 
-## Scope and ownership
+## Scope / coordination
 
 This change only touches `.github/workflows/ci.yml` and `.github/workflows/release.yml`.
 Feature, backend, build, harness, and test implementation stay owned by `task_b210d06d`; don't overlap these workflow edits.
@@ -28,7 +28,7 @@ No release was started.
 
 As asked, this work didn't build, run tests, contact a provider, start CI, release, commit, or push.
 
-## Limits and orchestrator follow-up
+## Caveats / orchestrator follow-up
 
 - `NativeDieIntegration.production.test.ts` expects the local `dist/die` produced by the preceding existing CI Build step; its test fixture is local and doesn't need provider credentials.
 - The main agent should run the requested clean-checkout validation before opening the PR.

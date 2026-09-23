@@ -25,7 +25,7 @@ Read-only audit except this wisdom file; implementation is still changing the wo
   Replace it with a declared dependency (with lock/notices review) or a supported built-in/client already declared.
   No package/lock change now accompanies it.
 
-## Hygiene and validation findings
+## Hygiene and validation observations
 
 - `bun run format:check` now fails only on 21 files under `experiments/t3-v2/`; all other scanned files formatted.
   Do not change project `.gitignore`/Biome merely to conceal these.
@@ -38,7 +38,7 @@ Read-only audit except this wisdom file; implementation is still changing the wo
   Treat those as paths requiring manual placeholder review; don't stage experiment proofs, screenshots, JSONL/raw logs, browser profiles, caches, or rollback material.
   No secret value is recorded here.
 
-## Suggested staging scope (after blockers are fixed)
+## Recommended staging scope (after blockers are fixed)
 
 Stage production source and deterministic tests as one coherent set:
 

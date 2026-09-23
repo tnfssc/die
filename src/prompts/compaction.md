@@ -7,7 +7,7 @@ Keep:
 - choices made and why
 - work done, underway, blocked, and failed
 - exact file paths, important names and IDs, commands, errors, and open questions
-- jobs still running, who owns them, what they wait on, and facts needed to pick work up safely
+- IDs of live/background jobs, who owns them, what they wait on, and facts needed to pick work up safely
 - facts from any older checkpoint that still matter
 
 Return only Markdown in this structure:

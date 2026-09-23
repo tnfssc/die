@@ -33,7 +33,7 @@ The old failed diagnostics remain unchanged:
   - New private proof: `artifacts/final-pr/packaged-probe-final-fix-proof.json`
   - New log: `artifacts/final-pr/final-live-packaged-probe-fix.log`
 
-The proof records same-origin = 101 and headerless-local = 101. All four hostile WebSocket cases record 0 because they did not open. `passed` is `true`. HTTP hostile cases still have `authenticated: false`.
+The proof records same-origin = 101 and headerless-local = 101. All four hostile WebSocket cases record 0 because they did not open. The result has `passed: true`. HTTP hostile cases still have `authenticated: false`.
 
 Exact command:
 
