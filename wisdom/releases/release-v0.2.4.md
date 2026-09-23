@@ -1,11 +1,11 @@
 # v0.2.4
 
-- Add project-local Markdown memory and explicit /memory consolidation through a managed fast/normal subagent. Empty notes launch no worker. Cooperative leases, verified save receipts, and bounded reads preserve retryable notes on failure. Automatic consolidation remains disabled.
-- Add history.search and history.read inside execute: original transcript references, bounded pagination, active-branch defaults, current shake exclusions, and explicit read-only cross-session access. Includes FIFO rejection and Unicode offset corrections.
-- Extend /ps with an explicit inspection view and target-safe tiny-terminal layouts.
+- Add project-local Markdown memory. `/memory` starts a managed fast or normal subagent to combine it. Empty notes launch no worker. Cooperative leases, checked save receipts, and bounded reads keep notes that can be retried after failure. Automatic consolidation remains disabled.
+- Add history.search and history.read inside execute. They use original transcript refs, bounded pages, active-branch defaults, current shake exclusions, and explicit read-only access across sessions. Includes FIFO rejection and Unicode offset corrections.
+- Add an inspection view to /ps and layouts that stay target-safe in tiny terminals.
 - Harden partial subagent batch cleanup, completion ownership, nonfatal UI refresh, diagnostic restoration, and bridge frame limits.
-- Reconcile documentation with implemented behavior. Ask-user forms and generated API help remain proposals only.
+- Make docs match the code. Ask-user forms and generated API help remain proposals only.
 
 ## Limits
 
-Memory locking is cooperative, not protection against arbitrary filesystem writers. Uncertain dispatch failures retain the lock for manual recovery. History rejects oversized inputs rather than weakening exclusions. Diagnostic persistence is best effort and not a transaction. No dependency changes or paid provider probes for this release.
+Memory locking depends on cooperation. It cannot stop any filesystem writer. Uncertain dispatch failures retain the lock for manual recovery. History rejects oversized inputs rather than weakening exclusions. Saving diagnostics is best effort, not a transaction. No dependency changes or paid provider probes for this release.
