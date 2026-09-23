@@ -1,7 +1,7 @@
-/** Process boundary for the experimental macOS voice-only helper (protocol v1). */
+/** Process boundary for the experimental native voice-only helpers (protocol v1). */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 type Worker = Pick<ChildProcessWithoutNullStreams, "stdin" | "stdout" | "stderr" | "on" | "off" | "kill">;
@@ -26,7 +26,19 @@ const MAX_CAPTURE = 640; // 20ms PCM16 mono 16k
 const MAX_PLAY = 9_600; // at most 200ms PCM16 mono 24k per message
 const MAX_PENDING = 64 * 1024; // ~1.3 seconds of encoded PCM at 24k
 const MAX_STDERR = 4096;
-const DEFAULT_HELPER = fileURLToPath(new URL("../../dist/live-lab-audio", import.meta.url));
+/** Compiled candidates carry the helper beside die; source runs use the repository dist directory. */
+export function defaultHelperPath(platform: NodeJS.Platform = process.platform, moduleUrl = import.meta.url, executable = process.execPath): string {
+  const name = platform === "linux" ? "live-lab-audio-linux" : "live-lab-audio";
+  return moduleUrl.includes("/$bunfs/") ? join(dirname(executable), name) : fileURLToPath(new URL("../../dist/" + name, moduleUrl));
+}
+/** Audio server discovery only. Never pass model credentials to the native process. */
+export function audioEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = { PATH: env.PATH ?? "/usr/bin:/bin" };
+  for (const name of ["HOME", "TMPDIR", "XDG_RUNTIME_DIR", "PULSE_SERVER", "PULSE_COOKIE", "PULSE_SOURCE", "PULSE_SINK", "LIVE_LAB_SOURCE", "LIVE_LAB_SINK"]) {
+    if (env[name] !== undefined) result[name] = env[name];
+  }
+  return result;
+}
 const safeCode = (value: unknown) => typeof value === "string" && /^[a-zA-Z0-9_-]{1,48}$/.test(value) ? value : "helper_error";
 const safeMessage = (_value: unknown) => "Audio helper reported an error"; // never forward untrusted helper text/logs
 function decode(data: unknown, max: number): Buffer {
@@ -79,13 +91,13 @@ export class LiveLabAudio {
     aborted();
     let worker = options.worker;
     if (!worker) {
-      if (process.platform !== "darwin") throw new Error("Audio helper requires macOS");
-      if (!process.stdin.isTTY || process.env.SSH_CONNECTION || process.env.SSH_TTY) throw new Error("Audio helper requires a local interactive terminal");
-      const path = resolve(options.helperPath ?? DEFAULT_HELPER);
+      if (process.platform !== "darwin" && process.platform !== "linux") throw new Error("Audio helper requires macOS or Linux");
+      if (!process.stdin.isTTY || process.env.SSH_CONNECTION || process.env.SSH_CLIENT || process.env.SSH_TTY) throw new Error("Audio helper requires a local interactive terminal");
+      const path = resolve(options.helperPath ?? defaultHelperPath());
       const info = await stat(path).catch(() => undefined);
       aborted();
       if (!info?.isFile() || !(info.mode & 0o111)) throw new Error("Audio helper is missing or not executable; build the local helper first");
-      worker = spawn(path, [], { stdio: ["pipe", "pipe", "pipe"], env: { PATH: process.env.PATH ?? "/usr/bin:/bin" } });
+      worker = spawn(path, [], { stdio: ["pipe", "pipe", "pipe"], env: audioEnvironment() });
     }
     const audio = new LiveLabAudio(worker, options);
     try { await audio.withAbort(audio.waitFor("hello", options.helloTimeoutMs ?? 3000), "launch"); return audio; }
@@ -160,7 +172,7 @@ export class LiveLabAudio {
   async start(): Promise<void> {
     if (this.state !== "idle") throw new Error("Audio helper not idle");
     this.state = "starting";
-    const ready = this.waitFor("ready", this.options.startTimeoutMs ?? 5000);
+    const ready = this.waitFor("ready", this.options.startTimeoutMs ?? 30_000);
     void this.send({ type: "start" }).catch(() => this.fail(new Error("Audio helper input failed")));
     return this.withAbort(ready, "start");
   }
