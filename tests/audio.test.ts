@@ -47,16 +47,53 @@ function rig(options: { limit?: number } = {}) {
 }
 
 describe("audio capability preflight", () => {
-  test("rejects non-Linux and SSH without probing commands", async () => {
+  test("rejects unsupported platforms and Linux/macOS SSH sessions without probing commands", async () => {
     let probes = 0;
     const access = async () => {
       probes++;
     };
-    expect((await checkAudioCapabilities({ platform: "darwin", env: {}, access })).reason).toContain("only on Linux");
-    expect(
-      (await checkAudioCapabilities({ platform: "linux", env: { SSH_TTY: "/dev/pts/1" }, access })).reason,
-    ).toContain("SSH");
+    expect((await checkAudioCapabilities({ platform: "win32", env: {}, access })).reason).toContain(
+      "only on Linux and macOS",
+    );
+    for (const platform of ["linux", "darwin"] as const) {
+      expect((await checkAudioCapabilities({ platform, env: { SSH_TTY: "/dev/pts/1" }, access })).reason).toContain(
+        "SSH",
+      );
+    }
     expect(probes).toBe(0);
+  });
+  test("finds Homebrew rec/play on macOS without opening CoreAudio", async () => {
+    const seen: string[] = [];
+    const result = await checkAudioCapabilities({
+      platform: "darwin",
+      env: { PATH: "/usr/bin:/opt/homebrew/bin" },
+      access: async (path) => {
+        seen.push(path);
+        if (!path.startsWith("/opt/homebrew/bin/")) throw new Error("missing");
+      },
+    });
+    expect(result).toMatchObject({
+      supported: true,
+      recorderPath: "/opt/homebrew/bin/rec",
+      playerPath: "/opt/homebrew/bin/play",
+    });
+    expect(result.requirements).toContain("CoreAudio");
+    expect(seen).toContain("/usr/bin/rec");
+  });
+  test("reports a missing macOS recorder while preserving the executable that exists", async () => {
+    const result = await checkAudioCapabilities({
+      platform: "darwin",
+      env: { PATH: "/opt/homebrew/bin" },
+      access: async (path) => {
+        if (path !== "/opt/homebrew/bin/play") throw new Error("missing");
+      },
+    });
+    expect(result).toMatchObject({
+      supported: false,
+      playerPath: "/opt/homebrew/bin/play",
+    });
+    expect(result.reason).toContain("rec");
+    expect(result.reason).not.toContain("rec and play");
   });
   test("finds both executable commands on PATH without spawning", async () => {
     const seen: string[] = [];
@@ -95,13 +132,39 @@ test("start is explicit, preflights first, and starts one streaming process per 
   expect(calls).toHaveLength(2);
   expect(calls[0]!.command[0]).toBe("/tools/play");
   expect(calls[0]!.command).toContain("24000");
+  expect(calls[0]!.command).not.toContain("coreaudio");
+  expect(calls[0]!.command.slice(-3)).toEqual(["-t", "raw", "-"]);
   expect(calls[1]!.command[0]).toBe("/tools/rec");
   expect(calls[1]!.command).toContain("16000");
+  expect(calls[1]!.command).not.toContain("coreaudio");
+  expect(calls[1]!.command.slice(-3)).toEqual(["-t", "raw", "-"]);
   adapter.play(Buffer.from([1, 0]).toString("base64"));
   adapter.play(Buffer.from([2, 0]).toString("base64"));
   expect(calls).toHaveLength(2);
   expect(calls[0]!.process.stdin!.writes).toEqual([Buffer.from([1, 0]), Buffer.from([2, 0])]);
   adapter.close();
+});
+
+test("a recorder startup error rejects start and cleans up the macOS player", async () => {
+  const player = new FakeProcess(true, false);
+  let calls = 0;
+  const adapter = new SoxAudioAdapter({
+    checkCapabilities: capability,
+    spawn: ((command) => {
+      calls++;
+      if (command[0] === "/tools/rec") throw new Error("CoreAudio input unavailable");
+      return player as unknown as AudioProcess;
+    }) as AudioSpawn,
+  });
+  await expect(
+    adapter.start(
+      () => {},
+      () => {},
+      () => {},
+    ),
+  ).rejects.toThrow("CoreAudio input unavailable");
+  expect(calls).toBe(2);
+  expect(player.killed).toEqual(["SIGKILL"]);
 });
 
 test("streams aligned microphone PCM and reactive RMS levels", async () => {

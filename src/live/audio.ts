@@ -6,6 +6,18 @@ import { delimiter, isAbsolute, join } from "node:path";
 
 export const LOCAL_AUDIO_REQUIREMENTS =
   "Linux local session with SoX 'rec' and 'play' on PATH and a working default ALSA/PulseAudio input and output device";
+const SUPPORTED_LOCAL_AUDIO_REQUIREMENTS =
+  "Local Linux or macOS session with SoX 'rec' and 'play' on PATH and working default input and output devices";
+const PLATFORM_AUDIO_REQUIREMENTS: Partial<Record<NodeJS.Platform, string>> = {
+  linux: LOCAL_AUDIO_REQUIREMENTS,
+  darwin:
+    "macOS local session with Homebrew SoX 'rec' and 'play' on PATH and working default CoreAudio input and output devices",
+};
+
+/** Human-readable local prerequisite for setup UI and capability failures. */
+export function localAudioRequirements(platform: NodeJS.Platform = process.platform) {
+  return PLATFORM_AUDIO_REQUIREMENTS[platform] ?? SUPPORTED_LOCAL_AUDIO_REQUIREMENTS;
+}
 export interface AudioCapabilities {
   supported: boolean;
   reason?: string;
@@ -70,17 +82,18 @@ async function findExecutable(
 export async function checkAudioCapabilities(options: CapabilityCheckOptions = {}): Promise<AudioCapabilities> {
   const platform = options.platform ?? process.platform;
   const env = options.env ?? process.env;
-  if (platform !== "linux")
+  const requirements = localAudioRequirements(platform);
+  if (platform !== "linux" && platform !== "darwin")
     return {
       supported: false,
-      reason: "Local audio is currently supported only on Linux",
-      requirements: LOCAL_AUDIO_REQUIREMENTS,
+      reason: "Local audio is currently supported only on Linux and macOS",
+      requirements,
     };
   if (env.SSH_CONNECTION || env.SSH_CLIENT || env.SSH_TTY)
     return {
       supported: false,
       reason: "Local audio is unavailable in SSH sessions",
-      requirements: LOCAL_AUDIO_REQUIREMENTS,
+      requirements,
     };
   const commands = options.commands ?? { recorder: "rec", player: "play" };
   const [recorderPath, playerPath] = await Promise.all([
@@ -94,16 +107,19 @@ export async function checkAudioCapabilities(options: CapabilityCheckOptions = {
       reason: "Missing executable on PATH: " + missing,
       recorderPath,
       playerPath,
-      requirements: LOCAL_AUDIO_REQUIREMENTS,
+      requirements,
     };
   }
-  return { supported: true, recorderPath, playerPath, requirements: LOCAL_AUDIO_REQUIREMENTS };
+  return { supported: true, recorderPath, playerPath, requirements };
 }
 export interface SoxAudioAdapterOptions {
   maxPlaybackBytes?: number;
   checkCapabilities?: () => Promise<AudioCapabilities>;
   spawn?: AudioSpawn;
 }
+// The rec/play entry points already select SoX's default input/output device.
+// In particular, Homebrew builds those aliases with CoreAudio support; adding an
+// explicit -t coreaudio would change which adjacent stream the format applies to.
 const recArgs = [
   "--no-show-progress",
   "--buffer",
