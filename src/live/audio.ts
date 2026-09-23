@@ -5,18 +5,17 @@ import { access } from "node:fs/promises";
 import { delimiter, isAbsolute, join } from "node:path";
 
 export const LOCAL_AUDIO_REQUIREMENTS =
-  "Linux local session with SoX 'rec' and 'play' on PATH and a working default ALSA/PulseAudio input and output device";
-const SUPPORTED_LOCAL_AUDIO_REQUIREMENTS =
   "Local Linux or macOS session with SoX 'rec' and 'play' on PATH and working default input and output devices";
 const PLATFORM_AUDIO_REQUIREMENTS: Partial<Record<NodeJS.Platform, string>> = {
-  linux: LOCAL_AUDIO_REQUIREMENTS,
+  linux:
+    "Linux local session with SoX 'rec' and 'play' on PATH and a working default ALSA/PulseAudio input and output device",
   darwin:
     "macOS local session with Homebrew SoX 'rec' and 'play' on PATH and working default CoreAudio input and output devices",
 };
 
 /** Human-readable local prerequisite for setup UI and capability failures. */
 export function localAudioRequirements(platform: NodeJS.Platform = process.platform) {
-  return PLATFORM_AUDIO_REQUIREMENTS[platform] ?? SUPPORTED_LOCAL_AUDIO_REQUIREMENTS;
+  return PLATFORM_AUDIO_REQUIREMENTS[platform] ?? LOCAL_AUDIO_REQUIREMENTS;
 }
 export interface AudioCapabilities {
   supported: boolean;

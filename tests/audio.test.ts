@@ -145,6 +145,49 @@ test("start is explicit, preflights first, and starts one streaming process per 
   adapter.close();
 });
 
+test("Linux and Darwin discovery use the same exact PCM pipe arguments and default devices", async () => {
+  for (const platform of ["linux", "darwin"] as const) {
+    const commands: (readonly string[])[] = [];
+    const adapter = new SoxAudioAdapter({
+      checkCapabilities: () => checkAudioCapabilities({ platform, env: { PATH: "/tools" }, access: async () => {} }),
+      spawn: (command, stdio) => {
+        commands.push(command);
+        return new FakeProcess(stdio[0] === "pipe", stdio[1] === "pipe") as unknown as AudioProcess;
+      },
+    });
+    await adapter.start(
+      () => {},
+      () => {},
+      () => {},
+    );
+    for (const [index, tool, rate] of [
+      [0, "play", "24000"],
+      [1, "rec", "16000"],
+    ] as const) {
+      expect(commands[index]).toEqual([
+        "/tools/" + tool,
+        "--no-show-progress",
+        "--buffer",
+        "256",
+        "-q",
+        "-c",
+        "1",
+        "-r",
+        rate,
+        "-b",
+        "16",
+        "-e",
+        "signed-integer",
+        "-L",
+        "-t",
+        "raw",
+        "-",
+      ]);
+    }
+    adapter.close();
+  }
+});
+
 test("a recorder startup error rejects start and cleans up the macOS player", async () => {
   const player = new FakeProcess(true, false);
   let calls = 0;
