@@ -20,11 +20,11 @@ Severity reflects realistic long-lived SPA sessions, not merely the existence of
 
 **Reachable scenario**
 
-A long chat/session renders fenced blocks labelled `lang-1`, `lang-2`, etc. Every distinct label permanently adds a string and promise to the map, including unsupported labels that all resolve to the same text fallback. Generated assistant content makes this reachable without adding files to a workspace. Depending on the highlighter library, attempted grammar loads may retain additional internal state; that latter amplification is **not verified** here.
+A long chat/session renders fenced blocks labelled `lang-1`, `lang-2`, etc. Every distinct label permanently adds a string and promise to the map, including unsupported labels that all resolve to the same text fallback. Generated assistant content makes this reachable without adding files to a workspace. Depending on the highlighter library, attempted grammar loads may retain additional internal state. That latter amplification is **not verified** here.
 
 **Impact**
 
-Unbounded heap growth over the tab lifetime. Each local entry is small, so ordinary use is unlikely to be noticeable, but bulk generated Markdown can drive it deliberately or accidentally.
+Unbounded heap growth over the tab lifetime. Each local entry is small, so normal use is unlikely to be noticeable, but bulk generated Markdown can drive it deliberately or accidentally.
 
 ### 2. Medium-low — PR handoff cache permanently retains complete prompt bodies per draft
 
@@ -40,7 +40,7 @@ During one long desktop/web tab lifetime, repeatedly hand off pull-request tasks
 
 **Impact**
 
-Growth is proportional to the number and size of handed-off prompts. This needs substantial repeated use to matter, hence below a general medium/high severity.
+Growth is proportional to the number and size of handed-off prompts. This needs large repeated use to matter, hence below a general medium/high severity.
 
 ### 3. Low — several explicitly session-lifetime caches/sets grow with navigation or content and are never pruned
 
@@ -68,7 +68,7 @@ Slow, workload-cardinality growth, with no single large browser resource proven 
 - `packages/client-runtime/src/rpc/session.ts:192-213` constructs the socket as a scoped Effect layer (`Socket.layerWebSocket` and `Layer.build`). Connection supervision owns the scope; tests in the same package explicitly exercise closure on interruption/open timeout (for example `rpc/session.test.ts:1194-1222`).
 - `apps/web/src/connection/platform.ts` rebuilds the registration map by replacement on each topology poll rather than only appending registrations.
 
-The web runtimes themselves have no explicit disposal/HMR hook (`apps/web/src/lib/runtime.ts:34-68`, `apps/web/src/connection/runtime.ts:33-57`). In production they intentionally live for the page and the browser releases sockets on document teardown. **Speculation only:** Vite HMR that re-evaluates these modules could leave an old managed runtime alive if its module graph is replaced without scope disposal; I did not demonstrate that path and do not count it as a product leak.
+The web runtimes themselves have no explicit disposal/HMR hook (`apps/web/src/lib/runtime.ts:34-68`, `apps/web/src/connection/runtime.ts:33-57`). In production they intentionally live for the page and the browser releases sockets on document teardown. **Speculation only:** Vite HMR that re-evaluates these modules could leave an old managed runtime alive if its module graph is replaced without scope disposal. I did not demonstrate that path and do not count it as a product leak.
 
 ### Device stream WebSockets: teardown is present
 
@@ -76,7 +76,7 @@ The web runtimes themselves have no explicit disposal/HMR hook (`apps/web/src/li
 - `apps/web/src/components/device/deviceStream.ts:409-418` deduplicates retry timers; lines 482-499 own/clear the iOS prime request timeout and abort controller; lines 503-540 and 543-593 guard connect/retry with `stopped`.
 - `deviceStream.ts:611-624` clears all retries, aborts both fetch controllers, closes and nulls the WebSocket, and closes the video decoder.
 
-No accumulating socket/listener path was found. A close event with authorization code can still call `handleUnauthorized` after shutdown (lines 528-537), but it does not schedule a retry or retain the socket; this is a possible stale callback/behavior issue, **not evidence of a resource leak**.
+No accumulating socket/listener path was found. A close event with authorization code can still call `handleUnauthorized` after shutdown (lines 528-537), but it does not schedule a retry or keep the socket. This is a possible stale callback/behavior issue, **not evidence of a resource leak**.
 
 ## Terminal teardown
 

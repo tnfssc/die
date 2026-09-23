@@ -6,7 +6,7 @@ Date: 2026-09-18
 
 This closes the shipped-runtime gap left by the Node/inspector audit. I ran the actual compiled `dist/die web serve`, which extracted and self-executed its embedded backend with Bun. The product was not modified. The run completed 600 ticket/WebSocket reconnects with successful Effect RPC `subscribeServerConfig` handshakes, then held 64 subscribed sockets open and closed them. All 674 expected subscription responses arrived and the audit recorded no errors.
 
-**Result:** no retained process-level resource growth was visible after the 5-second quiescence point. During reconnect churn and while sockets were held, backend RSS rose substantially; after sockets closed and the runtime became quiescent, RSS fell to 294,180 KiB, below the 301,204 KiB warmed baseline. This is **process RSS, not JavaScript/Bun heap**, and no heap claim is made. FDs returned from 86 while held to 21 (warmed baseline 25); threads remained at 21; no backend descendants appeared.
+**Result:** no retained process-level resource growth was visible after the 5-second quiescence point. During reconnect churn and while sockets were held, backend RSS rose substantially. After sockets closed and the runtime became quiescent, RSS fell to 294,180 KiB, below the 301,204 KiB warmed baseline. This is **process RSS, not JavaScript/Bun heap**, and no heap claim is made. FDs returned from 86 while held to 21 (warmed baseline 25). Threads remained at 21. No backend descendants appeared.
 
 ## Provenance
 
@@ -20,7 +20,7 @@ This closes the shipped-runtime gap left by the Node/inspector audit. I ran the 
 
 ## Isolation and ownership
 
-The harness is `scripts/leak-audit/bundled-web-runtime.mjs`; raw output is in `wisdom/resources/leak-audit-bundled-web-results.json`.
+The harness is `scripts/leak-audit/bundled-web-runtime.mjs`. Raw output is in `wisdom/resources/leak-audit-bundled-web-results.json`.
 
 - Fresh `mkdtemp` directory supplied as `HOME`, all relevant `XDG_*` directories, `T3CODE_HOME`, cwd, and `--base-dir`.
 - Loopback-only `127.0.0.1` and an OS-selected ephemeral port.

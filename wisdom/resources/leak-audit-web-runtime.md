@@ -69,7 +69,7 @@ All heap values below are V8 `heapUsed` after explicit GC. Deltas use each fresh
 Interpretation:
 
 - A per-connection FD/listener leak is ruled out at this scale: FD count decreased from 39 warm to 34 quiescent, and the active handle composition returned to the fixed server/watchers plus inspector/control sockets.
-- External/ArrayBuffer memory returned to approximately 26.1 MiB / 0.10 MiB, ruling out retained WebSocket frame buffers in this workload.
+- External/ArrayBuffer memory returned to about 26.1 MiB / 0.10 MiB, ruling out retained WebSocket frame buffers in this workload.
 - The heap trajectory is not linear: +4.40 MiB in the first 1,500 cycles, +1.22 MiB in the next 1,500, then -0.32 MiB after quiescence. This looks like warm-up/high-water caching, but the remaining +5.17 MiB is the one unresolved retention signal.
 - Linux private dirty grew about 16.6 MiB in the 3,000-cycle process while forced-GC heap grew 5.17 MiB. This is compatible with V8/native allocator committed pages and is **not** independently classified as a leak.
 
@@ -83,7 +83,7 @@ Interpretation:
 
 ### HTTP mixed run
 
-The mixed run issued 300 parallelized static HTTP fetches. Immediately afterward the HTTP client's keep-alive pool left 20 server-side TCP sockets (58 FDs total); later WebSocket checkpoints returned to 37 FDs. This is connection pooling, not monotonic retention.
+The mixed run issued 300 parallelized static HTTP fetches. Immediately afterward the HTTP client's keep-alive pool left 20 server-side TCP sockets (58 FDs total). Later WebSocket checkpoints returned to 37 FDs. This is connection pooling, not monotonic retention.
 
 ### Process shutdown
 

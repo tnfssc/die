@@ -4,13 +4,13 @@
 
 Audit date: 2026-09-18. Die 0.3.4, source commit `f9d3e5c`, Pi 0.85.1, Linux/Bun 1.4.1. **Investigation only: no product fixes applied.**
 
-**Bottom line:** ordinary CLI/web connection teardown held up well under stress, but there are reproducible scoped-retention bugs, unbounded history growth, and failure/overload paths worth fixing. There is no evidence here of a universal idle-server leak.
+**Bottom line:** normal CLI/web connection teardown held up well under stress, but there are reproducible scoped-retention bugs, unbounded history growth, and failure/overload paths worth fixing. There is no evidence here of a universal idle-server leak.
 
 ## Method and scope
 
 Source review plus isolated stress tests cover CLI/RPC session replacement, execute workers, shell/subagent jobs, the web launcher, server subscriptions/provider sessions, and browser resource ownership. Tests use temporary state, local fake models where needed, and exact owned process IDs. No existing user server/session was stopped. Retained heap after GC, file descriptors, listeners, children, and queue/map cardinality are stronger evidence than RSS alone.
 
-Current web pin: `719a76ca1dbf5490f1aa33ffb9966301e02be9a9`, patched checkout `.cache/die-t3code-v0042`. Current probes verify the pin and canonical `web/t3.patch`. Initial results from the older `.cache/die-t3code` checkout are explicitly marked stale and excluded from current-release conclusions.
+Current web pin: `719a76ca1dbf5490f1aa33ffb9966301e02be9a9`, patched checkout `.cache/die-t3code-v0042`. Current probes verify the pin and canonical `web/t3.patch`. Initial results from the older `.cache/die-t3code` checkout are clearly marked stale and excluded from current-release conclusions.
 
 ## Confirmed cleanup/retention defects
 
@@ -22,13 +22,13 @@ Sequential, already-acknowledged helper calls remain in the bridge request map. 
 
 **Reproduction:** `bun scripts/leak-audit/bridge-retention.ts` uses the real bridge over owned in-memory streams. At 10,000 calls: 10,000 listeners and heap 0.86 → 5.87 MiB. Closing the bridge: zero listeners and 1.41 MiB. This is unbounded growth **inside one long execute**, not permanent leakage after each execute.
 
-**Remedy:** separate minimal result-ownership commit records from cancellable RPC state; retire acknowledged observational/error requests promptly. Keep the existing crash-safe notification ownership semantics.
+**Remedy:** separate minimal result-ownership commit records from cancellable RPC state. Retire acknowledged observational/error requests promptly. Keep the existing crash-safe notification ownership semantics.
 
 ### Web launcher cannot guarantee backend process-tree cleanup — medium/high, conditional
 
 `src/web/launcher.ts:87-102` forwards termination only to its direct child, without a dedicated process group or escalation deadline.
 
-**Reproduction:** `bun scripts/leak-audit/web-launcher-runtime.ts` uses controlled backends. A TERM-ignoring backend keeps the launcher alive; a backend that exits without cleaning its grandchild leaves that grandchild running after the launcher exits. All test processes were explicitly cleaned afterward. This demonstrates a fallback-cleanup defect, **not** that ordinary web shutdown always leaks.
+**Reproduction:** `bun scripts/leak-audit/web-launcher-runtime.ts` uses controlled backends. A TERM-ignoring backend keeps the launcher alive. A backend that exits without cleaning its grandchild leaves that grandchild running after the launcher exits. All test processes were explicitly cleaned afterward. This shows a fallback-cleanup defect, **not** that normal web shutdown always leaks.
 
 **Remedy:** explicit owned-process-group lifecycle on POSIX, bounded TERM-to-KILL escalation, and cleanup when the leader exits. Do not signal unrelated process groups.
 
@@ -42,7 +42,7 @@ Current web `apps/server/src/provider/Layers/EventNdjsonLogger.ts:410-472` creat
 
 ### Failed desktop recording startup retains pending capture callbacks — medium-low, desktop-specific
 
-Current web `apps/web/src/browser/browserRecording.ts:322,356-380,416-443`: if the native capture trigger never arrives, startup times out but the pending capture registration remains. A test rejected startup via the real timeout, then demonstrated that the failed tab's global trigger still returned true. Distinct failed tabs can accumulate pending callback/promise state; a late trigger can start stale work. This is not the ordinary browser/CLI path.
+Current web `apps/web/src/browser/browserRecording.ts:322,356-380,416-443`: if the native capture trigger never arrives, startup times out but the pending capture registration remains. A test rejected startup via the real timeout, then demonstrated that the failed tab's global trigger still returned true. Distinct failed tabs can accumulate pending callback/promise state. A late trigger can start stale work. This is not the normal browser/CLI path.
 
 **Remedy:** remove/cancel the pending native registration on timeout and every failed-start path. Repro: `node scripts/leak-audit/current-web-client-tests.mjs`.
 
@@ -56,11 +56,11 @@ Current web `apps/web/src/browser/browserRecording.ts:322,356-380,416-443`: if t
 
 **Important:** normal connection churn does not test a connected client that stops consuming output.
 
-Current `apps/server/src/ws.ts:3307-3317,3339-3350` uses `Stream.callback` for terminal output without a buffer limit. The installed Effect default is unbounded. Terminal ACK logic caps only the downstream in-flight window (8 chunks / 64 KiB), not the producer queue upstream. A noisy terminal plus a live stalled/non-ACKing subscriber can therefore accumulate output until disconnect. A second terminal pending-process-event queue and preview's unbounded PubSub have similar producer/consumer imbalance risks.
+Current `apps/server/src/ws.ts:3307-3317,3339-3350` uses `Stream.callback` for terminal output without a buffer limit. The installed Effect default is unbounded. Terminal ACK logic caps only the downstream in-flight window (8 chunks / 64 KiB), not the producer queue upstream. A noisy terminal plus a live stalled/non-ACKing subscriber can accumulate output until disconnect. A second terminal pending-process-event queue and preview's unbounded PubSub have similar producer/consumer imbalance risks.
 
 **Remedy:** bound bytes/items at the actual producer queue, with explicit pause/disconnect or truncation/replay behavior. Quiet reconnect tests are not evidence that these overload paths are bounded. This audit did not measure current full-socket saturation throughput or retained bytes.
 
-Terminal history is separately bounded to 8 MiB / 5,000 lines per session and 128 inactive sessions—still approximately 1 GiB of possible inactive history. Active sessions are outside that inactive-count cap.
+Terminal history is separately bounded to 8 MiB / 5,000 lines per session and 128 inactive sessions—still about 1 GiB of possible inactive history. Active sessions are outside that inactive-count cap.
 
 **Rejected earlier lead:** timed-out preview automation requests are not a current-version leak: current code disconnects the host and shuts down the queue on timeout. Do not apply the stale-checkout report's claim.
 
@@ -82,7 +82,7 @@ Journal reproduction: `bun scripts/leak-audit/session-journal.ts`. Execute captu
 - **2,000 CLI session replacements:** exactly 9 FDs, 16 threads, zero children; RSS showed GC sawtooth/plateau rather than monotonic accumulation.
 - **2,000 mixed CLI turns:** stable 11–12 FDs, 17 threads, zero children; clean exit. RSS still drifted (~110 → 191 MiB cold-to-end), so this run does **not** prove absence of live-object retention. Successful native compaction was not exercised; generic local-provider compaction attempts were cancelled.
 - **Execute lifecycle stress:** 8 FDs throughout; 6/6 deliberately pending bridge handlers aborted; 0/10 test descendants survived; RSS increased only 48 KiB over the final 120 normal executions.
-- **1,010 ordinary web-launcher fixture exits:** no retained FDs or SIGINT/SIGTERM listeners.
+- **1,010 normal web-launcher fixture exits:** no retained FDs or SIGINT/SIGTERM listeners.
 - **3,000 current-web subscription reconnects under Node with GC instrumentation:** heap ~77.3 → 79.5 MiB settled, only ~0.20 MiB growth from cycle 1,500 to 3,000; FDs declined to idle baseline, watchers stayed at 3, no children remained. This is positive reconnect-cleanup evidence, not proof about stalled consumers or the shipped Bun allocator.
 - **Actual bundled Bun `dist/die web` v0.3.4:** 600 reconnect cycles plus 64 held subscriptions; all held FDs released, 21 threads unchanged, zero backend descendants. After quiescence RSS was 294,180 KiB versus 301,204 KiB warmed baseline; FDs 25 → 21. All owned process identities stopped. RSS is not a heap measurement.
 - 68 focused history/UI/bounds tests, 83 execute/bridge/launcher tests, and 728 targeted current-web tests/probes passed. TypeScript checking passed after adding the durable audit scripts.
@@ -97,7 +97,7 @@ Journal reproduction: `bun scripts/leak-audit/session-journal.ts`. Execute captu
 
 ## Detailed evidence
 
-See `wisdom/resources/leak-audit.md` for the work log; `wisdom/resources/leak-audit-current-web.md` for current-version web detail and source citations; `wisdom/resources/leak-audit-bundled-web.md` for shipped-Bun measurements. Durable probes live in `scripts/leak-audit/`. Current-version web probes are named `current-web-*`; the original `web-runtime-probe.mjs` and `server-shutdown-probe.mjs` target the stale checkout and are historical evidence only.
+See `wisdom/resources/leak-audit.md` for the work log; `wisdom/resources/leak-audit-current-web.md` for current-version web detail and source citations; `wisdom/resources/leak-audit-bundled-web.md` for shipped-Bun measurements. Durable probes live in `scripts/leak-audit/`. Current-version web probes are named `current-web-*`. The original `web-runtime-probe.mjs` and `server-shutdown-probe.mjs` target the stale checkout and are historical evidence only.
 
 ## Recommended order
 

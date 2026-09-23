@@ -2,7 +2,7 @@
 
 ## Scope and safety
 
-Audited the real compiled `dist/die` RPC process against an in-process, loopback OpenAI-compatible fake model. No paid/external API was used. Every run used a fresh `/var/tmp/die-cli-runtime-soak-*` root with isolated `HOME`, `PI_CODING_AGENT_DIR`, and `DIE_CODING_AGENT_DIR`. The harness only terminated the exact child it spawned on error; it does not use `pkill` or touch an existing server/session.
+Audited the real compiled `dist/die` RPC process against an in-process, loopback OpenAI-compatible fake model. No paid/external API was used. Every run used a fresh `/var/tmp/die-cli-runtime-soak-*` root with isolated `HOME`, `PI_CODING_AGENT_DIR`, and `DIE_CODING_AGENT_DIR`. The harness only terminated the exact child it spawned on error. It does not use `pkill` or touch an existing server/session.
 
 Reusable harness: `scripts/leak-audit/cli-rpc-soak.ts`.
 
@@ -33,7 +33,7 @@ Command:
 * 2,000 consecutive real `new_session` operations, 0 model requests, 14,005 RPC events, clean status-0 exit.
 * FD count was exactly 9 throughout; threads exactly 16; recursive children exactly 0.
 * RSS showed GC/allocator sawtooth rather than accumulation: 194,060 KiB at replacement 1,000, then ranged 172,276-217,528 KiB through replacements 1,000-2,000, ending at 208,252 KiB. Linear slope over the final 1,000 replacements was **-12.1 KiB/replacement**.
-* This demonstrates practical plateau for the session teardown path: old AgentSession/SessionManager/extension instances are not producing monotonic RSS, FD, thread, or child growth under very aggressive replacement.
+* This shows practical plateau for the session teardown path: old AgentSession/SessionManager/extension instances are not producing monotonic RSS, FD, thread, or child growth under very aggressive replacement.
 
 A shorter 600-turn mixed run had the same stable FD/thread/child behavior and RSS 161,540 KiB at its final sample.
 
@@ -57,6 +57,6 @@ No concrete missed unsubscribe, persistent timer, FD, signal-listener, or owned-
 
 ## Assessment / limitations
 
-**Conclusion:** practical session teardown plateaus under 2,000 replacements, and OS resources remain bounded in a 2,000-turn mixed run. There is no demonstrated FD/thread/child leak. The mixed workload's RSS still drifts upward after warmup, so it would be too strong to claim a complete heap plateau. A future follow-up should run the compiled binary with an explicitly supported JSC/Bun heap-profiler mode (if available) and compare retained types after 1,000 vs 2,000 turns; externally sampled RSS cannot distinguish retained JS objects from allocator arenas/JIT/network pools.
+**Conclusion:** practical session teardown plateaus under 2,000 replacements, and OS resources stay bounded in a 2,000-turn mixed run. There is no demonstrated FD/thread/child leak. The mixed workload's RSS still drifts upward after warmup, so it would be too strong to claim a complete heap plateau. A future follow-up should run the compiled binary with an explicitly supported JSC/Bun heap-profiler mode (if available) and compare retained types after 1,000 vs 2,000 turns. Externally sampled RSS cannot distinguish retained JS objects from allocator arenas/JIT/network pools.
 
-Successful native/cache-affine compaction was not feasible with the generic local fake route in this harness; the cancellation path was soaked. This avoids duplicating the separate journal/compaction-retention audit.
+Successful native/cache-affine compaction was not feasible with the generic local fake route in this harness. The cancellation path was soaked. This avoids duplicating the separate journal/compaction-retention audit.

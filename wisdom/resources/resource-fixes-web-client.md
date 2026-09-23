@@ -1,6 +1,6 @@
 # Web client resource fixes (current pin 719a76ca)
 
-Scope: `.cache/die-t3code-v0042/apps/web/**` only. The desktop recording timeout issue was intentionally not changed because it is unreachable in ordinary Die web. Tiny navigation/error/favicon/icon caches were also left alone because the audit did not establish material impact. No patch was regenerated.
+Scope: `.cache/die-t3code-v0042/apps/web/**` only. The desktop recording timeout issue was intentionally not changed because it is unreachable in normal Die web. Tiny navigation/error/favicon/icon caches were also left alone because the audit did not establish material impact. No patch was regenerated.
 
 ## Implemented
 
@@ -11,7 +11,7 @@ Scope: `.cache/die-t3code-v0042/apps/web/**` only. The desktop recording timeout
   - Tests cover supported-language deduplication, unsupported-label retirement/canonical text reuse, and bounded eviction.
 - Pull request handoff prompts
   - Added a 128-entry LRU bound for full prompt strings remembered by draft.
-  - Updating a draft refreshes its recency, preserving ordinary prompt replacement/handoff behavior for active/recent drafts.
+  - Updating a draft refreshes its recency, preserving normal prompt replacement/handoff behavior for active/recent drafts.
   - Tests cover the bound, oldest-entry eviction, and refresh behavior.
 
 ## Validation

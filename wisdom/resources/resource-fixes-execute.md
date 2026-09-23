@@ -1,6 +1,6 @@
 # Execute lifecycle/resource release fixes
 
-2026-09-18. Scope: src/typescript/** and execute/bridge tests only. Read wisdom/resources/memory-resource-judgment.md and leak-audit-cli/execution notes. Two workers owned disjoint bridge versus capture/execution files; orchestrator reviewed integration and added budget edge/schema tests.
+2026-09-18. Scope: src/typescript/** and execute/bridge tests only. Read wisdom/resources/memory-resource-judgment.md and leak-audit-cli/execution notes. Two workers owned disjoint bridge versus capture/execution files. Orchestrator reviewed integration and added budget edge/schema tests.
 
 ## Implemented
 
@@ -9,7 +9,7 @@
 - Foreground ACK remains provisional: only clean worker completion commits notification ownership. Crash, cancellation, disconnect-before-ACK, and failed delivery restore notification ownership. No task-manager changes.
 - Automatic complete stdout/stderr capture now shares a **10 MiB per-execution default byte budget**, configurable via execute **outputByteLimit** (nonnegative safe integer). Zero disables complete-byte retention, not the separate bounded preview. The tool description and source document the policy; no default timeout added.
 - Metadata: outputByteLimit, outputBytes, capturedOutputBytes, outputTruncated, stdoutBytes/stderrBytes, stdoutCapturedBytes/stderrCapturedBytes. Counters distinguish observed bytes from the retained budget prefix; filesystem/read errors remain separately explicit in outputArtifactErrors.
-- Complete artifacts retain only the budgeted prefixes, draining/counting subsequent output without writing it. Inline tail contracts (4,000 combined characters and existing line limits) remain independent and unchanged. Formatting explicitly reports truncation and never calls a limited artifact complete.
+- Complete artifacts keep only the budgeted prefixes, draining/counting subsequent output without writing it. Inline tail contracts (4,000 combined characters and existing line limits) remain independent and unchanged. Formatting clearly reports truncation and never calls a limited artifact complete.
 - Both output pumps settle before finalization; capture result/handle closure runs in execution finally even after pump rejection. Read errors are exposed as artifact metadata.
 - No generic concurrency cap, artifact expiry/deletion, arbitrary timeout, tasks/task-manager/web edit, installation, commit, or tag.
 
@@ -24,6 +24,6 @@
 
 ## Files
 
-src/typescript/job-bridge.ts, output-capture.ts, execution.ts, extension.ts; tests/job-bridge-protocol.test.ts, execute-output-capture.test.ts, typescript-execution.test.ts.
+src/typescript/job-bridge.ts, output-capture.ts, execution.ts, extension.ts. Tests/job-bridge-protocol.test.ts, execute-output-capture.test.ts, typescript-execution.test.ts.
 
-Budget scope is per execution, not cumulative session storage. Existing artifacts remain evidence; truncation is explicit rather than pretending unlimited capture. This is resource safety, not a sandbox boundary.
+Budget scope is per execution, not cumulative session storage. Existing artifacts remain evidence. Truncation is explicit rather than pretending unlimited capture. This is resource safety, not a sandbox boundary.

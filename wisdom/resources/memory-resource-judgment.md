@@ -2,13 +2,13 @@
 
 # Which audit findings deserve action?
 
-2026-09-18. Judgment only; no implementation authorized/applied. Companion evidence: [audit](./memory-resource-audit.md).
+2026-09-18. Judgment only. No implementation authorized/applied. Companion evidence: [audit](./memory-resource-audit.md).
 
 ## Standard
 
-Engineering size is not a veto. Judge expected supported workloads, user-visible harm, lifecycle/contract violations, evidence confidence, and whether the retained resource is actually needed in that form. A large useful dataset is not a leak; redundant lifetime ownership can be. An unbounded collection alone is insufficient evidence. Do not improve memory by silently damaging history, output ordering, task-delivery guarantees, or locking correctness.
+Engineering size is not a veto. Judge expected supported workloads, user-visible harm, lifecycle/contract violations, evidence confidence, and whether the retained resource is actually needed in that form. A large useful dataset is not a leak. Redundant lifetime ownership can be. An unbounded collection alone is insufficient evidence. Do not improve memory by silently damaging history, output ordering, task-delivery guarantees, or locking correctness.
 
-Two independent reviewers examined intentional-history and lifecycle findings. Their notes are in wisdom/resources/leak-audit-judgment-history.md and leak-audit-judgment-lifecycle.md. They disagreed on some policy/defense-in-depth items; the decisions below are the lead's synthesis, not a vote.
+Two independent reviewers examined intentional-history and lifecycle findings. Their notes are in wisdom/resources/leak-audit-judgment-history.md and leak-audit-judgment-lifecycle.md. They disagreed on some policy/defense-in-depth items. The decisions below are the lead's synthesis, not a vote.
 
 ## Worth addressing in Die
 
@@ -37,7 +37,7 @@ My recommendation nevertheless favors bounded resident historical data for this 
 
 ## Do not prioritize as Die fixes now
 
-- **Desktop recording timeout registration:** real correctness bug (late stale capture is worse than its small memory footprint), but unreachable in ordinary Die web. previewBridge resolves window.desktopBridge?.preview or null; startBrowserRecording rejects immediately with no bridge. Recommend upstream fix; not a current Die CLI/web release blocker. Earlier advice putting this in Die's top five was overbroad.
+- **Desktop recording timeout registration:** real correctness bug (late stale capture is worse than its small memory footprint), but unreachable in normal Die web. previewBridge resolves window.desktopBridge?.preview or null; startBrowserRecording rejects immediately with no bridge. Recommend upstream fix; not a current Die CLI/web release blocker. Earlier advice putting this in Die's top five was overbroad.
 - **Tiny navigation/error/favicon/icon sets:** no material impact measured; typical cardinality is modest. Accept current behavior pending evidence rather than add eviction state everywhere.
 - **Terminal internal processing queue, preview PubSub, VCS maps, successful preview host assignments:** source shapes justify targeted measurements, not blanket queue/cache rewrites. Their workload/rate/owner semantics differ from high-volume terminal subscriber buffering.
 - **Windows process-tree handling:** not a current shipped-platform target here. Revisit with a Windows ownership design when supporting it.
@@ -51,4 +51,4 @@ My recommendation nevertheless favors bounded resident historical data for this 
 3. Make original-history resident-memory scalability an explicit architecture goal; address lower-impact obsolete caches/extension records without sacrificing semantics.
 4. Keep normal storage growth and genuinely active working memory; measure the uncertain cases instead of manufacturing fixes.
 
-Unlimited retained data, bounded total storage, and zero data loss cannot all be promised simultaneously. Bounded RAM plus durable disk-backed history is achievable; total storage eventually requires an explicit user-visible retention decision.
+Unlimited saved data, bounded total storage, and zero data loss cannot all be promised simultaneously. Bounded RAM plus durable disk-backed history is achievable. Total storage eventually requires an explicit user-visible retention decision.

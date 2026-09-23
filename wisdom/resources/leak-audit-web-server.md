@@ -19,9 +19,9 @@ Both terminal streams are constructed with `Stream.callback(...)` and no `buffer
 
 `withTerminalOutputWindow` limits unacknowledged chunks sent by the RPC protocol (8 chunks / 64 KiB), but it is downstream of this unbounded callback queue. Once the window fills, protocol pulls stop while PTY data continues accumulating in the callback queue. The window therefore does not provide an end-to-end memory bound.
 
-**Reachable scenario:** an authenticated WebSocket client starts/attaches to a noisy terminal (for example a command continuously writing output), then remains connected but stops acknowledging stream chunks. The same issue applies to the aggregate terminal-events subscription. Memory grows with terminal output until the request/socket is canceled or the process runs out of memory. A slow/lost client can trigger it accidentally; a credentialed client can trigger it deliberately.
+**Reachable scenario:** an authenticated WebSocket client starts/attaches to a noisy terminal (for example a command continuously writing output), then remains connected but stops acknowledging stream chunks. The same issue applies to the aggregate terminal-events subscription. Memory grows with terminal output until the request/socket is canceled or the process runs out of memory. A slow/lost client can trigger it accidentally. A credentialed client can trigger it deliberately.
 
-**Evidence:** source inspection is conclusive about the missing bound. An isolated script using the exact installed `Stream.callback` default and the same `Queue.offer` listener shape stalled after its first item, offered 5,000 unique ~2 KiB events in 16 ms, and recovered all 5,000 only when consumption resumed; measured heap growth was ~5 MiB. This did not involve the user server. The exact output was:
+**Evidence:** source inspection is conclusive about the missing bound. An isolated script using the exact installed `Stream.callback` default and the same `Queue.offer` listener shape stalled after its first item, offered 5,000 unique ~2 KiB events in 16 ms, and recovered all 5,000 only when consumption resumed. Measured heap growth was ~5 MiB. This did not involve the user server. The exact output was:
 
 `{"offers":5000,"offerElapsedMs":16,"retainedUntilConsumerResumed":5000,"heapDeltaMiB":5}`
 
@@ -36,7 +36,7 @@ The exact growth for PTY traffic depends on event/chunk sizes and runtime GC, bu
 - `apps/server/src/mcp/PreviewAutomationBroker.ts:390-399` keeps that queue alive for the lifetime of the host stream.
 - Reachability from web RPC: `apps/server/src/ws.ts:3119-3135` (preview host connect/respond/focus handlers).
 
-**Reachable scenario:** a desktop preview host establishes its stream and then pauses reading without disconnecting. Provider MCP preview invocations still enqueue request objects. Each invocation eventually times out and its Deferred/pending-map entry is cleaned, but the request object (including input/context strings) remains in the unbounded queue. Concurrent tool calls can enqueue rapidly; keeping the host connection open retains all stale requests indefinitely.
+**Reachable scenario:** a desktop preview host establishes its stream and then pauses reading without disconnecting. Provider MCP preview invocations still enqueue request objects. Each invocation eventually times out and its Deferred/pending-map entry is cleaned, but the request object (including input/context strings) remains in the unbounded queue. Concurrent tool calls can enqueue rapidly. Keeping the host connection open retains all stale requests indefinitely.
 
 **Evidence:** an isolated script instantiated the real broker, acquired a host stream, consumed only its `connected` event, then made 2,000 invocations with zero timeout. All invocations timed out, but after resuming the stream all 2,000 stale request events were still present. It completed in 155 ms:
 
@@ -56,7 +56,7 @@ The comment claims that WebSocket clients backpressure on downstream queues, but
 
 **Reachable scenario:** one authenticated client subscribes and stops ACKing/reading while another client repeatedly calls preview navigation, resize, refresh, or status RPCs. Every event is retained for the stalled subscriber until its stream scope closes. Events are individually small, so this is slower than finding 1, but there is no item/byte/age limit.
 
-**Evidence:** definitive from the unbounded PubSub construction and WebSocket exposure. I did not run a full socket reproduction; actual growth rate depends on preview mutation rate.
+**Evidence:** definitive from the unbounded PubSub construction and WebSocket exposure. I did not run a full socket reproduction. Actual growth rate depends on preview mutation rate.
 
 ### 4. Low — per-thread semaphore maps retain every thread ID for the service lifetime
 

@@ -16,23 +16,23 @@ Source paths below are relative to this checkout. Detailed companion reports in 
 
 ## Executive conclusion
 
-**No linear connection/subscription, FD, task, or child-process leak reproduced in 3,000 authenticated WebSocket subscribe/disconnect cycles.** This is not a clean bill of health for all web state: specific frontend failure-path retention and provider/logger growth were reproduced; several high-cardinality caches and producer backlogs remain.
+**No linear connection/subscription, FD, task, or child-process leak reproduced in 3,000 authenticated WebSocket subscribe/disconnect cycles.** This is not a clean bill of health for all web state: specific frontend failure-path retention and provider/logger growth were reproduced. Several high-cardinality caches and producer backlogs remain.
 
-Priorities: cancel stale desktop recording captures; bound terminal producer-to-consumer buffering rather than just its ACK window; retire provider log sinks/old active-file exemptions; bound high-cardinality frontend and extension caches. Small semaphore/timestamp maps are lower priority.
+Priorities: cancel stale desktop recording captures. Bound terminal producer-to-consumer buffering rather than just its ACK window. Retire provider log sinks/old active-file exemptions. Bound high-cardinality frontend and extension caches. Small semaphore/timestamp maps are lower priority.
 
 ## Reproduced current-source retention
 
 ### 1. Desktop recording startup timeout retains pending native capture — medium-low
 
-apps/web/src/browser/browserRecording.ts:322 registers pendingTabMediaCaptures. Timeout cleanup at 356-380 clears only the timer; failed-start cleanup at 416-443 does not remove/cancel the capture.
+apps/web/src/browser/browserRecording.ts:322 registers pendingTabMediaCaptures. Timeout cleanup at 356-380 clears only the timer. Failed-start cleanup at 416-443 does not remove/cancel the capture.
 
-The current harness simulates native requestDisplayMediaCapture returning without invoking its global trigger. startBrowserRecording rejects after its real configured timeout; invoking the trigger for that failed tab still returns **true**, proving the private pending-capture entry survived. Distinct failed tabs can retain callback/promise state for page lifetime, and a late trigger can initiate stale capture work. Normal media teardown is otherwise tested.
+The current harness simulates native requestDisplayMediaCapture returning without invoking its global trigger. startBrowserRecording rejects after its real configured timeout. Invoking the trigger for that failed tab still returns **true**, proving the private pending-capture entry survived. Distinct failed tabs can retain callback/promise state for page lifetime, and a late trigger can initiate stale capture work. Normal media teardown is otherwise tested.
 
 Repro: node scripts/leak-audit/current-web-client-tests.mjs (missing-native-trigger test).
 
 ### 2. Pi per-thread semaphores survive sessions and rejected starts — low
 
-apps/server/src/provider/Layers/PiAdapter.ts:411-423 memoizes locks. startSession acquires one before mode validation (1859 onward); stopSession/stopAll (2397-2401) never retire locks.
+apps/server/src/provider/Layers/PiAdapter.ts:411-423 memoizes locks. startSession acquires one before mode validation (1859 onward). StopSession/stopAll (2397-2401) never retire locks.
 
 Real source-copy instrumentation with read-only observers:
 - Unique rejected starts, stopSession each, stopAll every 100: **locks 100 → 200 → 300; sessions=0; leases=0; zero process spawns**.
@@ -42,17 +42,17 @@ Service-lifetime small-key retention, not a live-process leak. Naive lock deleti
 
 ### 3. Completed Pi extension-subagent records survive turns — low/medium, extension-specific
 
-PiAdapter.ts:1193-1217 retains extensionSubagentTasks by unique toolCallId+index. Completion changes state; no deletion/clear exists. Three fully settled fake-provider turns, output actively consumed, retained **100 → 200 → 300 completed records**, with 1,000-character descriptions. stopAll released the owning session. Adjacent workflowTasks has the same no-delete source shape (1298-1365), not separately reproduced.
+PiAdapter.ts:1193-1217 retains extensionSubagentTasks by unique toolCallId+index. Completion changes state. No deletion/clear exists. Three fully settled fake-provider turns, output actively consumed, retained **100 → 200 → 300 completed records**, with 1,000-character descriptions. stopAll released the owning session. Adjacent workflowTasks has the same no-delete source shape (1298-1365), not separately reproduced.
 
 **Not default die job history:** dieTasksById is correctly bounded at 50, with bounded descriptions/summaries (148-150,1515-1521). This affects Pi extension compatibility paths in long-lived sessions.
 
 ### 4. Provider logger retains every thread sink and exempts its files from aggregate retention — low memory, material disk risk
 
-EventNdjsonLogger.ts:410-435 creates a RotatingFileSink per thread segment; only write failure deletes it (456). Retention considers every ever-created sink file active (468-472), and active files cannot be deleted (314-324). ProviderEventLoggers.ts creates one shared server-lifetime store.
+EventNdjsonLogger.ts:410-435 creates a RotatingFileSink per thread segment. Only write failure deletes it (456). Retention considers every ever-created sink file active (468-472), and active files cannot be deleted (314-324). ProviderEventLoggers.ts creates one shared server-lifetime store.
 
-Real current logger test: 100 unique thread writes, batchWindowMs=0, test-clock advances before every write, maxTotalBytes=1024. Observed **sinks=100; pending=0; files=100; bytes=110890**. No thread-ended API retires sinks. Individual-file rotation remains bounded; aggregate ever-used active-file retention does not. RotatingFileSink retains small metadata, **not open descriptors** (packages/shared/src/logging.ts:44-95).
+Real current logger test: 100 unique thread writes, batchWindowMs=0, test-clock advances before every write, maxTotalBytes=1024. Observed **sinks=100. Pending=0. Files=100. Bytes=110890**. No thread-ended API retires sinks. Individual-file rotation stays bounded. Aggregate ever-used active-file retention does not. RotatingFileSink retains small metadata, **not open descriptors** (packages/shared/src/logging.ts:44-95).
 
-Repro for 2–4: node scripts/leak-audit/current-web-provider.mjs. Verifies pin+patch; copies exact current source/harness into an owned temporary directory, adds only read-only state observers, cleans up copies. **4 custom tests passed.**
+Repro for 2–4: node scripts/leak-audit/current-web-provider.mjs. Verifies pin+patch. Copies exact current source/harness into an owned temporary directory, adds only read-only state observers, cleans up copies. **4 custom tests passed.**
 
 ## Source-confirmed risks, not full runtime reproductions
 
@@ -76,7 +76,7 @@ Repro for 2–4: node scripts/leak-audit/current-web-provider.mjs. Verifies pin+
 - CursorAdapter.ts:345,376-396 similarly memoizes semaphores (nondefault provider, source-only).
 - preview/Manager.ts:157-174 uses PubSub.unbounded. Departed subscriptions are scoped; a stalled live subscriber can accumulate backlog. Unbounded buses are not automatically post-disconnect leaks.
 - mcp/PreviewAutomationBroker.ts:116-145,161-162,459-535 retains successful host assignments keyed by environment+providerSessionId until the host disconnects/replaces. No provider-session-ended hook. Small source-only records during a long-lived successful desktop connection.
-- provider/pi/PiRpcClient.ts:116,225-252 only limits unfinished stdout lines when maxLineLength is set; PiAdapter does not set it. Malformed local-child output without newlines can grow remainder. No ordinary RPC leak reproduced; stderr is drained.
+- provider/pi/PiRpcClient.ts:116,225-252 only limits unfinished stdout lines when maxLineLength is set; PiAdapter does not set it. Malformed local-child output without newlines can grow remainder. No normal RPC leak reproduced; stderr is drained.
 
 ## Corrected exclusions and cleanup checks
 

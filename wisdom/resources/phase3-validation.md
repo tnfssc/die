@@ -56,7 +56,7 @@ Includes the ANSI transcript, recorded frames, full history, final frame, result
 
 1. While waiting for review, the parent made unnecessary `execute` calls that printed waiting acknowledgements. It did not poll `task`, but still spent tool calls/model turns without useful work.
 2. One attempted task call omitted required `action`; schema validation rejected it, and the model corrected the call to spawn the test command.
-3. The parent emitted implementation summaries before test completion, explicitly saying tests were still running. It did not fabricate a passing result, but the interaction was more repetitive than intended.
+3. The parent emitted implementation summaries before test completion, clearly saying tests were still running. It did not fabricate a passing result, but the interaction was more repetitive than intended.
 4. Review suggestions were not exhaustively implemented: successful exact safe-integer boundaries, fractional prices, and negative infinity were among the untested suggestions. The four passing fixture tests are not exhaustive contract coverage.
 5. This was a small fixture on Linux, not a large repository study, cross-platform validation, or a resource benchmark.
 
@@ -64,21 +64,21 @@ Includes the ANSI transcript, recorded frames, full history, final frame, result
 
 Changes:
 
-- Tool guidance now explicitly permits ending the turn when no independent work remains, prohibits no-op `execute` waiting calls, and requires a single pending-work acknowledgement.
+- Tool guidance now clearly permits ending the turn when no independent work remains, prohibits no-op `execute` waiting calls, and requires a single pending-work acknowledgement.
 - `task` descriptions and guidelines show the required `action` with single-command and batch spawn examples. The strict schema is unchanged.
 - Spawn results remind the model that ending the turn does not cancel background work.
 - A new authenticated JSON-event regression requires exactly one valid task spawn, no other tool calls, an automatic completion event, and the final answer after that event.
 
-That regression initially failed: the model correctly yielded, but print/JSON mode disposed its session before a four-second task completed. Earlier half-second completion coverage had missed this race. An `agent_end` hook now holds the noninteractive idle boundary until a task completes (or the turn is aborted), flushes its notification, and lets Pi continue. Spawn still returns immediately; TUI/RPC interaction is not blocked. Error/aborted turns do not enter the wait.
+That regression initially failed: the model correctly yielded, but print/JSON mode disposed its session before a four-second task completed. Earlier half-second completion coverage had missed this race. An `agent_end` hook now holds the noninteractive idle boundary until a task completes (or the turn is aborted), flushes its notification, and lets Pi continue. Spawn still returns immediately. TUI/RPC interaction is not blocked. Error/aborted turns do not enter the wait.
 
 Validation:
 
-- **63 deterministic tests passed**, with 6 authenticated tests skipped in the ordinary suite.
+- **63 deterministic tests passed**, with 6 authenticated tests skipped in the normal suite.
 - **All 6 authenticated Luna tests passed**, including the new one-call pending-task regression.
 - Typecheck and build passed.
 - Deterministic lifecycle coverage checks print/JSON waiting for one result rather than all tasks, notification flushing, cancellation, and the nonblocking TUI path.
 
-The same cart-total prompt and original defective fixture were rerun in the real TUI with Luna/low. The root made six useful `execute` calls (inspection, implementation/test edits, and checking/correcting a test edit), one sub-agent call, and two valid task spawns. There were **no no-op waiting calls, task polls, or missing-action validation failures**. Review and initial test results arrived in a batch; the agent added review-driven boundary tests and ran a final asynchronous test command. An independent run confirmed **4 tests, 15 assertions, 0 failures**.
+The same cart-total prompt and original defective fixture were rerun in the real TUI with Luna/low. The root made six useful `execute` calls (inspection, implementation/test edits, and checking/correcting a test edit), one sub-agent call, and two valid task spawns. There were **no no-op waiting calls, task polls, or missing-action validation failures**. Review and initial test results arrived in a batch. The agent added review-driven boundary tests and ran a final asynchronous test command. An independent run confirmed **4 tests, 15 assertions, 0 failures**.
 
 There were still two brief acknowledgements in each waiting phase (commentary plus final text), despite the single-acknowledgement guidance. No test success was claimed before completion. This is an improvement observed in one repeat run, not a guarantee of universal model compliance.
 

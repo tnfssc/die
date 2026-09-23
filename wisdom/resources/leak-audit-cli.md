@@ -24,7 +24,7 @@ Isolated Duplex repro using the real `serveJobBridge`, `installJobGlobals`, and 
 - 10,000 sequential RPCs left **10,000** listeners and measured about **5.29 MB heap growth after forced GC** on Bun 1.4; bridge close released the listeners.
 - Repro used `/tmp/die-bridge-leak-repro.ts` and made no repository changes.
 
-This is scoped retention rather than a process-lifetime permanent leak, but it is unbounded during one user-controlled execute invocation. Keep only the minimal commit token for result-owning foreground calls, and delete/abort request state immediately for observational/error/background replies; alternatively separate delivery-commit state from request cancellation state.
+This is scoped retention rather than a process-lifetime permanent leak, but it is unbounded during one user-controlled execute invocation. Keep only the minimal commit token for result-owning foreground calls, and delete/abort request state immediately for observational/error/background replies. Alternatively separate delivery-commit state from request cancellation state.
 
 ### 2. Cancellation between child-session preparation and spawn leaves an orphan persisted subagent session (low/medium)
 
@@ -51,7 +51,7 @@ Each hit leaves a child JSONL session containing a header and identity entries b
 
 A shell command or execute script that starts a long-lived grandchild can survive `jobs.stop`, timeout, session shutdown, or execute cancellation on Windows. The orphan can retain memory, files, sockets, and CPU after Die reports cleanup. Use a Windows process-tree primitive (for example a Job Object, or a carefully controlled tree-kill mechanism) rather than only `ChildProcess.kill`.
 
-This was established by control flow/API semantics; the audit host is Linux, so no Windows runtime repro was performed.
+This was established by control flow/API semantics. The audit host is Linux, so no Windows runtime repro was performed.
 
 ## Deliberate history/artifact retention (not misclassified as a handle leak)
 
@@ -60,9 +60,9 @@ This was established by control flow/API semantics; the audit host is Linux, so 
 - `TaskManager.#tasks` is a session-lifetime map (`src/tasks/task-manager.ts:135-143`). Spawn inserts at `194`; there is no per-task deletion. `jobs.list` and `jobs.inspect` expose completed history (`286-307`; `src/tasks/job-service.ts:239-253`).
 - Process references and completion promises are cleared on child close (`src/tasks/task-manager.ts:227-251`), so completed jobs do **not** retain live child handles through `task.process`.
 - Output is bounded to 1,000,000 bytes per job (`src/tasks/task-manager.ts:10`, `188`) and `BoundedOutputBuffer` copies/compacts chunks (`src/tasks/output-buffer.ts:35-57,99-123`). Agent completion output adds at most 5,000 bytes (`src/tasks/agent-progress.ts:33`).
-- Nevertheless, aggregate retention is unbounded in job count. An isolated run of 25 completed commands each producing 1,000,000 bytes left all 25 jobs listed and measured roughly 27.8 MB heap / 27.4 MB external-memory increase on this Bun build after forced GC. The theoretical payload floor is 25 MB; 1,000 such jobs can retain about 1 GB plus metadata.
+- Still, aggregate retention is unbounded in job count. An isolated run of 25 completed commands each producing 1,000,000 bytes left all 25 jobs listed and measured roughly 27.8 MB heap / 27.4 MB external-memory increase on this Bun build after forced GC. The theoretical payload floor is 25 MB; 1,000 such jobs can retain about 1 GB plus metadata.
 
-This appears intentional to support session-local inspection/history, not an accidental lifecycle leak. It is still a resource-exhaustion risk for very long sessions; a count/byte budget with explicit eviction/persistence semantics would bound it.
+This appears intentional to support session-local inspection/history, not an accidental lifecycle leak. It is still a resource-exhaustion risk for very long sessions. A count/byte budget with explicit eviction/persistence semantics would bound it.
 
 ### Execute spill files persist intentionally, but disk use has no product retention budget
 
@@ -84,4 +84,4 @@ Thus there is no file-descriptor leak, but artifact bytes/directories accumulate
 
 ## Minor bounded/cumulative observation
 
-`registerExecuteTool` caches one output-padding number per distinct cwd in a process-lifetime `Map` (`src/typescript/extension.ts:27-37`) and does not clear it on session shutdown (`38-46`). In the normal CLI, cwd cardinality is effectively tiny; in an embedder that reuses one extension across arbitrarily many project roots this is technically unbounded, but the retained value is only one string and number per root and is not a meaningful current CLI leak.
+`registerExecuteTool` caches one output-padding number per distinct cwd in a process-lifetime `Map` (`src/typescript/extension.ts:27-37`) and does not clear it on session shutdown (`38-46`). In the normal CLI, cwd cardinality is effectively tiny. In an embedder that reuses one extension across arbitrarily many project roots this is technically unbounded, but the retained value is only one string and number per root and is not a meaningful current CLI leak.

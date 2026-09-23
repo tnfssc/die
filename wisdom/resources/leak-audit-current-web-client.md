@@ -5,7 +5,7 @@
 Audited the current working tree rooted at `.cache/die-t3code-v0042`, whose Git HEAD is
 `719a76ca1dbf5490f1aa33ffb9966301e02be9a9`. I treated the older
 `wisdom/resources/leak-audit-web-client.md` as unvalidated input and re-read the current sources.
-This audit owns `apps/web` and `packages/client-runtime`; it does not assess provider or server
+This audit owns `apps/web` and `packages/client-runtime`. It does not assess provider or server
 runtime ownership. No product source was changed.
 
 The sweep covered module-lifetime maps/sets and caches, Effect scopes/fibers/PubSubs, RPC WebSockets,
@@ -34,15 +34,15 @@ request intentionally omit its callback, advances the real source's timeout, obs
 start, then invokes `DESKTOP_PREVIEW_RECORDING_CAPTURE_TRIGGER`. It returns `true`, proving that
 the failed operation is still in the private map. The probe consumes the stale entry afterward.
 
-Each distinct timed-out tab can therefore retain a callback/promise graph for the page lifetime;
+Each distinct timed-out tab can retain a callback/promise graph for the page lifetime;
 a later stale trigger can also initiate display capture after startup was reported failed. This is
-a failure-path leak rather than ordinary recording growth, so severity is below medium. Calling the
+a failure-path leak rather than normal recording growth, so severity is below medium. Calling the
 prepared capture's `cancel` operation on timeout/failed-start (or deleting by identity there) would
 close the gap.
 
 ### 2. Medium-low — syntax highlighter cache grows for arbitrary Markdown language labels
 
-**Source-confirmed; behavior covered by a passing source test, but heap growth was not measured.**
+**Source-confirmed. Behavior covered by a passing source test, but heap growth was not measured.**
 The syntax cache does exist in this checkout, contrary to the possibility noted in the assignment.
 
 - `apps/web/src/lib/syntaxHighlighting.ts:18-38` owns a module-lifetime
@@ -61,7 +61,7 @@ and any additional library-internal retention is unverified, so this is not rate
 
 ### 3. Medium-low — PR handoff cache retains complete prompt text per draft
 
-**Source-only; no private-map heap probe.**
+**Source-only. No private-map heap probe.**
 
 - `apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx:261` declares module-lifetime
   `lastHandoffPromptByDraft`.
@@ -84,9 +84,9 @@ draft lifecycle would remove the growth path.
 - `apps/web/src/components/ChatView.logic.ts:1025-1059` retains dismissed branch-mismatch keys and
   one checkout boolean per distinct environment/cwd pair.
 - `apps/web/src/components/ChatMarkdown.tsx:1241-1271` retains every hostname whose favicon image
-  failed; Markdown link hosts are content-controlled.
+  failed. Markdown link hosts are content-controlled.
 - `apps/web/src/components/chat/MessagesTimeline.tsx:3704-3759` retains successful native tool
-  icon cache keys and URL strings; only a later image error removes an entry.
+  icon cache keys and URL strings. Only a later image error removes an entry.
 
 These hold small strings/numbers/booleans under normal use. They merit modest caps only if tabs are
 expected to traverse very large numbers of projects, PRs, worktrees, hosts, or native app URLs.
@@ -106,7 +106,7 @@ No accumulating WebSocket, PubSub, or per-subscriber queue was found.
   bounded window (lines 656-770), config-source death (lines 771-798), and direct/relay sockets that
   never open (lines 1194 onward). All passed.
 - Environment registry reconciliation deletes removed registrations/scopes/cache data at
-  `packages/client-runtime/src/connection/registry.ts:602-660`; targeted registry/resolver tests
+  `packages/client-runtime/src/connection/registry.ts:602-660`. Targeted registry/resolver tests
   passed.
 
 The page runtimes remain page-lifetime singletons. There is no demonstrated production leak from
@@ -116,7 +116,7 @@ that ownership. HMR replacement without disposal was not reproduced and is not c
 
 The stale note's `apps/web/src/projectIconModel.ts` claim does not apply: that file is absent in
 this checkout. Current favicon storage is implemented by
-`packages/client-runtime/src/projectFaviconCache.ts`; it limits source reads, trims by both entry
+`packages/client-runtime/src/projectFaviconCache.ts`. It limits source reads, trims by both entry
 count and byte count at lines 149-160, removes stale entries, and has passing cache tests.
 
 The potentially large remembered thread timeline is also capped at 16 and evicts old entries at
@@ -137,7 +137,7 @@ entries at `apps/web/src/rpc/requestLatencyState.ts:14,94-145`.
   are cleared at lines 391-413 and 460-479. The missing native-trigger case is the isolated gap
   reported above.
 - Terminal asynchronous setup disposes a late-created surface on cancellation at
-  `apps/web/src/components/ThreadTerminalDrawer.tsx:488-515`; setup cleanup/observer/timer disposal
+  `apps/web/src/components/ThreadTerminalDrawer.tsx:488-515`. Setup cleanup/observer/timer disposal
   is at lines 856-923, resize RAF cleanup at lines 963-978, and window listener removal at
   lines 1356-1377. The Ghostty surface removes DOM listeners and clears render/timer work in its
   disposal path at `apps/web/src/terminal/ghostty/surface.ts:1688-1730,1788-1800`.
@@ -146,7 +146,7 @@ entries at `apps/web/src/rpc/requestLatencyState.ts:14,94-145`.
   scopes and DOM listeners are symmetrically released at
   `apps/web/src/lib/backgroundActivityReporter.ts:125-141,214-238`.
 - Object URL creation sites were swept. Attachment previews revoke on removal/cleanup (for example
-  `apps/web/src/components/chat/ChatComposer.tsx:5363-5378`); download-only URLs use delayed
+  `apps/web/src/components/chat/ChatComposer.tsx:5363-5378`). Download-only URLs use delayed
   revocation. No additional retained URL path was established.
 
 ## Validation: tested versus source-only
@@ -173,9 +173,9 @@ used.
 
 ### Source-only conclusions
 
-Findings 2-4 are source retention analysis (with ordinary behavior tests where stated), not browser
+Findings 2-4 are source retention analysis (with normal behavior tests where stated), not browser
 heap snapshots. HMR singleton speculation is excluded. Device/terminal/listener/object-URL
-non-findings combine source ownership review with targeted tests; they are not an exhaustive browser
+non-findings combine source ownership review with targeted tests. They are not an exhaustive browser
 heap census.
 
 Durable audit entry points:

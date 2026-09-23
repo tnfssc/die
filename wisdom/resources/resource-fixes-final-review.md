@@ -20,4 +20,4 @@
 - Standalone smoke from the final build: **pass**; compiled `dist/die --version`: **0.4.0**.
 - Typecheck, format check, lint (warnings only), `git diff --check`, and v0.4.0 tag validation: **pass**.
 
-Local caveat only: this checkout's default `.cache/die-t3code` is stale and is intentionally rejected by the source-pin guard. Final build/smoke used the documented current `DIE_T3_SOURCE=.cache/die-t3code-v0042`; the release workflow starts from a clean runner and fetches the pinned revision, so this is not a release defect. Official CI asset/checksum verification remains the normal post-tag publication step.
+Local caveat only: this checkout's default `.cache/die-t3code` is stale and is intentionally rejected by the source-pin guard. Final build/smoke used the documented current `DIE_T3_SOURCE=.cache/die-t3code-v0042`. The release workflow starts from a clean runner and fetches the pinned revision, so this is not a release defect. Official CI asset/checksum check remains the normal post-tag publication step.

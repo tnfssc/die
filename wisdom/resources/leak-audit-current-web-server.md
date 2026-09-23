@@ -15,7 +15,7 @@ Older `leak-audit-web-server.md`, `web-runtime.md`, and the old `.cache/die-t3co
 
 ## Verdict
 
-No file-descriptor, task, child-process, WebSocket subscription, or connection-accounting leak reproduced under 3,000 sequential authenticated WebSocket subscribe/disconnect cycles. Heap growth was front-loaded and substantially flattened in the second half; this does **not** reproduce a linear per-connection leak.
+No file-descriptor, task, child-process, WebSocket subscription, or connection-accounting leak reproduced under 3,000 sequential authenticated WebSocket subscribe/disconnect cycles. Heap growth was front-loaded and substantially flattened in the second half. This does **not** reproduce a linear per-connection leak.
 
 Three source-only retention risks remain:
 
@@ -53,7 +53,7 @@ Workload: 3,000 sequential authenticated subscribed sockets, forced GC at checkp
 - 3,000: heap 83,597,536 B; fd 37; tasks 12
 - quiescent: heap 83,396,016 B; fd 34; tasks 12; sockets 2; descendants none
 
-First-half heap delta was +2,320,424 B; second-half delta was only +210,888 B (about 9% of first-half growth). Stable descriptors/tasks and the flattening forced-GC heap curve argue against linear connection or subscription retention.
+First-half heap delta was +2,320,424 B. Second-half delta was only +210,888 B (about 9% of first-half growth). Stable descriptors/tasks and the flattening forced-GC heap curve argue against linear connection or subscription retention.
 
 ### Current source tests
 
@@ -72,7 +72,7 @@ Result: **5 files passed, 120 tests passed**. This covers real current source te
 - PTY data/exit handlers are unsubscribed on cleanup (`Manager.ts:443-448`); kill-escalation fibers remove themselves (`:1665-1685`); manager finalization closes its worker scope and cleans live sessions (`:2490-2517`).
 - Terminal wire output windows are per-WebSocket protocol wrappers and delete per-request state on `Exit` (`terminal/OutputProtocol.ts:10-55`). Abrupt socket closure drops the whole per-connection wrapper; runtime churn did not retain handles linearly.
 - VCS poller subscription demand has an explicit retain/release pair and interruption (`VcsStatusBroadcaster.ts:606-725`), but that cleanup does not cover the status/lock maps called out above.
-- Server-lifetime PubSubs are scope-shutdown where explicitly acquired, and `Stream.fromPubSub`/`Stream.fromSubscription` subscriptions are scope-bound. No orphan subscriber was reproduced. Several buses are intentionally `PubSub.unbounded`; slow still-connected consumers can therefore accumulate backlog. **Source-only pressure risk, not a demonstrated post-disconnect leak.** Examples: `auth/SessionStore.ts:489`, `orchestration/Layers/RuntimeReceiptBus.ts:28`, `serverLifecycleEvents.ts:28`.
+- Server-lifetime PubSubs are scope-shutdown where explicitly acquired, and `Stream.fromPubSub`/`Stream.fromSubscription` subscriptions are scope-bound. No orphan subscriber was reproduced. Several buses are intentionally `PubSub.unbounded`; slow still-connected consumers can accumulate backlog. **Source-only pressure risk, not a demonstrated post-disconnect leak.** Examples: `auth/SessionStore.ts:489`, `orchestration/Layers/RuntimeReceiptBus.ts:28`, `serverLifecycleEvents.ts:28`.
 
 ## Durable repro
 

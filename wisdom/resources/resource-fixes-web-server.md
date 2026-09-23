@@ -10,7 +10,7 @@
 - On the first rejected offer, unsubscribe that listener immediately; drain the accepted ordered prefix and explicitly complete its stream. No silent drop-and-continue and no global producer backpressure. Healthy subscribers retain their full ordered stream.
 - Registration/finalization is idempotent, including overflow during registration.
 - src/terminal/SubscriberStream.test.ts blocks a real Effect stream consumer while publishing 256 events to slow and healthy streams. Slow listener is removed, its delivered prefix is exactly 33 events (one in-flight plus 32 queued), healthy receives all 256 plus ten subsequent events.
-- This proves the actual upstream stream adapter bound; it is not a full WebSocket/RSS soak or a total-process byte budget. Queue capacity is in events. Existing PTY/history/ACK limits remain separate.
+- This proves the actual upstream stream adapter bound; it is not a full WebSocket/RSS soak or a total-process byte budget. Queue capacity is in events. Existing PTY/history/ACK limits stay separate.
 - Metadata, preview, and terminal internal processing queues unchanged: insufficient evidence for blanket rewrites.
 
 ### Provider log retention
@@ -36,7 +36,7 @@
 - apps/server/src/provider/Layers/PiAdapter.ts
 - apps/server/src/provider/Layers/PiAdapter.test.ts
 
-All source paths above are under .cache/die-t3code-v0042. Other staged server changes predate this task and are part of the original canonical patch; do not discard them.
+All source paths above are under .cache/die-t3code-v0042. Other staged server changes predate this task and are part of the original canonical patch. Do not discard them.
 
 ## Validation
 
@@ -48,9 +48,9 @@ Result: **8 files / 202 tests passed** (combined final run). Pi 70, logger 17, t
 
 ../../node_modules/.bin/tsc --noEmit
 
-Final server typecheck: **passed (exit 0)** after correcting a test-only Effect `return yield*` diagnostic. Pi 70-test suite reran successfully after that correction. Existing Effect advisory suggestions are non-fatal. One attempted shell wrapper used POSIX syntax under fish and failed before running; reran directly.
+Final server typecheck: **passed (exit 0)** after correcting a test-only Effect `return yield*` diagnostic. Pi 70-test suite reran successfully after that correction. Existing Effect advisory suggestions are non-fatal. One attempted shell wrapper used POSIX syntax under fish and failed before running. Reran directly.
 
-Final formatting check passed for all seven changed files; worker formatting/lint passed; git diff --check -- apps/server passed.
+Final formatting check passed for all seven changed files. Worker formatting/lint passed. Git diff --check -- apps/server passed.
 
 ## Canonical patch capture — MAIN OWNER ONLY, after all workers finish
 
@@ -64,6 +64,6 @@ From repository root (shell-neutral individual commands):
     # Main also intent-to-add any other approved new worker files.
     git -C .cache/die-t3code-v0042 diff --binary HEAD > web/t3.patch
 
-Capture the WHOLE canonical delta against pinned HEAD, including pre-existing staged patch and all approved concurrent frontend changes; do not restrict capture to apps/server. Review newly tracked paths to avoid build artifacts. Verify patch applies to a fresh isolated checkout of the exact pin, then run the above tests/typecheck there. Do not require the old patch reverse-check during work: overlapping new edits can intentionally invalidate it until main recaptures. Old audit probes asserting the previously demonstrated leaks are historical repros, not expected-to-pass post-fix tests; use the committed source regressions above.
+Capture the WHOLE canonical delta against pinned HEAD, including pre-existing staged patch and all approved concurrent frontend changes. Do not restrict capture to apps/server. Review newly tracked paths to avoid build artifacts. Verify patch applies to a fresh isolated checkout of the exact pin, then run the above tests/typecheck there. Do not require the old patch reverse-check during work: overlapping new edits can intentionally invalidate it until main recaptures. Old audit probes asserting the previously demonstrated leaks are historical repros, not expected-to-pass post-fix tests. Use the committed source regressions above.
 
-Status: implementation and validation complete. No web/t3.patch writes performed by this task.
+Status: implementation and validation complete. No web/t3.patch writes run by this task.
