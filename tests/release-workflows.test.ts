@@ -74,6 +74,15 @@ describe("release automation", () => {
     const workflow = await read(".github/workflows/release.yml");
     expect(() => Bun.YAML.parse(workflow)).not.toThrow();
     expect(workflow).toContain('- "v*"');
+    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).toContain("!contains(github.ref_name, '-')");
+    expect(workflow).toContain("needs: mac-helper");
+    expect(workflow).toContain("scripts/build-live-lab-helper.sh");
+    expect(workflow).toContain("-fsanitize=address,undefined");
+    expect(workflow).toContain("actions/download-artifact@v4");
+    expect(workflow).toContain("--live-lab-helper=./artifacts/release/mac-helper/live-lab-audio");
+    expect(workflow).toContain("stable-release-candidate");
+    expect(workflow).toContain("github.event_name == 'push'");
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).toContain("contents: write");
     expect(workflow).toContain('validate-release-tag.ts "$GITHUB_REF_NAME"');
@@ -84,7 +93,7 @@ describe("release automation", () => {
     expect(workflow).toContain("--target=bun-linux-arm64");
     expect(workflow).toContain("--target=bun-darwin-arm64");
     expect(workflow).toContain("--target=bun-android-arm64");
-    expect(workflow).toContain('test "$(./dist/release/die-linux-x64 --version)" = "${GITHUB_REF_NAME#v}"');
+    expect(workflow).toContain('test "$(./dist/release/die-linux-x64 --version)" = "$(bun -p');
     expect(workflow).toContain("GH_TOKEN: ${{ github.token }}");
     expect(workflow).toContain("die-linux-x64.sha256");
     expect(workflow).toContain("die-linux-arm64.sha256");
@@ -106,7 +115,7 @@ describe("release automation", () => {
       "bun run build -- --reuse-web --target=bun-linux-arm64 --outfile=./dist/release/die-linux-arm64",
     );
     expect(workflow).toContain(
-      "bun run build -- --reuse-web --target=bun-darwin-arm64 --outfile=./dist/release/die-darwin-arm64",
+      "bun run build -- --reuse-web --live-lab-helper=./artifacts/release/mac-helper/live-lab-audio --target=bun-darwin-arm64 --outfile=./dist/release/die-darwin-arm64",
     );
     expect(workflow).toContain(
       "bun run build -- --reuse-web --target=bun-android-arm64 --outfile=./dist/release/die-android-arm64",

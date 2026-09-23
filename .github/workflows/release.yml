@@ -4,12 +4,66 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  mac-helper:
+    name: Native macOS arm64 helper and compiled smoke
+    runs-on: macos-15-arm64
+    timeout-minutes: 45
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.ref_name, '-') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.13.1
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.10.0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.1
+      - run: bun install --frozen-lockfile
+      - name: Sanitized, device-free native ring tests
+        shell: bash
+        run: |
+          xcrun clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined native/live-lab/AudioCore.c native/live-lab/test-core.c -o /tmp/live-lab-core-test
+          /tmp/live-lab-core-test
+      - name: Compile helper and check device-free protocol
+        shell: bash
+        run: |
+          scripts/build-live-lab-helper.sh
+          file dist/live-lab-audio | grep 'Mach-O 64-bit executable arm64'
+          dist/live-lab-audio --self-test
+          python3 - <<'PY'
+          import json, select, subprocess
+          p = subprocess.Popen(['dist/live-lab-audio'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+          try:
+              assert select.select([p.stdout], [], [], 5)[0], 'helper hello timed out'
+              assert json.loads(p.stdout.readline()) == {'type': 'hello', 'protocol': 1}
+          finally:
+              p.terminate()
+              p.wait(timeout=5)
+          PY
+      - name: Compiled macOS arm64 CLI smoke
+        shell: bash
+        run: |
+          bun run build -- --live-lab-helper=./dist/live-lab-audio --target=bun-darwin-arm64 --outfile=./dist/die
+          test "$(env -i HOME="$(mktemp -d)" PATH=/nonexistent ./dist/die --version)" = "$(bun -p 'require("./package.json").version')"
+          env -i HOME="$(mktemp -d)" PATH=/nonexistent ./dist/die --help | grep '^die - AI coding assistant'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-mac-arm64-helper
+          path: dist/live-lab-audio
+          if-no-files-found: error
+          retention-days: 2
   release:
+    # Prerelease tags use explicitly prepared candidate bundles, not stable assets.
+    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.ref_name, '-') }}
+    needs: mac-helper
     name: Linux, macOS, and Android release
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -36,9 +90,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y tmux
       - name: Prepare logs
         run: mkdir -p artifacts/release dist/release
-      - name: Validate tag matches package version
+      - name: Validate stable tag or preparation version
         shell: bash
-        run: bun scripts/validate-release-tag.ts "$GITHUB_REF_NAME" 2>&1 | tee artifacts/release/version.log
+        run: |
+          version="$(bun -p 'require("./package.json").version')"
+          test "${version#*-}" = "$version" # stable only
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            bun scripts/validate-release-tag.ts "$GITHUB_REF_NAME" 2>&1 | tee artifacts/release/version.log
+          else
+            bun scripts/validate-release-tag.ts "v$version" 2>&1 | tee artifacts/release/version.log
+          fi
       - name: Install locked dependencies
         shell: bash
         run: bun install --frozen-lockfile 2>&1 | tee artifacts/release/install.log
@@ -62,13 +123,22 @@ jobs:
       - name: Standalone smoke test
         shell: bash
         run: bun run smoke 2>&1 | tee artifacts/release/smoke.log
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-mac-arm64-helper
+          path: artifacts/release/mac-helper
+      - name: Verify native helper from Mac runner
+        shell: bash
+        run: |
+          test -s artifacts/release/mac-helper/live-lab-audio
+          file artifacts/release/mac-helper/live-lab-audio | grep 'Mach-O 64-bit executable arm64'
       - name: Build release binaries with embedded web application
         shell: bash
         run: |
           bun run build -- --reuse-web --target=bun-linux-x64-baseline --outfile=./dist/release/die-linux-x64 2>&1 | tee artifacts/release/build-linux-x64.log
-          test "$(./dist/release/die-linux-x64 --version)" = "${GITHUB_REF_NAME#v}"
+          test "$(./dist/release/die-linux-x64 --version)" = "$(bun -p 'require("./package.json").version')"
           bun run build -- --reuse-web --target=bun-linux-arm64 --outfile=./dist/release/die-linux-arm64 2>&1 | tee artifacts/release/build-linux-arm64.log
-          bun run build -- --reuse-web --target=bun-darwin-arm64 --outfile=./dist/release/die-darwin-arm64 2>&1 | tee artifacts/release/build-darwin-arm64.log
+          bun run build -- --reuse-web --live-lab-helper=./artifacts/release/mac-helper/live-lab-audio --target=bun-darwin-arm64 --outfile=./dist/release/die-darwin-arm64 2>&1 | tee artifacts/release/build-darwin-arm64.log
           bun run build -- --reuse-web --target=bun-android-arm64 --outfile=./dist/release/die-android-arm64 2>&1 | tee artifacts/release/build-android-arm64.log
           chmod 0755 ./dist/release/die-linux-x64 ./dist/release/die-linux-arm64 ./dist/release/die-darwin-arm64 ./dist/release/die-android-arm64
       - name: Generate production dependency notices
@@ -87,6 +157,11 @@ jobs:
             done < <(find dist/die-web/node_modules/.pnpm -type f \
               \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'NOTICE*' \) -print0 | sort -z)
           } >> dist/release/THIRD_PARTY_LICENSES.txt
+      - name: Document native audio licensing
+        shell: bash
+        run: |
+          printf '\n\nNATIVE LIVE LAB AUDIO HELPER\n============================\n' >> dist/release/THIRD_PARTY_LICENSES.txt
+          printf 'The native helper is project source under the repository MIT LICENSE; it links Apple system AVFoundation/CoreFoundation frameworks, not bundled third-party native libraries.\n' >> dist/release/THIRD_PARTY_LICENSES.txt
       - name: Validate web backend
         shell: bash
         run: |
@@ -116,10 +191,13 @@ jobs:
           cp ../../LICENSE ../../THIRD_PARTY_NOTICES.md .
           t3_revision=$(bun -e 'console.log(require("../../web/t3-source.json").revision)')
           patch_sha256=$(sha256sum ../../web/t3.patch | awk '{print $1}')
+          source_ref="$GITHUB_REF_NAME"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then source_ref="candidate-$GITHUB_SHA"; fi
           printf 'Source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\nTargets:\n- bun-linux-x64-baseline -> die-linux-x64\n- bun-linux-arm64 -> die-linux-arm64\n- bun-darwin-arm64 -> die-darwin-arm64\n- bun-android-arm64 -> die-android-arm64\n\nEmbedded T3 Code source: https://github.com/pingdotgg/t3code/tree/%s\nRevision: %s\nPatch: web/t3.patch\nPatch-SHA256: %s\n' \
-            "$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" "$GITHUB_SHA" "$GITHUB_REF_NAME" \
+            "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_SHA" "$source_ref" \
             "$t3_revision" "$t3_revision" "$patch_sha256" > SOURCE.txt
       - name: Publish GitHub release
+        if: ${{ github.event_name == 'push' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -139,6 +217,14 @@ jobs:
             dist/release/THIRD_PARTY_NOTICES.md \
             dist/release/THIRD_PARTY_LICENSES.txt \
             dist/release/SOURCE.txt
+      - name: Upload candidate assets (preparation only)
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: stable-release-candidate
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 7
       - name: Upload failure logs
         if: failure()
         uses: actions/upload-artifact@v4
