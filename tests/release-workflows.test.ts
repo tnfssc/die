@@ -74,15 +74,17 @@ describe("release automation", () => {
     const workflow = await read(".github/workflows/release.yml");
     expect(() => Bun.YAML.parse(workflow)).not.toThrow();
     expect(workflow).toContain('- "v*"');
-    expect(workflow).toContain("workflow_dispatch:");
+    expect(workflow).not.toContain("workflow_dispatch:");
     expect(workflow).toContain("!contains(github.ref_name, '-')");
     expect(workflow).toContain("needs: mac-helper");
     expect(workflow).toContain("scripts/build-live-lab-helper.sh");
     expect(workflow).toContain("-fsanitize=address,undefined");
     expect(workflow).toContain("actions/download-artifact@v4");
     expect(workflow).toContain("--live-lab-helper=./artifacts/release/mac-helper/live-lab-audio");
-    expect(workflow).toContain("stable-release-candidate");
-    expect(workflow).toContain("github.event_name == 'push'");
+    expect(workflow).toContain("stable-release-assets");
+    expect(workflow).toContain("needs: [release, mac-release-smoke]");
+    expect(workflow).toContain("bun scripts/verify-v071-update.ts dist/release/die-darwin-arm64");
+    expect(workflow).toContain("--live-lab-self-test");
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).toContain("contents: write");
     expect(workflow).toContain('validate-release-tag.ts "$GITHUB_REF_NAME"');
@@ -123,6 +125,25 @@ describe("release automation", () => {
     expect(workflow).not.toContain("die-web-linux-x64.tar.gz");
     expect(workflow).not.toContain("Package web sidecar");
     expect(workflow).not.toMatch(/bun-(windows|darwin-x64|linux-arm32)/);
+  });
+
+  test("stable publication waits for actual Mac payload gates and retains raw assets", async () => {
+    const workflow = Bun.YAML.parse(await read(".github/workflows/release.yml")) as {
+      on: Record<string, unknown>;
+      jobs: Record<
+        string,
+        { needs?: string | string[]; permissions?: Record<string, string>; steps: { run?: string }[] }
+      >;
+    };
+    expect(Object.keys(workflow.on)).toEqual(["push"]);
+    expect(workflow.jobs.publish!.needs).toEqual(["release", "mac-release-smoke"]);
+    expect(workflow.jobs["mac-release-smoke"]!.needs).toBe("release");
+    expect(workflow.jobs.release!.permissions?.contents).not.toBe("write");
+    expect(workflow.jobs.publish!.permissions?.contents).toBe("write");
+    const macCommands = workflow.jobs["mac-release-smoke"]!.steps.map((step) => step.run ?? "").join("\n");
+    expect(macCommands).toContain("verify-v071-update.ts");
+    expect(macCommands).toContain("--live-lab-self-test");
+    expect(macCommands).not.toContain('"type":"start"');
   });
 
   test("release validator handles mismatch and prerelease versions without a real tag", () => {

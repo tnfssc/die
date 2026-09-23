@@ -19,6 +19,12 @@ import { INTERNAL_TYPESCRIPT_RUNNER_ARG, runTypeScriptFromStdin } from "./typesc
 import { updateDie } from "./update";
 
 const cliArgs = process.argv.slice(2);
+if (cliArgs[0] === "--live-lab-self-test") {
+  if (cliArgs.length !== 1) throw new Error("Usage: die --live-lab-self-test");
+  const { testEmbeddedNativeHelper } = await import("./live-lab/self-test");
+  await testEmbeddedNativeHelper();
+  process.exit(0);
+}
 if (cliArgs[0] === "update") {
   if (cliArgs.length === 2 && ["--help", "-h"].includes(cliArgs[1]!)) {
     console.log("Usage: die update\n\nInstall the latest stable release of this executable after SHA256 verification.");

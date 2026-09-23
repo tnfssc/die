@@ -11,8 +11,7 @@ export async function extractNativeHelper(
   expectedSha256: string,
   temporaryRoot = tmpdir(),
 ): Promise<ExtractedHelper> {
-  if (!/^[a-f0-9]{64}$/.test(expectedSha256) ||
-      createHash("sha256").update(bytes).digest("hex") !== expectedSha256)
+  if (!/^[a-f0-9]{64}$/.test(expectedSha256) || createHash("sha256").update(bytes).digest("hex") !== expectedSha256)
     throw new Error("Embedded audio helper failed integrity check");
   const directory = await mkdtemp(join(temporaryRoot, "die-live-lab-"));
   const path = join(directory, "live-lab-audio");
@@ -22,7 +21,11 @@ export async function extractNativeHelper(
     try {
       await file.writeFile(bytes);
       await file.sync();
-      if (createHash("sha256").update(await readFile(path)).digest("hex") !== expectedSha256)
+      if (
+        createHash("sha256")
+          .update(await readFile(path))
+          .digest("hex") !== expectedSha256
+      )
         throw new Error("Extracted audio helper failed integrity check");
       await file.chmod(0o700);
     } finally {

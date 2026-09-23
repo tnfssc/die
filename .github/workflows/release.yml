@@ -4,29 +4,18 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
   mac-helper:
-    name: Native macOS arm64 helper and compiled smoke
-    runs-on: macos-15-arm64
-    timeout-minutes: 45
-    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.ref_name, '-') }}
+    name: Native macOS arm64 helper (no devices)
+    runs-on: macos-15
+    timeout-minutes: 10
+    if: ${{ !contains(github.ref_name, '-') }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24.13.1
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.10.0
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.4.1
-      - run: bun install --frozen-lockfile
       - name: Sanitized, device-free native ring tests
         shell: bash
         run: |
@@ -48,12 +37,6 @@ jobs:
               p.terminate()
               p.wait(timeout=5)
           PY
-      - name: Compiled macOS arm64 CLI smoke
-        shell: bash
-        run: |
-          bun run build -- --live-lab-helper=./dist/live-lab-audio --target=bun-darwin-arm64 --outfile=./dist/die
-          test "$(env -i HOME="$(mktemp -d)" PATH=/nonexistent ./dist/die --version)" = "$(bun -p 'require("./package.json").version')"
-          env -i HOME="$(mktemp -d)" PATH=/nonexistent ./dist/die --help | grep '^die - AI coding assistant'
       - uses: actions/upload-artifact@v4
         with:
           name: release-mac-arm64-helper
@@ -62,13 +45,11 @@ jobs:
           retention-days: 2
   release:
     # Prerelease tags use explicitly prepared candidate bundles, not stable assets.
-    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.ref_name, '-') }}
+    if: ${{ !contains(github.ref_name, '-') }}
     needs: mac-helper
     name: Linux, macOS, and Android release
     runs-on: ubuntu-24.04
     timeout-minutes: 40
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -90,16 +71,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y tmux
       - name: Prepare logs
         run: mkdir -p artifacts/release dist/release
-      - name: Validate stable tag or preparation version
+      - name: Validate tag matches package version
         shell: bash
-        run: |
-          version="$(bun -p 'require("./package.json").version')"
-          test "${version#*-}" = "$version" # stable only
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
-            bun scripts/validate-release-tag.ts "$GITHUB_REF_NAME" 2>&1 | tee artifacts/release/version.log
-          else
-            bun scripts/validate-release-tag.ts "v$version" 2>&1 | tee artifacts/release/version.log
-          fi
+        run: bun scripts/validate-release-tag.ts "$GITHUB_REF_NAME" 2>&1 | tee artifacts/release/version.log
       - name: Install locked dependencies
         shell: bash
         run: bun install --frozen-lockfile 2>&1 | tee artifacts/release/install.log
@@ -192,18 +166,75 @@ jobs:
           t3_revision=$(bun -e 'console.log(require("../../web/t3-source.json").revision)')
           patch_sha256=$(sha256sum ../../web/t3.patch | awk '{print $1}')
           source_ref="$GITHUB_REF_NAME"
-          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then source_ref="candidate-$GITHUB_SHA"; fi
           printf 'Source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\nTargets:\n- bun-linux-x64-baseline -> die-linux-x64\n- bun-linux-arm64 -> die-linux-arm64\n- bun-darwin-arm64 -> die-darwin-arm64\n- bun-android-arm64 -> die-android-arm64\n\nEmbedded T3 Code source: https://github.com/pingdotgg/t3code/tree/%s\nRevision: %s\nPatch: web/t3.patch\nPatch-SHA256: %s\n' \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_SHA" "$source_ref" \
             "$t3_revision" "$t3_revision" "$patch_sha256" > SOURCE.txt
+          printf '\nEmbedded macOS arm64 native helper (Apple frameworks; experimental voice-only /live-lab):\n' >> SOURCE.txt
+          sha256sum ../../artifacts/release/mac-helper/live-lab-audio >> SOURCE.txt
+      - name: Verify old updater with actual Linux release binary
+        run: bun scripts/verify-v071-update.ts dist/release/die-linux-x64 "$(bun -p 'require("./package.json").version')"
+      - name: Stage verified release assets
+        uses: actions/upload-artifact@v4
+        with:
+          name: stable-release-assets
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-failure-logs
+          path: artifacts/release/
+          if-no-files-found: warn
+          retention-days: 14
+
+  mac-release-smoke:
+    name: Actual Mac release binary and old updater (no devices)
+    needs: release
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.1
+      - uses: actions/download-artifact@v4
+        with:
+          name: stable-release-assets
+          path: dist/release
+      - name: Exercise installed-stable updater and embedded helper
+        shell: bash
+        run: |
+          chmod 0755 dist/release/die-darwin-arm64
+          bun scripts/verify-v071-update.ts dist/release/die-darwin-arm64 "$(bun -p 'require("./package.json").version')"
+          home=$(mktemp -d)
+          trap 'rm -rf "$home"' EXIT
+          cd "$home"
+          env -i HOME="$home" PATH=/usr/bin:/bin "$GITHUB_WORKSPACE/dist/release/die-darwin-arm64" --live-lab-self-test
+
+  publish:
+    name: Publish stable release after native and updater gates
+    needs: [release, mac-release-smoke]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: stable-release-assets
+          path: dist/release
       - name: Publish GitHub release
-        if: ${{ github.event_name == 'push' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
             --generate-notes \
+            --notes-file support/release-v0.8.0.md \
             --title "$GITHUB_REF_NAME" \
             dist/release/die-linux-x64 \
             dist/release/die-linux-x64.sha256 \
@@ -217,19 +248,3 @@ jobs:
             dist/release/THIRD_PARTY_NOTICES.md \
             dist/release/THIRD_PARTY_LICENSES.txt \
             dist/release/SOURCE.txt
-      - name: Upload candidate assets (preparation only)
-        if: ${{ github.event_name == 'workflow_dispatch' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: stable-release-candidate
-          path: dist/release/
-          if-no-files-found: error
-          retention-days: 7
-      - name: Upload failure logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-failure-logs
-          path: artifacts/release/
-          if-no-files-found: warn
-          retention-days: 14
