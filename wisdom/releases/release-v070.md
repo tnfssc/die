@@ -62,3 +62,11 @@ Values reviewed and unchanged: existing real-path checks, safe ownership, truthf
 ## Parent publication
 
 Integrated through 7ea0853 on develop. Parent checked notes/version diff, clean diff, and v0.7.0 tag validation. Remote default is develop, latest is v0.6.0, and v0.7.0 tag was absent. Preparing push and annotated tag; publication is not yet confirmed.
+
+Pushed develop and annotated v0.7.0 at 9e2fb09b7236b438f5563b9229d3016743d25299. Release run 35881952365 and CI 35881948401 in progress. Watch logs: /tmp/die-v070-release-watch.log and /tmp/die-v070-ci-watch.log. Next: await both, apply release-v0.7.0.md notes, verify published/latest and 12 nonempty assets via API. No binary downloads needed.
+
+## Published
+
+Both CI 35881948401 and Release 35881952365 passed. v0.7.0 published 2026-09-23T15:39:50Z, release ID 394810063, Latest, not draft/prerelease. Notes updated from release-v0.7.0.md. API confirms all 12 nonempty assets uploaded (four binaries/checksums plus licenses/notices/source). Tag points to 9e2fb09b7236b438f5563b9229d3016743d25299. No binary downloaded or installed. Release complete.
+
+Broad review: existing real-path checks and truthful evidence principles held up; no values change needed. Feature wisdom records physical audio and real coding/voice end-to-end gaps. CI reports Node 20 action deprecation (forced Node 24); not a release blocker, consider action upgrades in later maintenance.
