@@ -53,8 +53,8 @@ test("FIFO and bounded pending input under stalled backpressure", async () => {
   const { audio, worker } = await running();
   // Freeze writes: no callback/drain means queue cannot grow without bound.
   (worker.stdin as unknown as { write: (...args: unknown[]) => boolean }).write = () => false;
-  const pending = audio.play(Buffer.alloc(48000), 0);
-  const queued = Array.from({ length: 10 }, () => audio.play(Buffer.alloc(48000), 0).catch(e => e.message));
+  const pending = audio.play(Buffer.alloc(9600), 0);
+  const queued = Array.from({ length: 12 }, () => audio.play(Buffer.alloc(9600), 0).catch(e => e.message));
   expect(await Promise.all(queued.slice(6))).toContain("Audio helper input queue full");
   audio.close(); await expect(pending).rejects.toThrow("closed"); await Promise.all(queued);
 });
