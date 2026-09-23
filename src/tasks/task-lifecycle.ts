@@ -11,9 +11,9 @@ import {
   writeSync,
 } from "node:fs";
 
-/** Separate protected ownership index; never includes commands, prompts or output.
- * The newest complete records are retained within 2 MiB. The file name is derived
- * once from the owning session, not from whichever session is active later.
+/** Keep ownership in a separate protected index. Never write commands, prompts,
+ * or output there. Keep the newest complete records within 2 MiB. Derive the file
+ * name once from the owner, not from a session that becomes active later.
  */
 export const TASK_LIFECYCLE_MAX_BYTES = 2 * 1024 * 1024;
 

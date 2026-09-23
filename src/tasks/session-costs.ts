@@ -87,7 +87,7 @@ function emptySession(inode: bigint | number): CachedSession {
   };
 }
 
-/** Incrementally totals usage belonging to die-agent descendants of one session. */
+/** Add up usage from one session's die-agent descendants as it arrives. */
 export class SessionCostTracker {
   readonly rootFile: string;
   readonly sessionDir: string;

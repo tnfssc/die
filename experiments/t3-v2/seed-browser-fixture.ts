@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-/** Seed the upstream deterministic subagent_v2_nested replay result into the isolated durable store.
- * Input is generated under .runtime by the replay test; no production/shared state is touched.
+/** Put upstream's deterministic subagent_v2_nested replay result in the isolated store.
+ * The replay test makes input under .runtime. Touch no production or shared state.
  */
 import { Database } from "bun:sqlite";
 import fs from "node:fs";

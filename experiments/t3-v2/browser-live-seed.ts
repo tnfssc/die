@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-/** Add project-list metadata to a copy of the CLOSED real-engine database. Never import synthetic thread events. */
+/** Add project-list metadata to a CLOSED real-engine database copy. Never import fake thread events. */
 import { Database } from "bun:sqlite";
 import fs from "node:fs";
 import path from "node:path";

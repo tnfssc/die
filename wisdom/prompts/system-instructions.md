@@ -1,8 +1,8 @@
 # Model input source map
 
-Start with [Editing prompts](./prompts.md) when reviewing wording. This map explains **what can reach the model, where it comes from, and when it is included**. Linked source files are the canonical wording; the map is not a second copy of every prompt. Runtime templates below explain additional message shapes, not messages guaranteed to appear on every request.
+Read [Editing prompts](./prompts.md) before wording review. This map shows **what can reach model, where it comes from, and when it appears**. Linked files own wording. Map does not copy every prompt. Runtime templates below show other message shapes. They do not come on every request.
 
-For a concrete first-request view, use `bun run prompt:preview`; options and exclusions are documented in [Inspect the assembled input](./prompts.md#inspect-the-assembled-input). This uses the real assembly/hooks with a local fake stream, not a live-provider call.
+Run `bun run prompt:preview` to see real first-request build. [Inspect the assembled input](./prompts.md#inspect-the-assembled-input) gives options and limits. Preview uses real assembly and hooks with fake local stream. It does not call live provider.
 
 ## Scope and terminology
 
@@ -13,7 +13,7 @@ For a concrete first-request view, use `bun run prompt:preview`; options and exc
 
 ## Production base-prompt and ordinary request composition
 
-Production CLI assembly begins in `src/cli.ts`, which calls `withDieSystemPrompt(cliArgs)` from `src/system-prompt.ts` before entering Pi.
+Production CLI build starts in `src/cli.ts`. It calls `withDieSystemPrompt(cliArgs)` from `src/system-prompt.ts` before Pi.
 
 ### Base-selection precedence
 
@@ -23,7 +23,7 @@ Production CLI assembly begins in `src/cli.ts`, which calls `withDieSystemPrompt
 2. no trusted `<cwd>/.die/SYSTEM.md` exists (an explicit `--no-approve`/`-na` or `projectTrusted: false` makes the project file ineligible); and
 3. `<agentDir>/SYSTEM.md` does not exist, where `agentDir` is the explicit option, otherwise `DIE_CODING_AGENT_DIR`, otherwise `~/.die/agent`.
 
-An explicit CLI base, an eligible project SYSTEM.md base, or a global SYSTEM.md base therefore wins and is **externally supplied context**. Arguments after `--` are user prompt arguments, not option candidates. SDK consumers that bypass `src/cli.ts` must supply the base themselves; the CLI injection is the production path.
+Explicit CLI base, eligible project SYSTEM.md base, or global SYSTEM.md base wins. It is **externally supplied context**. Arguments after `--` are user prompt, not option candidates. SDK users that skip `src/cli.ts` must give base themselves. CLI injection is production path.
 
 ### Die-owned base assembly recipe
 
@@ -35,9 +35,9 @@ The generated base is assembled, in order, as follows:
 2. The literal scaffold `Guidelines:`.
 3. Every complete item from `execute.md`: split only before a line beginning `- `, remove that item's first list marker, then let the base assembly add the marker back. Indented continuation lines therefore remain part of their item.
 
-Components are separated exactly as implemented by `dieSystemPrompt()`: a blank line precedes `Guidelines:`; guideline items are newline-separated. Source trailing newlines are removed before assembly.
+`dieSystemPrompt()` separates parts exactly this way: blank line before `Guidelines:`; newline between guideline items. Build removes source trailing newlines first.
 
-There is intentionally no second, documentation-only dump of the assembled base here. The linked `identity.md` and `execute.md` sources plus this recipe give the TypeScript-owned scaffold, so a reader can inspect every die-owned line without maintaining the same prompt twice. Pi receives the result through its structured custom-system-prompt option and may append externally supplied additions, project context/instruction files, skills, current working directory, documentation pointers, and other runtime sections. The base does not copy Pi's upstream default identity or internal-documentation block.
+No second docs-only dump of built base here. Linked `identity.md` and `execute.md` plus recipe show TypeScript-owned scaffold. Reader can inspect every die-owned line without keeping duplicate prompt. Pi gets result through structured custom-system-prompt option. Pi may append outside additions, project context/instruction files, skills, current working directory, docs pointers, and other runtime sections. Base does not copy Pi upstream default identity or internal-docs block.
 
 ### die hook composition
 
@@ -61,11 +61,11 @@ The ordinary production prompt is therefore:
 [root main-mode block OR child role block]
 ```
 
-For an externally supplied custom base, root collaboration/mode text is deliberately suppressed. Child sessions still receive their role prose; only orchestrator roles add the workspace-isolation judgment. Runtime delegation restrictions are enforced independently by the job service. The execute reference documents optional `title` and structured `workspace` selection (inherit by default), batch isolation, and mode-specific setup sources. Only the two orchestrator role sources add the short judgment about choosing isolated code/PR work versus shared research/edits; workspace selection does not alter custom-base or role inheritance.
+Outside custom base suppresses root collaboration/mode text on purpose. Child still gets role prose. Only orchestrator roles add workspace-isolation judgment. Job service enforces runtime delegation limits separately. Execute reference documents optional `title`, structured `workspace` choice (inherit by default), batch isolation, and mode-specific setup sources. Only two orchestrator role sources say when to pick isolated code/PR work versus shared research/edits. Workspace choice does not change custom-base or role inheritance.
 
 ### Root mode selection
 
-`src/tasks/instruction-mode.ts` defaults root sessions to `orchestrator`, restores the newest valid `die-instruction-mode` branch entry, and falls back to `orchestrator` on absent or invalid state. Orchestrator selects `main-orchestrator.md`; fast and normal select no mode-specific prose. Every selection retains an owned placeholder wrapped as:
+`src/tasks/instruction-mode.ts` starts root in `orchestrator`. It restores newest valid `die-instruction-mode` branch entry. Missing or bad state falls back to `orchestrator`. Orchestrator picks `main-orchestrator.md`. Fast and normal pick no mode prose. Every choice keeps owned placeholder wrapped as:
 
 ```text
 <!-- die:main-agent-mode:{{owner}}:start -->
@@ -73,11 +73,11 @@ For an externally supplied custom base, root collaboration/mode text is delibera
 <!-- die:main-agent-mode:{{owner}}:end -->
 ```
 
-`{{owner}}` is the SHA-256 hex digest of `"die-main-agent-mode\0" + sessionId`; it is internally generated, not user/project text. `/mode` replaces only the region with this exact owner marker. Root user-owned custom system prompts receive no mode block.
+`{{owner}}` is SHA-256 hex of `"die-main-agent-mode\0" + sessionId`. Code makes it. User/project text does not. `/mode` replaces only region with this exact owner marker. Root custom system prompts owned by user get no mode block.
 
 ### Child role selection
 
-For depth greater than zero, `subagentGuidance(role)` selects `fast.md`, `normal.md`, or `orchestrator.md` (unknown roles fall back to normal) and substitutes the runtime role string. No child receives a delegation-guidance fragment. The job service still enforces delegation permissions independently. Child identity/depth comes from process environment plus the newest valid `die-agent` session marker and fails closed. The user's subagent assignment itself is passed as the child's ordinary user prompt and is **external caller-supplied context**, not part of these role templates.
+At depth over zero, `subagentGuidance(role)` picks `fast.md`, `normal.md`, or `orchestrator.md`. Unknown role falls back to normal. It puts runtime role string in template. No child gets delegation-guidance fragment. Job service still enforces delegation powers. Child identity/depth comes from process environment and newest valid `die-agent` session marker. Bad state fails closed. User subagent assignment is child normal user prompt. It is **external caller-supplied context**, not role template.
 
 ## Execute tool assembly
 
@@ -89,11 +89,11 @@ For depth greater than zero, `subagentGuidance(role)` selects `fast.md`, `normal
 - prompt guidelines: `execute.md` split at each line beginning `- `; each list marker is removed because Pi adds list formatting back
 - input schema: object with required string `code`; optional numeric `timeoutSeconds`, minimum 0.1
 
-Pi owns the exact surrounding system-prompt rendering of the snippet/guidelines and provider tool-schema serialization. At session start die calls `pi.setActiveTools(["execute"])`, so other Pi tools are not active. The helper names `shell`, `subagent`, `jobs.*`, `history.*`, `goal.*`, and `handoff` are runtime globals inside execute rather than separate provider tools; their model guidance is in the linked `execute.md` source. `system.md` contains collaboration values and opinions.
+Pi owns exact system-prompt rendering around snippet/guidelines and provider tool-schema encoding. At session start die calls `pi.setActiveTools(["execute"])`. Other Pi tools are inactive. Helpers `shell`, `subagent`, `jobs.*`, `history.*`, `goal.*`, and `handoff` are execute globals, not separate provider tools. Linked `execute.md` gives model guidance. `system.md` has collaboration values and opinions.
 
 ## Static Markdown sources
 
-All files below are embedded at build time. Only the sources selected by the current request are included; the model does not lazy-load them itself.
+Build embeds all files below. Current request picks sources. Model does not lazy-load them.
 
 | Source | Where / when supplied |
 | --- | --- |
@@ -113,7 +113,7 @@ All files below are embedded at build time. Only the sources selected by the cur
 
 ## Dynamic model-facing additions and templates
 
-These enter the message history or instruction frame only in their listed situations. A first-turn preview cannot demonstrate a later completion or compaction; inspect that scenario or its producer rather than assume all templates are always present.
+These enter message history or instruction frame only in listed cases. First-turn preview cannot show later completion or compaction. Inspect that case or producer. Do not assume all templates always come.
 
 ### Project-wisdom system paragraph
 
@@ -138,9 +138,9 @@ Constraints: {{constraints joined with "; ", or "none"}}
 {{optional Reason: ...}}
 ```
 
-The same message includes the static API guidance from `goal.md`. Activating, updating, or clearing a goal changes message context, not the system prompt or tool definitions, preserving the reusable system prefix. This is not a guarantee of a provider cache hit.
+Same message includes static API guidance from `goal.md`. Starting, updating, or clearing goal changes message context. It does not change system prompt or tools. This keeps reusable system prefix. It does not promise provider cache hit.
 
-Field values are persisted runtime goal state supplied by the user, model helper calls, or runtime-owned job reconciliation; they are **dynamic/external state**, not static die prose. The message has role `custom`, custom type `die-goal-state`, is hidden from display, and receives the current timestamp.
+Field values are saved runtime goal state. They come from user, model helper calls, or runtime job reconciliation. They are **dynamic/external state**, not static die prose. Message role is `custom`, custom type is `die-goal-state`, display hides it, and it gets current timestamp.
 
 The automatic follow-up is the complete, unsubstituted `goal-continuation.md` source followed by internal generation and anti-replay markers:
 
@@ -150,7 +150,7 @@ The automatic follow-up is the complete, unsubstituted `goal-continuation.md` so
 <!-- die-goal-reminder:{{random UUID epoch}}:{{generation}}:{{sequence}} -->
 ```
 
-The authoritative objective, criteria, constraints, status, and progress are deliberately present only in the hidden goal-state message above; the continuation does not repeat them. Die sends this extension-originated follow-up user message immediately after `/goal set` or `/goal resume`, and after a fully settled run only when the current goal status is `active` and the continuation controller returns `continue`. A helper-created active goal is picked up at that settled boundary. A waiting goal can become active when owned work finishes and is then eligible at settlement. Paused, waiting, blocked, and completed goals do not schedule continuation messages. After three automatic runs without a newly recorded progress milestone, the controller pauses the goal instead of continuing. Generation/epoch/sequence checks reject stale or replayed reminders.
+Only hidden goal-state message above has full objective, criteria, constraints, status, and progress. Continuation does not repeat them. Die sends this extension follow-up right after `/goal set` or `/goal resume`. After settled run, it sends only when goal is `active` and controller says `continue`. Helper-created active goal is found at settled boundary. Waiting goal may turn active when owned work ends, then qualify at settlement. Paused, waiting, blocked, and completed goals schedule no continuation. Three automatic runs with no new progress milestone pause goal. Generation/epoch/sequence checks reject stale or replayed reminders.
 
 ### Background launch and explicit handoff
 
@@ -165,7 +165,7 @@ Execution handed off.
 {{message}}
 ```
 
-`{{message}}` is model-authored execute input (runtime content), limited to 2,000 characters. Existing stdout/stderr/images and the background notice follow only when present; the successful tool result requests turn termination.
+`{{message}}` is model-written execute input, limited to 2,000 characters. Existing stdout/stderr/images and background notice follow only when present. Successful tool result asks turn to end.
 
 ### Completion and attention steering messages
 
@@ -235,7 +235,7 @@ No output.
 This model can't take images. Images not sent.
 ```
 
-Execution status, stdout/stderr, errors, and image counts are runtime evidence, not authored instructions.
+Execution status, stdout/stderr, errors, and image counts are runtime facts. They are not written instructions.
 
 ## Compaction assembly
 
@@ -264,19 +264,19 @@ For `openai-codex-responses` with a fresh compatible captured request and no cus
 { "type": "compaction_trigger" }
 ```
 
-Every other captured payload field is retained. Headers are rebuilt from model headers, auth headers, and captured headers (later sources overwrite earlier ones); OAuth authorization/account headers are required. Transport-only `host`, `content-length`, connection/WebSocket headers are removed, and die sets the originator, user agent, SSE accept, JSON content type, experimental beta, session ID/cache key, and request ID. Provider endpoint/auth/stream parsing are assembled in `native-compaction.ts`. The provider returns an opaque `{type:"compaction", id, encrypted_content}` item. Die stores that opaque item in checkpoint details and uses the full `native-compaction.md` text only as the stored/displayed checkpoint summary label. During normal native replay, the context adapter replaces that summary message with the opaque item; the label itself is not sent as a model instruction. The encrypted content is provider output, never interpolated as prompt text.
+Keep every other captured payload field. Rebuild headers from model, auth, and captured headers. Later source wins. OAuth authorization/account headers are required. Remove transport-only `host`, `content-length`, connection/WebSocket headers. Die sets originator, user agent, SSE accept, JSON content type, experimental beta, session ID/cache key, and request ID. `native-compaction.ts` builds provider endpoint/auth/stream parsing. Provider returns opaque `{type:"compaction", id, encrypted_content}` item. Die stores opaque item in checkpoint details. Full `native-compaction.md` text is only stored/displayed checkpoint summary label. During normal native replay, context adapter swaps summary message for opaque item. Label is not sent as model instruction. Encrypted content is provider output. Never put it into prompt text.
 
-If jobs are running, die fills `compaction-jobs.md` and stores it as `runtimeState`. On replay, the opaque item is carried as an assistant thinking signature; runtime state is then inserted as a separate **user** message. Native custom instructions force plaintext fallback when safe, or cancellation when an existing opaque checkpoint could not be rewritten safely.
+Jobs running? Die fills `compaction-jobs.md` and stores as `runtimeState`. On replay, opaque item travels as assistant thinking signature. Runtime state then enters as separate **user** message. Native custom instructions force plaintext fallback when safe. They cancel when existing opaque checkpoint cannot be safely rewritten.
 
 ## Provider boundary
 
-For an ordinary request, die hands Pi's agent runtime the final `systemPrompt`, transformed messages, and the active `execute` tool definition. Provider-specific wire assembly belongs to `@earendil-works/pi-ai@0.85.0`, not to an application-owned prompt source. The repository's deterministic Codex test (`tests/provider-prompt.test.ts`) verifies that the complete supplied system prompt is serialized unchanged as the Codex Responses `instructions` field and that `tool_choice` is `auto`.
+For normal request, die gives Pi agent runtime final `systemPrompt`, changed messages, and active `execute` tool definition. `@earendil-works/pi-ai@0.85.0` owns provider wire build. No app prompt source owns it. Deterministic Codex test `tests/provider-prompt.test.ts` checks full supplied system prompt reaches Codex Responses `instructions` unchanged and `tool_choice` is `auto`.
 
-Die's provider hooks do not otherwise add instructions: cache countdown/native-fast alter metadata or headers, native compaction adds only the provider trigger above, and cache-affine compaction deliberately reuses current system/tools while adding its user message. `before_provider_request` capture in compaction code observes payloads; it is not another prompt layer.
+Other die provider hooks add no instructions. Cache countdown/native-fast change metadata or headers. Native compaction adds only provider trigger above. Cache-affine compaction reuses current system/tools and adds its user message. `before_provider_request` capture in compaction code watches payloads. It is not another prompt layer.
 
 ## Externally supplied or generated context (not die instructions)
 
-The following may be model-facing but must not be mistaken for static application instructions:
+Following may face model. They are not static app instructions:
 
 - explicit user system prompts and ordinary user messages;
 - Pi's default base prose, exact tool-section formatting, and generated Pi documentation paths/guidance;
@@ -287,4 +287,4 @@ The following may be model-facing but must not be mistaken for static applicatio
 - shell output, child-agent progress/final output, job commands/IDs/session paths, tool errors, and user-provided stdin;
 - provider-generated plaintext summaries and opaque encrypted compaction items.
 
-This separation keeps static die prose distinct from dynamic values and externally supplied or generated content.
+This keeps static die prose apart from dynamic values and outside or generated content.

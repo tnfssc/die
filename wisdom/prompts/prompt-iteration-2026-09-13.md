@@ -1,12 +1,12 @@
 # Durable prompt iteration — 2026-09-13
 
 ## Current status
-Prompt review is complete and shipped in v0.2.6; v0.2.8 is the latest verified release. Later entries supersede earlier review positions and not-installed notes below. Keep the reviewed design: Luna/medium handoff failures did not justify more prompt rules; future behavioral checks target Sol/Astra. See [release and Herdr record](../releases/releases-herdr-2026-09-13.md) for installation, CI/test-isolation fixes, and final publication. No jobs remain pending.
+The prompt review is done and shipped in v0.2.6. The latest verified release here is v0.2.8. Later entries replace older review positions and `not installed` notes below. Keep the reviewed design. Luna/medium handoff failures were not enough reason to add more prompt rules. Future behavior checks target Sol/Astra. The [release and Herdr record](../releases/releases-herdr-2026-09-13.md) has installation, CI and test-isolation fixes, and final publication. No jobs are still running.
 
 ## Chronological review record
 
 ## Why this work exists
-During Job API review, the assistant repeatedly rewrote an isolated sentence without checking earlier supplied instructions. Launch results and handoff already explained completion/resumed turns; only running-job attention needed distinguishing. The user wants better iteration months later even if this session disappears, not a one-time promise to pay attention.
+During Job API review, the assistant kept rewriting one sentence without checking the earlier instructions around it. Launch results and handoff already explained completion and resumed turns. Only running-job attention needed a clearer distinction. The user wanted a review trail that would still help months later, not a one-time promise to pay attention.
 
 ## Agreed approach
 - wisdom/prompts/prompts.md is the starting guide: whole input first, establish current behavior before proposing changes, identify the actual gap, preserve reasons and review position. Broad judgment, not a rigid editing ritual.

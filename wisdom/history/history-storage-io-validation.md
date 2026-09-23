@@ -1,6 +1,6 @@
 # History storage I/O validation
 
-Added focused coverage in `tests/history-storage-io.test.ts` for the disk-backed entry store.
+Focused tests live in `tests/history-storage-io.test.ts` for the disk-backed entry store.
 
 ## Covered invariants
 
@@ -12,14 +12,14 @@ Added focused coverage in `tests/history-storage-io.test.ts` for the disk-backed
 
 ## Failure observations
 
-Against the initial concurrent store revision, all four direct tests failed:
+All four direct tests failed against the first concurrent store draft:
 
 1. scanner visitor exceptions were swallowed;
 2. append concatenated onto a valid unterminated final JSON value;
 3. failed replacement deleted the pending backing file (subsequent publish target was absent);
 4. duplicate-ID cache lookup returned the first body for the second physical record.
 
-The adapter worker updated the store while validation was in progress. Those regressions now pass, as does the isolated short-write test.
+The adapter worker changed the store while these checks ran. Those cases now pass. The isolated short-write test passes too.
 
 ## Commands
 

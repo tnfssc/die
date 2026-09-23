@@ -1,6 +1,6 @@
 # Evidence matrix — followthrough (2026-09-20)
 
-**Real deterministic engine flow and rendered durable child now demonstrated. Full acceptance/adoption is still NOT claimed.**
+**The tests now show real deterministic engine flow and a rendered durable child. They do NOT show full acceptance or adoption.**
 
 | Requirement | Result | Evidence / boundary |
 |---|---|---|
@@ -28,4 +28,4 @@
 
 Primary reports: integrated-real-report.md, combined-report.md, clock-report.md, browser-live-followthrough.md, bridge-followthrough.md. Earlier browser-followthrough.md is only a provider-replay fixture and is superseded for actual-child proof.
 
-All owned experiment ports/processes were stopped after capture. Root progress-note updates remain coordinator-owned; followthrough-progress.md contains the reviewed-note source.
+All owned experiment ports/processes were stopped after capture. Root progress-note updates remain coordinator-owned. followthrough-progress.md contains the reviewed-note source.

@@ -1,7 +1,7 @@
 import { dirname, join, resolve } from "node:path";
 import { getAgentDir, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-/** A stable attribution identity, including sessions started with --no-session. */
+/** Keep a stable attribution ID, even for sessions started with --no-session. */
 export function sessionCostRoot(
   manager: ExtensionContext["sessionManager"],
 ): { file: string; directory: string } | undefined {

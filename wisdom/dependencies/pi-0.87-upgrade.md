@@ -1,51 +1,52 @@
 # Pi 0.87 upgrade
 
-Integration worktree: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_6de63bb9
-Branch: die/implement-pi-0.87-compatibility-6de63bb9
+Integration worktree: `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_6de63bb9`
+Branch: `die/implement-pi-0.87-compatibility-6de63bb9`
 
-Baseline HEAD: 8d8f068e90d580b7a53583fdc41e7636926ea346 (Pi 0.85.1).
-Upgrade owns four dependencies, lockfile, SessionManager source hash guard, source and SDK tests. No T3 upstream pin change, push, tag, or release.
+Baseline HEAD was 8d8f068e90d580b7a53583fdc41e7636926ea346 with Pi 0.85.1. This upgrade owned four dependencies, the lockfile, the SessionManager source-hash guard, source changes, and SDK tests. It did not own a T3 upstream pin change, push, tag, or release.
 
-Delegated worktrees (prefix above + suffix):
-- History adapter/parity: -a86675007a5e-task_7bb3d9d3, die/migrate-disk-backed-pi-history-7bb3d9d3.
-- Compaction/continuity: -a86675007a5e-task_0c845e39, die/migrate-compaction-and-instruction-conti-0c845e39.
-- Patched web audit: -a86675007a5e-task_7e0d8b25, die/audit-patched-web-pi-integration-7e0d8b25.
+Delegated worktrees used the same path prefix with these suffixes:
 
-Findings:
-- Provider stream boundary accepts branded TranscriptContext, messages only. Use normalizeContext for legacy construction, replay helpers getCurrentSystemPrompt/getCurrentTools for inspection. Context structural typing can conceal runtime breakages (prompt preview, goals SDK, prompt-delivery tests).
-- Pi 0.87 removes openai-codex gpt-5.4-mini from catalog; negative allowlist test now supplies an explicit model fixture.
-- JsonObject/JsonValue tightened: test fixtures now use JSON-safe types.
-- SessionManager guard hash updated for installed 0.87 source; review/parity delegated before final acceptance.
+- History adapter and parity: `-a86675007a5e-task_7bb3d9d3`, branch `die/migrate-disk-backed-pi-history-7bb3d9d3`.
+- Compaction and continuity: `-a86675007a5e-task_0c845e39`, branch `die/migrate-compaction-and-instruction-conti-0c845e39`.
+- Patched web audit: `-a86675007a5e-task_7e0d8b25`, branch `die/audit-patched-web-pi-integration-7e0d8b25`.
 
-Validation completed; final results below. Disposable detailed logs are under /tmp/pi-*.log.
+Early findings:
+
+- The provider stream boundary accepts branded `TranscriptContext` with messages only. Use `normalizeContext` to build old-style contexts. Use `getCurrentSystemPrompt` and `getCurrentTools` replay helpers to inspect them. Structural typing can hide runtime breaks in prompt preview, goals SDK, and prompt-delivery tests.
+- Pi 0.87 removes `openai-codex` `gpt-5.4-mini` from its catalog. The negative allowlist test now passes an explicit model fixture.
+- `JsonObject` and `JsonValue` are stricter. Test fixtures now use JSON-safe types.
+- The SessionManager guard hash moved to the installed 0.87 source. Review and parity checks were still needed before acceptance.
+
+Validation later finished. Disposable detailed logs are under `/tmp/pi-*.log`.
 
 ## Integrated findings
 
-- History adapter now implements buildSessionProjection and appendContextEdit using lazy metadata; parity tested against unmodified SDK in isolated subprocesses. Coverage includes replacement/omission, custom and tool messages, reopened projections, immutable originals, branch isolation, invalid targets, repeated compactions, system checkpoints, thinking/model state.
-- Instruction continuity now preserves Pi 0.87 run prompt options instead of mutating readonly state. Compaction uses normalized transcript messages. Reject system-only histories and count the system/tool frame once in input budgets.
-- Shake accounting forwards the new recovery tool-results argument. Real SDK regression verifies interrupted assistant and tool-result context edits; removing forwarding makes it fail. Recovery fixture uses actual OpenAI overflow text and sufficient context for Pi 0.87's conservative durable-projection estimate.
-- TUI fixtures explicitly ignore project-local resources with --no-approve to bypass the new interactive trust prompt only in isolated test projects. Production trust behavior is unchanged.
-- Notices: upstream Pi v0.87.0 LICENSE fetched and byte-compared to curated copy (unchanged). Updated version pin and source URL. New proxy-agent-negotiate@1.1.0 lacks a published/upstream per-package license file; curated MIT text and metadata author attribution documented in third_party/README.md.
+- The history adapter now implements `buildSessionProjection` and `appendContextEdit` with lazy metadata. Isolated subprocess tests compare it with the unchanged SDK. Coverage includes replacement and omission, custom and tool messages, reopened projections, unchanged originals, branch isolation, bad targets, repeated compactions, system checkpoints, and thinking and model state.
+- Instruction continuity now keeps Pi 0.87 run prompt options instead of changing readonly state. Compaction uses normalized transcript messages. System-only histories are rejected. Input budgets count the system and tool frame once.
+- Shake accounting passes through the new recovery tool-results argument. A real SDK regression covers interrupted assistant and tool-result context edits; it fails if the forwarding is removed. The recovery fixture uses real OpenAI overflow text and enough context for Pi 0.87's cautious durable-projection estimate.
+- TUI fixtures pass `--no-approve` and ignore project-local resources. This avoids the new trust prompt only in isolated test projects. Production trust behavior stays the same.
+- Notices use the upstream Pi v0.87.0 LICENSE, checked byte-for-byte against the curated copy. It did not change. The version pin and source URL changed. New `proxy-agent-negotiate@1.1.0` has no published or upstream package-level license file. `third_party/README.md` records the curated MIT text and author metadata.
 
 ## Web review
 
-T3 remains pinned at a9b49a7df0a4261dcc438d4493cc3154a1d9819e. Pi RPC declarations are byte-identical to 0.85.1; runtime steer/follow_up now invoke extension input hooks with source rpc. Our generated extension does not install such a hook. Generated MCP schema typing fixed to derive registerTool parameters type. Worker verified patched server tsc, 4 extension-source tests, generated extension typecheck against actual Pi 0.87 and an RPC get_state smoke. No paid model or real MCP tool round trip was run; third-party input hooks can transform/block steering.
+T3 stays pinned at a9b49a7df0a4261dcc438d4493cc3154a1d9819e. Pi RPC declarations are byte-for-byte the same as 0.85.1. Runtime `steer` and `follow_up` now call extension input hooks with source `rpc`. Our generated extension does not add such a hook. Generated MCP schema typing now derives the `registerTool` parameters type. The worker checked patched-server TypeScript, four extension-source tests, generated-extension typecheck against real Pi 0.87, and one RPC `get_state` smoke. No paid model or real MCP tool round trip ran. Third-party input hooks can still change or block steering.
 
 ## Validation environment
 
-/tmp is a nearly-full 16 GiB tmpfs (unrelated existing data); initial standalone copy tests failed ENOSPC. Final validation uses TMPDIR=$PWD/.cache/test-tmp on the disk filesystem. Temporary test projects remain disposable/ignored, not implementation worktrees. All implementation work is in persistent worktrees listed above.
+`/tmp` was a nearly full 16 GiB tmpfs because of unrelated data. Early standalone copy tests failed with `ENOSPC`. Final checks used `TMPDIR=$PWD/.cache/test-tmp` on disk. Temporary test projects were disposable and ignored. They were not implementation worktrees.
 
-History SDK soak passed: 512 original messages, 16 real compactions, 128 MiB journal, 0.99 MiB final heap growth.
+The history SDK soak passed with 512 original messages, 16 real compactions, a 128 MiB journal, and 0.99 MiB final heap growth.
 
 ## Final validation
 
-- Full `TMPDIR=$PWD/.cache/test-tmp bun run test`: passed, including full web build/server typecheck, standalone compile, and all tests: **741 pass, 14 skip, 0 fail**, 755 tests / 101 files. Skips are opt-in live/model tests.
-- `bun run check`: passed.
-- `bun run lint`: exit 0, 277 warnings / 454 informational diagnostics (no errors).
-- `bun run format` and `bun run format:check`: passed.
-- `bun run generate:notices`: passed, 124 production packages, 539199 bytes.
-- `git diff --check`: passed.
-- History SDK soak and delegated web validations passed as above.
-- No push, tag, release, main-worktree modification, or T3 pin update.
+- `TMPDIR=$PWD/.cache/test-tmp bun run test` passed. It included the full web build and server typecheck, standalone compile, and all tests: **741 pass, 14 skip, 0 fail**, 755 tests in 101 files. Skips were opt-in live or model tests.
+- `bun run check` passed.
+- `bun run lint` exited 0 with 277 warnings and 454 informational diagnostics, and no errors.
+- `bun run format` and `bun run format:check` passed.
+- `bun run generate:notices` passed: 124 production packages and 539199 bytes.
+- `git diff --check` passed.
+- The history SDK soak and delegated web checks passed as described above.
+- No push, tag, release, main-worktree change, or T3 pin update happened.
 
-All component commits are squashed into one final integration commit on the integration branch so it can be cherry-picked as a complete upgrade.
+All component commits were squashed into one integration-branch commit. It can be cherry-picked as the full upgrade.

@@ -1,7 +1,7 @@
 # Subagent workspaces
 
-Subagents share the parent's workspace by default. Request a separate Git worktree
-for independent code or PR work:
+Subagents use the parent's workspace unless you ask for a separate one. Use a Git
+worktree when a child needs its own code or PR:
 
 ```ts
 await subagent({
@@ -12,54 +12,56 @@ await subagent({
 ```
 
 `workspace` accepts `{ kind: "inherit" }` or
-`{ kind: "worktree", baseRef?, branch? }`. `title` is a readable task/thread name.
-A worktree needs a Git repository. The default base is the parent's current commit;
-`baseRef` can select another local commit/ref. An omitted branch gets a unique
-readable name. An explicit branch must be new: existing branches are never reset.
+`{ kind: "worktree", baseRef?, branch? }`. `title` gives the task or thread a
+readable name. Worktrees need a Git repository. By default, each starts from the
+parent's current commit. Use `baseRef` to pick another local commit or ref. Leave
+out branch to get a unique readable name. An explicit branch must be new. Die
+never resets an existing branch.
 
-A `prompts: string[]` batch creates one independent worktree per child from one
-pinned base commit. An explicit branch is rejected for a multi-prompt batch; use
-individual calls to name separate branches. Dirty tracked files, untracked files,
-ignored files and secrets are not copied from the parent's checkout. Local worktree preparation
-failures return failed child jobs without cancelling siblings. A native batch
-transport failure reports already-launched IDs; those siblings remain owned and
-can be inspected or cancelled.
+A `prompts: string[]` batch makes one worktree per child. All children start from
+one pinned commit. A batch cannot use an explicit branch. Make separate calls if
+you need named branches. Parent changes that are dirty, untracked, ignored, or
+secret do not go into the child worktree.
+
+One local setup failure does not cancel the other children. A native batch
+transport failure reports the IDs that already launched. Those children stay
+owned. So you can inspect or cancel them.
 
 ## Setup
 
-CLI preparation uses Git directly, without starting T3 or reading its database.
-It reads the existing repository `t3.json` setup declaration: the first script
-with `runOnWorktreeCreate: true`. Web delegation uses the project's existing
-configured setup action instead. A web-only action is not silently imported into
-the CLI.
+The CLI uses Git itself. It does not start T3 or read the T3 database. It reads the
+repository's `t3.json` and uses the first script with
+`runOnWorktreeCreate: true`. Web delegation uses the setup action already set for
+the project. The CLI does not silently import a web-only action.
 
-Setup runs in the new worktree. `async: false` waits for successful setup before
-the child starts; omitted/true keeps the existing background policy. No configured
-setup means no setup script. CLI setup executes automatically when declared, with no confirmation, project-trust,
-or approval gate. Project trust still controls the child agent's own trust mode;
-it does not control setup execution.
+Setup runs inside the new worktree. With `async: false`, the child starts only
+after setup succeeds. If async is omitted or true, the current background rule
+still applies. No setup declaration means no setup script. The CLI runs declared
+setup on its own. It does not ask for confirmation, project trust, or approval.
+Project trust still controls the child agent's trust mode, not setup.
 
 ## Ownership and retention
 
-Local children retain the existing task/session ancestry, cost aggregation,
-profiles, custom instructions, wait and timeout behavior. Configured web delegation
-remains async-only: omit `waitSeconds` or use zero; runtime deadlines are not
-supported there. Use `jobs.inspect` to inspect a child and `jobs.stop` to cancel
-its owned work. Local worktree jobs are inspectable while preparing, before the
-provider starts; their timeout includes preparation. Inspection includes the
-workspace identity/path and preparation/setup state. Native preparation whose
-outcome is uncertain after a server restart is reported as uncertain, not blindly
-rerun.
+Local children keep the usual task and session ancestry, cost totals, profiles,
+custom instructions, waits, and timeouts. Web delegation is still async-only. Omit
+`waitSeconds` or use zero. Web delegation does not support runtime deadlines.
+Use `jobs.inspect` to inspect a child and `jobs.stop` to cancel its owned work.
 
-Worktrees and branches remain after success, failure or cancellation, for review,
-PR creation or follow-up. Die does not automatically clean them up, copy secrets,
-create PRs, reorganize the sidebar or continuously resynchronize a parent's result
-after direct child follow-up.
+You can inspect a local worktree job while it prepares, before its provider starts.
+Its timeout includes preparation. Inspection shows the workspace identity and
+path, plus preparation and setup state. After a server restart, an unclear native
+preparation result is reported as uncertain. Die does not guess by running it
+again.
 
-Validation currently covers Linux x64 in ordinary (non-bare) Git checkouts.
-Cross-platform cancellation and submodule readiness are not claimed. CLI job
-recovery after a process crash remains outside the existing in-session task API;
-retained worktrees are not automatically reused or setup rerun.
+Worktrees and branches stay after success, failure, or cancellation. This leaves
+them ready for review, a PR, or follow-up work. Die does not clean them up, copy
+secrets, create PRs, move sidebar items, or keep syncing a parent's result after
+direct follow-up in the child.
 
-Validation/platform details and any remaining restrictions are recorded in
-[the native delegation status](../t3/t3-v2-delegation-status.md).
+Validation covers Linux x64 in ordinary, non-bare Git checkouts. It does not claim
+cross-platform cancellation or ready submodules. CLI jobs do not recover through
+a process crash with the current in-session task API. Kept worktrees are not
+reused automatically, and setup is not run again.
+
+See [the native delegation status](../t3/t3-v2-delegation-status.md) for validation,
+platform details, and remaining limits.

@@ -4,7 +4,7 @@ Date: 2026-09-20 (UTC)
 
 ## Scope and result
 
-Independent UI-evidence refresh only. I did **not** rerun `integrated-process-proof.sh`, change feature/production code, or use a paid model. The existing browser-live scripts were run against the newly generated, closed real-engine SQLite database. Result: **PASS**.
+This pass only refreshed the independent UI evidence. I did **not** rerun `integrated-process-proof.sh`, change feature or production code, or use a paid model. I ran the current browser-live scripts against the new, closed real-engine SQLite database. Result: **PASS**.
 
 ## Procedure
 
@@ -46,4 +46,4 @@ Source hashes recorded by the refreshed proof and independently rechecked after 
 - `.runtime/integrated-real-state.sqlite`: `ffe4d964bd08445ca0ee402aa9ddbc7a540e55457ea9d5ac0ee5f03077b35f1e`
 - `.runtime/integrated-real-result.json`: `6845fa9acadd1ddd5f484a7b16eaa28b7d8f976afba81e4efa77836e7b6355bd`
 
-These backend artifacts were not overwritten during this follow-up. The timestamped JSON above is historical and references the preceding run; the un-suffixed browser proof/screenshots are the current matching evidence.
+These backend artifacts were not overwritten during this follow-up. The timestamped JSON above is historical and references the preceding run. The un-suffixed browser proof/screenshots are the current matching evidence.

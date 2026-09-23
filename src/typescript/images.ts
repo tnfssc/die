@@ -119,7 +119,7 @@ async function resizeOversizedImage(
   };
 }
 
-/** Child-side helper. Serialize calls so concurrent emissions preserve call order. */
+/** Child helper. Serialize calls so concurrent sends stay in call order. */
 export function createImageHelper(channelEnabled: boolean) {
   let queue = Promise.resolve();
   let count = 0;
@@ -168,7 +168,7 @@ function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
 }
 
-/** Parent-side validation: the helper is convenient, not a trust boundary. */
+/** Validate on the parent. The helper is convenient, not a trust boundary. */
 export function decodeImageChannel(buffer: Buffer): ChannelImageContent[] {
   if (buffer.length > MAX_IMAGE_CHANNEL_BYTES) throw new Error("Image output channel exceeded its byte limit");
   if (buffer.length === 0) return [];

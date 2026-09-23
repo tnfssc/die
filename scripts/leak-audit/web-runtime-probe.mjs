@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Isolated black-box lifecycle/retention probe for the bundled T3 web server.
- * No product files or real user state are touched. Requires Node >= 22 on Linux.
+ * Probe lifecycle and retention in the bundled T3 web server as a black box.
+ * Touch no product files or real user state. Requires Node >= 22 on Linux.
  */
 import { spawn } from "node:child_process";
 import { mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";

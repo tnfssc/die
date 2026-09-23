@@ -1,3 +1,3 @@
 # CI trigger deduplication
 
-Changed `.github/workflows/ci.yml` so push CI runs only on `develop`, pull-request CI remains enabled, and workflow/PR-or-ref concurrency cancels superseded runs. Job and step content was preserved.
+`.github/workflows/ci.yml` now runs push CI only for `develop`. Pull-request CI stays on. Workflow and PR-or-ref concurrency cancel older runs. Job and step content did not change.

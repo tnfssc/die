@@ -76,9 +76,9 @@ function commandDiagnostic(
   fastDiagnostic(ctx.sessionManager as object, code, outcome, operationId, cancellation);
 }
 
-/** Keep only this asynchronous compaction request standard-priced. The owner is
- * retained for source compatibility; AsyncLocalStorage prevents concurrent
- * ordinary requests in the same session from inheriting the compaction tier. */
+/** Keep only this async compaction request at standard price. Keep the owner for
+ * source compatibility. AsyncLocalStorage stops other requests in the same
+ * session from inheriting the compaction tier. */
 export async function withStandardProviderTier<T>(_owner: object, run: () => Promise<T>): Promise<T> {
   return standardTierScope.run(true, run);
 }
@@ -270,10 +270,10 @@ const runtimePatches = new WeakMap<object, RuntimePatch>();
 const COMPATIBILITY_ERROR =
   "Native fast mode is unavailable: pinned Pi 0.85 ModelRuntime compatibility seam is missing.";
 
-/** Pi's extension emitter intentionally catches hook failures. Patch only the
- * concrete runtime instance owned by this extension context, and restore it
- * when its last controller detaches. The pinned Pi 0.85 seam is prepareRequest
- * followed by provider.streamSimple with the final onPayload pipeline. */
+/** Pi's extension emitter catches hook failures. Patch only this extension
+ * context's runtime instance. Restore it when the last controller leaves. The
+ * pinned Pi 0.85 seam is prepareRequest, then provider.streamSimple with the
+ * final onPayload pipeline. */
 function attachConcreteRequestGuard(runtime: unknown, controller: FastController): string | undefined {
   if (!record(runtime)) return COMPATIBILITY_ERROR;
   const seam = runtime as unknown as RuntimeSeam;

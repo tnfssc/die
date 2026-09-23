@@ -19,7 +19,7 @@ import { withStandardProviderTier } from "./native-fast-mode";
 export const CACHE_AFFINE_COMPACTION_VERSION = 5;
 
 type Snapshot = {
-  /** Retained only for the legacy pure request-builder API; production prepares current state. */
+  /** Keep this for the old pure request-builder API. Production prepares live state. */
   messages?: AgentMessage[];
   systemPrompt?: string;
   tools?: Tool[];
@@ -213,10 +213,9 @@ function activeTools(pi: ExtensionAPI): Tool[] {
 
 type RequestBuildResult = { request: CacheAffineRequest } | { reason: string };
 
-/** Prepare the current branch after it has passed through the same context
- * conversion used by an ordinary assistant request. The request summarizes the
- * entire prepared history; Pi independently applies its durable retained-tail
- * boundary when replaying the resulting checkpoint. */
+/** Prepare the current branch with the same context conversion as a normal
+ * assistant request. Summarize all prepared history. Pi separately applies its durable
+ * retained-tail boundary when it replays the checkpoint. */
 function prepareCacheAffineRequest(
   snapshot: Snapshot,
   event: SessionBeforeCompactEvent,
@@ -340,10 +339,10 @@ function withoutSequenceCacheMetadata(sequence: unknown[]): { sequence: unknown[
   return { sequence: sequence.map((item, index) => visit(item, index, "")), markers };
 }
 
-/** Verify that token-bearing provider input retains the old wire prefix.
- * Anthropic intentionally moves its conversation cache_control marker from the
- * old last user block to the newly appended summary request. That relocation is
- * accepted only when the marker count and policy values remain unchanged. */
+/** Check that provider input with tokens keeps the old wire prefix. Anthropic
+ * moves its conversation cache_control marker from the old last user block to
+ * the new summary request. Allow that move only when the marker count and policy
+ * values stay the same. */
 export function isCacheAffineProviderPayload(previous: unknown, candidate: unknown): boolean {
   if (!previous || !candidate || typeof previous !== "object" || typeof candidate !== "object") return false;
   const before = previous as Record<string, unknown>;

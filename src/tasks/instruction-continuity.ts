@@ -3,21 +3,18 @@ import type { ImageContent } from "@earendil-works/pi-ai";
 import { AgentSession, type NormalizedBuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
 
 /**
- * Compatibility boundary for die-owned instruction continuity.
+ * Keep Die's instruction continuity behind this compatibility boundary.
  *
- * Pi's public extension API exposes per-turn instruction framing, but not the
- * classic session that owns request preparation. This module alone owns the
- * pinned private AgentSession seams and the manager-keyed runtime state needed
- * to carry a final instruction frame through tool continuations and a fresh
- * compaction. The classic owner is observed at runtime construction; frame state
- * begins at scopeInstructionContinuity(). Both are isolated by manager identity,
- * frames are additionally guarded by the current persisted session id, and all
- * state must be released by clearInstructionContinuity() during replacement or
- * shutdown.
+ * Pi's public extension API frames each turn but does not expose the classic
+ * session that prepares requests. This module owns the pinned private
+ * AgentSession seams and manager-keyed state. That state carries the final frame
+ * through tool continuations and fresh compaction. Runtime construction finds
+ * the classic owner. scopeInstructionContinuity() starts frame state. Manager
+ * identity isolates both, and the saved session ID also guards frames.
+ * clearInstructionContinuity() must release all state on replacement or shutdown.
  *
- * Keeping these details here makes the lifecycle/version coupling explicit. A
- * missing private seam fails at adapter installation rather than degrading to a
- * differently framed request.
+ * Keep this version coupling in one place. If a private seam is missing, fail
+ * while installing the adapter instead of sending a differently framed request.
  */
 
 export type ClassicSession = {
@@ -80,14 +77,14 @@ export function scopeInstructionContinuity(sessionManager: object | undefined): 
   if (!currentInstructionFrame(sessionManager)) dieInstructionFrames.set(sessionManager, { sessionId });
 }
 
-/** Release every compatibility object owned by this manager. */
+/** Release all compatibility objects owned by this manager. */
 export function clearInstructionContinuity(sessionManager: object | undefined): void {
   if (!sessionManager) return;
   dieInstructionFrames.delete(sessionManager);
   classicSessions.delete(sessionManager);
 }
 
-/** Keep a frame prepared outside AgentSession.prompt(), notably fresh compaction. */
+/** Keep a frame prepared outside AgentSession.prompt(), such as for fresh compaction. */
 export function setCurrentInstructionFrame(sessionManager: object, systemPrompt: string): boolean {
   const frame = currentInstructionFrame(sessionManager);
   if (!frame) return false;
@@ -110,17 +107,17 @@ export function updateCurrentInstructionFrame(sessionManager: object, update: (p
   return setCurrentInstructionFrame(sessionManager, update(frame.systemPrompt));
 }
 
-/** Bind an owning classic session; also usable by embedders with explicit session construction. */
+/** Bind the owning classic session. Explicit session embedders can use this too. */
 export function bindInstructionContinuitySession(session: ClassicSession): void {
   if (session.sessionManager && typeof session.sessionManager === "object") {
     classicSessions.set(session.sessionManager, session);
   }
 }
 
-/** Backwards-compatible name for explicit compaction embedders. */
+/** Keep the old name for explicit compaction embedders. */
 export const bindCurrentCompactionSession = bindInstructionContinuitySession;
 
-/** Return only the classic session owned by this exact in-memory manager. */
+/** Return only the classic session owned by this in-memory manager. */
 export function getInstructionContinuitySession(sessionManager: object): ClassicSession | undefined {
   return classicSessions.get(sessionManager);
 }
@@ -128,12 +125,11 @@ export function getInstructionContinuitySession(sessionManager: object): Classic
 let classicAdapterInstalled = false;
 
 /**
- * Install the process-wide classic-Pi adapter once.
+ * Install the process-wide classic Pi adapter once.
  *
- * The prototype patch only observes sessions; manager scoping above decides
- * whether die may carry an instruction frame. This intentionally pins
- * AgentSession._buildRuntime and AgentSession._runAgentPrompt. It neither edits
- * node_modules nor synthesizes an agent turn.
+ * The prototype patch only watches sessions. Manager scope decides whether Die
+ * may carry an instruction frame. This pins AgentSession._buildRuntime and
+ * AgentSession._runAgentPrompt. It does not edit node_modules or make up a turn.
  */
 export function installCurrentConversationAdapter(): void {
   if (classicAdapterInstalled) return;

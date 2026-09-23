@@ -2,7 +2,7 @@
 
 ## Completed design
 
-The experiment bridge now keeps **execute as the only model-visible tool**. PiAdapterV2 may still inject its generated T3 MCP extension; the launcher preserves that argument so upstream approval and lifecycle hooks remain loaded, while `bridge-activation.ts` resets visibility to execute immediately before each model request.
+The experiment bridge keeps **execute as the only model-visible tool**. PiAdapterV2 may still inject its generated T3 MCP extension. The launcher keeps that argument so upstream approval and lifecycle hooks remain loaded, while `bridge-activation.ts` resets visibility to execute immediately before each model request.
 
 The extension appends an absolute, experiment-scoped import instruction. Execute programs use:
 
@@ -16,9 +16,9 @@ const result = await delegateTask({ task: "...", mode: "async" });
 ## Files
 
 - `bridge-client.ts` — execute-importable T3 client and exported `delegateTask` API.
-- `bridge-launcher.ts` — transparent provider launcher; retains incoming PiAdapterV2 extension and appends bridge guidance/policy.
+- `bridge-launcher.ts` — transparent provider launcher. Retains incoming PiAdapterV2 extension and appends bridge guidance/policy.
 - `bridge-activation.ts` — keeps only execute active and supplies the absolute import guidance.
-- `bridge-extension.ts` — isolated stand-in for upstream's injected extension in the loopback proof; not added by the launcher.
+- `bridge-extension.ts` — isolated stand-in for upstream's injected extension in the loopback proof. Not added by the launcher.
 - `bridge.test.ts` — deterministic explicit mock T3 MCP + mock model + actual built Die RPC process.
 
 ## Deterministic evidence
@@ -37,4 +37,4 @@ This proof uses an explicitly named mock T3 MCP server and deterministic model, 
 
 ## Coordinator integration review
 
-Added execute-importable taskStatus(taskId) and taskCancel(taskId), guidance for stable clientRequestId replay, no-op extension activation outside T3, and redirect rejection to avoid forwarding bearer credentials. Three additional focused mock transport/activation tests pass (6 assertions): fresh-client status/cancel, unauthorized rejection, redirects rejected, ordinary non-T3 activation inert. Actual Die execute delegation test rerun PASS. These client tests do not imply real upstream network cancellation/reconnect; the real upstream service-level harness covers those lifecycle semantics separately.
+Added execute-importable taskStatus(taskId) and taskCancel(taskId), guidance for stable clientRequestId replay, no-op extension activation outside T3, and redirect rejection to avoid forwarding bearer credentials. Three additional focused mock transport/activation tests pass (6 assertions): fresh-client status/cancel, unauthorized rejection, redirects rejected, ordinary non-T3 activation inert. Actual Die execute delegation test rerun PASS. These client tests do not imply real upstream network cancellation/reconnect. The real upstream service-level harness covers those lifecycle semantics separately.

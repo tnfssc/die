@@ -51,7 +51,7 @@ const states = new WeakMap<SessionManager, ManagerState>();
 // SDK teardown may still read a live manager: finalize only unreachable owners.
 const abandonedManagers = new FinalizationRegistry<DiskEntryStore>((store) => store.dispose());
 
-/** Release an owned temporary manager once no caller will read it again. */
+/** Release an owned temporary manager after its last reader is done. */
 export function disposeDiskBackedSessionManager(manager: SessionManager): void {
   abandonedManagers.unregister(manager);
   states.get(manager)?.store.dispose();
@@ -71,7 +71,7 @@ function withTemporaryManager(
 }
 let installed = false;
 
-/** Match Pi's supported POSIX path input forms without a private package import. */
+/** Match the POSIX path forms Pi supports without a private package import. */
 function resolveSessionPath(path: string): string {
   if (path === "~") return homedir();
   if (path.startsWith("~/")) return resolve(homedir(), path.slice(2));
@@ -120,7 +120,7 @@ function state(manager: SessionManager): ManagerState | undefined {
   return states.get(manager);
 }
 
-/** A failed reset/switch/branch must leave the old journal usable. */
+/** Keep the old journal usable when reset, switch, or branch fails. */
 function recoverStateOnFailure<T>(manager: SessionManager, operation: () => T): T {
   const previous = state(manager);
   const previousLeaf = internals(manager).leafId;
@@ -185,9 +185,8 @@ function openStore(path: string): DiskEntryStore {
 }
 
 /**
- * Install the 0.87.x-compatible disk-backed implementation on the SDK class.
- * Call this before importing/invoking the SDK CLI main function. In-memory managers
- * are deliberately untouched.
+ * Put the 0.87.x disk-backed implementation on the SDK class. Call this before
+ * importing or calling the SDK CLI main function. Leave in-memory managers alone.
  */
 export function installDiskBackedSessionManager(): void {
   if (installed) return;
@@ -584,7 +583,7 @@ export function installDiskBackedSessionManager(): void {
   };
 }
 
-/** Metadata-only, fail-closed traversal for bounded original-history retrieval. */
+/** Walk metadata only. Fail closed and bound original-history reads. */
 export function getDiskBackedBranch(
   manager: object,
   fromId?: string,

@@ -5,14 +5,14 @@ import { recordDiagnostic } from "../diagnostics.js";
 export const PROVIDER_ATTEMPT_OBSERVED = "provider_attempt_observed";
 export const PROVIDER_OBSERVER_FAILED = "observer_failed";
 
-/** A conservatively observed provider attempt. Ordinary requests are reported
- * after a successful HTTP response or transport-independent successful terminal
- * event; direct native requests report only once fetch dispatch is inevitable. */
+/** Record a provider attempt only when evidence is strong. Report normal requests
+ * after a successful HTTP response or transport-independent final event. Report direct native requests
+ * only when fetch dispatch cannot be avoided. */
 export interface ProviderAttemptEvent {
   model: Pick<Model<any>, "provider" | "id">;
   timestamp: number;
   observedAt: "response" | "dispatch";
-  /** Unique correlation identity; never derived from provider data. */
+  /** Use a unique correlation ID that never comes from provider data. */
   operationId: string;
 }
 
@@ -29,8 +29,8 @@ export function subscribeProviderAttempts(owner: object, listener: ProviderAttem
   };
 }
 
-/** Report an already-observed attempt. The optional final argument preserves
- * positional API compatibility while allowing a caller to propagate an ID. */
+/** Report an attempt already seen. The optional last argument keeps positional
+ * API compatibility and lets callers pass an ID. */
 export function reportProviderAttempt(
   owner: object,
   model: Pick<Model<any>, "provider" | "id">,

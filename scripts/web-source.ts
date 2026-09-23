@@ -3,9 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-/** Verify the build inputs, not merely whether our patch can reverse-apply.
- * A disposable index describes HEAD + the canonical patch without modifying the
- * checkout's index. Additional tracked or untracked source must not enter a build.
+/** Check build inputs, not just whether the patch can reverse-apply. Use a
+ * disposable index for HEAD plus the canonical patch. Leave the checkout index
+ * alone. Do not let other tracked or untracked source enter the build.
  */
 export async function verifyWebSource(source: string, patch: string): Promise<void> {
   const temporary = await mkdtemp(join(tmpdir(), "die-web-source-"));

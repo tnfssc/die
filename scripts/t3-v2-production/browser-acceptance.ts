@@ -1,10 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Deterministic T3-v2 same-server browser acceptance.
+ * Run deterministic T3-v2 browser acceptance against one server.
  *
- * This intentionally refuses to run without an explicitly identified candidate.
- * It creates fresh state, starts one candidate backend, and drives that backend's
- * browser UI. It never imports or edits an existing T3 database.
+ * Refuse to run without a named candidate. Make fresh state, start one candidate
+ * backend, and drive its browser UI. Never import or edit an existing T3 database.
  */
 import { createHash } from "node:crypto";
 import { spawn, type ChildProcess } from "node:child_process";

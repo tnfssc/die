@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Launch the pinned experiment UI with browser-live-owned ports and durable state.
+# Launch the pinned experiment UI with its own ports and durable state.
 set -euo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 RUNTIME="$HERE/.runtime"

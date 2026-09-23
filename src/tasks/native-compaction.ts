@@ -17,7 +17,7 @@ import { reportProviderAttempt } from "./provider-attempts";
 
 const readOnlyContextPreview = new AsyncLocalStorage<boolean>();
 
-/** Run context transforms for accounting/projection without refreshing provider captures. */
+/** Run context transforms for accounting and projection. Do not refresh provider captures. */
 export function withReadOnlyCompactionContext<T>(operation: () => Promise<T>): Promise<T> {
   return readOnlyContextPreview.run(true, operation);
 }
@@ -83,8 +83,8 @@ export function isNativeCodexCompactionDetails(value: unknown): value is NativeC
   );
 }
 
-/** Keep every normal provider/cache field byte-for-byte equivalent and append the
- * documented remote-v2 trigger as the final input item. */
+/** Keep each normal provider and cache field byte-for-byte equal. Add the documented
+ * remote-v2 trigger as the last input item. */
 export function buildNativeCodexRequest(payload: unknown): Record<string, unknown> | undefined {
   if (!isRecord(payload) || !Array.isArray(payload.input) || typeof payload.model !== "string") return;
   if (payload.input.some((item) => isRecord(item) && item.type === "compaction_trigger")) return;
@@ -150,7 +150,7 @@ class NativeCodexHttpError extends Error {
   }
 }
 
-/** Parse protocol shape only; provider payloads and hidden reasoning never enter errors. */
+/** Parse only protocol shape. Keep provider payloads and hidden reasoning out of errors. */
 export function parseNativeCodexEvents(events: readonly unknown[], model: Model<any>): NativeResponse {
   const doneItems: CodexCompactionItem[] = [];
   let terminal: Record<string, unknown> | undefined;
@@ -498,8 +498,8 @@ function nativeEntriesInContext(ctx: ExtensionContext): CompactionEntry[] {
 function nativeDetailsInContext(ctx: ExtensionContext): NativeCodexCompactionDetails[] {
   return nativeEntriesInContext(ctx).flatMap((e) => (isNativeCodexCompactionDetails(e.details) ? [e.details] : []));
 }
-/** Version-pinned bridge for the current pi-ai converter. thinkingSignature is
- * an internal replay carrier, not an assertion that pi-ai officially supports compaction items. */
+/** Bridge to the pinned pi-ai converter. thinkingSignature carries internal replay
+ * data. It does not mean pi-ai officially supports compaction items. */
 export function adaptNativeCompactionMessages(messages: AgentMessage[], ctx: ExtensionContext): AgentMessage[] {
   const compactions = ctx.sessionManager.buildContextEntries().filter((e) => e.type === "compaction");
   let index = 0;

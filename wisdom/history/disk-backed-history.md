@@ -1,27 +1,27 @@
 # Disk-backed original session history
 
-Die's CLI installs an owned adapter for the pinned Pi 0.85.1 SessionManager before creating sessions. Original JSONL remains authoritative and SDK-readable. Compaction does **not** delete originals or replace them with summaries. IDs, branches, labels, compaction details, and history refs survive reopen.
+Before making session, Die CLI installs own adapter for pinned Pi 0.85.1 SessionManager. Original JSONL stays source of truth. SDK can still read it. Compaction does **not** delete originals or swap in summaries. Reopen keeps IDs, branches, labels, compaction details, and history refs.
 
 ## Memory contract
 
-- Each persistent manager retains at most **4 MiB of serialized body-cache buffers**. Parsed historical entry objects are not retained by that cache. Oversized entries bypass it.
-- A resident offset/tree index scales with entry count. IDs, timestamps, model settings, labels, titles and the session header also occupy memory; this is not constant total metadata space.
-- Normal context construction selects the compaction window using metadata, then loads only its bodies. Original-history retrieval traverses metadata and loads selected messages/shake records incrementally.
-- Loading scans JSONL in chunks. Work is proportional to file size; transient parsing still requires the largest individual record.
-- Native `getEntries()`, `getBranch()` and `getTree()` remain full, ordinary-array/tree APIs. Their returned objects belong to callers. Explicit exports, native SDK compaction hooks, and callers retaining those arrays can materialize the whole history. Live model context is also outside the cache budget. **This is not a flat process-RSS or peak-heap guarantee.**
-- Explicit SDK `SessionManager.inMemory()` stays in memory. Direct SDK users and source utilities must install the adapter themselves if they want persistent bounded-cache behavior; importing it alone does not change the SDK.
+- Each persistent manager keeps at most **4 MiB of serialized body-cache buffers**. Cache does not keep parsed old entry objects. Oversized entries skip it.
+- Resident offset/tree index grows with entry count. IDs, timestamps, model settings, labels, titles and session header also use memory. Total metadata space is not constant.
+- Normal context build uses metadata to pick compaction window. Then it loads only those bodies. Original-history read walks metadata. It loads chosen messages/shake records bit by bit.
+- Load scans JSONL in chunks. Work grows with file size. Temporary parse still needs room for largest one record.
+- Native `getEntries()`, `getBranch()` and `getTree()` stay full normal-array/tree APIs. Returned objects belong to callers. Explicit exports, native SDK compaction hooks, and callers that keep arrays can load whole history. Live model context is outside cache budget too. **This does not promise flat process RSS or peak heap.**
+- Explicit SDK `SessionManager.inMemory()` stays in memory. Direct SDK users and source utilities want persistent bounded cache? They must install adapter. Import alone does not change SDK.
 
 ## Persistence and compatibility
 
-New sessions retain Pi's delayed visibility: before the first assistant response, originals are stored in a private same-directory pending spool; first-assistant publication creates the advertised path without overwriting an existing file. Reset/switch and normal process exit retire owned pending spools. Abrupt termination can leave a pending spool; it is not an automatically recovered session. This does not weaken Pi's original pre-assistant durability contract, which kept those entries only in RAM.
+New sessions keep Pi's delayed visibility. Before first assistant response, originals go to private pending spool in same directory. First-assistant publish creates advertised path without overwriting an existing file. Reset/switch and normal process exit remove owned pending spools. Abrupt stop can leave pending spool. It is not recovered session. Pi's old pre-assistant durability kept entries only in RAM. This does not weaken it.
 
-Appends are synchronous and retry short writes; failed partial appends roll back the new bytes. Rewrites/migrations write a temporary journal and atomically replace the destination, preserving the prior file on failure. Version 1/2 migration, branch copies, forks, reload, labels and context settings are covered by SDK parity tests. Existing symlink aliases are preserved during rewrite. Existing entries are read-only API values, not a mutation-through-object persistence interface.
+Appends are synchronous. They retry short writes. Failed partial append rolls back new bytes. Rewrites/migrations write temporary journal, then atomically replace destination. Failure keeps prior file. SDK parity tests cover Version 1/2 migration, branch copies, forks, reload, labels and context settings. Rewrite keeps existing symlink aliases. Existing entries are read-only API values. Mutating object does not persist it.
 
-There is no lossy sidecar or mandatory new session format. The offset index is rebuilt from the original journal on load. Cache-affine compaction's external rewrite followed by `setSessionFile()` rebuilds it as well.
+No lossy sidecar. No required new session format. Load rebuilds offset index from original journal. Cache-affine compaction rebuilds it too after external rewrite and `setSessionFile()`.
 
-The supported mode is a single writer on a local POSIX filesystem supporting hard links and atomic rename. Concurrent writers, independently rewritten/open hard-linked aliases, and external replacement without explicit reload are not coordinated. Normal appends retain Pi's synchronous, non-fsync durability semantics; this is not a database-style power-loss transaction guarantee. There is no automatic history expiration or disk quota. Disk capacity still needs explicit user management.
+Supported mode has one writer on local POSIX filesystem with hard links and atomic rename. It does not coordinate concurrent writers, independently rewritten/open hard-linked aliases, or external replacement without explicit reload. Normal appends keep Pi's synchronous, non-fsync durability semantics. No database-style power-loss transaction promise. No automatic history expiry or disk quota. User still must manage disk capacity.
 
-The integration is source-owned in `src/history/session-manager.ts` and `disk-entry-store.ts`, not a modification of installed dependencies. Build/check preparation verifies both the pinned SDK version and SessionManager source hash; an SDK upgrade requires explicit adapter review. Private SDK entrypoints or mutation of its private fields are not supported public APIs.
+Project owns integration in `src/history/session-manager.ts` and `disk-entry-store.ts`. It does not patch installed dependencies. Build/check setup verifies pinned SDK version and SessionManager source hash. SDK upgrade needs direct adapter review. Private SDK entrypoints and private-field changes are not supported public APIs.
 
 ## Validation
 
@@ -33,6 +33,6 @@ bun scripts/history-sdk-probe.ts
 bun test --preload ./scripts/history-storage-preload.ts tests/history*.test.ts
 ```
 
-The first compares native/adapted managers with 136 MiB of originals and 17 compactions, checks original SHA-256 after reopen, and measures append/reset/resume. The second completes 16 actual `AgentSession.compact()` calls through an offline extension hook with 128 MiB of original messages. It is a real SDK lifecycle soak, not a provider-summary quality test.
+First compares native/adapted managers with 136 MiB originals and 17 compactions. It checks original SHA-256 after reopen. It measures append/reset/resume. Second completes 16 real `AgentSession.compact()` calls through offline extension hook with 128 MiB original messages. This is real SDK lifecycle soak. It does not test provider-summary quality.
 
-On the measured Linux/Bun run, reopened retained heap was about **136 MiB lower** than native. The real SDK soak retained roughly **18–23 MiB JSC heap** across 128 MiB of originals, with two compacted context messages; reset/resume returned to about 19 MiB. Full-array SDK compaction caused large transient/allocator RSS (around 0.9 GiB), subsequently reclaiming substantially. These measurements support bounded historical-cache residency, not bounded total application RSS. See `wisdom/resources/resource-fixes-history.md` for exact final commands/results.
+On measured Linux/Bun run, reopened retained heap was about **136 MiB lower** than native. Real SDK soak kept about **18–23 MiB JSC heap** across 128 MiB originals and two compacted context messages. Reset/resume returned to about 19 MiB. Full-array SDK compaction caused large temporary/allocator RSS around 0.9 GiB. It later reclaimed much of that. Measures support bounded old-history cache residency. They do not show bounded total app RSS. Exact final commands/results: `wisdom/resources/resource-fixes-history.md`.

@@ -1,9 +1,9 @@
 #!/usr/bin/env bun
 /**
- * Black-box smoke test for a relocated packaged die executable.
+ * Smoke-test a relocated packaged Die executable as a black box.
  *
- * This intentionally does not import application source. The candidate is copied
- * before launch, then run with an unusable PATH and isolated HOME/XDG/TMP/state.
+ * Do not import application source. Copy the candidate before launch, then run it
+ * with an unusable PATH and isolated HOME, XDG, TMP, and state.
  */
 import { type ChildProcess, spawn } from "node:child_process";
 import { once } from "node:events";

@@ -83,12 +83,12 @@ type AckCapableSignal = AbortSignal & {
   [REQUEST_IDENTITY]?: JobRequestIdentity;
 };
 
-/** Identity used for durable native mutation replay; payload equality is never intent identity. */
+/** Use this ID for durable native mutation replay. Equal payloads do not mean equal intent. */
 export function getJobRequestIdentity(signal?: AbortSignal): JobRequestIdentity | undefined {
   return signal ? (signal as AckCapableSignal)[REQUEST_IDENTITY] : undefined;
 }
 
-/** Attach bridge request identity while preserving cancellation and delivery metadata. */
+/** Add the bridge request ID without losing cancellation or delivery metadata. */
 export function withJobRequestIdentity(signal: AbortSignal, identity: JobRequestIdentity): AbortSignal {
   if (
     !identity.executeInvocationId ||
@@ -101,21 +101,21 @@ export function withJobRequestIdentity(signal: AbortSignal, identity: JobRequest
   return signal;
 }
 
-/** Return the bridge signal whose lifetime describes response delivery. */
+/** Return the bridge signal that tracks response delivery. */
 export function getJobResponseDeliverySignal(signal?: AbortSignal): AbortSignal | undefined {
   return signal ? ((signal as AckCapableSignal)[RESPONSE_DELIVERY_SIGNAL] ?? signal) : undefined;
 }
 
-/** True when a handler signal can acknowledge that its result reached the worker. */
+/** True when a handler signal can confirm that its result reached the worker. */
 export function supportsJobResponseAcknowledgement(signal?: AbortSignal): boolean {
   const deliverySignal = getJobResponseDeliverySignal(signal);
   return !!deliverySignal && (deliverySignal as AckCapableSignal)[ACK_CAPABLE] === true;
 }
 
 /**
- * Add local cancellation without losing the bridge signal's delivery identity.
- * Delivery identity is carried separately: AbortSignal.any() only preserves
- * abort state, and local wait cancellation must not revoke inline delivery.
+ * Add local cancellation without losing the bridge signal's delivery ID. The ID
+ * travels separately because AbortSignal.any() keeps only abort state. Cancelling
+ * a local wait must not cancel inline delivery.
  */
 export function withJobCancellation(signal: AbortSignal, cancellation: AbortSignal): AbortSignal {
   if (signal === cancellation) return signal;
@@ -193,7 +193,7 @@ declare global {
   var jobs: ExecuteJobGlobals["jobs"];
 }
 
-/** Signals an acknowledged cooperative handoff to the execute runner. */
+/** Signal a confirmed cooperative handoff to the execute runner. */
 export class HandoffSignal extends Error {
   constructor() {
     super("Execution handed off cooperatively");
@@ -211,7 +211,7 @@ function combine(options: Options | undefined, required: Options): Options {
   return { ...(options ?? {}), ...required };
 }
 
-/** Consume newline-delimited frames while retaining at most one bounded partial frame. */
+/** Read newline-delimited frames. Keep at most one bounded partial frame. */
 function consumeFrames(
   input: Buffer,
   chunk: Buffer,
@@ -241,7 +241,7 @@ function consumeFrames(
   return input;
 }
 
-/** Install execute's job helpers. With no bridge, calls reject with a useful error. */
+/** Install execute's job helpers. Without a bridge, reject calls with a useful error. */
 export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } {
   let nextId = 1;
   let input: Buffer = Buffer.alloc(0);
@@ -411,7 +411,7 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
   };
 }
 
-/** Adapt the private Node/Bun IPC channel to the framed bridge protocol. */
+/** Connect the private Node/Bun IPC channel to the framed bridge protocol. */
 function ipcStream(endpoint: NodeJS.Process | ChildProcess): Duplex {
   const onMessage = (value: unknown) => {
     if (typeof value === "string") stream.push(Buffer.from(value));
@@ -466,7 +466,7 @@ export function openParentJobBridge(child: ChildProcess): Duplex {
   return ipcStream(child);
 }
 
-/** Serve worker requests over the private IPC channel. */
+/** Handle worker requests over the private IPC channel. */
 export function serveJobBridge(
   socket: Duplex,
   handler: JobHandler,

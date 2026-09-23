@@ -4,7 +4,7 @@ Date: 2026-09-21
 
 ## Scope
 
-Added `scripts/t3-v2-production/preservation-acceptance.ts`. It treats the packaged executable as a black box, copies it into a fresh private temporary root, uses fresh HOME/TMP/web/agent state, removes Node/Bun/npm from the candidate PATH, and serves a deterministic loopback OpenAI-compatible model. It does not read user state or contact a live provider. No candidate source/build files or the existing browser acceptance script were edited.
+Added `scripts/t3-v2-production/preservation-acceptance.ts`. It treats the packaged executable as a black box. It copies the executable into a fresh private temporary root, uses fresh HOME/TMP/web/agent state, removes Node/Bun/npm from the candidate PATH, and serves a deterministic loopback OpenAI-compatible model. It does not read user state or contact a live provider. Did not edit candidate source/build files or the existing browser acceptance script.
 
 ## Candidate and rerun
 
@@ -31,7 +31,7 @@ Proof: `artifacts/t3-v2-preservation-acceptance.json`.
 
 ## Failed required gate / bug report
 
-The run intentionally exited 1 because the completed local-shell card did not remain observable. The card was visible while running, the real job completed successfully, and the Pi session JSONL recorded both `PRESERVE_COMPLETE_START` and `PRESERVE_COMPLETE_DONE`; after completion the browser had no `Completed printf` lifecycle card. It showed only the user turn and `PRESERVE_COMPLETE_SETTLED` response. The backend also rendered `ProviderAdapterEventStreamError: Provider event stream ended unexpectedly` for that turn. This is a release/adoption blocker; no source fix was attempted.
+The run intentionally exited 1 because the completed local-shell card did not remain observable. The card was visible while running, the real job completed successfully, and the Pi session JSONL recorded both `PRESERVE_COMPLETE_START` and `PRESERVE_COMPLETE_DONE`; after completion the browser had no `Completed printf` lifecycle card. It showed only the user turn and `PRESERVE_COMPLETE_SETTLED` response. The backend also rendered `ProviderAdapterEventStreamError: Provider event stream ended unexpectedly` for that turn. This is a release/adoption blocker. No source fix was attempted.
 
 The pending handoff text itself is not rendered, so the evidence is the deterministic execute source (shell launch followed by awaited `handoff`), the accepted `pending-tool` model request, and the still-live card. The proof does not claim a visible handoff banner.
 

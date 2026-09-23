@@ -2,20 +2,20 @@
 
 ## Verdict
 
-Candidate `a9b49a7df0a4261dcc438d4493cc3154a1d9819e` migrates a fresh synthetic canonical `719a76ca1dbf5490f1aa33ffb9966301e02be9a9` (v0.4) state successfully. Thread metadata, all six messages, old provider-session/runtime rows, old turn/checkpoint history, and source DB immutability survived two candidate starts. Existing V2 provider-session replay, restart continuation, and cross-thread native-subagent graph rebuild tests also pass.
+Candidate `a9b49a7df0a4261dcc438d4493cc3154a1d9819e` successfully migrates a fresh synthetic canonical `719a76ca1dbf5490f1aa33ffb9966301e02be9a9` (v0.4) state. Two candidate starts kept thread metadata, all six messages, old provider-session/runtime rows, old turn/checkpoint history, and source DB immutability. Existing V2 tests also pass for provider-session replay, restart continuation, and cross-thread native-subagent graph rebuild.
 
-A real packaging incompatibility was found and fixed in candidate source: upstream split the CLI into `bin.ts` / `binCli.ts`, so the embedded launcher’s documented `import("./dist/bin.mjs").runCli(args)` returned `undefined`. `apps/server/src/bin.ts` now exports the lazy bridge and `binCli.ts` supports the explicit-argument, teardown-aware promise contract while retaining normal Node entry behavior.
+Found and fixed a real packaging mismatch in candidate source: upstream split the CLI into `bin.ts` / `binCli.ts`, so the embedded launcher’s documented `import("./dist/bin.mjs").runCli(args)` returned `undefined`. `apps/server/src/bin.ts` now exports the lazy bridge and `binCli.ts` supports the explicit-argument, teardown-aware promise contract while retaining normal Node entry behavior.
 
-No canonical pin/patch, installed binary, release artifact, user DB/session, or user process was changed. `dist/die-t3-v2-root` was not overwritten and the coordinated full `dist/die-t3-v2-candidate` was intentionally not produced.
+Did not change canonical pin/patch, installed binary, release artifact, user DB/session, or user process. `dist/die-t3-v2-root` was not overwritten and the coordinated full `dist/die-t3-v2-candidate` was not produced.
 
 ## Actual migration path and scope
 
-1. Explicit/default production state resolves to `<stateDir>/statev2.sqlite`; the old DB is `<stateDir>/state.sqlite`.
-2. On first V2 start only, `initializeV2Database` opens old state read-only and uses `node:sqlite.backup` to a same-directory temporary snapshot, then hard-links the complete snapshot into place. Existing `statev2.sqlite` always wins. WAL committed state is included; the old file is never migrated in place.
+1. Explicit/default production state resolves to `<stateDir>/statev2.sqlite`. The old DB is `<stateDir>/state.sqlite`.
+2. On first V2 start only, `initializeV2Database` opens old state read-only and uses `node:sqlite.backup` to a same-directory temporary snapshot, then hard-links the complete snapshot into place. Existing `statev2.sqlite` always wins. WAL committed state is included. The old file is never migrated in place.
 3. Candidate runs migrations 53 (PullRequestFilesViewed) and 54 (OrchestrationV2 and additive sub-migrations) against the copy.
 4. Startup `LegacyV1ThreadImporter.reconcileShells` emits deterministic V2 events for old thread metadata plus a bounded shell preview (latest user and latest message). `importPendingTranscripts` / `ensureTranscript` then emits deterministic message and turn-item events for the full transcript. `orchestration_v2_legacy_imports` makes both phases restart-idempotent.
 5. Old `projection_thread_sessions`, `provider_session_runtime`, `projection_turns`, checkpoint refs, and all other V1 tables remain byte-for-byte data in the copied DB. They are preservation records, not rebound as an active V2 provider thread: imported `activeProviderThreadId` is deliberately null. Resuming a pre-V2 live provider process would be unsafe and is not claimed. Conversation history is available and a later turn starts a V2-managed provider session.
-6. Canonical v0.4 has no V2 native-child graph. Existing V2 state uses event replay/projection rebuild; the focused current-state tests below verify provider-session sharing, restart continuation, and cross-thread subagent relations.
+6. Canonical v0.4 has no V2 native-child graph. Existing V2 state uses event replay/projection rebuild. The focused current-state tests below verify provider-session sharing, restart continuation, and cross-thread subagent relations.
 
 No compatible conversion was missing in the exercised path. In particular, manufacturing a V2 active provider binding from a stale V1 runtime row would invent lifecycle state and weaken, not improve, integrity.
 
@@ -40,7 +40,7 @@ The fixture program ran the **old checkout's** `apps/server/src/persistence/Migr
 - `provider_session_runtime`: canonical instance, synthetic resume cursor and runtime payload;
 - completed `projection_turns` row with `refs/t3/checkpoints/synthetic`.
 
-It did not synthesize event payloads outside old domain schemas. Candidate validation called `initializeV2Database`, current `runMigrations`, `LegacyV1ThreadImporter.reconcileShells`, `ensureTranscript`, and `ProjectionStoreV2.getThreadProjection`; it rebuilt those layers and repeated the query as a restart.
+It did not synthesize event payloads outside old domain schemas. Candidate validation called `initializeV2Database`, current `runMigrations`, `LegacyV1ThreadImporter.reconcileShells`, `ensureTranscript`, and `ProjectionStoreV2.getThreadProjection`. It rebuilt those layers and repeated the query as a restart.
 
 Observed result:
 
@@ -91,7 +91,7 @@ migration acceptance: PASS (fixture + migrate/import + restart/idempotency)
 ```
 
 Each real JSON line additionally reported the generated source DB SHA-256
-(`7581494e...4129` then `c16142b4...e43e`); it differs because the old
+(`7581494e...4129` then `c16142b4...e43e`). It differs because the old
 migration ledger records run time. Within each run the harness hashes immediately
 before migration and asserts the source has the same hash after both current
 passes. No owned runner, state directory, or process remained after either run.
@@ -122,10 +122,10 @@ Validation after fix:
 - Stage symlink audit: no link resolved outside package root. T3 MIT license is copied. 171 dependency package manifests and 127 colocated LICENSE/COPYING/NOTICE files were present; Cursor’s platform package points to and ships the parent SDK `LICENSE.md`.
 - Native stage is Linux x64-compatible and starts under Bun 1.4.1. It contains the expected Linux native assets (including fff/ffi) and also foreign prebuilds from bufferutil/utf-8-validate/node-pty. Those are archive bloat, not runtime lookup dependencies; native Bun PTY selection avoids loading node-pty in the embedded runtime.
 
-Central `dist/release/THIRD_PARTY_LICENSES.txt` describes Die/Pi/Bun dependencies and does not aggregate every T3 backend dependency into one file. The backend archive does preserve published package notices plus `LICENSE-T3CODE`; this is adequate preservation evidence, not legal advice or a claim of a complete centralized SBOM.
+Central `dist/release/THIRD_PARTY_LICENSES.txt` describes Die/Pi/Bun dependencies and does not aggregate every T3 backend dependency into one file. The backend archive does preserve published package notices plus `LICENSE-T3CODE`. This is adequate preservation evidence, not legal advice or a claim of a complete centralized SBOM.
 
 ## Non-owned/coordinator observations
 
 - Whole server typecheck was blocked by a concurrent syntax error in `orchestration-v2/NativeDieIntegration.production.test.ts:486`; neither owned file produced a reported diagnostic, and bundle compilation passed.
-- A combined native integration invocation had 38 passing tests and one failure because that test defaulted to nonexistent `/home/tnfssc/dist/die`; use the coordinator-owned `T3_V2_DIE_BINARY=.../dist/die-t3-v2-root` after its concurrently edited test is syntactically coherent. This is not migration evidence.
-- Final archive embedding/relocated compiled executable validation must be repeated by the coordinator when it intentionally creates `dist/die-t3-v2-candidate`; this worker did not race or replace the RPC-only root artifact.
+- A combined native integration invocation had 38 passing tests and one failure because that test defaulted to nonexistent `/home/tnfssc/dist/die`. Use the coordinator-owned `T3_V2_DIE_BINARY=.../dist/die-t3-v2-root` after its concurrently edited test is syntactically coherent. This is not migration evidence.
+- Final archive embedding/relocated compiled executable validation must be repeated by the coordinator when it intentionally creates `dist/die-t3-v2-candidate`. This worker did not race or replace the RPC-only root artifact.

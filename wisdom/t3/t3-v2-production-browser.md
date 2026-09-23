@@ -24,16 +24,14 @@ shared process/state was changed.
   published. An already installed playwright-core may instead be selected explicitly.
 - Root bridge changes from task `taskaa90e5c7` and web migration changes from
   task `task22bbfa03` were not available as one reviewed runnable executable +
-  checkout. No browser acceptance was run and no PASS is claimed.
+  checkout. No browser acceptance was run and this is not a PASS.
 
 ## Harness contract for the two upstream workers
 
-The fixture configures a deterministic local HTTP model as the candidate's Pi provider.
+The fixture uses a deterministic local HTTP model as the candidate's Pi provider.
 The parent model calls only the native execute tool. Its execute code launches
-`subagent({type: "orchestrator", waitSeconds: 0})`; it does not call T3 MCP directly,
-seed a database, or fake projection rows. The candidate backend must inject its scoped
-`T3_MCP_URL`/bearer pair into that provider and map the native helper to a T3-owned
-child thread. Credentials must remain out of transcript, logs, errors, and proof.
+`subagent({type: "orchestrator", waitSeconds: 0})`. It does not call T3 MCP directly,
+seed a database, or fake projection rows. The candidate backend must inject its scoped `T3_MCP_URL`/bearer pair into that provider. It must map the native helper to a T3-owned child thread. Keep credentials out of transcripts, logs, errors, and proof.
 
 The UI/backend must expose:
 
@@ -44,7 +42,7 @@ The UI/backend must expose:
 4. durable exact-child routing/transcript/status after page refresh.
 
 If final labels differ semantically, update selectors only after inspecting the coherent
-candidate; do not weaken the live-state assertions or use seeded state.
+candidate. Do not weaken the live-state assertions or use seeded state.
 
 ## What the eventual run must report
 
@@ -56,7 +54,7 @@ a newly created mode-0700 temporary home and is deleted after owned processes st
 ## Static checks completed
 
 - `bun build scripts/t3-v2-production/browser-acceptance.ts --target=bun` succeeds.
-- The fail-closed candidate gate was reviewed; the current upstream checkout would be
+- The fail-closed candidate gate was reviewed. The current upstream checkout would be
   rejected before allocating temp state or spawning processes.
 
 ## Run gate

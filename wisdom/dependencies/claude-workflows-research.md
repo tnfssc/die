@@ -1,53 +1,53 @@
 # Claude Dynamic Workflows research
 
-Researched 2026-09-06 using tvly advanced search and extraction, cross-checked against the official workflows Markdown page. The tvly research endpoint was unavailable without an API key; this is primary-source research, not a completed Tavily Research API report. Source snapshots are retained under artifacts/research/ (ignored).
+Research ran on 2026-09-06 with tvly advanced search and extraction. It was checked against the official workflows Markdown page. The tvly research endpoint needed an API key and was not available. This is primary-source research, not a finished Tavily Research API report. Source snapshots remain under ignored `artifacts/research/`.
 
 ## Correction to the earlier answer
 
-Claude Code has an actual Dynamic Workflows feature and Workflow tool. It is not merely the older Building Effective Agents pattern taxonomy, ordinary subagent delegation, skills, or agent teams. Its defining feature is an orchestration script executed by a background runtime, with intermediate results outside the lead model context.
+Claude Code has a real Dynamic Workflows feature and a Workflow tool. This is not just the older Building Effective Agents pattern list, normal subagent delegation, skills, or agent teams. A background runtime runs an orchestration script. Intermediate results stay outside the lead model's context.
 
 ## Execution model
 
-1. Claude writes JavaScript beginning with a literal export const meta containing name and description, optionally phases.
-2. Workflow accepts script, name, or scriptPath, plus JSON args and optional resumeFromRunId. scriptPath takes precedence. The TypeScript Agent SDK documents support from v0.3.149.
-3. The runtime persists the script under the session directory and executes it in an isolated background environment.
-4. agent(prompt, options) runs a full subagent, not one inference. The cookbook describes a clean task context and options including model, schema, label and phase.
-5. parallel is an all-results barrier. pipeline moves each item through stages independently, allowing overlapping stages across items. phase and log provide progress metadata.
-6. Script variables hold intermediate results; only the consolidated result returns to the lead conversation. SDK consumers must distinguish launch-turn ResultMessage from final completion, and can observe task progress/notifications.
-7. Saved scripts in project or user .claude/workflows directories become named commands. This is persisted orchestration code, not just a saved prompt.
+1. Claude writes JavaScript that starts with a literal `export const meta`. It contains a name and description, and can also contain phases.
+2. `Workflow` accepts `script`, `name`, or `scriptPath`, plus JSON args and optional `resumeFromRunId`. `scriptPath` wins when present. The TypeScript Agent SDK documents this from v0.3.149.
+3. The runtime saves the script under the session directory and runs it in an isolated background environment.
+4. `agent(prompt, options)` runs a full subagent, not one inference. The cookbook shows a clean task context and options for model, schema, label, and phase.
+5. `parallel` waits for all results. `pipeline` moves each item through stages on its own, so stages can overlap across items. `phase` and `log` add progress data.
+6. Script variables hold intermediate results. Only the combined result returns to the lead conversation. SDK users must tell the launch-turn `ResultMessage` from final completion. They can also watch task progress and notifications.
+7. Scripts saved in project or user `.claude/workflows` directories become named commands. This is saved orchestration code, not only a saved prompt.
 
 ## Constraints and recovery
 
-The current guide documents up to 16 concurrent agents (reduced with CPU availability), 1,000 total agents per run, and at most 4,096 items in one parallel/pipeline call. Size guidelines are advice, not hard caps. There is no direct filesystem/shell access or module loading in the coordinator; agents perform I/O. Date.now, Math.random and no-argument new Date are blocked for replay determinism. Permission checks still apply to agents; workflow consent does not mean unrestricted tool access. Mid-run user sign-off requires separate workflow stages/runs; the guide distinguishes this from agent permission prompts.
+The current guide lists up to 16 agents at once, reduced when CPU is limited. It allows 1,000 total agents per run and up to 4,096 items in one `parallel` or `pipeline` call. Size guidance is advice, not a hard limit. The coordinator cannot directly use the filesystem, shell, or modules. Agents do that work. `Date.now`, `Math.random`, and `new Date()` with no arguments are blocked so replay stays deterministic. Agent permission checks still apply. Workflow consent does not grant every tool. Mid-run user sign-off needs separate workflow stages or runs. The guide treats this separately from agent permission prompts.
 
-Resume is ordered replay, not generic arbitrary DAG memoization. Completed calls return saved results until the first changed prompt or failed call; that call and all subsequently started calls rerun. If B failed after A/B/C/D started, A can be reused while B/C/D rerun, including previously completed C/D. Saved results can be reused when resuming the same persisted Claude session; a fresh session has no replay history. This does not establish filesystem rollback or exactly-once side effects. Agents can return null on cancellation/unrecoverable API error; null must not be misclassified as a successful empty audit.
+Resume is ordered replay, not arbitrary DAG memoization. Finished calls reuse saved results until the first changed prompt or failed call. That call and every call started after it run again. If B failed after A, B, C, and D started, A can be reused while B, C, and D rerun, even if C and D had finished. Saved results can be reused only when resuming the same saved Claude session. A fresh session has no replay history. This does not prove filesystem rollback or exactly-once side effects. Agents can return `null` after cancellation or an unrecoverable API error. Do not treat `null` as a successful empty audit.
 
 ## Cache and cost
 
-Current docs describe sibling prefix sharing when model, effort, agent type, tools, schema and cwd match. Matching fan-out siblings are held until the first response begins, capped at 5 seconds by default (CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS). Workflow-agent cache TTL defaults to five minutes; subagentPromptCacheTtl=1h requests longer retention with higher API cache-write pricing. A parent conversation's one-hour TTL does not imply an hour for every child. Prefix caching and replayed completed results are different mechanisms. More verification agents can still cost more overall.
+Current docs say sibling prefixes can be shared when model, effort, agent type, tools, schema, and cwd match. Matching siblings wait until the first response starts, with a five-second default cap set by `CLAUDE_CODE_WORKFLOW_PREFIX_STAGGER_MS`. Workflow-agent cache TTL defaults to five minutes. `subagentPromptCacheTtl=1h` asks for longer storage at a higher API cache-write price. A one-hour parent TTL does not give every child one hour. Prefix caching and replaying finished results are different. More review agents can still raise total cost.
 
 ## Comparison with die today
 
 | Capability | Current die |
 | --- | --- |
-| Code controls stages, routing and verification gates | Yes, within a live execute invocation |
+| Code controls stages, routing and verification gates | Yes, within a live `execute` invocation |
 | Full isolated worker agents and model profiles | Yes: fast/normal/orchestrator; not prompt-only inference |
 | Background child jobs, notifications, own-usage costs | Yes |
 | Orchestrator agent containing the script, while root remains responsive | Possible with existing hierarchy |
-| Claude-style agent call that resolves to a final structured value | Not equivalent: subagent defaults to a one-second launch wait and may return a running job |
-| Schema-constrained worker return protocol | No first-class equivalent; explicit artifacts can be parsed/validated in code |
-| Session-owned workflow script continuing after execute exits | No dedicated primitive; jobs survive, execute variables/control flow do not |
-| Hard workflow concurrency/total-agent budgets | Not a first-class workflow-wide contract; explicit code can bound fan-out |
-| Persisted step replay/pause/resume with cached results | Not implemented; session JSONL/job history/goal state are not script checkpoints |
-| Phase-aware workflow monitor and saved workflow commands | Not implemented as workflow features |
-| Cache-aware sibling launch staggering | Not implemented or validated as a scheduling feature |
-| Restricted deterministic coordinator | No: execute deliberately permits filesystem, shell, imports, clock and randomness |
+| Claude-style agent call that resolves to a final structured value | Not equivalent: `subagent` defaults to a one-second launch wait and may return a running job |
+| Schema-constrained worker return protocol | No first-class equivalent; explicit artifacts can be parsed and checked in code |
+| Session-owned workflow script continuing after execute exits | No dedicated primitive; jobs survive, but `execute` variables and control flow do not |
+| Hard workflow concurrency/total-agent budgets | No first-class workflow-wide contract; explicit code can bound fan-out |
+| Persisted step replay/pause/resume with cached results | Not built; session JSONL, job history, and goal state are not script checkpoints |
+| Phase-aware workflow monitor and saved workflow commands | Not built as workflow features |
+| Cache-aware sibling launch staggering | Not built or checked as a scheduling feature |
+| Restricted deterministic coordinator | No: `execute` intentionally allows filesystem, shell, imports, clock, and randomness |
 
-Promise.all over ordinary subagent launches is not an all-workers-finished barrier. The caller must check background/status and consume completed results correctly. For a modest workflow today, an orchestrator child can run a bounded script, wait explicitly for launched workers within its execution, exchange validated JSON artifacts, and return a final summary. Cancellation/handoff/restart still need explicit recovery; do not claim transparent resumability.
+`Promise.all` over normal `subagent` launches does not mean every worker has finished. The caller must inspect background status and read finished results. Today, a small workflow can use an orchestrator child with a bounded script. It can wait for workers, exchange checked JSON artifacts, and return one summary. Cancellation, handoff, and restart still need clear recovery. Do not claim automatic resume.
 
 ## Recommendation (not an approved implementation plan)
 
-We do not need a single-call prompt helper to adopt the pattern: Claude's own agent primitive is multi-turn. The meaningful potential addition is a session-owned workflow execution scope under execute, with completed-result waiting, bounded structured results, concurrency/total-work budgets, phase events and explicit cancellation ownership. Replay should be a separate design: unrestricted execute side effects cannot safely be replayed just by caching LLM outputs. Start with a small fixed implement -> test -> independent review -> bounded revision workflow, not hundreds of workers. Keep evidence failures and unverified results distinct from successful negative findings.
+The pattern does not need a one-call prompt helper. Claude's own agent primitive is multi-turn. A useful addition would be a session-owned workflow scope under `execute`. It would wait for finished results, bound structured results, cap concurrency and total work, report phase events, and own cancellation. Replay is a separate design problem. Unrestricted `execute` side effects cannot be replayed safely by caching only model output. Start with one small fixed flow: implement, test, review independently, then make a bounded revision. Do not start with hundreds of workers. Keep evidence failures and unverified results separate from successful negative findings.
 
 ## Sources
 
@@ -60,4 +60,4 @@ We do not need a single-call prompt helper to adopt the pattern: Claude's own ag
 - https://code.claude.com/docs/en/agent-teams (peer coordination, distinct from scripted workflows)
 - https://www.anthropic.com/engineering/building-effective-agents (older general architecture patterns)
 
-This reports documented behavior, not an independent run of Claude's proprietary workflow runtime. Specific limits/settings are version-sensitive.
+This records documented behavior. It is not an independent run of Claude's closed workflow runtime. Limits and settings can change with versions.

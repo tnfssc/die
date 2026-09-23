@@ -65,10 +65,10 @@ export async function executeIsolated(
     executablePath?: string;
     killGraceMs?: number;
     jobHandler?: (method: string, params: unknown, signal: AbortSignal) => Promise<unknown>;
-    /** Durable outer execute tool-call identity, stable when that invocation is replayed. */
+    /** Keep the outer execute tool-call ID stable when its invocation is replayed. */
     executeInvocationId?: string;
     sessionFile?: string;
-    /** Combined byte cap for complete stdout/stderr capture. */
+    /** Cap the combined complete stdout and stderr capture. */
     outputByteLimit?: number;
   } = {},
 ): Promise<ExecutionResult> {

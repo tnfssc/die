@@ -1,6 +1,6 @@
 # T3-v2 production acceptance harnesses
 
-These scripts validate the canonical T3 source pinned by `web/t3-source.json` with
+These scripts check the canonical T3 source pinned by `web/t3-source.json` with
 `web/t3.patch`. Retained harnesses default to the revision-keyed checkout:
 
 `<repository>/.cache/die-t3code-<web/t3-source.json revision>`
@@ -21,7 +21,7 @@ test "$HEAD" = "$REVISION"
 ```
 
 The checkout must be exactly the pinned HEAD plus the canonical patch. The build
-pipeline's source verifier is authoritative for that check.
+pipeline's source verifier decides whether it passes.
 
 ## Deterministic static contract
 
@@ -38,7 +38,7 @@ consumer, `tests/t3-native-routing.test.ts`.
 ## Browser and native acceptance
 
 Both launchers fail closed unless checkout HEAD, binary path, binary hash, and the
-explicit acceptance flag are supplied. They do not install, build, or release.
+explicit acceptance flag are given. They do not install, build, or release.
 
 ```bash
 BIN=/absolute/path/to/reviewed/die
@@ -56,32 +56,31 @@ T3_V2_EXPECT_BINARY_SHA256="$SHA" \
 bun scripts/t3-v2-production/native-acceptance.ts
 ```
 
-Browser acceptance additionally needs Chromium and `playwright-core` already
+Browser acceptance also needs Chromium and `playwright-core` already
 available. Optional overrides are documented by the `T3_V2_*` constants at the top
-of each script. Native acceptance requires the candidate's
+of each script. Native acceptance needs the candidate's
 `NativeDieIntegration.production.test.ts` and prepared dependency tree.
 
 ## Migration acceptance
 
-The migration harness covers the actual current-production source
+The migration harness tests the actual current-production source
 `a9b49a7df0a4261dcc438d4493cc3154a1d9819e`, with the pre-adoption canonical
 patch from `c6fe280`, upgrading in place to the preview revision in
-`web/t3-source.json` plus `web/t3.patch`. Both checkouts need independent,
-prepared dependency trees whose installed lockfile exactly matches
-`pnpm-lock.yaml`; the harness never clones or installs and never writes package
+`web/t3-source.json` plus `web/t3.patch`. Each checkout needs its own prepared dependency tree. Its installed lockfile must exactly match
+`pnpm-lock.yaml`. The harness never clones or installs and never writes package
 caches. Override checkout or patch paths with
 `T3_V2_MIGRATION_PRODUCTION`, `T3_V2_MIGRATION_PREVIEW`,
 `T3_V2_MIGRATION_PRODUCTION_PATCH`, and
 `T3_V2_MIGRATION_PREVIEW_PATCH`.
 
-The production runner creates a native V2 event/projection graph with a run and
+The production runner creates a native V2 event/projection graph. It includes a run and
 nodes, normalized usage and cost, provider session/thread/turn identity, a
-completed native subagent job, two-message history and turn items, plus encoded
+completed native subagent job, two-message history and turn items, and encoded
 server settings with a provider instance and price override. The preview runner
 opens that same database and settings file, validates them through preview domain
 readers/schemas, then starts a second time and compares a semantic snapshot. This
-is an upgrade/restart compatibility gate: both revisions currently report schema
-migration 54, so it does not claim that a new numbered migration ran.
+is an upgrade/restart compatibility gate. Both revisions currently report schema
+migration 54. The gate does not claim that a new numbered migration ran.
 
 ```bash
 TMPDIR=/var/tmp \
@@ -91,19 +90,19 @@ bun scripts/t3-v2-production/migration-acceptance.ts
 ```
 
 The two tracked fixture templates are copied temporarily beneath their matching
-checkout solely for workspace package resolution and removed in `finally`.
-The harness also reconstructs and hash-checks the production patch from repository
-history when no explicit production patch is supplied, and verifies that each
-checkout is exactly its pinned HEAD plus the expected patch before running.
+checkout only for workspace package resolution and removed in `finally`.
+When no production patch is given, the harness rebuilds and hash-checks it from repository
+history. Before running, it checks that each checkout is exactly its pinned HEAD
+plus the expected patch.
 
 ## Packaged, preservation, and worktree gates
 
 - `packaged-smoke.ts` is a black-box relocation/security smoke. It uses only
-  supported Node/Bun built-ins; no transitive `ws` package is required.
+  supported Node/Bun built-ins. No transitive `ws` package is needed.
 - `preservation-acceptance.ts` validates same-server shell-card and completion
   preservation against an exact packaged binary.
 - `worktree-acceptance.ts` validates local and native structured-worktree behavior.
-  It requires `T3_WORKTREE_ACCEPT=1`, `T3_WORKTREE_DIE_BINARY`,
+  It needs `T3_WORKTREE_ACCEPT=1`, `T3_WORKTREE_DIE_BINARY`,
   `T3_WORKTREE_EXPECT_SHA256`, and `T3_V2_EXPECT_CHECKOUT_HEAD`.
 
 These live gates write proof only to their configured artifact paths. Proof files,
@@ -112,10 +111,9 @@ evidence, not source inputs.
 
 ## PR inclusion boundary
 
-Include the README, retained acceptance scripts, and both migration fixtures only as
-a coherent set. Do **not** include `artifacts/`.
+Include the README, retained acceptance scripts, and both migration fixtures together. Do **not** include `artifacts/`.
 
 `build-candidate.ts`, `export-candidate.ts`, and `export-worktree.ts` are
 research/export utilities, not portable acceptance harnesses. Exclude them from the
-recommended PR stage list; they may refer to local review state or generate files.
+recommended PR stage list. They may refer to local review state or generate files.
 Do not delete those local user files merely to prepare the PR.

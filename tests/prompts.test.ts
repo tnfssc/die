@@ -157,10 +157,11 @@ test("orchestrators use persistent worktree locations for ongoing work", () => {
     mainAgentGuidance("orchestrator", "worktree-location-test"),
   ]) {
     expect(guidance).toContain('subagent({ workspace: { kind: "worktree" }, ... })');
-    expect(guidance).toContain("use the worktree path it returns");
+    expect(guidance).toContain("Use the worktree path it returns");
+    expect(guidance).toContain("Make manual worktrees in a place that lasts");
     expect(guidance).toContain("not \u0060/tmp\u0060 or \u0060/var/tmp\u0060");
     expect(guidance).toContain("DIE_WORKTREE_ROOT");
-    expect(guidance).toContain("not ongoing implementation or release work");
-    expect(guidance).toContain("Record the worktree path and branch");
+    expect(guidance).toContain("not code or release work still underway");
+    expect(guidance).toContain("Save the worktree path and branch");
   }
 });

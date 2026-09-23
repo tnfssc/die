@@ -26,9 +26,9 @@ function entries(manager: SessionLike | undefined): readonly unknown[] {
   }
 }
 
-/** Prepare and preflight a public-API restoration before writing. Diagnostics
- * are refused when the active leaf cannot be read or restoration already fails.
- * The later append/restore pair cannot be transactional through this API. */
+/** Check that the public API can restore the active leaf before writing.
+ * Refuse diagnostics if the leaf cannot be read or restored. This API cannot
+ * make the later append and restore atomic. */
 function leafRestorer(manager: SessionLike): (() => void) | undefined {
   try {
     if (typeof manager.getLeafId !== "function") return;
@@ -54,7 +54,7 @@ function leafRestorer(manager: SessionLike): (() => void) | undefined {
   }
 }
 
-/** Installs durable diagnostic capture and a metadata-only /diagnostics view. */
+/** Set up durable diagnostic capture and a metadata-only /diagnostics view. */
 export function registerOperationDiagnostics(pi: ExtensionAPI): void {
   let detach: (() => void) | undefined;
   let owner: object | undefined;

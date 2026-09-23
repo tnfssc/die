@@ -7,10 +7,10 @@
   - Fast/normal workers cannot delegate. Orchestrators can delegate to workers.
   - Profiles choose the model and thinking level.
   - `title`: optional readable task/thread name.
-  - `workspace`: `{ kind: "inherit" }` (default) or `{ kind: "worktree", baseRef?, branch? }`. Worktree needs a Git repository; omitted `baseRef` uses the parent's current commit, omitted `branch` creates a unique branch. A batch gets separate worktrees from one pinned commit; an explicit branch requires a single prompt.
-  - Setup runs in the new worktree when configured: CLI automatically executes repository `t3.json` setup without confirmation, trust, or approval gating and without starting web; web uses its configured project action. Worktrees and branches remain after completion or cancellation.
+  - `workspace`: `{ kind: "inherit" }` (default) or `{ kind: "worktree", baseRef?, branch? }`. Worktrees need a Git repository. No `baseRef`? Uses the parent's current commit. No `branch`? Makes a unique branch. A batch gets separate worktrees from one pinned commit. An explicit branch needs a single prompt.
+  - New worktree has setup configured? CLI runs the repository `t3.json` setup on its own. It does not ask for confirmation, trust, or approval, and does not start web. Web uses its configured project action. Worktrees and branches stay after completion or cancellation.
   - `waitSeconds`: how long the call waits before returning a background job. Defaults: shell 3 seconds, subagent 1 second. 0 returns immediately.
-  - In server-scoped native delegation, `subagent` is async-only: omit `waitSeconds` or pass `0`; positive values are rejected. The backend owns profile/depth policy and terminal delivery.
+  - Server-scoped native delegation? `subagent` is async-only. Leave out `waitSeconds` or pass `0`; positive values are rejected. The backend owns profile/depth policy and terminal delivery.
   - `timeoutSeconds`: optional limit on the whole job's runtime.
   - `closeInput`: shell only; defaults to true. No more input coming. Need send input later with jobs.input()? Set false at launch. Closed input cannot reopen.
 - Launch returns `{ id, status, exitCode?, output, background, ... }`.
@@ -28,7 +28,7 @@
   Job still running? Attention message gives you turn to check it. Comes after 5 minutes with no activity, or every 10 minutes even if busy. Job keeps running.
   - `await jobs.snooze(id, {minutes})` — Delay attention messages. More than 0, max 55 minutes.
   - `await jobs.setWatch(id, {enabled})` — Attention messages on by default. `false` turns off, `true` turns on. Finish or fail still sends message.
-  - For server-scoped native task IDs, list/inspect/stop are supported; input, closeInput, snooze, and setWatch are rejected. Native child runtime deadlines (`timeoutSeconds`) are also unsupported; use `jobs.stop(id)` to cancel the child subtree. Local shell/CLI timeouts are unchanged.
+  - Server-scoped native task IDs support list/inspect/stop. They reject input, closeInput, snooze, and setWatch. Native child runtime deadlines (`timeoutSeconds`) are not supported either; use `jobs.stop(id)` to cancel the child subtree. Local shell/CLI timeouts still work.
 - Execution cancelled? Jobs already started with shell() or subagent() may still run. jobs.list() shows their state.
 - Helpers return values, not printed output. Want see result? Use console.log.
 - History API:

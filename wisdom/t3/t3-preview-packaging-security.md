@@ -1,7 +1,7 @@
 # Adopted T3 preview package, relocation, origin, and terminal acceptance
 
-**Run:** 2026-09-22 08:31–08:47 UTC  
-**Result:** PASS for package/security/terminal scope. No release, version, tag, push, or installation was performed.
+**Run:** 2026-09-22 08:31–08:47 UTC
+**Result:** PASS for package/security/terminal scope. No release, version, tag, push, or installation was done.
 
 ## Exact adopted inputs and persistent locations
 
@@ -9,11 +9,11 @@
 - Die branch: `die/preview-packaging-and-relocated-security-e57389e4`
 - Starting adoption commit: `51f8f7d`
 - Owned T3 checkout/cache: `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_49d9fc83-a86675007a5e-task_e57389e4/.cache/t3-preview-packaging-source`
-- Owned checkout branch: `die-preview-probe` (independent nested clone; no shared Git metadata)
+- Owned checkout branch: `die-preview-probe` (independent nested clone. No shared Git metadata)
 - Read-only seed used only as clone input: `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_8a2c4ca2-a86675007a5e-task_02d7b006/.cache/t3-preview-candidate`
 - T3 revision: `b488c57f3f9f1688e31c53daee99e29dd1d0baa2`
 - Adopted patch SHA-256: `1c879cb723de12b3803b11c1772b9688267f65ee52d855f20fd7f658fcf9f4a0`
-- Dependencies and pnpm/Bun stores are private to `.cache/t3-preview-packaging-env`; the seed and parent/shared candidate caches were not mutated.
+- Dependencies and pnpm/Bun stores are private to `.cache/t3-preview-packaging-env`. The seed and parent/shared candidate caches were not mutated.
 
 A post-build `verifyWebSource(ownedCheckout, canonicalPatch)` passed with exactly the canonical 103-path projection.
 
@@ -39,9 +39,9 @@ The first actual build invocation reached pnpm install but transient registry do
 - `artifacts/t3-preview-package/packaged-smoke.json` (SHA-256 `b956d9e811541efba82d4b9d12d9b3df982b828f42d47e26c2531dfe3a9c2fec`)
 - `artifacts/t3-preview-package/packaged-smoke.log`
 
-PASS: the binary was copied, renamed, and launched from a private path containing spaces with a deliberately nonexistent runtime PATH. Both launcher and backend executed the relocated package binary; no external node/npm/npx/bun process was present. The extracted runtime directory was the archive content ID above. SIGTERM returned launcher status 143 and all exact owned PIDs disappeared.
+PASS: the binary was copied, renamed, and launched from a private path containing spaces with a deliberately nonexistent runtime PATH. Both launcher and backend executed the relocated package binary. No external node/npm/npx/bun process was present. The extracted runtime directory was the archive content ID above. SIGTERM returned launcher status 143 and all exact owned PIDs disappeared.
 
-HTTP no-auth accepted exact same-origin and headerless local requests. It returned `authenticated:false` for cross-origin, opaque-origin, wrong-port, alternate-host, DNS-rebinding Host, and cross-site requests. WebSocket protocol v2 returned 101 for exact same-origin and headerless local upgrades and did not upgrade cross-origin, wrong-port, alternate-host, or rebinding-Host requests. Existing nested provider/settings/model metadata survived relocation; only Pi `binaryPath` was changed to the relocated package as intended.
+HTTP no-auth accepted exact same-origin and headerless local requests. It returned `authenticated:false` for cross-origin, opaque-origin, wrong-port, alternate-host, DNS-rebinding Host, and cross-site requests. WebSocket protocol v2 returned 101 for exact same-origin and headerless local upgrades and did not upgrade cross-origin, wrong-port, alternate-host, or rebinding-Host requests. Existing nested provider/settings/model metadata survived relocation. Only Pi `binaryPath` was changed to the relocated package as intended.
 
 ## Terminal/package preservation
 
@@ -54,4 +54,4 @@ PASS: production browser WebSocket terminal APIs handled delayed input/output (1
 
 ## Scope boundary
 
-This task owns the actual archive/deploy, relocated-runtime substrate, no-auth HTTP/WS Host/Origin boundary, and packaged terminal preservation. It does not claim the separately owned native root/child lifecycle or broader live-browser acceptance gates.
+This task covers the actual archive/deploy, relocated-runtime substrate, no-auth HTTP/WS Host/Origin boundary, and packaged terminal preservation. It does not cover the separately owned native root/child lifecycle or broader live-browser acceptance gates.

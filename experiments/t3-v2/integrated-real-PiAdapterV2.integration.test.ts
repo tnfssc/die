@@ -196,7 +196,7 @@ describe("integrated real upstream orchestration", () => {
         expect(rejected).toEqual([true,true]);
         yield* registry.revokeProviderSession(siblingCredential.config.providerSessionId);
         yield* Effect.promise(async()=>{await expect(siblingClient.taskStatus(success.id)).rejects.toThrow("HTTP 401");});
-        // Revoked transport is scoped to this test server; its finalizer removes it.
+        // Revoked transport belongs to this test server. Its finalizer removes it.
         yield* Effect.promise(()=>siblingClient.close().catch(()=>undefined));
         
         const store=yield* EventStoreV2;

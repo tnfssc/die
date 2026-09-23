@@ -1,6 +1,6 @@
 # T3 v2 production continuation P1 fixes
 
-Implemented in the isolated production tree at `.cache/die-t3code-v2-production`. No canonical re-export, adoption, dependency install, or NativeDieIntegration production-test change was performed.
+Built in the isolated production tree at `.cache/die-t3code-v2-production`. Did not re-export or adopt it. Did not install dependencies or change the NativeDieIntegration production test.
 
 ## Changes
 
@@ -25,7 +25,7 @@ Implemented in the isolated production tree at `.cache/die-t3code-v2-production`
 - durable native Die tasks receive `jobs.inspect` / `die_task_observe` guidance and no `task_status` guidance;
 - generic delegated tasks still receive `task_status` guidance.
 
-Validation:
+Checks:
 
 - `vp test run apps/server/src/orchestration-v2/ProviderContinuationService.test.ts apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts` — passed after final formatting (27/27).
 - Focused new tests — passed (3/3 across payload bound, retained retry byte budget, and native Die wake instruction runs).
@@ -34,4 +34,4 @@ Validation:
 
 ## Scope held
 
-No backend authorization policy, cancellation behavior, NativeDieIntegration production test, browser build, or canonical checkout/re-export was changed.
+Did not change backend authorization policy, cancellation behavior, NativeDieIntegration production test, browser build, or canonical checkout/re-export.

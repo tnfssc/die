@@ -17,12 +17,12 @@ node -e 'const [major,minor]=process.versions.node.split(".").map(Number); if (!
 [[ -x "$DIE_BIN" ]] || { echo "error: Die binary is missing or not executable: $DIE_BIN" >&2; exit 1; }
 die_checkout_clean=false
 if git -C "$ROOT" diff --quiet -- && git -C "$ROOT" diff --cached --quiet --; then die_checkout_clean=true; fi
-# An existing executable is content-addressed evidence, not proof it was built at HEAD.
+# An existing executable is content-addressed evidence. It does not prove a HEAD build.
 die_revision="$(git -C "$ROOT" rev-parse HEAD)"
 die_sha="$(sha256sum "$DIE_BIN" | cut -d' ' -f1)"
 
-# Prefer the existing research mirror when it has the pin, but remain reproducible
-# from a clean checkout by falling back to the canonical repository.
+# Prefer the research mirror when it has the pin. Fall back to the canonical
+# repository so a clean checkout still works.
 if [[ -n "${T3_V2_UPSTREAM_REPO:-}" ]]; then
   UPSTREAM_REPO="$T3_V2_UPSTREAM_REPO"
 elif git -C "$LOCAL_UPSTREAM" cat-file -e "$PIN^{commit}" 2>/dev/null; then
@@ -69,7 +69,7 @@ fi
 [[ "$(git -C "$SOURCE" rev-parse HEAD)" == "$PIN" ]] || { echo "error: runtime source moved off pin" >&2; exit 1; }
 
 # The patch is the tracked baseline. Probe-only integration tests may be copied or
-# staged under orchestration-v2; all other tracked or untracked drift is rejected.
+# staged under orchestration-v2. Reject all other tracked or untracked drift.
 expected_diff_sha="$(if [[ -f "$PATCH" ]]; then sha256sum "$PATCH" | cut -d' ' -f1; else printf '' | sha256sum | cut -d' ' -f1; fi)"
 actual_diff_sha="$(git -C "$SOURCE" diff --binary HEAD -- . ':(exclude)apps/server/src/orchestration-v2/Adapters/combinedPiDie.integration.test.ts' ':(exclude)apps/server/src/orchestration-v2/Adapters/clockPiRpc.integration.test.ts' ':(exclude)apps/server/src/orchestration-v2/testkit/integratedRealPiDie.integration.test.ts' ':(exclude)apps/server/src/orchestration-v2/testkit/integratedRealHarness.ts' ':(exclude)apps/server/src/orchestration-v2/testkit/OrchestratorReplayFixtures.integration.test.ts' | sha256sum | cut -d' ' -f1)"
 [[ "$actual_diff_sha" == "$expected_diff_sha" ]] || { echo "error: runtime tracked tree differs from the patched baseline" >&2; exit 1; }

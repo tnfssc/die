@@ -2,26 +2,15 @@
 
 ## Result
 
-The retained production acceptance harnesses now default to the canonical
-revision-keyed checkout derived from `web/t3-source.json`. Migration defaults to
-`web/t3.patch` and the canonical source manifest. Browser, native, preservation,
-and worktree harnesses no longer default to `.cache/die-t3code-v2-production`.
+The kept production acceptance harnesses now use the canonical revision-keyed checkout from `web/t3-source.json` by default. Migration defaults to `web/t3.patch` and the canonical source manifest. Browser, native, preservation, and worktree harnesses no longer default to `.cache/die-t3code-v2-production`.
 
-Temporary state now uses `TMPDIR` through `os.tmpdir()` and private `mkdtemp`
-directories. Child processes in migration/worktree acceptance receive private temp
-directories. `packaged-smoke.ts` no longer imports the undeclared transitive `ws`
-package; its Host/Origin upgrade probe uses `node:http` and `node:crypto`.
+Temporary data now follows `TMPDIR` through `os.tmpdir()` and uses private `mkdtemp` directories. Migration and worktree child processes get their own temp directories. `packaged-smoke.ts` no longer imports the undeclared transitive `ws` package. Its Host/Origin upgrade probe uses `node:http` and `node:crypto`.
 
-The README is self-contained and no longer gates execution on research wisdom or
-candidate-only patches. The user-facing status doc links only to checked-in docs and
-the portable harness README. Unsupported exact suite totals, historical binary/patch
-hashes, generated artifact links, the false formatting-exclusion claim, and the
-unqualified setup-without-trust claim were removed. It now describes the propagated
-source approval boundary and limits historical/live evidence appropriately.
+The README now stands on its own. Running it no longer depends on research wisdom or candidate-only patches. The user status doc links only to checked-in docs and the portable harness README. It no longer makes unsupported claims about exact suite totals, old binary or patch hashes, generated artifact links, formatting exclusions, or setup without trust. It explains the source-approval boundary passed to child work and marks the limits of old and live evidence.
 
 ## Exact stage recommendation for this ownership area
 
-Include these paths together:
+Keep these paths together:
 
 - `wisdom/t3/t3-v2-delegation-status.md`
 - `scripts/t3-v2-production/README.md`
@@ -35,50 +24,37 @@ Include these paths together:
 - `scripts/t3-v2-production/preservation-acceptance.ts`
 - `scripts/t3-v2-production/worktree-acceptance.ts`
 
-Required coherent dependencies elsewhere in the production PR (not edited by this
-hygiene task):
+The production PR also needs these matching files from elsewhere. This hygiene task did not edit them:
 
 - `web/t3-source.json`
 - `web/t3.patch`
 - `tests/fixtures/t3-native-task-contract.json`
 - `tests/t3-native-routing.test.ts`
-- `scripts/web-source.ts` and its production consumers/tests
+- `scripts/web-source.ts` and its production users and tests
 
-Explicitly exclude:
+Leave these out:
 
 - `scripts/t3-v2-production/build-candidate.ts`
 - `scripts/t3-v2-production/export-candidate.ts`
 - `scripts/t3-v2-production/export-worktree.ts`
 - `scripts/t3-v2-production/artifacts/**`
-- `artifacts/**`, `.cache/**`, generated binaries, screenshots, browser profiles,
-  raw logs, proof JSON, JSONL, and private runtime state
-- `experiments/**`, `.agents/patches/**`, `.agents/rollback/**`, and bulk
-  research wisdom
-- `wisdom/index.md` unless its complete link expansion is deliberately
-  reviewed and staged
-- this internal report, `wisdom/quality/pr-hygiene-final.md`, unless maintainers
-  explicitly want PR-process notes in the product PR
+- `artifacts/**`, `.cache/**`, generated binaries, screenshots, browser profiles, raw logs, proof JSON, JSONL, and private runtime data
+- `experiments/**`, `.agents/patches/**`, `.agents/rollback/**`, and bulk research wisdom
+- `wisdom/index.md` unless its whole link expansion is reviewed and staged on purpose
+- this internal report, `wisdom/quality/pr-hygiene-final.md`, unless maintainers want PR-process notes in the product PR
 
-The three research-only build/export scripts were not deleted or rewritten. Their
-local candidate paths are intentional evidence that they are outside the portable
-acceptance set, not unresolved defaults in a recommended harness.
+The three research-only build and export scripts were not deleted or changed. Their local candidate paths show that they sit outside the portable acceptance set. They are not missed defaults in a recommended harness.
 
 ## Focused validation
 
 Passed:
 
-- Biome format on the seven retained TypeScript harnesses (one fix applied).
-- Bun static bundles for all seven retained TypeScript harnesses.
-- `bun scripts/t3-v2-production/contract-conformance.ts` against the canonical
-  pinned checkout: all four tool contracts plus structured-workspace checks passed.
-- Static portability scan: no old candidate checkout, research patch, literal
-  `/var/tmp`, or `ws` import in retained harnesses.
-- Fixture wiring check for the native contract fixture and both migration fixtures.
-- Local Markdown-link existence check for the README/status doc.
-- Focused Biome lint completed with exit 0; it reports 31 warnings and 82 infos from
-  pre-existing style patterns in the acceptance files, with no lint errors.
+- Biome format on the seven kept TypeScript harnesses. One format fix was needed.
+- Bun static bundles for all seven kept TypeScript harnesses.
+- `bun scripts/t3-v2-production/contract-conformance.ts` against the canonical pinned checkout. All four tool contracts and the structured-workspace checks passed.
+- Static portability scan. The kept harnesses have no old candidate checkout, research patch, literal `/var/tmp`, or `ws` import.
+- Fixture wiring checks for the native contract fixture and both migration fixtures.
+- Local Markdown-link checks for the README and status doc.
+- Focused Biome lint with exit 0. It reported 31 warnings and 82 infos from old style patterns in the acceptance files, with no lint errors.
 
-Live browser/native/migration/preservation/worktree gates were not rerun because they
-require reviewed binaries and prepared external checkout dependencies. No root CLI or
-web source was edited, and no index, commit, install, or user-file deletion was
-performed.
+Live browser, native, migration, preservation, and worktree gates did not run again. They need reviewed binaries and prepared external checkouts. No root CLI or web source changed. No index, commit, install, or user file was deleted.

@@ -28,27 +28,21 @@ messages are easiest to review.
    bun run smoke
    ```
 
-The formatting check is required: both pull-request CI and the release workflow
-enforce it. Use the pinned Biome version in `devDependencies` when formatting changes.
+Both pull-request CI and the release workflow run the formatting check. When you format changes, use the pinned Biome version in `devDependencies`.
 
 Do not commit generated `dist/`, `runtime-assets/`, test artifacts, credentials,
 or local configuration.
 
 ## Test policy
 
-The normal test suite is deterministic and must not require credentials or a paid
-model. Tests that make real model requests are guarded by
-`DIE_RUN_LLM_TESTS=1`; they are opt-in, may incur provider charges, and are not
-run by CI. Do not enable them unless you understand the cost and have configured
-your own provider credentials. Prefer pure tests and offline SDK fixtures. Use the
+The normal test suite is deterministic. It must not need credentials or a paid model. Tests that make real model requests use the `DIE_RUN_LLM_TESTS=1` guard. They are opt-in, may cost money, and do not run in CI. Enable them only when you understand the cost and have set your own provider credentials. Prefer pure tests and offline SDK fixtures. Use the
 real TUI harness when terminal behavior itself is under test, and keep diagnostics
 bounded so failures remain readable. Preserve the suite's skip accounting: a gated
 fixture must remain discovered and skipped when `DIE_RUN_LLM_TESTS` is unset rather
 than disappearing behind conditional test registration.
 
-Goal lifecycle changes should cover the pure store/controller contract and, where the
-Pi boundary matters, an offline SDK or TUI fixture. The natural real-model goal smoke
-is `tests/goals-live.test.ts`; run it only with `DIE_RUN_LLM_TESTS=1` and configured
+Goal lifecycle changes should test the pure store/controller contract. Where the Pi boundary matters, also use an offline SDK or TUI fixture. The natural real-model goal smoke
+is `tests/goals-live.test.ts`. Run it only with `DIE_RUN_LLM_TESTS=1` and configured
 credentials. It creates temporary local resources and writes bounded evidence under
 ignored `artifacts/goals/`. Do not describe a mocked SDK stream as live-model evidence.
 
@@ -70,14 +64,11 @@ ignored `artifacts/goals/`. Do not describe a mocked SDK stream as live-model ev
   curated inputs under `third_party/` when the packaged asset set or licensing changes.
   Run `bun run generate:notices` to verify the production attribution bundle.
 
-Background operations are session-owned: avoid changes that accidentally terminate
-jobs when an execute worker exits. Keep history durable, handoffs cooperative, and
-failure diagnostics bounded.
+Background work belongs to the session. Do not let an execute worker exit kill jobs by accident. Keep history durable, handoffs cooperative, and failure diagnostics bounded.
 
 ## Documentation and pull requests
 
-Documentation-only edits can be checked directly in Markdown; verify links, command
-names, and claims against the current source. Do not describe planned work as
+For documentation-only edits, check the Markdown directly. Check links, command names, and claims against the current source. Do not describe planned work as
 implemented. Before opening a pull request, run the deterministic commands above
 and summarize what changed, how it was tested, and any validation you could not run.
 See `LICENSE` and `THIRD_PARTY_NOTICES.md` for licensing requirements.

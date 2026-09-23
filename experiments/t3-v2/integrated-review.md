@@ -1,8 +1,8 @@
 # Main integration review requests
 
-For integrated worker when reading shared changes:
-- Active bridge-client.ts fixed required protocol header + one-shot DELETE (real server must support).
-- Need actual adapter spawn log (Node spawner wrapper records PID/arguments safe selected only, not env) rather than calling model request count 'spawns'. Assert two T3 child sessions for success/cancel plus one parent, and no retry extra child. General local helper still available: no universal enforcement claim.
-- Browser worker currently rendering upstream replay fixture seeded via seed-browser-fixture.ts. To close SAME REAL CHILD UI proof, export integrated actual result in compatible shape {projections:{[threadId]:projection},storedEvents:[...]}, path experiment .runtime/integrated-real-result.json, no auth values. EventStoreV2.read().pipe(Stream.runCollect) plus parent/child projections; either expose EventStore from replay layer or use orchestrator journal API if easier. Main will join UI after your proof passes.
-- Minimum observable evidence: parent/child/run/clientRequest IDs, projection and delivery states, active tools, authorization status; marker counts. Assert stable clientRequestId retry keeps child count. Include idempotent cancel.
-- Real auth layer identity boundary and scope/revocation gaps must remain explicit (not claim full P0 acceptance from one anonymous401).
+For the integrated worker reviewing shared changes:
+- Active bridge-client.ts fixed the required protocol header and one-shot DELETE. Check both against the real server.
+- Get an actual adapter spawn log. The Node spawner wrapper must record only safe selected PID/argument data, not the environment. Do not call a model request count 'spawns'. Check for two T3 child sessions for success/cancel, one parent, and no extra retry child. The general local helper is still available, so make no universal enforcement claim.
+- The browser worker now renders the upstream replay fixture seeded by seed-browser-fixture.ts. To prove the SAME REAL CHILD in the UI, export the real integrated result as {projections:{[threadId]:projection},storedEvents:[...]} to experiment .runtime/integrated-real-result.json. Include no auth values. Use EventStoreV2.read().pipe(Stream.runCollect) plus parent/child projections. Either expose EventStore from the replay layer or use the orchestrator journal API. Main will join the UI after this proof passes.
+- Record at least parent/child/run/clientRequest IDs, projection and delivery states, active tools, authorization status, and marker counts. Check that a stable clientRequestId retry does not raise the child count. Include idempotent cancel.
+- Clearly state the real auth-layer identity boundary and the scope/revocation gaps. One anonymous401 does not prove full P0 acceptance.

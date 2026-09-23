@@ -48,7 +48,7 @@ export interface AttentionDiagnostics {
   timerCallbacks: number;
   timerSchedules: number;
   notices: number;
-  /** Number of scheduler states examined by deadline/policy scans. */
+  /** Count scheduler states checked by deadline and policy scans. */
   stateVisits: number;
 }
 export interface AttentionOptions {
@@ -58,9 +58,9 @@ export interface AttentionOptions {
 }
 
 /**
- * One deadline timer for all jobs in an owning session. Activity only updates a
- * scalar deadline; noisy output does not recreate timers. State exists only for
- * running tasks and is removed synchronously on completion.
+ * Use one deadline timer for all jobs in a session. Activity only moves a
+ * deadline, so noisy output does not recreate timers. Keep state only for
+ * running tasks and remove it as soon as they finish.
  */
 export class JobAttentionScheduler {
   readonly #states = new Map<string, AttentionState>();
@@ -145,7 +145,7 @@ export class JobAttentionScheduler {
     };
   }
 
-  /** Resolves on the next attention batch. Used by print/JSON agent_end waits. */
+  /** Resolve on the next attention batch. Print and JSON agent_end waits use this. */
   waitForNotice(signal?: AbortSignal): Promise<void> {
     if (this.#disposed || signal?.aborted) return Promise.resolve();
     return new Promise((resolve) => {

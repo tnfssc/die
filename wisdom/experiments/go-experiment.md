@@ -1,9 +1,9 @@
 # Failed Go experiment — removed 2026-09-14
 
-User declared the Go experiment failed and requested: commit, delete, commit again.
+The user called the Go experiment a failure and asked us to commit it, delete it, then commit again.
 
-- Archive commit: ac80ddd (`Archive experimental Go port of die`). Contains the expt-go source, research, validation reports, and historical work notes.
-- Removed the entire `expt-go/` directory, including ignored local build/test artifacts. No replacement Go app remains in the worktree.
-- The original Bun/TypeScript die app is unchanged. No experiment binary was installed.
-- User-authorized Codex credential import previously created `~/.godie/auth.json`; this external user state was **not** deleted. Source `~/.die/agent/auth.json` was not altered by import. No tokens in project memory.
-- Do not resume/rebuild this experiment unless requested. Historical test passes did not establish complete real-user parity; first-run auth and slash completion gaps surfaced in actual use.
+- Archive commit: ac80ddd (`Archive experimental Go port of die`). It holds the expt-go source, research, validation reports, and old work notes.
+- The whole `expt-go/` directory was removed, including ignored local build and test files. No replacement Go app remains in the worktree.
+- The original Bun/TypeScript die app did not change. No experiment binary was installed.
+- An earlier, user-approved Codex credential import created `~/.godie/auth.json`. This external user state was **not** deleted. The import did not change `~/.die/agent/auth.json`. Project wisdom has no tokens.
+- Do not restart or rebuild this experiment unless asked. Old test passes did not prove full real-user parity. Actual use found gaps in first-run auth and slash completion.

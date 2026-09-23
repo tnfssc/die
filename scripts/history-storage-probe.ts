@@ -1,5 +1,5 @@
 /**
- * Isolated persisted-history retention probe. It creates and removes only temporary
+ * Probe saved-history retention in isolation. Create and remove only temporary
  * sessions. Run with: bun scripts/history-storage-probe.ts
  */
 

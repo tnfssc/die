@@ -3,8 +3,8 @@ import { collaborationGuidance } from "../src/prompts";
 import { registerCacheAffineCompaction } from "../src/tasks/cache-affine-compaction";
 import { registerExecuteTool } from "../src/typescript/extension";
 
-// Exercise the Phase 1 strategy independently now that production Codex uses
-// Phase 2. This is a test fixture, not a runtime switch that downgrades Codex.
+// Test Phase 1 alone now that production Codex uses Phase 2. This fixture does
+// not switch or downgrade Codex at runtime.
 export default function phase1CompactionFixture(pi: ExtensionAPI) {
   registerExecuteTool(pi);
   registerCacheAffineCompaction(pi);
