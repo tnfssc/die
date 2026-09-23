@@ -38,3 +38,7 @@ Reuse the existing rec/play command contract: capture mono signed little-endian 
 - git diff --check passed.
 - New tests simulate Darwin executable discovery/missing recorder and SSH, preserve Linux discovery, assert exact common PCM/default-device arguments, startup cleanup, and Darwin setup success/failure/privacy/no-autostart. Existing adapter tests cover queue bounds, interruption, asynchronous child exits, stream failures and listener cleanup.
 - macOS CI definition was parsed/tested locally but NOT executed here. No physical Mac, full bundled build/PTY smoke, or paid Gemini validation was performed for this patch. Do not treat the added CI definition as a successful Mac run.
+
+## Parent integration
+
+Integrated 346a496 on develop after reviewing audio/preflight, setup and macOS workflow changes. Parent passed 90 offline tests (1 paid skip) and whole-repo typecheck. Push to run native macOS CI is next. No new version/tag/release yet; v0.7.0 remains Linux-only. Physical CoreAudio, TCC permission and acoustic behavior unverified.
