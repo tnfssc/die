@@ -64,3 +64,7 @@ Validated with Bun 1.4.1:
  CLI compile reuses the unchanged existing main-worktree dist/die-web.archive.gz as a build asset; no web code/build change is claimed. Initial direct compile correctly failed before that generated asset existed.
 
 Values unchanged: this work applies existing truthful state, bounded resources, user-work safety, and simple ownership principles; it adds feature-specific evidence rather than a new general value.
+
+## Parent integration review
+
+Fast-forwarded into main workspace at 6e972dd. Read-only review task_b487b77e found no blockers and passed 47 tests. Parent separately passed 50 tests and typecheck; shell emitted a mise trust warning but commands completed exit 0 without changing trust. Local rec/play executables exist; devices remain untested. No live paid session or mic recording run. Installed die binary is not rebuilt by this merge. Source prototype is ready for opt-in acceptance, not a verified release.
