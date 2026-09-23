@@ -78,7 +78,7 @@ Real provider result with `gemini-3.8-live`:
 - setup was accepted;
 - Google returned a nonempty input-audio transcription and 12 model-audio packets (96,004 decoded PCM bytes), proving synthetic speech input and model audio output rather than silence alone;
 - after audio acceptance, a finite text turn deterministically requested `handoff`; Google emitted the declared NON_BLOCKING function call with a nonempty request;
-- Google accepted continuing `toolResponse.functionResponses` (`willContinue: true`, SILENT then WHEN_IDLE), a final response (`willContinue: false`), and emitted more audio afterward while the same session remained open;
+- The harness sent continuing `toolResponse.functionResponses` (`willContinue: true`, SILENT then WHEN_IDLE) and a final response (`willContinue: false`). Audio arrived after a continuing response with no observed protocol error. The harness ends after sending the final response; it does not independently prove the final response was processed or its content spoken;
 - a provider `interrupted` signal was observed when the follow-up turn overlapped model output. This validates interruption signaling/clearing on the real wire, but does **not** isolate synthetic-speech barge-in or acoustic echo behavior.
 
 The first two diagnostic sessions accepted setup but produced no turn; adding an explicit finite-stream `audioStreamEnd` still did not produce a turn. A third session with input transcription, leading/trailing silence, real-time pacing, and stronger locally synthesized speech proved audio input/output. The final short acceptance session (5.25 seconds) proved the complete audio + tool-response path. There were four bounded sessions total and no retry loop.
@@ -91,3 +91,5 @@ Concrete fixes from acceptance:
 - the harness can send a finite text turn after independently proving real audio acceptance, making tool-schema acceptance deterministic without claiming speech caused the tool call.
 
 Remaining gaps: no physical microphone/speaker or normal `/live start` path was used; no acoustic quality, device, echo-cancellation, or synthetic-speech-only barge-in test was performed. The existing fake-device/controller tests remain the evidence for actual extension/session wiring; this acceptance is real-provider transport evidence and uses a fake configured-agent response bridge.
+
+Parent integrated acceptance commit 6db75c6 from /home/tnfssc/.die/worktrees/die-a86675007a5e-task_8d34cd24 (branch die/automated-real-gemini-live-acceptance-8d34cd24). Tightened evidence wording: sent is not server-processed; final-response semantics and continued conversation during a long real coding job still need stronger acceptance assertions. Values unchanged; existing “show what is real” covers this lesson.
