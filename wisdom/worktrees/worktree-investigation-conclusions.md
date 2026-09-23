@@ -1,15 +1,15 @@
 # CLI-first worktree investigation conclusions
-2026-09-21. Investigation complete; no product changes. Sources at adopted a9b49a7d + canonical patch, root CLI source; Linux Git fixtures only. All4research jobs completed.
+On 2026-09-21, the investigation finished with no product changes. It used adopted source a9b49a7d, the canonical patch, and root CLI source. Git fixtures ran only on Linux. All four research jobs finished.
 
-Reports:
+Reports used:
 - worktree-setup-config-investigation.md
 - worktree-cli-lifecycle-investigation.md
 - worktree-web-integration-investigation.md
 - worktree-git-safety-investigation.md
 
-Verified corrections/facts:
+Facts and corrections:
 1. Repo-root t3.json ALREADY exists; JSONC, scripts declarations incl name/command/runOnWorktreeCreate/async. Lead verified schema and Import from t3.json UI directly. Persisted/imported T3 actions are local settings.json (projectSettingsOverrides/defaultProjectScripts), not generally repo or canonical SQLite; legacy DB fields migrated. Merely placing t3.json does not auto-run script: explicit UI import is important consent property. Current setup selection first flagged script; async defaults true (child can start before setup ends), false waits and failure blocks prepared startup. Do not invent second incompatible schema or assume web UI actions portable automatically.
-2. Native delegation currently inherits parent branch/worktree; it does NOT invoke ThreadLaunchService. Ordinary ThreadLaunchService cannot create delegated lineage nor reuse already populated child. Web solution must keep delegated_task.request as graph/result owner, defer child run, and factor reusable workspace preparation for that existing child. Don't create a second ordinary thread then pretend it is same task.
+2. Native delegation now inherits parent branch/worktree; it does NOT invoke ThreadLaunchService. Ordinary ThreadLaunchService cannot create delegated lineage nor reuse already populated child. Web solution must keep delegated_task.request as graph/result owner, defer child run, and factor reusable workspace preparation for that existing child. Don't create a second ordinary thread then pretend it is same task.
 3. CLI uses Git directly and normal local TaskManager child, never boots/reads T3 service DB. Thin mode-specific prep drivers with common contract preferable to bundling Effect/server/DB in CLI. CLI prep belongs to visible job lifecycle before child spawn; starting a worktree may take time, result must distinguish preparing/setting-up/running/failure.
 4. Five local concurrent worktrees from one pinned commit verified (LinuxGit2.54). Dirty parent tracked changes/untracked.env not copied; detachedHEAD works; collisions reject; submodules not populated automatically and complicate cleanup. No cross-platform proof, bare repo only basic fixture not supported product claim.
 
@@ -25,4 +25,4 @@ Allocate persistent worktree under managed external state directory, not tmp or 
 Validation before feature enabled:
 FiveCLI worktrees with T3 executable/server absent, unique branches same baseOID, setup cwd/env/receipt correctness; existing web config wait/background/no-script behavior; denied/changed trust; collisions/concurrent retry; crash during Git/setup and no destructive recovery; cancel during prep/setup/child, no orphan descendant; partial batch prep failure isolated per returned task; local wait/deadline accounting includes prep; native branch retains lineage/one result owner and no run before requiredsetup; CLI history/cost/memory/trust regression; packaging and byte/resource bounds.
 
-Separate future features (not implemented by workspace flag): ordinary sidebar subagent grouping/visibility, continuous parent latest-result sync after user directly follows up child, and PR-specific lifecycle. Current direct child chat supported but original delegated result is one-shot.
+Separate future features (not built by workspace flag): ordinary sidebar subagent grouping/visibility, continuous parent latest-result sync after user directly follows up child, and PR-specific lifecycle. Current direct child chat supported but original delegated result is one-shot.

@@ -1,6 +1,6 @@
 # Local worktree implementation review
 
-Read-only review of the current worktree-workspace.ts, job-service.ts, task-manager.ts, and tests/worktree-workspace.test.ts snapshot. I used the present worktree-coordinator-review.md; the requested coordinator-review.md does not exist. No source/tests were changed.
+I reviewed the current `worktree-workspace.ts`, `job-service.ts`, `task-manager.ts`, and `tests/worktree-workspace.test.ts` without changing them. I used the available `worktree-coordinator-review.md`. The requested `coordinator-review.md` did not exist.
 
 ## Verdict
 
@@ -61,7 +61,7 @@ Read-only review of the current worktree-workspace.ts, job-service.ts, task-mana
 - Three-item batch with item 2 create/setup/session failure: response retains IDs 1/2/3, item 1 is not killed, item 2 is terminal with retained workspace, and no setup/provider is orphaned. Also test shared pin failure.
 - Sync setup success/nonzero/timeout/cancel and async setup success/late nonzero/timeout, including a TERM-ignoring grandchild. Assert bounded process-group death, output bounds, linked IDs, one notification owner, and retained worktree/branch.
 - Private-temp-HOME trust matrix: trusted/untrusted source mapped to new worktree; setup only executes when trusted; explicit child trust and AGENTS.md/.die/SYSTEM.md inclusion match inherit mode.
-- Captured real child argv/session metadata for custom base and append prompts: role augmentation remains; parent/cost-root linkage and history discovery remain; worktree/inherit differ only by cwd/workspace.
+- Captured real child argv/session metadata for custom base and append prompts: role augmentation is still; parent/cost-root linkage and history discovery stay; worktree/inherit differ only by cwd/workspace.
 - Git table tests for leading dash, controls/newlines, spaces, Unicode, traversal-like refs, @{-1}, revision operators, invalid branches, branch/path collisions, and symlink root/target. Assert no marker runs, no existing ref changes, argv/no-shell, and option boundaries.
 - Native fake backend moves HEAD between items: exactly one pin and identical OID/pin for every launch. Fail item 2 and retain item 1's acknowledged ID.
 - Reject duplicate setup declarations and oversized config; prove stable digest/status and no implicit retry.

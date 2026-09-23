@@ -2,10 +2,10 @@
 
 ## 2026-09-21 — initial harness written, awaiting source readiness
 
-Owned scope: `scripts/t3-v2-production/worktree-acceptance.ts` and this wisdom file only. No product/backend/web/prompt/doc source was edited.
+I owned only `scripts/t3-v2-production/worktree-acceptance.ts` and this wisdom file. I did not edit product, backend, web, prompt, or doc source.
 
 Initial harness now:
-- fails closed on orchestrator-provided executable SHA-256 and canonical T3 checkout HEAD before allocating state;
+- fails closed on orchestrator-gave executable SHA-256 and canonical T3 checkout HEAD before allocating state;
 - copies only the reviewed executable into a private `/var/tmp/die-worktree-acceptance-*` tree (mode 0700), uses private HOME/XDG/Pi/T3 state, and binds model/backend only to `127.0.0.1`;
 - uses a deterministic OpenAI-compatible model with the real packaged Die, real backend and PiAdapter, plus a second Die process with no T3 MCP route for local JobService coverage;
 - creates a pinned Git fixture with dirty tracked/untracked parent state, a `t3.json` setup declaration and setup audit;
@@ -15,11 +15,11 @@ Initial harness now:
 Static validation completed: repository Biome formatted the owned harness; `bun build ... --target=bun` parsed/bundled it to a disposable `/var/tmp` output.
 
 Pending integration against ready source:
-1. Confirm final task/workspace result shapes and adapt evidence assertions (currently mostly filesystem/lifecycle based to avoid guessing field names).
-2. Confirm backend setup selection for delegated children. The fixture currently supplies portable `t3.json` with `async:false`; if native mode intentionally uses imported backend action settings, seed the private backend setting through its exact project identity instead.
+1. Confirm final task/workspace result shapes and adapt evidence assertions (now mostly filesystem/lifecycle based to avoid guessing field names).
+2. Confirm backend setup selection for delegated children. The fixture now supplies portable `t3.json` with `async:false`; if native mode intentionally uses imported backend action settings, seed the private backend setting through its exact project identity instead.
 3. Add the explicit background (`async:true`) and missing-script fixture passes. Current initial pass covers awaited success, nonzero failure and cancellation; it does not yet claim background/missing.
 4. Verify the native parent model routing with multiple completion wakes and the final backend schema. Tighten exact sibling result/status checks after source lands.
-5. Run only after the orchestrator provides the exact new dist path/hash and declares CLI + backend source coherent.
+5. Run only after the orchestrator gives the exact new dist path/hash and declares CLI + backend source coherent.
 
 The current canonical target named by coordination is `dist/die-worktree-production`, but the harness still requires the exact path through `T3_WORKTREE_DIE_BINARY` and digest through `T3_WORKTREE_EXPECT_SHA256`; it does not use installed `die`.
 
@@ -47,7 +47,7 @@ Still pending and intentionally not attempted: live execution. Wait for the coor
 
 - Took ownership of `scripts/t3-v2-production/worktree-acceptance.ts` live completion.
 - Diagnosed prior failure as harness-only UI coupling: Playwright waited for a nonexistent `Project actions` button before any native child launch. The backend itself had started successfully.
-- Replaced action-configuration UI automation with a real private `userdata/settings.json` `defaultProjectScripts` seed written before backend startup, alongside `providerInstances`. Native uses `./native-setup.sh`; local remains the distinct repository `t3.json` `./local-setup.sh`.
+- Replaced action-configuration UI automation with a real private `userdata/settings.json` `defaultProjectScripts` seed written before backend startup, alongside `providerInstances`. Native uses `./native-setup.sh`; local is still the distinct repository `t3.json` `./local-setup.sh`.
 - Background and missing-script phases now stop only the owned detached backend process group, verify its captured descendants are gone, update the real private settings file while stopped, restart on the same private port/base-dir, and reload the browser. Database and retained worktrees are preserved.
 - Live execution against exact coordinated binary/hash and canonical checkout is starting; no product-source changes made.
 

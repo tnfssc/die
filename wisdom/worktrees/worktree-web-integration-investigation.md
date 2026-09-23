@@ -1,17 +1,17 @@
 # Worktree + web subagent integration investigation
 
-_Status: completed investigation; no product code changes._  
+_Investigation complete. No product code changed._
 _Date: 2026-09-21._
 
 ## Scope and source provenance
 
-Investigated the adopted immutable source, not `.cache/die-t3code`: `web/t3-source.json` pins T3 Code commit `a9b49a7df0a4261dcc438d4493cc3154a1d9819e`; the adopted `web/t3.patch` SHA-256 is `a98ba10466328f7800f0d64a1f5df88dcf290980fdeb30e80a2412e6114f7e91`. I expanded that commit and applied that exact patch in `/var/tmp` only for inspection. The status document identifies the same pin and patch. No build, server, install, dependency update, or product edit was performed.
+I checked the adopted immutable source, not `.cache/die-t3code`. `web/t3-source.json` pins T3 Code commit `a9b49a7df0a4261dcc438d4493cc3154a1d9819e`. The adopted `web/t3.patch` SHA-256 is `a98ba10466328f7800f0d64a1f5df88dcf290980fdeb30e80a2412e6114f7e91`. I expanded that commit and applied that exact patch in `/var/tmp` only to inspect it. The status document names the same pin and patch. I did not build, start a server, install, update dependencies, or edit product code.
 
 ## Executive finding
 
-The existing native Die delegation path and `ThreadLaunchService` are two different launch owners. Native delegation must remain the owner. `ThreadLaunchService` cannot currently create a lineage subagent: it creates/reuses an ordinary thread and has no parent thread/run/node or completion-transfer input. Calling it before or after `delegateTask` would either create the wrong thread/lineage or fail its empty-thread reuse guard, and would split idempotency and result ownership.
+The existing native Die delegation path and `ThreadLaunchService` are two different launch owners. Native delegation must stay the owner. `ThreadLaunchService` cannot now create a lineage subagent: it creates/reuses an ordinary thread and has no parent thread/run/node or completion-transfer input. Calling it before or after `delegateTask` would either create the wrong thread/lineage or fail its empty-thread reuse guard, and would split idempotency and result ownership.
 
-The integration seam is therefore **after the durable `delegated_task.request` has atomically created the parent task edge, child lineage thread, child message and a deferred/preparing run, but before provider execution is released**. Extract/reuse the workspace-preparation portion of `ThreadLaunchService` as a service that prepares an already-created child thread/run. Do not route workspace subagents through the ordinary-thread launch API.
+The integration seam is **after the durable `delegated_task.request` has atomically created the parent task edge, child lineage thread, child message and a deferred/preparing run, but before provider execution is released**. Extract/reuse the workspace-preparation portion of `ThreadLaunchService` as a service that prepares an already-created child thread/run. Do not route workspace subagents through the ordinary-thread launch API.
 
 ## Verified current flow
 
@@ -19,7 +19,7 @@ The integration seam is therefore **after the durable `delegated_task.request` h
 2. Adopted `DieTaskService.launch` authenticates `die-delegation`, enforces orchestrator/depth policy before launch, resolves profile model/thinking against the parent selection, then calls `OrchestratorMcpService.delegateTask(... mode: async ...)` (adopted `apps/server/src/mcp/DieTaskService.ts:290-352`).
 3. `delegateTask` requires the active run to be owned by this MCP provider session and derives a stable command ID from scope + request key (`OrchestratorMcpService.ts:1272-1324`).
 4. `delegated_task.request` derives stable task node, child thread and message IDs from that command; creates an `app_owned` subagent edge and a real child thread with `lineage.parentThreadId`, `relationshipToParent: subagent`, and root lineage; then dispatches the child message with `start_immediately` (`Orchestrator.ts:5922-6074`; `SubagentProjection.ts:40-80`). This durable graph drives cancellation, terminal result/context transfer, parent wake and visible child transcript.
-5. `makeSubagentChildThread` spreads the parent thread before replacing identity/lineage. Consequently it currently inherits the parent's `branch` and `worktreePath`; it does not provision a fresh child worktree.
+5. `makeSubagentChildThread` spreads the parent thread before replacing identity/lineage. Consequently it now inherits the parent's `branch` and `worktreePath`; it does not provision a fresh child worktree.
 
 ## What ThreadLaunchService does—and does not do
 
@@ -45,7 +45,7 @@ The setup runner reads already-running T3 project/server state: `setupProjectScr
 6. Accepted web preparation is durable across response loss and server restart. Preparation effects are idempotent and ownership-verifiable.
 7. Every child receives a distinct worktree unless the caller explicitly selected inherit. Paths are never caller-controlled in the shared subagent contract.
 8. Cancellation preserves user work. Cleanup is explicit, ownership-checked and conservative; branches/PR links are never silently deleted.
-9. The result/observe surface identifies child thread and workspace state/linkage; authoritative transcript and setup diagnostics remain on the visible child thread.
+9. The result/observe surface identifies child thread and workspace state/linkage; authoritative transcript and setup diagnostics stay on the visible child thread.
 10. Setup policy is mode-owned: existing T3 effective project settings on web, an explicit trusted local source on CLI. Neither mode pretends it used the other's config.
 
 ## Recommended backend schema and flow
@@ -72,7 +72,7 @@ For `worktree`, the handler should atomically persist:
 
 Then a preparation coordinator claims that durable intention, invokes the extracted existing T3 prep pipeline for that child thread/run, and releases or fails the prepared run. Every release must re-check that the task/run is still open and not cancelled. The `inherit` path can retain immediate start (or pass through a trivial ready gate).
 
-Do not make `DieTaskService` call `ThreadLaunchService.launch`. A thin internal `prepareExistingThread({ownerCommandId, projectId, threadId, runId, workspaceIntent})`-style service is the seam. The orchestration command remains sole launch/ID/lineage owner; prep owns only workspace metadata/setup/gate transition.
+Do not make `DieTaskService` call `ThreadLaunchService.launch`. A thin internal `prepareExistingThread({ownerCommandId, projectId, threadId, runId, workspaceIntent})`-style service is the seam. The orchestration command is still sole launch/ID/lineage owner; prep owns only workspace metadata/setup/gate transition.
 
 ### Restart and idempotency
 
@@ -87,16 +87,16 @@ The launch response can continue to report task `status: running` for compatibil
 - **Cancellation before release:** existing delegated subtree cancellation must additionally cancel/mark the durable prep attempt. The release command must be fenced against cancellation. Interrupt terminals/fetch/setup owned by that attempt.
 - **Cleanup safety:** adopted ordinary launch force-removes a newly created worktree only when tracked setup is cancelled before `markUncancellable` (`ThreadLaunchService.ts:487-516`). For subagents, never erase user work merely because cancellation occurred. Remove only an ownership-proven, unchanged/clean unexposed worktree; otherwise retain it and surface path/branch and cleanup-required state. Never auto-delete the branch.
 - **Preparation failure:** preserve visible child thread, message, branch/path (if created), setup tail and actionable error; issue `prepared-run.fail` so normal delegated terminal/result/wake machinery settles the parent task. This propagation is plausible from existing run-terminal machinery but is **not yet proven for a lineage child prepared run**; test it before implementation.
-- **Follow-up while preparing:** ordinary message intake must not bypass the gate and start a provider in the wrong cwd. Prefer an actionable reject while preparing (simpler) or a durable queue behind the same gate; do not silently steer a nonexistent provider. After failure, offer explicit retry-preparation versus continue-in-retained-workspace. After ready/terminal, existing child transcript follow-up can remain ordinary T3 message intake.
+- **Follow-up while preparing:** ordinary message intake must not bypass the gate and start a provider in the wrong cwd. Prefer an actionable reject while preparing (simpler) or a durable queue behind the same gate; do not silently steer a nonexistent provider. After failure, offer explicit retry-preparation versus continue-in-retained-workspace. After ready/terminal, existing child transcript follow-up can stay ordinary T3 message intake.
 - **Cancellation vs transport:** preserve adopted semantics: MCP/HTTP disconnect does not cancel; only explicit task cancellation does.
 
 ## Branch, PR, setup, and read-only settings linkage
 
 Thread `branch` and `worktreePath` are already persisted and consumed by T3 VCS/terminal/UI behavior. The worktree strategy also records `baseRef` in setup tracking. Persist resolved base in the new durable preparation state because transient setup tracking is insufficient for restart.
 
-PR linkage is thread-scoped, not task-scoped: contracts already support `linkedPullRequest` and `branchPullRequest`, and `ThreadPullRequestService` derives branch PR state from thread branch/worktree. Runtime instructions require explicit `link_pull_request` for PRs created/worked on. A correctly bound child thread therefore reuses existing PR discovery/linking; do not add a second PR registry to Die tasks. Verify that metadata update triggers VCS/PR refresh after preparation.
+PR linkage is thread-scoped, not task-scoped: contracts already support `linkedPullRequest` and `branchPullRequest`, and `ThreadPullRequestService` derives branch PR state from thread branch/worktree. Runtime instructions require explicit `link_pull_request` for PRs created/worked on. A correctly bound child thread can reuse existing PR discovery/linking; do not add a second PR registry to Die tasks. Verify that metadata update triggers VCS/PR refresh after preparation.
 
-For web, setup/default-origin policy must be read from existing T3 `ProjectService` + `ServerSettingsService`; the launch request should not mutate those settings. Any agent/API actions to inspect effective default/base/setup policy should be read-only and should redact command/config details as existing authorization requires. Settings edits remain user/UI operations. The internal prep service should not grant the child a generic settings-write or arbitrary worktree-path capability. `die-delegation`, active provider ownership, depth/profile policy and project access must all be checked before Git I/O.
+For web, setup/default-origin policy must be read from existing T3 `ProjectService` + `ServerSettingsService`; the launch request should not mutate those settings. Any agent/API actions to inspect effective default/base/setup policy should be read-only and should redact command/config details as existing authorization requires. Settings edits stay user/UI operations. The internal prep service should not grant the child a generic settings-write or arbitrary worktree-path capability. `die-delegation`, active provider ownership, depth/profile policy and project access must all be checked before Git I/O.
 
 For CLI, do not start or query T3. T3 settings are backend DB state and cannot be claimed as CLI setup policy. CLI needs an explicit trusted local/repo setup source or explicit override; until that is defined, report setup as not configured rather than silently importing web settings.
 
@@ -132,7 +132,7 @@ No tests were run in this investigation.
 ## Minimal experiments before implementation
 
 1. In an isolated adopted-pin test layer, create a delegated child with a deferred run, invoke factored prep, and prove provider start observes the child worktree cwd only after required setup.
-2. Fail setup and prove exactly one child terminal, parent task terminal, result/context transfer and parent wake; child remains visible with path/branch/error.
+2. Fail setup and prove exactly one child terminal, parent task terminal, result/context transfer and parent wake; child is still visible with path/branch/error.
 3. Cancel at fetch, checkout, sync setup, and release race; prove no provider starts, siblings survive, no dirty/user work is deleted, and replay cannot release.
 4. Kill/recreate the service after (a) intent commit, (b) worktree creation before metadata commit, and (c) setup completion before release; prove reconciliation produces one worktree, one run, one provider start.
 5. Replay same `clientRequestId` concurrently and after restart with same and changed workspace args; same returns identical task/thread, changed rejects with no extra Git side effect.

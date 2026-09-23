@@ -1,12 +1,12 @@
 # CLI-first worktree lifecycle investigation
 
-_Status: completed investigation; no product implementation, build, install, or service launch was performed._
+_Investigation complete. No product code was built or changed. Nothing was installed, and no service was started._
 
 ## Evidence boundary
 
-Verified against the current Die working tree and adopted descriptor, not .cache/die-t3code. The immutable adopted T3 revision is **a9b49a7df0a4261dcc438d4493cc3154a1d9819e** (web/t3-source.json; summarized as a9b49a7d in wisdom/t3/t3-v2-delegation-status.md). This checkout already has the main effort's changes, so findings describe current files, not upstream HEAD.
+I checked the current Die working tree and adopted descriptor, not `.cache/die-t3code`. The fixed T3 revision is **a9b49a7df0a4261dcc438d4493cc3154a1d9819e** (`web/t3-source.json`; shortened to a9b49a7d in `wisdom/t3/t3-v2-delegation-status.md`). This checkout already held the main effort's changes. These findings describe those files, not upstream HEAD.
 
-Standalone Die must invoke Git directly and never start T3. An already-running T3 backend may remain authoritative in web mode, but its DB/config is not a CLI dependency.
+Standalone Die must invoke Git directly and never start T3. An already-running T3 backend may stay authoritative in web mode, but its DB/config is not a CLI dependency.
 
 ## Current standalone behavior (verified)
 
@@ -41,13 +41,13 @@ Never stash, reset, clean, checkout or mutate the parent worktree. Dirty state i
 
 ## Recommended request contract (conceptual)
 
-Keep the existing default as workspace.kind=inherit. The worktree variant should carry only declarative intent: baseRef (optional), branch (optional), setup policy/reference (optional and explicitly authorized), and retention policy (default preserve). For prompts batching, one workspace object is a template but each prompt receives a distinct generated path and distinct effective branch; never share a worktree. Return effective path, OID, branch and phase per task. baseRef is resolved once per batch to an OID before any creation, while each branch/path remains independent. Reject a caller-supplied raw destination path in the initial API; generated paths make ownership and cleanup materially safer.
+Keep the existing default as workspace.kind=inherit. The worktree variant should carry only declarative intent: baseRef (optional), branch (optional), setup policy/reference (optional and explicitly authorized), and retention policy (default preserve). For prompts batching, one workspace object is a template but each prompt receives a distinct generated path and distinct effective branch; never share a worktree. Return effective path, OID, branch and phase per task. baseRef is resolved once per batch to an OID before any creation, while each branch/path is still independent. Reject a caller-supplied raw destination path in the initial API; generated paths make ownership and cleanup materially safer.
 
-API semantic invariants: workspace fields do not weaken delegation/profile limits; inherit behavior is unchanged; positive waitSeconds and timeoutSeconds retain local meanings; stop targets only the selected task/process group; inspect/list remain available through setup and expose bounded phase metadata. A setup failure is a task failure, not permission to delete the worktree.
+API semantic invariants: workspace fields do not weaken delegation/profile limits; inherit behavior is unchanged; positive waitSeconds and timeoutSeconds retain local meanings; stop targets only the selected task/process group; inspect/list stay available through setup and expose bounded phase metadata. A setup failure is a task failure, not permission to delete the worktree.
 
 ## Setup: blocking operation versus job phase
 
-**Recommendation: preparation/setup is the initial phase of the same TaskManager-owned logical job, not blocking work before a task id exists.** Five requests reserve five durable ids, prevalidate, then prepare with bounded concurrency. Suggested phases: reserved, worktree-creating, setup-running, agent-running, terminal. The id remains valid for list/inspect/stop; waitSeconds spans setup plus agent; timeoutSeconds bounds that same lifetime. Setup output is bounded inspect output with phase markers.
+**Recommendation: preparation/setup is the initial phase of the same TaskManager-owned logical job, not blocking work before a task id exists.** Five requests reserve five durable ids, prevalidate, then prepare with bounded concurrency. Suggested phases: reserved, worktree-creating, setup-running, agent-running, terminal. The id is still valid for list/inspect/stop; waitSeconds spans setup plus agent; timeoutSeconds bounds that same lifetime. Setup output is bounded inspect output with phase markers.
 
 The smallest process-compatible prototype is a Die-owned worker entrypoint launched by existing TaskManager.spawn. It reads a 0600 manifest, invokes Git directly with argv, runs authorized setup with a separately scrubbed environment, and launches/execs normal Die in the same process group. This reuses stop, timeout, output, wait, attention and completion. Existing TaskManager requires AgentInfo (including sessionFile) at spawn, so either create exactly one child transcript up front using the generated future cwd and reuse it, or add a narrow transition from command/preparing to agent/running. Do not create one transcript per retry. Portable exec handoff and AgentProgress handling of setup prelude are unverified; if they fail, prefer that narrow deferred/phase extension over shell choreography.
 
@@ -104,7 +104,7 @@ Coverage: tests/job-service.test.ts covers schema/profile/identity/depth/partial
 
 ## Minimal experiments
 
-1. Temporary no-network repo: create five pinned worktrees concurrently, cancel one in slow setup; four continue, no process remains, parent status/index unchanged, manifests/registrations reconcile.
+1. Temporary no-network repo: create five pinned worktrees concurrently, cancel one in slow setup; four continue, no process is still, parent status/index unchanged, manifests/registrations reconcile.
 2. One real child with worktree cwd and parent sessionDir: verify header parent/cwd, cost, explicit child history, AgentProgress, completion/attention and root-only Herdr.
 3. Distinct committed versus dirty AGENTS.md/.pi: only pinned files load, no duplicate context, unresolved headless trust fails closed.
 4. Crash before/after manifest fsync, worktree add, setup, transcript and child spawn; restart read-only reconciliation creates no duplicate, signals no reused PID and deletes nothing.

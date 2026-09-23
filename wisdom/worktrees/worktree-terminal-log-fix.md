@@ -2,10 +2,10 @@
 
 ## Result
 
-Fixed the blocking async setup terminal failure in canonical source `.cache/die-t3code-a9b49a7df0a4261dcc438d4493cc3154a1d9819e`.
+Fixed the async setup terminal failure that blocked work. The fix was made in canonical source `.cache/die-t3code-a9b49a7df0a4261dcc438d4493cc3154a1d9819e`.
 
 - `apps/server/src/terminal/Manager.ts` now keeps the existing base64url filename components when they are short, but replaces any encoded ID component longer than 120 ASCII bytes with an unambiguous `~sha256-<64 hex>` identity.
-- The maximum terminal transcript basename is therefore 254 bytes (`terminal_` + two 120-byte components + separator + `.log`), below the 255-byte filesystem limit.
+- The maximum terminal transcript basename is 254 bytes (`terminal_` + two 120-byte components + separator + `.log`), below the 255-byte filesystem limit.
 - Thread-prefix cleanup uses the same bounded identity, so close/delete-history still removes every terminal transcript for a long thread ID.
 - Legacy default-terminal lookup/removal is skipped when its legacy basename would exceed 255 bytes, avoiding a second `ENAMETOOLONG` path.
 - Existing short transcript names and legacy migration behavior are unchanged.

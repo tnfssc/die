@@ -1,6 +1,6 @@
 # Worktree subagent prompt review
 
-Status: complete read-only review. Implementation is owned by `task_b210d06d`; I changed no prompt/source/test files and ran no build or shared server. This wisdom file is the only file I wrote.
+Read-only review complete. `task_b210d06d` owned the implementation. I changed no prompts, source, or tests. I ran no build or shared server. This wisdom file was my only change.
 
 ## Sources reviewed
 
@@ -11,13 +11,13 @@ Status: complete read-only review. Implementation is owned by `task_b210d06d`; I
 - active workspace brief plus worktree design, CLI lifecycle, setup/config, web integration, and investigation conclusions
 - current dirty implementation/API seams, without editing them
 
-The established prompt style is the right constraint here: precise API reference in `execute.md`; short judgment in role prose; no hidden prose in TypeScript; no procedural rule list.
+The project voice points to a small change. Keep the exact API in `execute.md`. Put one short judgment in role prose. Do not hide prose in TypeScript or add a long rule list.
 
 ## Minimal recommended prompt changes
 
 ### 1. Keep the exact API in `src/prompts/execute.md`
 
-Update the launch signature to the final implemented shape, for example:
+Update the launch signature to the final built shape, for example:
 
 `await subagent({ type?, title?, prompt, workspace?, waitSeconds?, timeoutSeconds? })`
 
@@ -45,7 +45,7 @@ Use the same short sentence in `main-orchestrator.md` and `orchestrator.md` (or 
 
 This captures the requested choice without making tools a mandatory workflow. It also avoids telling fast/normal leaves about a tool they cannot use. No change is needed in `system.md`, `fast.md`, or `normal.md`.
 
-“Independent” means file changes that should not collide and work intended to become its own branch/PR. “Inherit” remains right for read-only investigation and deliberately coordinated edits in the parent's checkout. These explanations belong in project docs/tests if more detail is needed, not as more model rules.
+“Independent” means file changes that should not collide and work intended to become its own branch/PR. “Inherit” is still right for read-only investigation and deliberately coordinated edits in the parent's checkout. These explanations belong in project docs/tests if more detail is needed, not as more model rules.
 
 ### 3. Update documentation mirrors, not assembly code
 
@@ -77,8 +77,8 @@ Check the captured JSON, not terminal presentation:
 
 - exact `subagent` signature/type/default and setup/capability prose appear once where intended;
 - root orchestrator and child orchestrator contain the isolation judgment;
-- fast/normal child role injection remains correct and does not gain orchestrator judgment;
-- custom base replaces Die's base as today, append remains appended, while extension-owned role/API injection follows the existing contract;
+- fast/normal child role injection is still correct and does not gain orchestrator judgment;
+- custom base replaces Die's base as today, append is still appended, while extension-owned role/API injection follows the existing contract;
 - no network/model request occurs.
 
 Add focused assertions to `tests/prompts.test.ts` for source text/API/default and role guidance, and to `tests/prompt-preview.test.ts` for real assembly across root orchestrator, child orchestrator, normal child, and custom SYSTEM/APPEND. Keep schema/runtime acceptance tests with the implementation owner (local CLI, configured web, batch propagation, invalid workspace fields, Git/setup behavior). Existing `tests/prompt-delivery.test.ts`, `tests/system-prompt.test.ts`, and `tests/provider-prompt.test.ts` cover delivery boundaries and provider serialization; include them in the offline run if touched.
@@ -91,6 +91,6 @@ No `DIE_RUN_LLM_TESTS`, credentials, paid provider, build, install, or live web 
 
 ## Decisions / cautions
 
-No new user decision is required for prompt wording. The current request resolves the earlier note conflict in favor of structured `workspace.kind` with optional `baseRef`/`branch`, default inherit.
+No new user decision is needed for prompt wording. The current request resolves the earlier note conflict in favor of structured `workspace.kind` with optional `baseRef`/`branch`, default inherit.
 
 One implementation fact must be confirmed before final prose lands: the exact accepted combinations and limitations for root/local/configured-web/nested orchestrator and batch calls. This is not a product-feature question; derive it from the merged schemas and tests, then document only what is true. If implementation and approved behavior differ, ask the user rather than papering over the mismatch in prompt text.
