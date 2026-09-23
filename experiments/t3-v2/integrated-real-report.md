@@ -2,7 +2,7 @@
 
 ## Status
 
-**Passing real-engine deterministic path; full acceptance remains incomplete.**
+**The deterministic real-engine path passes. Full acceptance is still incomplete.**
 
 Run:
 

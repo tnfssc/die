@@ -1,6 +1,6 @@
 # Evidence matrix — followthrough (2026-09-20)
 
-**Real deterministic engine flow and rendered durable child now demonstrated. Full acceptance/adoption is still NOT claimed.**
+**The tests now show real deterministic engine flow and a rendered durable child. They do NOT show full acceptance or adoption.**
 
 | Requirement | Result | Evidence / boundary |
 |---|---|---|

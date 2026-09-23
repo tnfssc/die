@@ -2,7 +2,7 @@
 
 ## Fixed boundary
 
-The original reduced scope hang was a **test-clock error**, not evidence of a real stdin/process deadlock. it.effect supplies TestClock. PiRpc.terminatePiProcess sends SIGTERM and then sleeps for its one-second grace period in an uninterruptible scope finalizer. A test that never advances that clock cannot complete teardown; an external timeout cannot cancel through that finalizer. The minimal harness change is **it.live** for real OS processes. No upstream adapter change or increased timeout was needed.
+A **test-clock error** caused the original reduced scope hang. It was not evidence of a real stdin/process deadlock. it.effect supplies TestClock. PiRpc.terminatePiProcess sends SIGTERM and then sleeps for its one-second grace period in an uninterruptible scope finalizer. A test that never advances that clock cannot complete teardown; an external timeout cannot cancel through that finalizer. The minimal harness change is **it.live** for real OS processes. No upstream adapter change or increased timeout was needed.
 
 The original assertion that open/ensure performs no MCP discovery was also false under live scheduling: initialize/initialized/tools-list can already occur during ensure. Those calls are not tool execution.
 

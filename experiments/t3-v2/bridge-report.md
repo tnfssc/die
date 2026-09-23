@@ -2,7 +2,7 @@
 
 ## Completed design
 
-The experiment bridge now keeps **execute as the only model-visible tool**. PiAdapterV2 may still inject its generated T3 MCP extension; the launcher preserves that argument so upstream approval and lifecycle hooks remain loaded, while `bridge-activation.ts` resets visibility to execute immediately before each model request.
+The experiment bridge keeps **execute as the only model-visible tool**. PiAdapterV2 may still inject its generated T3 MCP extension; the launcher preserves that argument so upstream approval and lifecycle hooks remain loaded, while `bridge-activation.ts` resets visibility to execute immediately before each model request.
 
 The extension appends an absolute, experiment-scoped import instruction. Execute programs use:
 

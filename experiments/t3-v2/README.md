@@ -2,7 +2,7 @@
 
 **Real deterministic delegation, teardown and rendered child navigation now pass. Full acceptance is not complete; not adopted.**
 
-Pinned experiment upstream: a9b49a7df0a4261dcc438d4493cc3154a1d9819e (PR #2829). Production backend, web/t3-source.json, web/t3.patch, dist/die, installed binary and existing production state are unchanged.
+Pinned experiment upstream: a9b49a7df0a4261dcc438d4493cc3154a1d9819e (PR #2829). The experiment did not change the production backend, web/t3-source.json, web/t3.patch, dist/die, installed binary, or existing production state.
 
 See [RESULTS.md](RESULTS.md), [integrated-real-report.md](integrated-real-report.md), [clock-report.md](clock-report.md), [combined-report.md](combined-report.md), [browser-live-followthrough.md](browser-live-followthrough.md) and [bridge-followthrough.md](bridge-followthrough.md).
 

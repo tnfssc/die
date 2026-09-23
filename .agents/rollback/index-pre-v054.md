@@ -1,6 +1,6 @@
 # Project notes
 
-- **Editing prompts? Start with [the prompt editing guide](../../docs/prompts.md).** It explains reviewing the whole input, decision reasons, and how to inspect assembly. [Model input source map](../../docs/system-instructions.md) lists sources and inclusion conditions.
+- **Editing prompts? Start with [the prompt editing guide](../../docs/prompts.md).** It explains how to review the whole input, keep decision reasons, and inspect assembly. [Model input source map](../../docs/system-instructions.md) lists sources and inclusion conditions.
 - [Prompt review and shell stdin](prompt-review-2026-09-12.md): user-approved values, review position, stdin decision, and verified checks.
 - [Durable prompt iteration](prompt-iteration-2026-09-13.md): review applied; Luna/medium live failures, Astra handoff and Sol memory success. Keep design; future checks target Sol/Astra. Process-scope incident recorded; shipped in v0.2.6.
 

@@ -4,7 +4,7 @@
 
 PASS against upstream `a9b49a7df0a4261dcc438d4493cc3154a1d9819e`.
 
-The harness uses the upstream orchestration-v2 stack rather than a local model of it: `OrchestratorV2`, MCP toolkit/service, event/projection persistence, command receipts, provider runtime, and continuation/delivery paths. The only mocked boundary is provider execution, via upstream deterministic Codex and Claude adapter doubles. No credentials, external services, or listening ports are required.
+The harness uses the upstream orchestration-v2 stack, not a local model of it: `OrchestratorV2`, MCP toolkit/service, event/projection persistence, command receipts, provider runtime, and continuation/delivery paths. The only mocked boundary is provider execution, via upstream deterministic Codex and Claude adapter doubles. No credentials, external services, or listening ports are required.
 
 ## Covered behavior
 

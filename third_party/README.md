@@ -1,9 +1,7 @@
 # Curated license inputs
 
 The release notice generator copies LICENSE, COPYING, and NOTICE files directly
-from installed production packages. The files here cover runtime material whose
-published npm package does not carry its own license file, plus the compiled
-runtime itself:
+from installed production packages. These files cover the compiled runtime and runtime material whose published npm package has no license file:
 
 - pi/LICENSE: earendil-works/pi v0.87.1 root LICENSE.
 - bun/LICENSE.md: oven-sh/bun bun-v1.4.1 LICENSE.md, including linked libraries.
@@ -18,5 +16,4 @@ runtime itself:
   and upstream tag omit a license file; the proxy-agents sibling packages carry
   the same MIT grant (upstream tag commit b7e5f7ccce1a3ac5b339cc4c587974e8989cbc16).
 
-Update these pinned inputs when the associated dependency/runtime version changes.
-They are copied into generated release materials and are not a legal opinion.
+Update a pinned input when its dependency or runtime version changes. The generator copies these files into release materials. They are not a legal opinion.

@@ -18,7 +18,7 @@ The fake-clock case proves this order:
 
 The `it.live` contrast pays the same grace using wall time and completes normally. It also proves the launcher-grandchild path: lifecycle evidence has distinct launcher and Die PIDs, Die receives group termination, proxied stdin is ended, and both processes exit.
 
-This does **not** establish that a fake clock can never affect provider scheduling: any provider path using Effect clock sleeps/timeouts could also wait for adjustment. It establishes a minimal sufficient cause for the reduced scope timeout: teardown alone is sufficient to hang after the OS child has exited. Switching this real-process integration test from `it.effect` to `it.live` is therefore the correct harness fix.
+This does **not** establish that a fake clock can never affect provider scheduling: any provider path using Effect clock sleeps/timeouts could also wait for adjustment. It establishes a minimal sufficient cause for the reduced scope timeout: teardown alone is sufficient to hang after the OS child has exited. Switching this real-process integration test from `it.effect` to `it.live` is so the correct harness fix.
 
 ## Run
 

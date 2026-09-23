@@ -12,7 +12,7 @@ See [the audit report](../../wisdom/resources/memory-resource-audit.md) for resu
 
 ## Web investigation harnesses
 
-**Historical assertion warning:** `current-web-provider.mjs` and the custom missing-recording-trigger case were written to demonstrate the v0.3.4 findings, not to assert v0.4.0 fixed behavior. The provider source-copy instrumentation may no longer match after the fix, and its old retention assertions should not be used as release gates. Use the product regression suites (TaskManager/capture/history plus backend logger/PiAdapter/SubscriberStream and client RPC tests) for fixed behavior. The server runtime probes remain useful lifecycle measurements.
+**Historical assertion warning:** `current-web-provider.mjs` and the custom missing-recording-trigger case were written to show the v0.3.4 findings, not to assert v0.4.0 fixed behavior. The provider source-copy instrumentation may no longer match after the fix, and its old retention assertions should not be used as release gates. Use the product regression suites (TaskManager/capture/history plus backend logger/PiAdapter/SubscriberStream and client RPC tests) for fixed behavior. The server runtime probes remain useful lifecycle measurements.
 
 These source probes verify pin `719a76ca1dbf5490f1aa33ffb9966301e02be9a9` and the canonical patch in `.cache/die-t3code-v0042`.
 

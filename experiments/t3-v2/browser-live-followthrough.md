@@ -2,7 +2,7 @@
 
 **PASS for durable real-engine state navigation and refresh. Not a simultaneous live-provider browser run.**
 
-The final capture serves a copy of the **closed file-backed SQLite database actually written by integrated-process-proof.sh**. It does not synthesize/replay thread events. browser-live-seed.ts verifies all125 exported real event IDs already exist and adds only project-list metadata. The earlier replay-fixture screenshot is not used for this claim.
+The final capture uses a copy of the **closed file-backed SQLite database written by integrated-process-proof.sh**. It does not synthesize/replay thread events. browser-live-seed.ts verifies all125 exported real event IDs already exist and adds only project-list metadata. The earlier replay-fixture screenshot is not used for this claim.
 
 - Parent: thread:integrated-real-parent
 - Exact successful child: thread:delegated-task:command%3Amcp%3A6c95953b-0422-497a-8545-8c36ed62ac78%3Adelegate-task%3Aintegrated-stable-success

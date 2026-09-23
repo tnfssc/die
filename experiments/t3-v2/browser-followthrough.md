@@ -50,7 +50,7 @@ node browser-followthrough.mjs
 
 `capture-browser-fixture.sh` temporarily instruments the replay integration test, always restores it with a trap, and emits the ignored JSON snapshot. `seed-browser-fixture.ts` refuses missing inputs/database and targets the experiment state by default. `browser-followthrough.mjs` uses the server's normal pairing link without printing it, an isolated persistent profile, clicks parent → relationship child, asserts target and marker, and captures both images.
 
-The host `/tmp` was 99% full and initially caused Chromium `ERR_INSUFFICIENT_RESOURCES`; setting `TMPDIR` to the experiment runtime fixed it. Firefox's prior SWGL blocker is therefore bypassed by an actual Chromium renderer.
+The host `/tmp` was 99% full and initially caused Chromium `ERR_INSUFFICIENT_RESOURCES`; setting `TMPDIR` to the experiment runtime fixed it. Firefox's prior SWGL blocker is so bypassed by an actual Chromium renderer.
 
 ## Explicit non-claims / blockers
 

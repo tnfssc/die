@@ -91,7 +91,7 @@ bun scripts/t3-v2-production/migration-acceptance.ts
 ```
 
 The two tracked fixture templates are copied temporarily beneath their matching
-checkout solely for workspace package resolution and removed in `finally`.
+checkout only for workspace package resolution and removed in `finally`.
 The harness also reconstructs and hash-checks the production patch from repository
 history when no explicit production patch is supplied, and verifies that each
 checkout is exactly its pinned HEAD plus the expected patch before running.
