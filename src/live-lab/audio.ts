@@ -1,3 +1,4 @@
+import { resolveEmbeddedNativeHelper, type ExtractedHelper } from "./helper";
 /** Process boundary for the experimental native voice-only helpers (protocol v1). */
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { stat } from "node:fs/promises";
@@ -31,7 +32,7 @@ const MAX_CAPTURE = 640; // 20ms PCM16 mono 16k
 const MAX_PLAY = 9_600; // at most 200ms PCM16 mono 24k per message
 const MAX_PENDING = 64 * 1024; // ~1.3 seconds of encoded PCM at 24k
 const MAX_STDERR = 4096;
-/** Compiled candidates carry the helper beside die; source runs use the repository dist directory. */
+/** Fallback for builds without an embedded helper; source runs use repository dist. */
 export function defaultHelperPath(
   platform: NodeJS.Platform = process.platform,
   moduleUrl = import.meta.url,
@@ -122,10 +123,12 @@ export class LiveLabAudio {
     this.worker.off("error", this.onError);
     this.worker.stdin.off("error", this.onInputError);
     this.worker.off("close", this.onReaped);
+    if (this.extractedHelper) void this.extractedHelper.cleanup().catch(() => {});
   };
   private constructor(
     private readonly worker: Worker,
     private readonly options: AudioOptions,
+    private readonly extractedHelper?: ExtractedHelper,
   ) {
     worker.stdout.on("data", this.onData);
     worker.stderr.on("data", this.onStderr);
@@ -141,19 +144,27 @@ export class LiveLabAudio {
     };
     aborted();
     let worker = options.worker;
+    let extracted: ExtractedHelper | undefined;
     if (!worker) {
       if (process.platform !== "darwin" && process.platform !== "linux")
         throw new Error("Audio helper requires macOS or Linux");
       if (!process.stdin.isTTY || process.env.SSH_CONNECTION || process.env.SSH_CLIENT || process.env.SSH_TTY)
         throw new Error("Audio helper requires a local interactive terminal");
-      const path = resolve(options.helperPath ?? defaultHelperPath());
-      const info = await stat(path).catch(() => undefined);
-      aborted();
-      if (!info?.isFile() || !(info.mode & 0o111))
-        throw new Error("Audio helper is missing or not executable; build the local helper first");
-      worker = spawn(path, [], { stdio: ["pipe", "pipe", "pipe"], env: audioEnvironment() });
+      try {
+        if (!options.helperPath) extracted = await resolveEmbeddedNativeHelper();
+        aborted();
+        const path = extracted?.path ?? resolve(options.helperPath ?? defaultHelperPath());
+        const info = await stat(path).catch(() => undefined);
+        aborted();
+        if (!info?.isFile() || !(info.mode & 0o111))
+          throw new Error("Audio helper is missing or not executable; build the local helper first");
+        worker = spawn(path, [], { stdio: ["pipe", "pipe", "pipe"], env: audioEnvironment() });
+      } catch (error) {
+        if (extracted) await extracted.cleanup();
+        throw error;
+      }
     }
-    const audio = new LiveLabAudio(worker, options);
+    const audio = new LiveLabAudio(worker, options, extracted);
     try {
       await audio.withAbort(audio.waitFor("hello", options.helloTimeoutMs ?? 3000), "launch");
       return audio;
