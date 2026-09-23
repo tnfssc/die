@@ -10,7 +10,25 @@ function synthesizeSpeech(text: string): Buffer {
   const speech = Bun.spawnSync(["espeak-ng", "--stdout", text], { stdout: "pipe", stderr: "pipe" });
   if (speech.exitCode !== 0) throw new Error("Local synthetic speech generation failed.");
   const converted = Bun.spawnSync(
-    ["sox", "-t", "wav", "-", "-r", "16000", "-c", "1", "-e", "signed-integer", "-b", "16", "-t", "raw", "-", "gain", "6"],
+    [
+      "sox",
+      "-t",
+      "wav",
+      "-",
+      "-r",
+      "16000",
+      "-c",
+      "1",
+      "-e",
+      "signed-integer",
+      "-b",
+      "16",
+      "-t",
+      "raw",
+      "-",
+      "gain",
+      "6",
+    ],
     { stdin: speech.stdout, stdout: "pipe", stderr: "pipe" },
   );
   if (converted.exitCode !== 0) throw new Error("Local synthetic speech conversion failed.");
@@ -32,9 +50,7 @@ acceptance(
   "real Gemini Live accepts setup, synthetic speech, NON_BLOCKING handoff responses, and continues audio",
   async () => {
     const key = await loadLiveKey();
-    const spoken = synthesizeSpeech(
-      "Use handoff now. Tell the coding agent to verify blue seven.",
-    );
+    const spoken = synthesizeSpeech("Use handoff now. Tell the coding agent to verify blue seven.");
     const evidence = {
       model: LIVE_MODEL,
       setupAccepted: false,
