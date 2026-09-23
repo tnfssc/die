@@ -4,7 +4,7 @@ Status: complete (2026-09-21)
 
 ## Edit ownership / concurrency
 
-This worker edited only the candidate checkout `.cache/die-t3code-v2-production` files listed below. No native acceptance, root implementation source, browser/web source, or build configuration was changed. Browser work was concurrent.
+This worker edited only the candidate checkout `.cache/die-t3code-v2-production` files listed below. Did not change native acceptance, root implementation source, browser/web source, or build configuration. Browser work was concurrent.
 
 ## Baseline
 
@@ -19,7 +19,7 @@ Broad root-config run `/var/tmp/t3-production-candidate-full-tests.log`: **18,07
 - `apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts`
   - Preserved the production allowlist. Read-only annotations do **not** automatically grant native Die APIs to Claude; `die_task_*` is an intentionally privileged namespace. The mapping test now excludes it and explicitly asserts no Die API is pre-approved.
 - `apps/server/src/provider/Layers/ProviderRegistry.test.ts`
-  - Scoped Codex reprobe assertions to Codex commands and separately requires the expected new `die` provider probe. This preserves both behaviors instead of hiding the new probe.
+  - Scoped Codex reprobe assertions to Codex commands and separately needs the expected new `die` provider probe. This preserves both behaviors instead of hiding the new probe.
 - `apps/server/src/orchestration-v2/ProviderSessionManager.ts`
   - Raised the still-bounded per-subscriber event burst budget from 256 to 2,048. The deterministic proposed-plan Codex recording normalizes to more than 1,024 events synchronously; 256 and 1,024 both caused the explicit overflow path and failed the provider turn. 2,048 passes while retaining dropping-queue overflow failure semantics (no silent loss/unbounded queue).
 
@@ -32,7 +32,7 @@ Broad root-config run `/var/tmp/t3-production-candidate-full-tests.log`: **18,07
 - Three `.github/scripts/*.test.cjs` files are Node `node:test` suites, not Vitest suites. Root `vp test` reports “No test suite found”; correct command `node --test ...` passes **34/34**.
 - Ghostty web WASM failures came from running web tests under root Vite config, which parsed `*.wasm?inline` as JS. Running from `apps/web` with its unit project passes **76/76**. No web source/config change made.
 - Both Git failures were root-run interference/config effects. Running from `apps/server` passes **98/98**. No Git expectation/source change made.
-- WSL remains an environment-fixture failure (**48 pass, 2 fail**) even under `apps/desktop`. Both failing tests fake an active runtime with `sh -c "sleep 30" "$runtime/t3"`; on this Linux host the inner shell execs `sleep`, so `/proc/*/cmdline` no longer contains the runtime path. The production prune script therefore correctly sees no path-owned process. This is test process simulation portability, not the candidate runtime behavior, and was not loosened.
+- WSL remains an environment-fixture failure (**48 pass, 2 fail**) even under `apps/desktop`. Both failing tests fake an active runtime with `sh -c "sleep 30" "$runtime/t3"`; on this Linux host the inner shell execs `sleep`, so `/proc/*/cmdline` no longer contains the runtime path. The production prune script so correctly sees no path-owned process. This is test process simulation portability, not the candidate runtime behavior, and was not loosened.
 - One later rerun initially hit `ENOSPC` because `/tmp` tmpfs was full of week-old `runtime-recheck-*` directories; stale directories were removed and replay reruns proceeded.
 
 ## Verification

@@ -2,7 +2,7 @@
 
 ## Scope and diagnosis
 
-Fixed in the non-adopted candidate source at `.cache/die-t3code-v2-production`. No root/native routing was changed.
+Fixed in the non-adopted candidate source at `.cache/die-t3code-v2-production`. Did not change root/native routing.
 
 The Pi adapter was already emitting the correct lifecycle update: both `die_task_event started` and `completed` derive the same turn-item ID, node ID, native ref (`die-shell:<taskId>`), run ID, and ordinal. The client reducer also upserts the terminal payload by that stable ID. The production disappearance was in timeline presentation after settlement: the terminal command and its enclosing `execute` carrier were folded into the generic **Worked for ...** turn summary, so the running card vanished as soon as it became terminal. Reload faithfully reconstructed that collapsed presentation.
 
@@ -11,7 +11,7 @@ The acceptance harness had a second, independently proven selector error: T3's c
 ## Fix
 
 - `apps/web/src/session-logic.ts`
-  - Recognizes Pi/Die command items whose native ID starts with `die-shell:` and marks their work-log projection as lifecycle-preserved. This marker is reconstructed from persisted snapshot data after reload; it is not ephemeral component state.
+  - Recognizes Pi/Die command items whose native ID starts with `die-shell:` and marks their work-log projection as lifecycle-preserved. This marker is reconstructed from persisted snapshot data after reload. It is not ephemeral component state.
 - `apps/web/src/components/chat/MessagesTimeline.logic.ts`
   - Excludes lifecycle-preserved shell cards from settled-turn folds.
   - Makes them a tool-group boundary, so the enclosing `execute` carrier cannot absorb them.

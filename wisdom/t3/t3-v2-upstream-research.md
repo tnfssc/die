@@ -15,7 +15,7 @@ The local comment in packages/client-runtime/src/state/subagentRuntime.ts is dir
 2. **PR #4779 was not the v2 orchestrator and was never merged.** It was one stacked observability slice on top of the v2 branch: richer subagent identities, activations, usage, workflows, persistence, and provider projections. It was closed after being folded into the larger unmerged stack PR #4664. Exact PR #4779 commits are not ancestors of either the pinned revision or the current #2829 head.
 3. **What did merge to main is PR #5219**, a deliberately zero-migration bridge for the *existing/main (v1) orchestrator*. It consumes provider-native Claude/Codex task signals, folds them client-side into a v2-shaped panel model, and explicitly says it has “no dependency on orchestrator v2 (#2829).” This is the source of the local subagentRuntime.ts comment and is present at the Die pin.
 4. **Codex MultiAgent V2 is a provider-native Codex feature, not T3 orchestration-v2.** Main's legacy bridge maps Codex collabAgent/* child-thread signals into shared task.* activities. T3 v2 can also ingest provider-native subagents, but separately adds T3-owned cross-provider delegated tasks backed by T3 child threads.
-5. **Die cannot use the v2 task API at its current pin.** The pinned tree has no apps/server/src/orchestration-v2, no packages/contracts/src/orchestrationV2.ts, no v2 MCP service, and no v2 RPC group. A repin to the unmerged #2829 branch (or a large port) is required first. Once running that stack, Die could use either the low-level authenticated WebSocket orchestrationV2.dispatchCommand RPC or, from an active provider session, the higher-level authenticated MCP tools. The latter are intentionally session-scoped and are not a generic unauthenticated task service.
+5. **Die cannot use the v2 task API at its current pin.** The pinned tree has no apps/server/src/orchestration-v2, no packages/contracts/src/orchestrationV2.ts, no v2 MCP service, and no v2 RPC group. A repin to the unmerged #2829 branch (or a large port) is needed first. Once running that stack, Die could use either the low-level authenticated WebSocket orchestrationV2.dispatchCommand RPC or, from an active provider session, the higher-level authenticated MCP tools. The latter are session-scoped and are not a generic unauthenticated task service.
 
 ## Status matrix: implemented, merged, proposed, pinned
 
@@ -23,7 +23,7 @@ The local comment in packages/client-runtime/src/state/subagentRuntime.ts is dir
 |---|---|---:|---|
 | Existing/main orchestration engine | Merged/main | Yes | apps/server/src/orchestration/** and packages/contracts/src/orchestration.ts at the pin |
 | Native-provider observability bridge | Merged as [#5219](https://github.com/pingdotgg/t3code/pull/5219), merge commit [a2ca89aa](https://github.com/pingdotgg/t3code/commit/a2ca89aa10f13a2222e08afd98c66285121d5ba2) on 2026-08-06 | Yes | [pinned subagentRuntime.ts](https://github.com/pingdotgg/t3code/blob/719a76ca1dbf5490f1aa33ffb9966301e02be9a9/packages/client-runtime/src/state/subagentRuntime.ts), ProviderRuntimeIngestion.ts, CodexAdapter.ts |
-| T3 orchestration-v2 core | Implemented on branch; PR [#2829](https://github.com/pingdotgg/t3code/pull/2829) **OPEN, unmerged**, non-draft, currently “dirty” | No | current branch apps/server/src/orchestration-v2/**, contracts, docs, migrations, MCP |
+| T3 orchestration-v2 core | Implemented on branch; PR [#2829](https://github.com/pingdotgg/t3code/pull/2829) **OPEN, unmerged**, non-draft, now “dirty” | No | current branch apps/server/src/orchestration-v2/**, contracts, docs, migrations, MCP |
 | PR #4779 activation-rich observability model | Implemented historical stack; **CLOSED, unmerged** | No | [PR #4779](https://github.com/pingdotgg/t3code/pull/4779), head [c0a38525](https://github.com/pingdotgg/t3code/commit/c0a38525eab4be5480a8f40bb0d5faceebab3fc4) |
 | Full #4779 series / UI | Converged into [#4664](https://github.com/pingdotgg/t3code/pull/4664); **CLOSED, unmerged** | No | author comment on #4779 and #4664 metadata |
 | Current v2 subagent model | Implemented on current #2829 head; schema has since evolved and is not identical to #4779 | No | [current OrchestrationV2Subagent](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/packages/contracts/src/orchestrationV2.ts#L541-L579) |
@@ -61,7 +61,7 @@ At immutable head c0a38525, [packages/contracts/src/orchestrationV2.ts](https://
 - stable OrchestrationV2Subagent identity with origin, provider/native and child-thread refs, kind, role, status, lifetime usage, currentActivationId, activationCount, workflow/membership, recent activity, and timestamps;
 - one-shot OrchestrationV2SubagentActivation rows with ordinal, run/provider-turn attribution, status, per-activation usage, and timestamps.
 
-It adds a subagent-activation.updated domain event and subagentActivations to OrchestrationV2ThreadProjection ([lines 1184–1193](https://github.com/pingdotgg/t3code/blob/c0a38525eab4be5480a8f40bb0d5faceebab3fc4/packages/contracts/src/orchestrationV2.ts#L1184-L1193), [1267–1274](https://github.com/pingdotgg/t3code/blob/c0a38525eab4be5480a8f40bb0d5faceebab3fc4/packages/contracts/src/orchestrationV2.ts#L1267-L1274)). Projection persistence used migration 045 and ProjectionStore; the client reducer upserted activations in packages/client-runtime/src/state/orchestrationV2Projection.ts.
+It adds a subagent-activation.updated domain event and subagentActivations to OrchestrationV2ThreadProjection ([lines 1184–1193](https://github.com/pingdotgg/t3code/blob/c0a38525eab4be5480a8f40bb0d5faceebab3fc4/packages/contracts/src/orchestrationV2.ts#L1184-L1193), [1267–1274](https://github.com/pingdotgg/t3code/blob/c0a38525eab4be5480a8f40bb0d5faceebab3fc4/packages/contracts/src/orchestrationV2.ts#L1267-L1274)). Projection persistence used migration 045 and ProjectionStore. The client reducer upserted activations in packages/client-runtime/src/state/orchestrationV2Projection.ts.
 
 [SubagentObservability.ts](https://github.com/pingdotgg/t3code/blob/c0a38525eab4be5480a8f40bb0d5faceebab3fc4/apps/server/src/orchestration-v2/SubagentObservability.ts) supplied stable activation IDs, default roles, bounded recent activity, max-merging of cumulative usage, and activation-to-lifetime accumulation. Provider event ingestion accepted subagent_activation.updated. Codex, Claude, ACP, Cursor, and OpenCode adapters were modified.
 
@@ -69,9 +69,9 @@ Crucially, this is an **observability/projection layer**, not the origin of task
 
 ### The #4779 shape is not the current #2829 shape
 
-At current #2829 head, OrchestrationV2Subagent still has durable app-owned/provider-native identity, child-thread linkage, wake/delivery policy, statuses, progress and result, but the separate activation array and the rich #4779 usage/workflow fields are absent from the current contract ([current schema](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/packages/contracts/src/orchestrationV2.ts#L541-L579)). Therefore the local statement “field names and transition semantics copy #4779 exactly” describes the merged legacy bridge's intended mechanical swap at the time of #5219; it is **not proof that today's open v2 branch exposes exactly that old projection**.
+At current #2829 head, OrchestrationV2Subagent still has durable app-owned/provider-native identity, child-thread linkage, wake/delivery policy, statuses, progress and result, but the separate activation array and the rich #4779 usage/workflow fields are absent from the current contract ([current schema](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/packages/contracts/src/orchestrationV2.ts#L541-L579)). So the local statement “field names and transition semantics copy #4779 exactly” describes the merged legacy bridge's intended mechanical swap at the time of #5219. It is **not proof that today's open v2 branch exposes exactly that old projection**.
 
-A full pickaxe history for the later removal could not be completed: the partial clone repeatedly attempted lazy SSH blob fetches and timed out. The endpoint states and immutable trees are accessible, so the factual difference is verified; the precise intermediate removal commit remains unverified.
+A full pickaxe history for the later removal could not be completed: the partial clone repeatedly attempted lazy SSH blob fetches and timed out. The endpoint states and immutable trees are accessible, so the factual difference is verified. The precise intermediate removal commit is still unverified.
 
 ## What is in the pinned revision
 
@@ -123,7 +123,7 @@ There are three distinct levels.
 
 ### 1. Durable command/RPC level
 
-[OrchestrationV2Command](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/packages/contracts/src/orchestrationV2.ts#L2193-L2216) contains thread.create. This creates the thread projection; it does not by itself execute a provider turn.
+[OrchestrationV2Command](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/packages/contracts/src/orchestrationV2.ts#L2193-L2216) contains thread.create. This creates the thread projection. It does not by itself execute a provider turn.
 
 [message.dispatch](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/packages/contracts/src/orchestrationV2.ts#L2400-L2431) creates/delivers the user message and durable run. dispatchMode controls whether it is deferred, starts immediately, steers, restarts, or queues. The contract exposes these via OrchestrationV2RpcSchemas.dispatchCommand, wired as authenticated WebSocket method orchestrationV2.dispatchCommand ([contract](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/packages/contracts/src/orchestrationV2.ts#L2903-L2907), [RPC declaration](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/packages/contracts/src/rpc.ts#L1429-L1431), [server handler](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/apps/server/src/ws.ts#L1723-L1768)).
 
@@ -139,7 +139,7 @@ The shared application boundary is [ThreadManagementService](https://github.com/
 4. prepares root/worktree/setup asynchronously;
 5. releases the prepared run so ordinary provider execution starts.
 
-See [launch implementation](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/apps/server/src/orchestration-v2/ThreadLaunchService.ts#L594-L778). The t3_thread_launch MCP tool uses this intake path and requires a full-access/default caller ([handler](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/apps/server/src/mcp/toolkits/project/handlers.ts#L39-L92)).
+See [launch implementation](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/apps/server/src/orchestration-v2/ThreadLaunchService.ts#L594-L778). The t3_thread_launch MCP tool uses this intake path and needs a full-access/default caller ([handler](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/apps/server/src/mcp/toolkits/project/handlers.ts#L39-L92)).
 
 ### 3. T3-owned delegated child task API
 
@@ -182,11 +182,11 @@ There is no v2 contract, server runtime, migrations, RPC, MCP server integration
 
 ### On a v2-enabled upstream build: technically yes, with important choices
 
-**As a normal app/client integration:** call authenticated WebSocket orchestrationV2.dispatchCommand. For an ordinary thread, use thread.create + message.dispatch, or expose/use the server's higher-level launch intake so workspace preparation is not bypassed. For a delegated task, direct delegated_task.request is technically accepted by the RPC schema, but it is low-level: Die must supply a currently active parent thread/run/root node, valid target model selection, and non-escalating runtime/interaction settings, and must consume projection/events correctly.
+**As a normal app/client integration:** call authenticated WebSocket orchestrationV2.dispatchCommand. For an ordinary thread, use thread.create + message.dispatch, or expose/use the server's higher-level launch intake so workspace preparation is not bypassed. For a delegated task, direct delegated_task.request is technically accepted by the RPC schema, but it is low-level: Die must supply a now active parent thread/run/root node, valid target model selection, and non-escalating runtime/interaction settings, and must consume projection/events correctly.
 
-**As an agent inside a T3 provider session:** use MCP delegate_task / task_status / task_cancel. This is the intended high-level task API. However, the MCP endpoint is bearer-authenticated with a short-lived credential scoped to environment, parent thread, provider instance, and provider session. Credentials are minted before provider session open, idle/max-lifetime limited, revoked on release, and not persisted ([transport/auth doc](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/docs/orchestration-v2/orchestrator-mcp-server.md#L29-L55)). Die cannot treat it as a global durable API token.
+**As an agent inside a T3 provider session:** use MCP delegate_task / task_status / task_cancel. This is the intended high-level task API. But the MCP endpoint is bearer-authenticated with a short-lived credential scoped to environment, parent thread, provider instance, and provider session. Credentials are minted before provider session open, idle/max-lifetime limited, revoked on release, and not persisted ([transport/auth doc](https://github.com/pingdotgg/t3code/blob/a9b49a7df0a4261dcc438d4493cc3154a1d9819e/docs/orchestration-v2/orchestrator-mcp-server.md#L29-L55)). Die cannot treat it as a global durable API token.
 
-**For independent work:** t3_thread_launch is preferable to telling an agent to shell-create a worktree; it binds workspace before agent execution. For batches sharing the parent checkout, create_threads is the ordinary top-level API. Do not call RunExecutionServiceV2.startRootRun directly.
+**For independent work:** t3_thread_launch is preferable to telling an agent to shell-create a worktree. It binds workspace before agent execution. For batches sharing the parent checkout, create_threads is the ordinary top-level API. Do not call RunExecutionServiceV2.startRootRun directly.
 
 ### Integration cost/risk
 
@@ -195,8 +195,8 @@ Adopting #2829 today means pinning an open, fast-moving branch: GitHub reports 5
 The practical options are:
 
 1. **Wait for/track #2829, then repin and adapt Die's patch** to the stable merged API.
-2. **Research branch integration** against a specific #2829 commit, accepting churn; use WebSocket commands for app-level integration and MCP only when operating as the active provider agent.
-3. **Remain on pinned main** and use only provider-native observability; do not represent it as T3-owned task creation.
+2. **Research branch integration** against a specific #2829 commit, accepting churn. Use WebSocket commands for app-level integration and MCP only when operating as the active provider agent.
+3. **Remain on pinned main** and use only provider-native observability. Do not represent it as T3-owned task creation.
 
 ## Evidence access and limitations
 

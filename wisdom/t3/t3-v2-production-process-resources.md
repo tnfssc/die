@@ -50,7 +50,7 @@ The child classification is captured only from the manager's existing backend de
 
 ### Process evidence
 
-Focused production-default process test: `ProviderSessionManager.test.ts`, “production-default Die children release exact owned PIDs while the root stays warm”. It creates durable root→child task edges, enables the trusted Die backend identity, opens one root plus five child sessions through the production manager, and gives every runtime a real owned Node process. No explicit child release and no short test idle override are used. At 4,999 ms each exact child PID is alive; after the production 5,000 ms idle boundary it is dead and its provider entry is absent. The root PID/session remains live through the bounded post-idle observation, then is explicitly released by test cleanup. TMPDIR and HOME/state are isolated under `/var/tmp`; no user state is used.
+Focused production-default process test: `ProviderSessionManager.test.ts`, “production-default Die children release exact owned PIDs while the root stays warm”. It creates durable root→child task edges, enables the trusted Die backend identity, opens one root plus five child sessions through the production manager, and gives every runtime a real owned Node process. No explicit child release and no short test idle override are used. At 4,999 ms each exact child PID is alive; after the production 5,000 ms idle boundary it is dead and its provider entry is absent. The root PID/session remains live through the bounded post-idle observation, then is explicitly released by test cleanup. TMPDIR and HOME/state are isolated under `/var/tmp`. No user state is used.
 
 Observed rerun (`--disableConsoleIntercept`), fields are `cycle / live child provider entries / live child PIDs / self fds / self RSS bytes`:
 
@@ -63,9 +63,9 @@ Observed rerun (`--disableConsoleIntercept`), fields are `cycle / live child pro
 
 The preserved five-cycle wedged-finalizer probe also now records its own bounded samples. Its rerun reported live owned PIDs 0 and fds 23 for cycles 1–5 and post-idle; RSS samples were 295,419,904, 299,069,440, 300,511,232, 302,346,240, 304,312,320, and post-idle 304,312,320 bytes. The fifth cycle still exercises the exact-PID hard-stop fallback after the bounded close timeout.
 
-These are per-cycle resource samples, not a zero-leak claim. Exact owned PIDs, live manager entries, and fd counts reached the demonstrated plateau. RSS rose by about 11.3 MiB across this short run and was intentionally reported without a flat-RSS assertion; allocator/JIT RSS is supporting context, not the leak verdict.
+These are per-cycle resource samples, not a zero-leak claim. Exact owned PIDs, live manager entries, and fd counts reached the demonstrated plateau. RSS rose by about 11.3 MiB across this short run and was reported without a flat-RSS assertion; allocator/JIT RSS is supporting context, not the leak verdict.
 
-Validation:
+Checks:
 
 - focused production-default child process test: 1 passed (39 skipped);
 - full `ProviderSessionManager.test.ts`: 41 passed;

@@ -13,7 +13,7 @@
 - Build-manifest SHA-256: `9ea76bb3fac4e65a3828955ff895e340ff5d92512093c4a5c470848d7c69435d`
 - Candidate checkout revision: `a9b49a7df0a4261dcc438d4493cc3154a1d9819e`
 - Candidate patch hash: `4f1126e3edf672e464f2d9f691b1c91f9724fbe703422bfa38439ece22911121`
-- Manifest itself records `typecheckVerified: false`; this smoke does not upgrade that claim.
+- Manifest itself records `typecheckVerified: false`. This smoke does not upgrade that claim.
 - Extracted runtime directory/content ID: `5b868e6071cbe1de68f344617de28bd06b39786bd6c6c21b39f16276a4d72d9b`
 - Extracted `bootstrap.mjs` SHA-256: `154fc94a56be176ef6f4e6591f594a5834fd81bc2afe101442cc0b8d6364ebc2`
 
@@ -31,14 +31,14 @@ Machine-readable evidence: `artifacts/t3-v2-packaged-smoke.json`.
 ## What passed
 
 - Copied the package to a mode-0700 private temporary tree, renamed it, and launched it from a path containing spaces.
-- Candidate and embedded backend ran as the relocated executable with an intentionally nonexistent `PATH`; no runtime `node`, `npm`, `npx`, or `bun` process was present.
+- Candidate and embedded backend ran as the relocated executable with an intentionally nonexistent `PATH`. No runtime `node`, `npm`, `npx`, or `bun` process was present.
 - Embedded web assets extracted and the no-auth server printed the plain loopback URL without a pairing/token URL.
 - HTTP auth session accepted exact same-origin and headerless local requests. Cross-origin, opaque-origin, wrong-port, alternate-host, DNS-rebinding-style Host, and cross-site requests all returned `authenticated:false`.
 - WebSocket protocol v2 accepted exact same-origin and headerless local upgrades (101). Cross-origin, wrong-port, alternate-host, and rebinding Host upgrades were rejected (401).
-- Existing nested settings, provider metadata, and custom model selection survived launcher seeding; only Pi `binaryPath` became the relocated executable as required.
+- Existing nested settings, provider metadata, and custom model selection survived launcher seeding. Only Pi `binaryPath` became the relocated executable as required.
 - Observed exactly the launcher and embedded-backend package processes. SIGTERM produced launcher exit 143 and both recorded owned PIDs disappeared before cleanup.
 - HOME, XDG cache/config/state, TMPDIR, T3 base state, and package copy were isolated and removed. No live user state, install, version mutation, or publication was used.
 
 ## Deliberate boundary
 
-No actual browser was launched because the browser worker owns browser/candidate acceptance. Therefore this run does **not** claim browser-rendered shell cards/liveness, interactive model or instruction-mode switching, populated session history/token accounting, or terminal delayed-input/resize behavior. Those remain the same-live-server browser/native harness gates; this result only establishes that their packaged server/runtime substrate, no-auth boundary, configuration preservation, and shutdown work from the exact artifact.
+No actual browser was launched because the browser worker owns browser/candidate acceptance. So this run does **not** claim browser-rendered shell cards/liveness, interactive model or instruction-mode switching, populated session history/token accounting, or terminal delayed-input/resize behavior. Those are still the same-live-server browser/native harness gates. This result only establishes that their packaged server/runtime substrate, no-auth boundary, configuration preservation, and shutdown work from the exact artifact.

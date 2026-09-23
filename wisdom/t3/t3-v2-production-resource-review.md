@@ -4,7 +4,7 @@
 
 ## Readiness verdict
 
-**Not production-ready for T3 delegation yet, but currently fail-closed rather than leak-prone.** The latest patch deliberately rejects `subagent()` whenever a scoped T3 environment is present (`src/tasks/job-service.ts`) and does not yet connect `T3McpClient` to the job/task lifecycle. This prevents duplicate local fallback but means no production T3 child can launch. The standalone client has a useful 1 MB response cap and response-body cancellation, but it has no owner that cancels/awaits in-flight requests and DELETE-closes the session. Final readiness requires the lifecycle contract and bounded-memory/process-cleanup evidence below.
+**Not production-ready for T3 delegation yet, but now fail-closed rather than leak-prone.** The latest patch deliberately rejects `subagent()` whenever a scoped T3 environment is present (`src/tasks/job-service.ts`) and does not yet connect `T3McpClient` to the job/task lifecycle. This prevents duplicate local fallback but means no production T3 child can launch. The standalone client has a useful 1 MB response cap and response-body cancellation, but it has no owner that cancels/awaits in-flight requests and DELETE-closes the session. Final readiness needs the lifecycle contract and bounded-memory/process-cleanup evidence below.
 
 An earlier in-flight snapshot briefly contained `T3TaskBackend`/external TaskManager adoption. It had deterministic record, polling, and shutdown-order defects. That code was removed before this latest review; those issues are recorded below as rejected-design guardrails, **not current-source findings**.
 
@@ -14,7 +14,7 @@ An earlier in-flight snapshot briefly contained `T3TaskBackend`/external TaskMan
 
 **Path:** `src/tasks/job-service.ts` (T3 environment check in the `subagent` case); `src/tasks/t3-mcp-client.ts` is otherwise only imported by tests.
 
-When both T3 environment values are present, JobService throws “scoped backend contract is not validated” before local spawn. This is the correct safe direction—no duplicate local child—but it is not a production delegation implementation. There is currently no owner for MCP session creation/close, task identity, polling/durable result recovery, ACK transfer, cancellation, or shutdown.
+When both T3 environment values are present, JobService throws “scoped backend contract is not validated” before local spawn. This is the correct safe direction—no duplicate local child—but it is not a production delegation implementation. There is now no owner for MCP session creation/close, task identity, polling/durable result recovery, ACK transfer, cancellation, or shutdown.
 
 **Minimal acceptance:** keep the fail-closed gate until one reviewed backend owns those phases. Do not weaken it to local fallback on transport/auth errors. The backend must use the existing TaskManager/job APIs without adding a second permanent result/output registry.
 
@@ -22,7 +22,7 @@ When both T3 environment values are present, JobService throws “scoped backend
 
 **Path:** `src/tasks/t3-mcp-client.ts (`T3McpClient`, especially `initialize`/`callTool`/`close`)`.
 
-`close()` marks the client closed and DELETEs the current session, but it neither aborts nor awaits calls already inside `fetch`/body decode. A future production owner that calls close during initialize/tool work can DELETE while POST is in flight; the POST closure continues to retain the token/client until its 30 s timeout and can return a result after shutdown. The sharpest race is close during the initial POST before `#sessionId` is learned: close sees no session and returns, then initialize can receive/store a session and even send `notifications/initialized` despite `#closed`, with no later DELETE. The present product does not instantiate the client, so this is latent rather than a currently reachable leak.
+`close()` marks the client closed and DELETEs the current session, but it neither aborts nor awaits calls already inside `fetch`/body decode. A future production owner that calls close during initialize/tool work can DELETE while POST is in flight. The POST closure continues to retain the token/client until its 30 s timeout and can return a result after shutdown. The sharpest race is close during the initial POST before `#sessionId` is learned: close sees no session and returns, then initialize can receive/store a session and even send `notifications/initialized` despite `#closed`, with no later DELETE. The present product does not instantiate the client, so this is latent rather than a now reachable leak.
 
 **Minimal fix before integration:** owner-scoped AbortController plus an in-flight promise set; every request path must reject once closed; stop admission, settle/abort work in a defined order, then DELETE any session learned during the race. Add close-during-initialize (headers before and after close), close-during-tool-body, and abort-vs-result race tests. Server-side idle expiry remains necessary when abort happens before a client can learn the session ID.
 
@@ -36,13 +36,13 @@ On HTTP 400/404, `callTool` transparently initializes a new MCP session and repe
 
 ### 4. High security — confirmed: generic bearer client has no tool allowlist
 
-`T3McpClient.callTool(name, ...)` accepts any name. Upstream credential issuance grants `orchestration`, `worktree`, and `pull-requests` by default (`McpSessionRegistry.ts:130-140`). Arbitrary execute code already inherits the bearer environment, so UI/tool registration is not an authorization boundary. A production bridge intended only for delegation must not rely on “call these three names” guidance.
+`T3McpClient.callTool(name, ...)` accepts any name. Upstream credential issuance grants `orchestration`, `worktree`, and `pull-requests` by default (`McpSessionRegistry.ts:130-140`). Arbitrary execute code already inherits the bearer environment, so UI/tool registration is not an authorization boundary. A production bridge intended only for delegation cannot rely on “call these three names” guidance.
 
-**Minimal fix/test:** bridge-specific orchestration-only audience/capability enforced server-side, plus a client allowlist for defense in depth. Also restrict plain `http:` endpoints to loopback/Unix-local transport; the current URL validator accepts cleartext HTTP to any host and would transmit the bearer over the network. Require HTTPS otherwise. Verify worktree/PR/preview and cross-thread/provider IDs reject. Ensure errors never print bearer or response payload.
+**Minimal fix/test:** bridge-specific orchestration-only audience/capability enforced server-side, plus a client allowlist for defense in depth. Also restrict plain `http:` endpoints to loopback/Unix-local transport. The current URL validator accepts cleartext HTTP to any host and would transmit the bearer over the network. Require HTTPS otherwise. Verify worktree/PR/preview and cross-thread/provider IDs reject. Ensure errors never print bearer or response payload.
 
 ### Rejected implementation guardrails (not present in latest source)
 
-The removed `T3TaskBackend` snapshot demonstrated three designs that must not return:
+The removed `T3TaskBackend` snapshot demonstrated three designs that cannot return:
 
 - terminal `RemoteRecord` entries were never deleted and retained `lastOutput` O(N);
 - every polling error was swallowed and rescheduled at 1 Hz forever;
@@ -63,7 +63,7 @@ These are reachable queue shapes in the reviewed upstream v2 tree, not generic c
 
 ### 6. High on timeout path — confirmed ownership release before provider scope actually closes
 
-**Path:** upstream `ProviderSessionManager.ts:699-837`. `releaseEntry` removes the live session from the resident map first (lines 714-723), then closes its scope in a detached fiber. After 30 seconds it logs and detaches another join (742-783), writes “released” events, and proceeds to credential cleanup whose comment assumes “the provider process is gone” (803-831). The source itself names a provider stream/finalizer that never yields as the reachable wedge. PiRpc has a strong early process-group finalizer, but sequential scope finalization can prevent reaching it; no independent process-group kill is shown on this timeout branch.
+**Path:** upstream `ProviderSessionManager.ts:699-837`. `releaseEntry` removes the live session from the resident map first (lines 714-723), then closes its scope in a detached fiber. After 30 seconds it logs and detaches another join (742-783), writes “released” events, and proceeds to credential cleanup whose comment assumes “the provider process is gone” (803-831). The source itself names a provider stream/finalizer that never yields as the reachable wedge. PiRpc has a strong early process-group finalizer, but sequential scope finalization can prevent reaching it. No independent process-group kill is shown on this timeout branch.
 
 **Impact:** a timed-out release is no longer discoverable through the sessions map, may still own a provider process/stdio/fibers, and may have its credential revoked while that process remains alive. This is a bounded wait, not bounded cleanup. Actual orphaning is **source-confirmed as possible, runtime-unproven** until a wedged-finalizer process test is run.
 
@@ -73,32 +73,32 @@ These are reachable queue shapes in the reviewed upstream v2 tree, not generic c
 
 Upstream `McpSessionRegistry.ts:123-159` stores token hashes, which is good, and scopes credentials to environment/thread/provider instance. Raw authorization is retained in `McpProviderSession.sessionsByThread` (`McpProviderSession.ts:44-59`) and in the Die `T3McpClient` for the client lifetime. Normal ProviderSessionManager paths clear/revoke credentials (around lines 450-488 and release paths), with 24-hour lazy pruning for abandoned hashes.
 
-However, registry issuance always grants `orchestration`, `worktree`, and `pull-requests` (`McpSessionRegistry.ts:130-140`). Any arbitrary execute code inheriting the bearer can call every tool allowed by that credential, not merely `delegate_task/task_status/task_cancel`. Model guidance and registering only three wrappers are not an authorization boundary.
+But registry issuance always grants `orchestration`, `worktree`, and `pull-requests` (`McpSessionRegistry.ts:130-140`). Any arbitrary execute code inheriting the bearer can call every tool allowed by that credential, not just `delegate_task/task_status/task_cancel`. Model guidance and registering only three wrappers are not an authorization boundary.
 
 **Minimal fix/test:** mint a bridge-specific orchestration-only capability/token, or enforce an allowlist server-side for this client audience. Verify cross-thread IDs, wrong provider instance, worktree/PR/preview tools, expired/revoked tokens, and post-session DELETE all reject. Never log URL query credentials, Authorization, raw environment, response payload, or provider stderr; current client errors include status only, which is appropriate.
 
 ## Important non-findings / boundaries
 
 - **Response/transport bound is present in the current patch.** `src/tasks/t3-mcp-client.ts` (`MAX_RESPONSE_BYTES` and `boundedBody`) caps the complete HTTP/SSE body at 1,000,000 bytes and cancels the reader in `finally`; non-2xx and notification/DELETE bodies are cancelled. Retain this. Test exact-limit, one-byte-over, endless stream + abort, invalid SSE, non-2xx with endless body, and DELETE timeout. A `Content-Length` fast reject is optional; streamed counting remains authoritative.
-- T3 production projections are SQL-backed (`ProjectionStore.ts:1441...`); the all-thread `replayState.projections` map is `layerMemory` at line 4539, not the production layer. Do not call durable event/task graph rows a heap leak. MCP status temporarily loads parent/child projections, but no production all-thread projection cache was found here.
-- Terminal results and original thread history remaining in the DB/event journal are intentional durability, not leaks. ACK changes delivery state; it need not delete result history. The resource requirement is bounded transient/resident delivery state and an explicit disk retention policy.
+- T3 production projections are SQL-backed (`ProjectionStore.ts:1441...`). The all-thread `replayState.projections` map is `layerMemory` at line 4539, not the production layer. Do not call durable event/task graph rows a heap leak. MCP status temporarily loads parent/child projections, but no production all-thread projection cache was found here.
+- Terminal results and original thread history remaining in the DB/event journal are intentional durability, not leaks. ACK changes delivery state. It need not delete result history. The resource requirement is bounded transient/resident delivery state and an explicit disk retention policy.
 - MCP registry’s 24-hour stale-hash window is a bounded security/lifetime policy, not an unbounded secret leak: raw tokens are not stored there and normal release revokes eagerly. Still test a burst of N issued/revoked sessions and lazy prune after time advance.
 - RSS fluctuations alone are not evidence. Use heap/object counts, map/queue counters, active handles, FDs, sockets, timers, and descendant process identity.
 
 ## Existing Die protections that must survive migration
 
-1. **Job output:** `BoundedOutputBuffer` caps each live task; TaskManager caps inspect pages and aggregate completed output, and drops process/completion promises on settle. Remote tasks must enter exactly this same accounting and must not duplicate payloads in another permanent map.
+1. **Job output:** `BoundedOutputBuffer` caps each live task; TaskManager caps inspect pages and aggregate completed output, and drops process/completion promises on settle. Remote tasks must enter exactly this same accounting and cannot duplicate payloads in another permanent map.
 2. **Execute output:** `src/typescript/output-capture.ts` has a 10 MiB total byte cap, bounded inline preview, spill files with restrictive modes, and handle close paths. Do not pipe an unbounded T3 result around it.
-3. **Job bridge:** `src/typescript/job-bridge.ts` caps frames at 1 MiB, deletes pending RPC entries, removes abort/ACK listeners, and aborts served requests on disconnect. Preserve the ACK ownership rule: loss before worker ACK returns notification ownership; no result loss.
+3. **Job bridge:** `src/typescript/job-bridge.ts` caps frames at 1 MiB, deletes pending RPC entries, removes abort/ACK listeners, and aborts served requests on disconnect. Preserve the ACK ownership rule: loss before worker ACK returns notification ownership. No result loss.
 4. **Local process ownership:** TaskManager launches detached POSIX groups, sends group SIGTERM then SIGKILL, keeps escalation after shell exit, bounds shutdown, destroys stdio, and clears listeners. Remote ownership needs an equivalent T3 cancellation/settlement contract rather than pretending local signals apply.
 5. **Web launcher:** `src/web/launcher.ts` removes SIGINT/SIGTERM listeners and escalates an owned backend process group. Do not add per-session global signal listeners.
 6. **History:** disk-backed entry storage and temporary pending-file cleanup from v0.4.0 must remain. Persistent history/artifacts are policy-governed storage, not to be silently expired as a leak fix.
 
 ## Deterministic release tests and probes
 
-The current `tests/t3-production-bridge.test.ts` covers configuration fail-closed behavior, a finite oversize response, one abort, one expired-session reconnect, and 20 initialize/DELETE cycles. Those are useful functional checks, but the 20-cycle assertion only counts server DELETE requests; it does not prove post-idle socket/handle/heap release, close-vs-initialize safety, task lifecycle cleanup, or process-tree cleanup.
+The current `tests/t3-production-bridge.test.ts` covers configuration fail-closed behavior, a finite oversize response, one abort, one expired-session reconnect, and 20 initialize/DELETE cycles. Those are useful functional checks, but the 20-cycle assertion only counts server DELETE requests. It does not prove post-idle socket/handle/heap release, close-vs-initialize safety, task lifecycle cleanup, or process-tree cleanup.
 
-Use isolated HOME/TMPDIR/database/ports and fixture transports; no shared server. Choose N large enough to expose slope (suggest 1,000 sequential, 100 concurrent; repeat after warm-up). Expose test-only counters rather than introspecting private fields.
+Use isolated HOME/TMPDIR/database/ports and fixture transports. No shared server. Choose N large enough to expose slope (suggest 1,000 sequential, 100 concurrent; repeat after warm-up). Expose test-only counters rather than introspecting private fields.
 
 ### A. Sequential launch/finish/ACK/post-idle
 
@@ -109,7 +109,7 @@ For each of N tasks: delegate asynchronously, emit bounded progress, finish with
 - TaskManager completed-output bytes <= configured aggregate budget; task metadata count follows documented policy;
 - listener/subscriber/queue/fiber counts return to baseline;
 - heap retained bytes for bridge/backend/result objects plateau between N/2 and N (heap snapshots/object counts, not RSS);
-- DB has exactly N durable tasks/results and terminal delivery state; no result was deleted merely to flatten RAM.
+- DB has exactly N durable tasks/results and terminal delivery state. No result was deleted just to flatten RAM.
 
 ### B. Launch/cancel and nested cancellation
 
