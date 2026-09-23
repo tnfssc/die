@@ -76,6 +76,7 @@ describe("release automation", () => {
     expect(workflow).toContain('- "v*"');
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).toContain("contents: write");
+    expect(workflow).toContain("if: ${{ !contains(github.ref_name, '-') }}");
     expect(workflow).toContain('validate-release-tag.ts "$GITHUB_REF_NAME"');
     expect(workflow).toContain("apt-get install -y tmux");
     expect(workflow).toContain("bun run lint");

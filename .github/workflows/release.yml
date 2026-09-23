@@ -10,6 +10,8 @@ permissions:
 
 jobs:
   release:
+    # Prereleases use explicit candidate bundles (including native helpers), not stable assets.
+    if: ${{ !contains(github.ref_name, '-') }}
     name: Linux, macOS, and Android release
     runs-on: ubuntu-24.04
     timeout-minutes: 40
