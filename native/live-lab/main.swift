@@ -156,8 +156,8 @@ final class Lab {
                   !inputFormat.isInterleaved, inputFormat.sampleRate >= 8000,
                   inputFormat.sampleRate <= 192000 else { throw NSError(domain: "input-format", code: 1) }
             captureRate = inputFormat.sampleRate
-            let mixFormat = audio.mainMixerNode.outputFormat(forBus: 0)
             phase = "output_format"
+            let mixFormat = audio.mainMixerNode.outputFormat(forBus: 0)
             guard mixFormat.sampleRate >= 24000, mixFormat.sampleRate <= 192000,
                 let sourceFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
                     sampleRate: mixFormat.sampleRate, channels: 1, interleaved: false) else { throw NSError(domain: "output-format", code: 1) }

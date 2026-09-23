@@ -8,6 +8,7 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 function setup(overrides: Partial<LabDependencies> = {}) {
   let handler!: (args: string, ctx: any) => Promise<void>;
   let shutdown!: () => void;
+  let sessionStart!: () => void;
   let voiceCallbacks!: VoiceCallbacks;
   let audioCallbacks!: AudioCallbacks;
   let keyCalls = 0,
@@ -81,8 +82,9 @@ function setup(overrides: Partial<LabDependencies> = {}) {
       registerCommand: (_: string, cmd: any) => {
         handler = cmd.handler;
       },
-      on: (_: string, cb: any) => {
-        shutdown = cb;
+      on: (event: string, cb: any) => {
+        if (event === "session_shutdown") shutdown = cb;
+        if (event === "session_start") sessionStart = cb;
       },
     } as any,
     deps,
@@ -134,6 +136,7 @@ function setup(overrides: Partial<LabDependencies> = {}) {
     played,
     flushes,
     shutdown,
+    sessionStart,
     decline: () => {
       consent = false;
     },
@@ -226,6 +229,16 @@ describe("opt-in voice-only lab", () => {
     await denied.run("mic-check");
     expect(denied.notices.join(" ")).toContain("[launch]");
     expect(denied.notices.join(" ")).not.toContain("SECRET");
+  });
+  test("session change aborts pending mic-check before devices open", async () => {
+    const t = setup();
+    t.defer();
+    const checking = t.run("mic-check");
+    await tick();
+    t.sessionStart();
+    t.resolveLaunch();
+    await checking;
+    expect([t.launches, t.starts, t.keyCalls, t.closes]).toEqual([1, 0, 0, 1]);
   });
   test("unknown helper code never reaches UI", async () => {
     const t = setup();

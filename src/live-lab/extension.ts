@@ -417,6 +417,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
   pi.on("session_start", () => {
     sequence++;
     confirmation = undefined;
+    probe?.abort();
     current?.stop();
   });
 }
