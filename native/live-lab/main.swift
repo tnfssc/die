@@ -140,7 +140,7 @@ final class Lab {
                 let list = UnsafeMutableAudioBufferListPointer(buffers)
                 guard let first = list.first, let memory = first.mData else { return -1 }
                 let frames = Int(frameCount)
-                ll_render(core, memory.assumingMemoryBound(to: Float.self), frames, rate)
+                ll_render(core, memory.assumingMemoryBound(to: Float.self), Int32(frames), rate)
                 for channel in list.dropFirst() {
                     if let data = channel.mData { memcpy(data, memory, frames * MemoryLayout<Float>.size) }
                 }
