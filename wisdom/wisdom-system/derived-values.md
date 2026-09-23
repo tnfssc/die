@@ -8,7 +8,7 @@ User asked for derived values and regular cleanup. User then asked for deep para
 - [Domain lessons](domain-principles.md): useful rules that only fit some areas.
 - Feature wisdom: source evidence, choices, incidents, and operating detail. Do not bulk-delete or rewrite old records.
 
-Values can change. They do not beat the user's current instructions. Source links show where a value came from. A link does not approve every old rule in that note.
+Values can change. User's words come first. Source links show where a value came from. A link does not approve every old rule in that note.
 
 ## Coverage
 
@@ -25,7 +25,7 @@ Five read-only reviewers covered **all 223 old Markdown notes in 20 directories*
 
 Reviewers did not separately audit non-Markdown probes and artifacts. This sums up saved evidence. It does not claim every old implementation was tested again. The parent checked links, read sample sources, and checked key cases where newer work replaced old work. Repeat incident reports show a recurring issue. They are not separate experiments.
 
-Research jobs: resources task_af112ee3, T3 task_4615ef2d, web/UI/native task_a115a14b, delivery task_62278bea, memory/workspaces task_4b613164. A first sample review, task_159400e7, came before the wide review. Reviewers used the current workspace and made no edits. This task made no worker branches or worktrees.
+Research jobs: resources task_af112ee3, T3 task_4615ef2d, web/UI/native task_a115a14b, delivery task_62278bea, memory/workspaces task_4b613164. A first sample review, task_159400e7, came before the wide review. Reviewers used the current workspace and made no edits. That read-only review made no worker branches or worktrees. The later wording fix used a worktree; see below.
 
 ## Old and new facts that conflict
 
@@ -50,3 +50,11 @@ The wisdom extension adds those instructions. It still sends them only to root a
 Focused prompt, extension, and real-SDK tests show that root requests get the new instruction and child prompt rules stay the same. Checks passed: 22 tests with 165 assertions, local Markdown links in values and system notes, focused Biome formatting, and git diff --check. This docs-and-prompt change did not need the full product suite.
 
 After the practice audit, user approved PR prep. Branch feat/derived-wisdom-values in /home/tnfssc/Code/die targets develop. The branch adds a short completion result to the standing prompt. project-wisdom.md now points to the source prompt instead of copying old words. This work was not built, installed, or released. Installed binaries need a later build/install or release to get the prompt change. No research jobs remain.
+
+## Keep same voice
+
+User caught formal policy talk in this PR. Rewrote new prompt and wisdom to match the rest. Added standing reminder: short words, short sentences, plain talk. Keep exact names and facts where they matter.
+
+Worker commit 77ab851 was brought in as f2d63a8. Worktree remains at /home/tnfssc/.die/worktrees/die-a86675007a5e-task_6910c481, branch die/rewrite-new-wisdom-in-project-voice-6910c481. Parent changed prompt, values, tests, and checked all pieces fit. Same PR #2. No install or release.
+
+Wisdom and values now use same voice. Ten values still cover the lessons. No need add another.
