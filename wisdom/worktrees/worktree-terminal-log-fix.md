@@ -12,7 +12,7 @@ Fixed the async setup terminal failure that blocked work. The fix was made in ca
 
 ## Regression coverage
 
-The focused `Manager.test.ts` lifecycle test uses long, nearly identical nested delegated thread IDs and ordinary `native-acceptance-setup` terminal IDs. It proves open, write, persisted read and reopen, restart, clear, and close/delete. It also proves distinct bounded basenames, the 255-byte limit, and the long default-terminal legacy lookup path.
+The focused `Manager.test.ts` lifecycle test uses long, nearly identical nested delegated thread IDs and ordinary `native-acceptance-setup` terminal IDs. It verifies open, write, persisted read and reopen, restart, clear, and close/delete. It also verifies distinct bounded basenames, the 255-byte limit, and the long default-terminal legacy lookup path.
 
 ## Validation
 

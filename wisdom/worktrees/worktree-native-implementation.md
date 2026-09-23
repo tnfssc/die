@@ -35,7 +35,7 @@ The result `workspace` field is **optional**, not required globally. It is prese
 
 ## Coordinated live-smoke handoff
 
-The first smoke found missing backend harness wiring. Fix it by providing the ThreadLaunch preparation service in `NativeDieIntegration.production.test.ts`, even though inherit does not use it. A second run with real PiAdapterV2 and compiled Die reached the protocol boundary. It timed out because the current root CLI worker still advertises and validates the old `die_task_launch` schema without worktree fields. Treat that as the expected coordination gate, not a provider or backend lifecycle failure. Rerun the same native acceptance after the CLI worker accepts the fields above and the optional worktree result. Focused backend, preparation, integration, typecheck, and bundle gates still pass.
+The first smoke found missing backend harness wiring. We fixed it by providing the ThreadLaunch preparation service in `NativeDieIntegration.production.test.ts`, even though inherit does not use it. A second run with real PiAdapterV2 and compiled Die reached the protocol boundary. It timed out because the current root CLI worker still advertises and validates the old `die_task_launch` schema without worktree fields. Treat that as the expected coordination gate, not a provider or backend lifecycle failure. Rerun the same native acceptance after the CLI worker accepts the fields above and the optional worktree result. Focused backend, preparation, integration, typecheck, and bundle gates still pass.
 
 ## Final backend artifact checkpoint
 

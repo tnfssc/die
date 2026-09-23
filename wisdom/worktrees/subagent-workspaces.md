@@ -45,7 +45,7 @@ Project trust still controls the child agent's trust mode, not setup.
 Local children keep the usual task and session ancestry, cost totals, profiles,
 custom instructions, waits, and timeouts. Web delegation is still async-only. Omit
 `waitSeconds` or use zero. Web delegation does not support runtime deadlines.
-Use `jobs.inspect` to inspect a child and `jobs.stop` to stop its owned work.
+Use `jobs.inspect` to inspect a child and `jobs.stop` to cancel its owned work.
 
 You can inspect a local worktree job while it prepares, before its provider starts.
 Its timeout includes preparation. Inspection shows the workspace identity and

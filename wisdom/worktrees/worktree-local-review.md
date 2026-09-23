@@ -8,7 +8,7 @@ I reviewed the current worktree-workspace.ts, job-service.ts, task-manager.ts, a
 
 ## P0 — lifecycle and ownership
 
-1. **Create the managed child before preparation starts.** job-service.ts:369-450 now resolves Git, creates the worktree, runs and waits for setup, and creates the session before TaskManager.spawn at :458. That makes waitSeconds:0 block on preparation. It also leaves list, inspect, and stop with no logical child to name. A local taskId variable is neither managed nor durable.
+1. **Create the managed child before preparation starts.** job-service.ts:369-450 currently resolves Git, creates the worktree, runs and waits for setup, and creates the session before TaskManager.spawn at :458. That makes waitSeconds:0 block on preparation. It also leaves list, inspect, and stop with no logical child to name. A local taskId variable is neither managed nor durable.
 
    **Exact fix:** after validation, allocate and register every prompt's logical ID with TaskManager before the first preparation await. Add a real preparing state (or preparation.status) and TaskManager-owned preparation operation/AbortController that transitions the same task to running/failed/cancelled. Persist launch/preparation identity before side effects, then add requested/resolved workspace, OID/path/branch, setup ID/status, session file, and terminal error. List/inspect/stop/shutdown must work while preparing. Run preparation asynchronously so foreground waiting can expire and return background:true while preparation continues.
 
@@ -56,12 +56,12 @@ I reviewed the current worktree-workspace.ts, job-service.ts, task-manager.ts, a
 
 ## Focused tests required
 
-- Block source resolve, create, setup, and session preparation in turn. WaitSeconds:0 must promptly return all stable IDs as preparing/background. Inspect/list/stop/shutdown must work before provider spawn. Timeout includes each phase and no provider starts after expiry.
+- Block source resolve, create, setup, and session preparation in turn. waitSeconds:0 must promptly return all stable IDs as preparing/background. Inspect/list/stop/shutdown must work before provider spawn. Timeout includes each phase and no provider starts after expiry.
 - Fake-clock inherit and worktree tests proving one absolute wait/deadline across profile/session/preparation. Distinguish caller abort from timeout.
 - Three-item batch with item 2 create/setup/session failure: response retains IDs 1/2/3, item 1 is not killed, item 2 is terminal with retained workspace, and no setup/provider is orphaned. Also test shared pin failure.
 - Sync setup success/nonzero/timeout/cancel and async setup success/late nonzero/timeout, including a TERM-ignoring grandchild. Assert bounded process-group death, output bounds, linked IDs, one notification owner, and retained worktree/branch.
 - Private-temp-HOME trust matrix: trusted/untrusted source mapped to new worktree. Setup only executes when trusted. Explicit child trust and AGENTS.md/.die/SYSTEM.md inclusion match inherit mode.
-- Captured real child argv/session metadata for custom base and append prompts: role augmentation is still. Parent/cost-root linkage and history discovery stay. Worktree/inherit differ only by cwd/workspace.
+- Captured real child argv/session metadata for custom base and append prompts: role augmentation remains in place. Parent/cost-root linkage and history discovery remain. Worktree/inherit differ only by cwd/workspace.
 - Git table tests for leading dash, controls/newlines, spaces, Unicode, traversal-like refs, @{-1}, revision operators, invalid branches, branch/path collisions, and symlink root/target. Assert no marker runs, no existing ref changes, argv/no-shell, and option boundaries.
 - Native fake backend moves HEAD between items: exactly one pin and identical OID/pin for every launch. Fail item 2 and retain item 1's acknowledged ID.
 - Reject duplicate setup declarations and oversized config. Prove stable digest/status and no implicit retry.

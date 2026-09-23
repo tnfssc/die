@@ -9,7 +9,7 @@ I checked the adopted immutable source, not `.cache/die-t3code`. `web/t3-source.
 
 ## Executive finding
 
-Keep native Die delegation in charge. Do not hand launch ownership to `ThreadLaunchService`. That service creates or reuses an ordinary thread. It has no parent thread, parent run, parent node, or completion-transfer input, so it cannot create a lineage subagent. Call it before `ThreadLaunchService` and it creates the wrong thread and lineage. Call it after `delegateTask` and its empty-thread reuse guard can fail. Either order also gives two places ownership of idempotency and results.
+Keep native Die delegation in charge. Do not hand launch ownership to `ThreadLaunchService`. That service creates or reuses an ordinary thread. It has no parent thread, parent run, parent node, or completion-transfer input, so it cannot create a lineage subagent. Calling `ThreadLaunchService` before `delegateTask` creates the wrong thread and lineage. Calling it after `delegateTask` fails the empty-thread reuse guard. Either order also gives two places ownership of idempotency and results.
 
 Join the flows here: first let durable `delegated_task.request` atomically create the parent task edge, child lineage thread, child message, and deferred/preparing run. Then prepare that existing child thread and run with the workspace part of `ThreadLaunchService`. Only then release provider execution. Do not send workspace subagents through the ordinary-thread launch API.
 
@@ -19,7 +19,7 @@ Join the flows here: first let durable `delegated_task.request` atomically creat
 2. Adopted `DieTaskService.launch` authenticates `die-delegation`, enforces orchestrator/depth policy before launch, resolves profile model/thinking against the parent selection, then calls `OrchestratorMcpService.delegateTask(... mode: async ...)` (adopted `apps/server/src/mcp/DieTaskService.ts:290-352`).
 3. `delegateTask` requires the active run to be owned by this MCP provider session and derives a stable command ID from scope + request key (`OrchestratorMcpService.ts:1272-1324`).
 4. `delegated_task.request` derives stable task node, child thread and message IDs from that command. Creates an `app_owned` subagent edge and a real child thread with `lineage.parentThreadId`, `relationshipToParent: subagent`, and root lineage. Then dispatches the child message with `start_immediately` (`Orchestrator.ts:5922-6074`; `SubagentProjection.ts:40-80`). This durable graph drives cancellation, terminal result/context transfer, parent wake and visible child transcript.
-5. `makeSubagentChildThread` spreads the parent thread before replacing identity/lineage. Consequently it now inherits the parent's `branch` and `worktreePath`. It does not provision a fresh child worktree.
+5. `makeSubagentChildThread` spreads the parent thread before replacing identity/lineage. Consequently it currently inherits the parent's `branch` and `worktreePath`. It does not provision a fresh child worktree.
 
 ## What ThreadLaunchService does—and does not do
 
@@ -94,7 +94,7 @@ The launch response can continue to report task `status: running` for compatibil
 
 Thread `branch` and `worktreePath` are already persisted and consumed by T3 VCS/terminal/UI behavior. The worktree strategy also records `baseRef` in setup tracking. Persist resolved base in the new durable preparation state because transient setup tracking is insufficient for restart.
 
-PR linkage is thread-scoped, not task-scoped: contracts already support `linkedPullRequest` and `branchPullRequest`, and `ThreadPullRequestService` derives branch PR state from thread branch/worktree. Runtime instructions require explicit `link_pull_request` for PRs created/worked on. A correctly bound child thread can reuse existing PR discovery/linking. Do not add a second PR registry to Die tasks. Verify that metadata update triggers VCS/PR refresh after preparation.
+PR linkage is thread-scoped, not task-scoped: contracts already support `linkedPullRequest` and `branchPullRequest`, and `ThreadPullRequestService` derives branch PR state from thread branch/worktree. Runtime instructions require explicit `link_pull_request` for PRs created/worked on. A correctly bound child thread therefore reuses existing PR discovery/linking. Do not add a second PR registry to Die tasks. Verify that metadata update triggers VCS/PR refresh after preparation.
 
 For web, setup/default-origin policy must be read from existing T3 `ProjectService` + `ServerSettingsService`. The launch request should not mutate those settings. Any agent/API actions to inspect effective default/base/setup policy should be read-only and should redact command/config details as existing authorization requires. Settings edits stay user/UI operations. The internal prep service should not grant the child a generic settings-write or arbitrary worktree-path capability. `die-delegation`, active provider ownership, depth/profile policy and project access must all be checked before Git I/O.
 
