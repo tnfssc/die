@@ -26,17 +26,17 @@ Commit 88601988af280e1bf9a95415401cffd55c86293b, tag v0.5.1 pushed.
 Run 35631908982 underway, watch job task_a8ffc9ef.
 No local install.
 Worktree format/lint/check passed.
-Original workspace remains old feature branch, do not release from it.
+Original workspace is still old feature branch, don't release from it.
 Recheck workers task_2f471097 (static independent native dependency audit) and task_245d2637 (isolated install/deploy/archive extraction actual native binary resolution).
 Need collect results, address real issues and verify official artifacts before saying fixed.
-Guard currently checks ffi-rs package.json only, not actual binary; --reuse-web bypasses guard.
-Architecture matrix includes unnecessary Windows/ia32 but omits Android despite Android executable asset; investigate reachability rather than assuming supported web.
+Guard now checks ffi-rs package.json only, not actual binary; --reuse-web bypasses guard.
+Architecture matrix includes unnecessary Windows/ia32 but omits Android despite Android executable asset; investigate reachability instead of assuming supported web.
 No macOS execution yet.
 
 Independent focused reproduction PASS: task_245d2637 used exact release pnpm 11.10.0 via Corepack, isolated /var/tmp/die-ffi-audit.8bu4JK.
 Frozen install + legacy prod deploy contains all nine ffi packages and all eight fff-bin companions. ffi darwin module resolves FROM ffi-rs index; fff companion likewise.
 Both Mach-O arm64.
-Archive/extract via production helper preserves resolution and SHA256 after existing t3 self-symlink adjustment.
+Archive/extract via production helper keeps resolution and SHA256 after existing t3 self-symlink adjustment.
 This is focused fixture evidence, not full release binary or macOS execution.
 Static worker still running.
 
@@ -54,4 +54,4 @@ User now reports Pi no usable models; traced upstream warning incorrectly says p
 Suggested die /login then restart web; auth investigation task_4a99fe61 active.
 
 Standalone T3 isolation audit task_13bcfacb complete: confirms separate settings/DB/secrets/worktree data by explicit Die base-dir; browser prefs can share ONLY same exact origin; global provider CLI config/env/Git/SSH and repo t3.json shared; ambient T3CODE vars active except explicit overrides.
-Important qualify audit generic Pi config statement: embedded Die uses ~/.die/agent, not standalone Pi ~/.pi/agent (auth worker confirmed); sharing Pi config requires same Die binary or explicit matching override.
+Important qualify audit generic Pi config statement: embedded Die uses ~/.die/agent, not standalone Pi ~/.pi/agent (auth worker confirmed); sharing Pi config needs same Die binary or explicit matching override.

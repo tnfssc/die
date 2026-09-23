@@ -21,15 +21,15 @@ No credentials or external model calls.
 Packaging/runtime details and validation results to follow.
 
 ## Early packaging/runtime contract (verified source)
-- **Keep --base-dir PATH**, not --home: apps/server/src/cli/config.ts:34 defines base-dir; T3CODE_HOME remains equivalent, userdata/settings.json layout unchanged.
+- **Keep --base-dir PATH**, not --home: apps/server/src/cli/config.ts:34 defines base-dir; T3CODE_HOME is still equivalent, userdata/settings.json layout unchanged.
   Exact fetched HEAD contradicts anticipated --home change.
 - No subcommand needed: bin.ts root handler calls runServerCommand(flags), same as start; serve forces headless pairing output.
-  Current forwarded --host/--port/--no-browser remain supported.
+  Current forwarded --host/--port/--no-browser stay supported.
 - Seed modern providerInstances.pi = {driver:"pi",enabled:true,config:{binaryPath:absoluteDie}} while preserving unrelated settings.
   Port worker may maintain legacy providers.pi recognition, but instance config is canonical.
   DIE_WEB_DIE_BINARY stays explicit Die-mode marker.
-- Existing pnpm --filter @t3tools/web build and pnpm --filter t3 build:bundle script names remain; underlying tools now vp build/vp pack.
-  Keep apps/web/dist -> apps/server/dist/client and production deploy externals. dist/bin.mjs still correct entry, Node engine ^22.16 || ^23.11 || >=24.10 (launcher execve requires sufficiently recent Node).
+- Existing pnpm --filter @t3tools/web build and pnpm --filter t3 build:bundle script names stay; underlying tools now vp build/vp pack.
+  Keep apps/web/dist -> apps/server/dist/client and production deploy externals. dist/bin.mjs still correct entry, Node engine ^22.16 || ^23.11 || >=24.10 (launcher execve needs sufficiently recent Node).
   Native externals maintained in scripts/lib/cli-external-packages.ts.
 - Frozen local dependency installation succeeded.
   Startup Pi actual-default port added; 18 startup tests passed.
@@ -37,7 +37,7 @@ Packaging/runtime details and validation results to follow.
 
 Startup validation: 22 tests passed across serverRuntimeStartup.test.ts and orphanedProviderSessionStartup.integration.test.ts.
 Modern project.create ignores defaultModelSelection; in explicit Die mode newly bootstrapped projects receive project.meta.update carrying actual discovered Pi model, then thread.create uses same selection.
-Explicit existing server/project defaults remain honored.
+Explicit existing server/project defaults stay honored.
 New auth/config files appeared in checkout from another owner (not orchestrator or either assigned worker): auth/DieWebAuth*, EnvironmentAuth.ts, cli/config.ts, config.ts.
 Leaving them untouched; main must coordinate capture.
 
@@ -63,7 +63,7 @@ Leaving them untouched; main must coordinate capture.
 - Formatting and git diff --check PASS. Provider targeted lint PASS (worker); outer lint result follows.
 
 ## Deliverable snapshot
-External checkout HEAD remains exact official **6f00d3881a197dd33c2cb43c6a11a9e759e56089**.
+External checkout HEAD is still exact official **6f00d3881a197dd33c2cb43c6a11a9e759e56089**.
 Complete working diff captured to **/var/tmp/die-web-upgrade/t3-upgraded.patch**, 365284 bytes / 34 files including 17 new/untracked files, timestamp ~11:14Z.
 Captured tracked diff plus each git ls-files --others --exclude-standard file; no untracked port file omitted.
 Verified git apply --cached --check against exact HEAD using isolated /var/tmp/die-web-upgrade/validation.index (real checkout index unchanged).
@@ -75,6 +75,6 @@ Status inventory: working-status.txt.
 No known Pi-port build/typecheck blocker.
 Main still owns installed-equivalent browser verification, launcher/providerInstances seed/auth contract decisions, canonical pin+patch/build/install.
 No claim of browser/runtime acceptance yet; no installation or user server touched, no real credentials/API/model calls used.
-All non-note core repo files and old dirty t3code checkout remain untouched by this owner/workers.
+All non-note core repo files and old dirty t3code checkout stay untouched by this owner/workers.
 
 Outer startup/text-generation/integration targeted lint PASS (exit 0): /var/tmp/die-web-upgrade/outer-lint.log. All owned jobs complete.

@@ -1,5 +1,5 @@
-Contract: `modelSelection.options` uses the string option ID `instructionMode` with `fast`, `normal`, or `orchestrator`. The frontend already uses it.
+Frontend contract: the frontend already puts `fast`, `normal`, or `orchestrator` in `modelSelection.options`. The string option ID is `instructionMode`.
 
-Main correction: invoke the real Die `/mode` command through the existing Pi RPC prompt. Run it as a preflight before the user turn. Never make up guidance, a user prompt, or a fake completed `/mode` turn in the adapter.
+The adapter must send the real Die `/mode` command through the existing Pi RPC prompt before the user turn. It must not invent guidance, invent a user prompt, or record a fake completed `/mode` turn.
 
-Do not add `instructionMode` fields to `ProviderSession`, `start`, or `send`. The options already carry this intent. The original worker stopped, and its backend changes were restored to the canonical patch. The replacement worker owns only the backend.
+The options already express the mode. Do not add `instructionMode` to `ProviderSession`, `start`, or `send`. The original worker has stopped. Its backend changes were restored to the canonical patch. The replacement worker owns the backend and nothing else.

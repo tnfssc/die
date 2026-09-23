@@ -14,19 +14,19 @@ Ordinary and plaintext-compaction requests are timestamped only after their fetc
 When a runtime supplies `event.model`, that request-local identity is the source of truth.
 Pi 0.85 omits it, so die captures provider/model synchronously at `before_provider_request` and never reads `ctx.model` after an await.
 Each response-backed retry is a separate observation.
-Payload-hook rejection, budget cancellation, serialization failure, abort before a response, and transport failure without a response do not reset the estimate.
+Payload-hook rejection, budget cancellation, serialization failure, abort before a response, and transport failure without a response don't reset the estimate.
 
 Native Codex compaction uses a direct fetch that bypasses Pi’s provider response hooks.
 It is timestamped at the exact direct-fetch dispatch, after payload/header serialization and a final abort check.
-Thus a dispatched native transport failure does reset the estimate, while rejection or abort before dispatch does not.
+So, a dispatched native transport failure does reset the estimate, while rejection or abort before dispatch doesn't.
 This distinction is deliberately conservative and reflects the narrow seams available; the timestamp is neither request completion time nor proof that a provider accepted or cached content.
 
 Records contain the exact dispatched provider/model and are durable session custom entries.
-Resume and compaction retain them.
+Resume and compaction keep them.
 Switching provider or model shows unknown until that exact pair has a recorded call (switching back may reuse its earlier estimate).
 Each agent owns a different in-memory session manager, so descendant calls never reset the parent footer.
-Tool execution, assistant rendering, completion notices, redraws, and merely entering native-compaction preparation do not reset it.
+Tool execution, assistant rendering, completion notices, redraws, and merely entering native-compaction preparation don't reset it.
 
-The footer schedules redraws only at visible minute boundaries; it does not require a one-second countdown timer.
-The display becomes warning-colored at 15 minutes, error-colored at 5 minutes, and says `expired` rather than counting negative time.
+The footer schedules redraws only at visible minute boundaries; it doesn't need a one-second countdown timer.
+The display becomes warning-colored at 15 minutes, error-colored at 5 minutes, and says `expired` instead of counting negative time.
 Before a matching observed call it says `cache est ?`.

@@ -21,7 +21,7 @@ No compaction source changes authorized/performed yet.
 Final actual compiled TUI verification passed task_2c455164: six loopback requests; inspected plain terminal evidence confirms success/failure/truncation/handoff, comma-separated mixed task outcomes, one blank before direct prose, none before thinking, internal thinking→prose blank preserved.
 Evidence artifacts/ui-cleanup-final-{plain,ansi,requests,report}.*.
 Probe also exercises direct prose + toolcall after status; private tmux csi-u prevents unrelated warning from interrupting boundary.
-UI cleanup remains uninstalled/uncommitted.
+UI cleanup is still uninstalled/uncommitted.
 
 Final combined verification COMPLETE task_c4974509:108tests584assertions passed across native/cache-affine SDK/UI suites; typecheck/build/diff and focused formatting passed.
 Actual final compiled CLI PTY six loopback requests, every assertion passed (labels/truncated/handoff/batch/prose/thinking).

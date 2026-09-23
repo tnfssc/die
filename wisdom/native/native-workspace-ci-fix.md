@@ -3,7 +3,7 @@
 ## Scope and ownership
 
 This change only touches `.github/workflows/ci.yml` and `.github/workflows/release.yml`.
-Feature, backend, build, harness, and test implementation remain owned by `task_b210d06d`; do not overlap these workflow edits.
+Feature, backend, build, harness, and test implementation stay owned by `task_b210d06d`; don't overlap these workflow edits.
 No release was started.
 
 ## Diff
@@ -15,7 +15,7 @@ No release was started.
   - server: native task/MCP, native integration, projection, continuation, local notification, native usage, Pi v2, and resource telemetry;
   - contracts: browser profile, orchestrator MCP, and provider runtime;
   - client runtime: orchestration v2 projection.
-- Release coverage was not broadened; only checkout-path correctness and the removed Pi test path were fixed.
+- Release coverage wasn't broadened; only checkout-path correctness and the removed Pi test path were fixed.
   Existing matrix/runtime setup, Bun 1.4.1 single-binary installation, and environment gates are unchanged.
 
 ## Static validation
@@ -24,14 +24,14 @@ No release was started.
 - Extracted every workflow `run` block and checked it with `bash -n`.
 - `git diff --check -- .github/workflows/ci.yml .github/workflows/release.yml` passed.
 - Confirmed all 25 test paths referenced by CI/release exist in the revision-keyed adopted checkout for `a9b49a7df0a4261dcc438d4493cc3154a1d9819e`, along with package-local runners/configs.
-- Confirmed no fixed `.cache/die-t3code/...` reference remains in either workflow.
+- Confirmed no fixed `.cache/die-t3code/...` reference is still in either workflow.
 
-As asked, this work did not build, run tests, contact a provider, start CI, release, commit, or push.
+As asked, this work didn't build, run tests, contact a provider, start CI, release, commit, or push.
 
 ## Limits and orchestrator follow-up
 
-- `NativeDieIntegration.production.test.ts` expects the local `dist/die` produced by the preceding existing CI Build step; its test fixture is local and does not require provider credentials.
+- `NativeDieIntegration.production.test.ts` expects the local `dist/die` produced by the preceding existing CI Build step; its test fixture is local and doesn't need provider credentials.
 - The main agent should run the requested clean-checkout validation before opening the PR.
 - `task_b210d06d` is still changing workspace/worktree behavior and tests.
-  Once that work stabilizes, the orchestrator should review any newly adopted focused worktree tests and add only stable package-local cases to PR CI (rather than a broad workspace/root upstream test command).
-  Root `bun test ./tests` already remains in CI for Die-side deterministic worktree tests.
+  Once that work stabilizes, the orchestrator should review any newly adopted focused worktree tests and add only stable package-local cases to PR CI (instead of a broad workspace/root upstream test command).
+  Root `bun test ./tests` already is still in CI for Die-side deterministic worktree tests.

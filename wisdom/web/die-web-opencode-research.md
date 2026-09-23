@@ -9,11 +9,11 @@ For a die web experience, borrow OpenCode's launch shell, not its backend:
 1. Build the browser client as static assets and package them with the release.
 2. Start a thin die-owned HTTP/WebSocket bridge on 127.0.0.1 only, on an available port.
 3. Wait for the listener, print its actual URL, and best-effort open the default browser.
-4. Do not show a login screen or require auth in this loopback-only mode.
+4. Do not show a login screen or need auth in this loopback-only mode.
 5. Do not silently turn “no login” into an unauthenticated LAN service. Any future remote/LAN mode must be separate, explicit, authenticated, and stricter about Origin and Host.
 
 T3/Pi precedents support a small process adapter: supervise one RPC subprocess, translate ordered events into a canonical UI protocol, discover real capabilities/models, and clean up by scope.
-They do not justify importing OpenCode's session/provider/server backend wholesale.
+They don't justify importing OpenCode's session/provider/server backend wholesale.
 
 ## Revisions inspected
 
@@ -23,7 +23,7 @@ They do not justify importing OpenCode's session/provider/server backend wholesa
 - Later Pi PR clone already present: PJalv/t3code@191b3de07b6e2d7975530f20f5b5b847b2a73d0b, branch feature/pi-provider.
 - ACP bridge, cloned here: TanJeeSchuan/pi-t3code-bridge@6fed3fed0315acf0403b1c6e1bf03ee76255a703.
 - Auditable OMP workspace: OnkayC/t3code-omp@ad2f05cb2ec8aacab0f7e81e43b13cc9c836cd92, inspected via public source/API.
-  It was not cloned because it vendors complete T3 and OMP trees and its initial merge reports about 3.2M added lines.
+  It wasn't cloned because it vendors complete T3 and OMP trees and its initial merge reports about 3.2M added lines.
 
 ## OpenCode web architecture
 
@@ -50,7 +50,7 @@ Runtime serving lazy-imports the map, serves exact assets, and falls back to ind
 HTML and other responses receive CSP headers: [ui.ts:11-21](https://github.com/anomalyco/opencode/blob/228e9095ba3988a02664c3816cb51f98584e86c2/packages/opencode/src/server/shared/ui.ts#L11-L21), [ui.ts:94-106](https://github.com/anomalyco/opencode/blob/228e9095ba3988a02664c3816cb51f98584e86c2/packages/opencode/src/server/shared/ui.ts#L94-L106).
 
 Do not borrow the fallback that proxies missing UI assets from https://app.opencode.ai: [ui.ts:7-9,78-103](https://github.com/anomalyco/opencode/blob/228e9095ba3988a02664c3816cb51f98584e86c2/packages/opencode/src/server/shared/ui.ts#L7-L9).
-Die should ship its own assets and fail clearly if packaging is broken; a local UI should not depend on remote executable assets.
+Die should ship its own assets and fail clearly if packaging is broken; a local UI shouldn't depend on remote executable assets.
 
 ### Network defaults, auth, and origin checks
 
@@ -63,7 +63,7 @@ The [official Server docs](https://opencode.ai/docs/server) also describe passwo
 
 Meaning for die: no login/no auth is reasonable only while the socket is loopback-only.
 It is unsafe on 0.0.0.0, a LAN address, mDNS, a container-published port, reverse forwarding, or a tunnel.
-CORS is not authentication.
+CORS isn't authentication.
 
 OpenCode allows CORS for localhost/127.0.0.1 on any port, app-owned origins, HTTPS subdomains of opencode.ai, and exact configured origins: [cors.ts:3-20](https://github.com/anomalyco/opencode/blob/228e9095ba3988a02664c3816cb51f98584e86c2/packages/server/src/cors.ts#L3-L20).
 Its request-origin helper also accepts matching Origin/Host and requests with no Origin: [cors.ts:22-34](https://github.com/anomalyco/opencode/blob/228e9095ba3988a02664c3816cb51f98584e86c2/packages/server/src/cors.ts#L22-L34).
@@ -71,7 +71,7 @@ Global CORS is installed at [httpapi/server.ts:121-139](https://github.com/anoma
 
 For die local mode: bind exactly 127.0.0.1; use the exact self origin; validate Host and Origin on WebSocket upgrades and state-changing browser routes; reject mismatches instead of merely omitting CORS response headers; use CSP and nosniff; ship no remote scripts.
 If no-Origin requests are needed by a CLI, make that an explicit tested transport path.
-Loopback still is not a multi-user boundary: other processes running as the user can connect.
+Loopback still isn't a multi-user boundary: other processes running as the user can connect.
 
 ## T3 integration precedents
 
@@ -89,21 +89,21 @@ Do not launch OpenCode as die's implementation; that duplicates session, provide
 It warns against empty intermediate assistant messages, treating the first assistant event as final, duplicate lifecycle events, fake fallback models, and half-initialized sessions.
 It is closed and is a design/reference issue, not shipped proof.
 
-The linked [IgorWarzocha PR #1](https://github.com/IgorWarzocha/t3code/pull/1) remains open/unmerged at e9db18e.
+The linked [IgorWarzocha PR #1](https://github.com/IgorWarzocha/t3code/pull/1) is still open/unmerged at e9db18e.
 Useful decomposition is visible in [piRpcManager.ts](https://github.com/IgorWarzocha/t3code/blob/e9db18eef02c19606206c3ee5b94ebf32ac12960/apps/server/src/piRpcManager.ts), [PiAdapter.ts](https://github.com/IgorWarzocha/t3code/blob/e9db18eef02c19606206c3ee5b94ebf32ac12960/apps/server/src/provider/Layers/PiAdapter.ts), [ProviderHealth.ts](https://github.com/IgorWarzocha/t3code/blob/e9db18eef02c19606206c3ee5b94ebf32ac12960/apps/server/src/provider/Layers/ProviderHealth.ts), and [ProviderModelCatalog.ts](https://github.com/IgorWarzocha/t3code/blob/e9db18eef02c19606206c3ee5b94ebf32ac12960/apps/server/src/provider/Layers/ProviderModelCatalog.ts).
 Treat it as the issue directs: failure-case guidance, not code to merge whole.
 
 A later attempt, [T3 PR #5882](https://github.com/pingdotgg/t3code/pull/5882), is also closed/unmerged.
 Head is public at PJalv/t3code@191b3de0.
 Strong pieces are its scoped JSONL transport [PiRpcClient.ts](https://github.com/PJalv/t3code/blob/191b3de07b6e2d7975530f20f5b5b847b2a73d0b/apps/server/src/provider/pi/PiRpcClient.ts), driver/provider split [PiDriver.ts](https://github.com/PJalv/t3code/blob/191b3de07b6e2d7975530f20f5b5b847b2a73d0b/apps/server/src/provider/Drivers/PiDriver.ts), [PiProvider.ts](https://github.com/PJalv/t3code/blob/191b3de07b6e2d7975530f20f5b5b847b2a73d0b/apps/server/src/provider/Layers/PiProvider.ts), and event adapter [PiAdapter.ts](https://github.com/PJalv/t3code/blob/191b3de07b6e2d7975530f20f5b5b847b2a73d0b/apps/server/src/provider/Layers/PiAdapter.ts).
-Its PR reports broad lifecycle/cleanup/model/session testing, but this is author-reported and upstream did not accept the code.
+Its PR reports broad lifecycle/cleanup/model/session testing, but this is author-reported and upstream didn't accept the code.
 
 ### OMP precedents
 
 Existing Tavily evidence at artifacts/web-feasibility/t3-omp-search.json captures the Reddit post [“I loved T3 Code's UI, then I found omp — so I forked…”](https://www.reddit.com/r/PiCodingAgent/comments/1voz5cy/i_loved_t3_codes_ui_then_i_found_omp_so_i_forked).
 Indexed text says it heavily modified T3 for omp --mode rpc, made it OMP-only, and added managed installation.
 Current Tavily search indexed tangled.org/expi.tngl.sh/t3code-OMP, but extraction failed and that repository now returns 404.
-Thus the Reddit/Tangled code is not independently auditable now and should not be treated as verified source precedent.
+So, the Reddit/Tangled code isn't independently auditable now and shouldn't be treated as verified source precedent.
 
 A separate real public implementation is [OnkayC/t3code-omp@ad2f05c](https://github.com/OnkayC/t3code-omp/tree/ad2f05cb2ec8aacab0f7e81e43b13cc9c836cd92).
 Its T3 subtree documents native rpc-ui, no ACP fallback, capability negotiation, server-owned OMP execution, and normal T3 clients: [providers-omp.md:1-20,45-82](https://github.com/OnkayC/t3code-omp/blob/ad2f05cb2ec8aacab0f7e81e43b13cc9c836cd92/t3code/docs/user/providers-omp.md#L1-L20).
@@ -122,19 +122,19 @@ Borrow translator/process ideas, not slot impersonation or an unnecessary ACP ho
 - Embedded static SPA assets, history fallback, MIME correctness, CSP, and no runtime CDN dependency.
 - Loopback/default available-port behavior.
 - Scoped RPC supervisor: one ordered stdin writer, JSONL stdout, stderr diagnostics, startup/request timeouts, process-exit fan-out, abort, finalizer.
-- A canonical event mapper so browser components do not know Pi/OMP wire details.
+- A canonical event mapper so browser components don't know Pi/OMP wire details.
 - Runtime capability/model discovery; expose only real model/thinking/interaction support.
 - Offline fixture tests for malformed/unknown frames, tool-only intermediate stages, abort races, process exit, and cleanup.
 
 Do not borrow OpenCode's backend/provider/session model, remote asset proxy, broad product-origin list, or password-warning UX; T3's cloud/pairing/login system; fake models or approval semantics; ACP/provider-slot impersonation; or the scale of either OMP fork.
 
 Recommended boundary: browser static client ↔ thin die local gateway ↔ existing die session/RPC objects.
-Die remains owner of tools, sessions, subagents, compaction, costs, and policy.
+Die is still owner of tools, sessions, subagents, compaction, costs, and policy.
 
 ## License
 
 - OpenCode [LICENSE](https://github.com/anomalyco/opencode/blob/228e9095ba3988a02664c3816cb51f98584e86c2/LICENSE): MIT, copyright 2025 opencode.
-- T3 Code [LICENSE](https://github.com/pingdotgg/t3code/blob/01e05c15268dedb76da95f442fbf5201cd8e7a44/LICENSE): MIT, copyright 2026 T3 Tools Inc.; Igor/PJalv forks retain it.
+- T3 Code [LICENSE](https://github.com/pingdotgg/t3code/blob/01e05c15268dedb76da95f442fbf5201cd8e7a44/LICENSE): MIT, copyright 2026 T3 Tools Inc.; Igor/PJalv forks keep it.
 - ACP bridge [LICENSE](https://github.com/TanJeeSchuan/pi-t3code-bridge/blob/6fed3fed0315acf0403b1c6e1bf03ee76255a703/LICENSE): MIT, copyright 2026 Tan Jee Schuan.
 - Onkay workspace has no GitHub-detected root license, but t3code/LICENSE and oh-my-pi/LICENSE in the workspace are MIT with their respective notices.
   Preserve notices if substantial code is copied.
@@ -145,4 +145,4 @@ Die remains owner of tools, sessions, subagents, compaction, costs, and policy.
 Used tvly search and tvly extract for official OpenCode docs, GitHub issue #402, the Reddit OMP report, and public repositories.
 Existing evidence is under artifacts/web-feasibility/.
 This pass also confirmed commits through local Git and public repository source/metadata.
-Tavily extracted official docs and issue #402, but Reddit extraction was blocked and the indexed Tangled fork is now unavailable; those claims are explicitly limited above rather than presented as code evidence.
+Tavily extracted official docs and issue #402, but Reddit extraction was blocked and the indexed Tangled fork is now unavailable; those claims are explicitly limited above instead of presented as code evidence.

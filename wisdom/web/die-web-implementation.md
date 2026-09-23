@@ -7,14 +7,14 @@ No commit/push/release/version bump requested or performed.
 - Core executable: ~/.local/bin/die (version label still0.2.10, includes unreleased web launcher).
 - Sidecar: ~/.local/bin/die-web, T3 package0.0.40 plus integration patch.
 - Official upstream https://github.com/pingdotgg/t3code.git, pin6f00d3881a197dd33c2cb43c6a11a9e759e56089, commit2026-09-14 10:45:43UTC, fetched11:04:23UTC.
-- Candidate source: /home/tnfssc/Code/die-research/t3code-upgrade. Old dirty Pi fork checkout remains read-only at /home/tnfssc/Code/die-research/t3code.
+- Candidate source: /home/tnfssc/Code/die-research/t3code-upgrade. Old dirty Pi fork checkout is still read-only at /home/tnfssc/Code/die-research/t3code.
 - Canonical web/t3-source.json and web/t3.patch updated:34 files/~369KB including ported Pi driver/RPC client because official HEAD has no native Pi support.
   Not a whole fork history merge.
 
 ## Agreed scope
 Real die behind current T3 web UI; native Agents/task lifecycle status.
 Only sparse started/completed notices, not child logs/progress, no new task broker/root service/tree/full controls/updater.
-Model-provider credentials remain with die.
+Model-provider credentials stay with die.
 T3 injected MCP/browser tools are unsupported and deliberately not injected.
 
 ## Wiring
@@ -38,16 +38,16 @@ T3 injected MCP/browser tools are unsupported and deliberately not injected.
   Startup emits project.meta.update for new Pi project default because modern project.create ignores it.
 - PiProvider considers real models ready in explicit Die mode without fake MCP; ordinary Pi behavior unchanged, empty inventory still warning.
   PiAdapter skips unsupported MCP config/flag/env for Die.
-  Sparse tasks retain original turn after parent settlement, dedupe, map agent->subagent, command->shell, killed->stopped.
+  Sparse tasks keep original turn after parent settlement, dedupe, map agent->subagent, command->shell, killed->stopped.
 - auth/DieWebAuth + existing EnvironmentAuth principal path implement no web credentials in explicit Die mode only when runtimeweb, explicitloopbackhost, Tailscale Serve disabled.
   CLI defaults127.0.0.1.
-  Nonloopback/desktop retain upstream auth.
+  Nonloopback/desktop keep upstream auth.
 - No-auth checks request Host loopback, exact Origin (including port), rejects opaque/null/cross-site/same-site metadata.
   Origin-less local clients allowed: trust boundary is whole local machine, including other users/processes, NOT just this OS account.
   Do not expose it with reverse proxies rewriting Host/Origin.
 - Main corrected authenticateRequest to use computed safe dieWebNoAuth, not raw configflag.
 - Startup direct URL/no pairing mint/log/QR in no-auth mode; ordinary T3 behavior unchanged. Provider OAuth/API authentication unchanged.
-- Current T3 first-run Connect/Agents/Projects setup wizard remains (not a login).
+- Current T3 first-run Connect/Agents/Projects setup wizard is still (not a login).
   Tests clicked actual Continue/Continue/Do not import projects; no localStorage bypass.
   Select initial New thread if necessary.
 
@@ -75,23 +75,23 @@ Installed update backup removed after success.
 No test browser/server left running; user server was NOT stopped.
 User must restart an existing die web process to load upgrade.
 Source backup of pre-upgrade pin/patch/support under artifacts/die-web-before-upgrade; backed-up test filenames end.saved to avoid Bun test discovery.
-External upgrade temp/source left for developer provenance; installed runtime does not depend on them.
-No implementation blocker remains.
+External upgrade temp/source left for developer provenance; installed runtime doesn't depend on them.
+No implementation blocker is still.
 No installation/release action should be assumed beyond what is recorded here.
 
 ## New report: Stop
-User reports Stop does not work after upgraded installation. task_b888699e owns installed real-browser stop reproduction (held model stream, execute/shell, detached agent) and new stop smoke/evidence; no product edits. task_ffd844a0 read-only traces UI->modern driver->Pi abort/core task semantics.
+User reports Stop doesn't work after upgraded installation. task_b888699e owns installed real-browser stop reproduction (held model stream, execute/shell, detached agent) and new stop smoke/evidence; no product edits. task_ffd844a0 read-only traces UI->modern driver->Pi abort/core task semantics.
 Await evidence before narrow fix.
-Installed version remains current working upgrade; no Stop fix yet.
+Installed version is still current working upgrade; no Stop fix yet.
 
 Stop diagnosis: streaming generation stop actually works.
 Main corrected reproducer wording: visible Monitoring/Stop is a whole-thread background-liveness banner, not per-job.
 ChatView handleStopBackgroundWork -> interruptTurn; PiAdapter ignores dieTasksById and errors on idle parent; reactor skips fallback when session already ready, so command survives. task_66480bec owns narrow PiAdapter/tests fix: explicit Die idle-background Stop closes owning RPC runtime, emits stopped task/session events preserving resume/history; active abort bounded10s instead120s.
 No new core task-control protocol.
-Main strengthened scripts/die-web-stop-smoke.ts to require real owned shell death after background Stop and retained previous message in follow-up model request; renamed per-job language.
+Main strengthened scripts/die-web-stop-smoke.ts to need real owned shell death after background Stop and retained previous message in follow-up model request; renamed per-job language.
 Typecheck fixed connection record annotations, passes.
 Source trace copied from external checkout note into core wisdom/web/die-web-stop-trace.md.
-Await worker then rebuild candidate/test, install and retest; installed app currently unchanged.
+Await worker then rebuild candidate/test, install and retest; installed app now unchanged.
 
 ## Stop fix integration (await installed checks)
 PiAdapter now detects running dieTasksById while parent idle in explicit Die mode and closes only that owning RPC session using existing SIGTERM/forced close.

@@ -9,33 +9,33 @@ Read-only audit except this wisdom file; implementation is still changing the wo
   Update workflow paths from the pin (or expose one stable path) before PR.
   CI also runs only five selected upstream tests; add focused patched native orchestration/MCP/projection/completion tests so the canonical web changes regress in PR CI, not only release/manual harnesses.
 - **Workspace tree changed during the audit and still needs a safety decision.** Wiring, `tests/worktree-workspace.test.ts`, and `scripts/t3-v2-production/worktree-acceptance.ts` appeared after the first inventory.
-  Local launch currently reads `t3.json` from the possibly dirty source checkout and automatically shell-executes the first `runOnWorktreeCreate` command, including untracked config, without the explicit approval called for by the research conclusion.
+  Local launch now reads `t3.json` from the possibly dirty source checkout and automatically shell-executes the first `runOnWorktreeCreate` command, including untracked config, without the explicit approval called for by the research conclusion.
   Add/verify an approval boundary (or document an intentionally trusted-config policy) plus tests for denial, invalid refs/Git failures, setup failure/timeout, partial batches, and retained-worktree lifecycle.
   Re-inventory after implementation stops changing.
-- **Production acceptance scripts still depend on review-only candidate state.** `build-candidate.ts`, `export-candidate.ts`, `migration-acceptance.ts`, and README commands/defaults point to `.agents/patches/*` and/or `.cache/die-t3code-v2-production`; those inputs should not ship.
+- **Production acceptance scripts still depend on review-only candidate state.** `build-candidate.ts`, `export-candidate.ts`, `migration-acceptance.ts`, and README commands/defaults point to `.agents/patches/*` and/or `.cache/die-t3code-v2-production`; those inputs shouldn't ship.
   Candidate patch is byte-identical to canonical `web/t3.patch`, so exclude the duplicate and retarget retained harnesses to `web/t3-source.json`, `web/t3.patch`, and the canonical hashed checkout. `contract-conformance.ts`, browser/native/preservation harness defaults also use the old candidate checkout.
-- **Non-portable temporary paths in proposed shipped harnesses.** Browser and preservation use literal `/var/tmp`; migration requires it and forces it into children; native defaults to it.
+- **Non-portable temporary paths in proposed shipped harnesses.** Browser and preservation use literal `/var/tmp`; migration needs it and forces it into children; native defaults to it.
   Use `TMPDIR`/`os.tmpdir()` with a private `mkdtemp` directory (allow an explicit override).
   The new worktree acceptance script and worktree unit fixture also hardcode `/var/tmp`; make tests portable with `os.tmpdir()`.
-  Synthetic fixture strings may remain non-operative data.
+  Synthetic fixture strings may stay non-operative data.
   No shipped candidate source contains `/home/tnfssc`.
-- **Docs are not self-contained if research/evidence is excluded.** `wisdom/t3/t3-v2-delegation-status.md` links to untracked `wisdom/*` and ignored/generated `artifacts/*`; its claim that root formatting excludes experiments is currently false. `scripts/t3-v2-production/README.md` also gates on a research wisdom file and documents candidate-only paths.
+- **Docs aren't self-contained if research/evidence is excluded.** `wisdom/t3/t3-v2-delegation-status.md` links to untracked `wisdom/*` and ignored/generated `artifacts/*`; its claim that root formatting excludes experiments is now false. `scripts/t3-v2-production/README.md` also gates on a research wisdom file and documents candidate-only paths.
   Fix links/claims and canonical commands, or exclude both docs for this PR.
 - **Reproducibility/dependency issue:** `packaged-smoke.ts` imports `ws` as an undeclared transitive root dependency.
   Replace it with a declared dependency (with lock/notices review) or a supported built-in/client already declared.
-  No package/lock change currently accompanies it.
+  No package/lock change now accompanies it.
 
 ## Hygiene and validation findings
 
-- `bun run format:check` currently fails only on 21 files under `experiments/t3-v2/`; all other scanned files formatted.
+- `bun run format:check` now fails only on 21 files under `experiments/t3-v2/`; all other scanned files formatted.
   Do not change project `.gitignore`/Biome merely to conceal these.
-  Keep experiments outside the PR and run explicit production-path formatting while the local research tree remains, then verify root formatting in a clean checkout. `bun run lint` exits 0 but reports warnings, including new production files; review new-file warnings rather than treating exit 0 as clean.
+  Keep experiments outside the PR and run explicit production-path formatting while the local research tree is still, then verify root formatting in a clean checkout. `bun run lint` exits 0 but reports warnings, including new production files; review new-file warnings instead of treating exit 0 as clean.
 - Canonical pin is `web/t3-source.json` at revision `a9b49a7d…`.
   Canonical `web/t3.patch` SHA-256 matches the candidate duplicate, and `verifyWebSource` accepted the existing pinned candidate checkout as exactly HEAD + canonical patch (disposable index; no build).
   The patch changes contracts/provider/orchestration/UI/client code and tests, but no package manifest, lockfile, license, notice, or new migration file. `scripts/build-web.ts` copies upstream `LICENSE` into the package; still run notice generation and inspect the generated attribution diff because the upstream revision changed.
 - Required fixture `tests/fixtures/t3-native-task-contract.json` is consumed by both `tests/t3-native-routing.test.ts` and `scripts/t3-v2-production/contract-conformance.ts`; stage it with those consumers.
 - Heuristic secret scan found auth-shaped literals only in candidate/rollback patches and test/acceptance files.
-  Treat those as paths requiring manual placeholder review; do not stage experiment proofs, screenshots, JSONL/raw logs, browser profiles, caches, or rollback material.
+  Treat those as paths requiring manual placeholder review; don't stage experiment proofs, screenshots, JSONL/raw logs, browser profiles, caches, or rollback material.
   No secret value is recorded here.
 
 ## Suggested staging scope (after blockers are fixed)

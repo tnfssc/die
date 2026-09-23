@@ -3,30 +3,30 @@
 Research/design only, inspected 2026-09-14.
 The T3 checkout was `/home/tnfssc/Code/die-research/t3code` at `01e05c15268dedb76da95f442fbf5201cd8e7a44` (clean, upstream `main`).
 No dependencies were installed, no services or model turns were run, and no production source was edited.
-T3 Code is MIT licensed; redistributed builds must retain its license notice.
+T3 Code is MIT licensed; redistributed builds must keep its license notice.
 
 ## Decision
 
-Build and maintain a **first-class die provider in a pinned T3 Code fork**, while retaining the T3 server, persistence, RPC API, and UI.
+Keep T3’s server, persistence, RPC API, and UI. Add die as a **first-class provider in a pinned T3 Code fork**.
 Run die as a supervised local runtime sidecar speaking die/Pi RPC.
-Do not route die through Cursor's ACP adapter and do not replace T3's backend.
+Do not route die through Cursor's ACP adapter and don't replace T3's backend.
 
-Pin the fork as a git submodule in the die repository and release tested fork commits, not a pristine checkout plus an ad-hoc patch at startup.
-Keep the provider implementation in new, narrowly named directories and keep the integration delta as a small ordered commit series.
-Updating will still require conflict resolution and compatibility testing; this design reduces the conflict surface but cannot make upstream upgrades conflict-free.
+Put the fork in the die repository as a pinned git submodule. Release commits that we have tested. Do not start from a clean checkout and apply an ad-hoc patch at launch time.
+Put the provider code in new directories with narrow names. Keep the integration changes in a short, ordered series of commits.
+Updates will still have conflicts and will still need compatibility tests. This layout gives those conflicts fewer places to hide. It cannot remove them.
 
 The product topology is:
 
 `browser -> T3 /ws -> T3 orchestration + persistence -> DieProviderAdapter -> supervised die --mode rpc process`
 
 One die RPC process owns each active root die session.
-Processes created by die's execute/jobs/subagent facilities remain children of that die runtime.
+Processes created by die's execute/jobs/subagent facilities stay children of that die runtime.
 The browser never starts die, receives provider credentials, or reads arbitrary session paths directly.
 
 ## Why this is the maintainable boundary
 
 T3 already has the correct host responsibilities: static web serving and Effect RPC over `GET /ws` (`apps/server/src/ws.ts`), projects/worktrees, terminal and git operations, attachments, authentication, orchestration event persistence, projections, reconnect, and a mature task/agent UI.
-Replacing its server would require reimplementing those facilities and keeping a second frontend protocol compatible.
+If we replace that server, we must rebuild all of those features. We would also have a second frontend protocol to keep compatible.
 
 Its provider seam is real but is a **compile-time SPI, not a loadable plugin ABI**:
 
@@ -42,12 +42,12 @@ The remaining registration is static:
 
 - Server drivers are imported and listed in `apps/server/src/provider/builtInDrivers.ts`.
 - Browser metadata, icon, and settings schema are listed in `apps/web/src/components/settings/providerDriverMeta.ts`.
-- Provider config schemas currently live in `packages/contracts/src/settings.ts`.
+- Provider config schemas now live in `packages/contracts/src/settings.ts`.
 
 The web metadata file explicitly describes its shape as resembling a future provider-package client export.
 That is direction, not a current extension mechanism.
-A dynamically installed provider package would still need a trusted server module loader, a browser-safe metadata/field protocol, bundler support, version negotiation, and a security policy.
-Building all of that first is more core churn than adding one maintained provider.
+A provider package cannot just load itself. The server needs a trusted module loader. The browser needs a safe metadata and field protocol. The build needs bundler support, version negotiation, and a security policy.
+That foundation would change more core code than one maintained provider does. Do not build it first.
 
 ## Repository and fork layout
 
@@ -82,14 +82,14 @@ Keep a readable commit stack:
 5. packaging/default-profile changes, if any;
 6. tests and fixtures adjacent to each layer.
 
-Do not maintain one 8,000-line squash.
+Do not hide the integration in one 8,000-line squash.
 Do not use generated `.patch` files as the source of truth: they fail late on changed context and are harder to review.
 Do not vendor a source snapshot without history.
-A subtree permits atomic die commits but duplicates T3 history and makes upstream synchronization and provenance less obvious.
-A submodule has real ergonomics costs (two-repository checkout, CI credentials, explicit pointer commits), but gives the clearest immutable pin, upstream ancestry, and independent fork CI.
+A subtree lets one die commit hold the whole change. But it copies T3 history. That makes upstream updates and source history harder to follow.
+A submodule costs more to use. It needs a two-repository checkout, CI credentials, and explicit pointer commits. We accept that cost because it gives us the clearest immutable pin, upstream ancestry, and independent fork CI.
 
 For published integration branches, merge a selected upstream tag/commit and resolve conflicts, then tag and pin that result.
-A rebased topic stack may be used while preparing the update, but do not force-rewrite released pins.
+A rebased topic stack may be used while preparing the update, but don't force-rewrite released pins.
 Record the upstream base and resolved fork commit in `t3-manifest.json` and release notes.
 
 ## Isolate the delta inside the T3 fork
@@ -112,9 +112,9 @@ apps/web/src/components/die/
 ```
 
 Prefer T3's existing generic model descriptors, task events, settings renderer, and Agents panel.
-Die-specific UI should be limited to behavior that cannot be expressed by those contracts, such as a child-session link or job stdin/control menu.
+Die-specific UI should be limited to behavior that can't be expressed by those contracts, such as a child-session link or job stdin/control menu.
 
-A separate `packages/provider-die` workspace package looks attractive but is not clean today: `ProviderDriver`, adapter errors, process services, and text-generation contracts are server-internal imports, while the icon/settings definition is browser code.
+Do not start with a separate `packages/provider-die` workspace package. It looks tidy, but the boundaries do not support it yet. `ProviderDriver`, adapter errors, process services, and text-generation contracts are server-internal imports. The icon and settings definition live in browser code.
 Moving those SPIs into a public package would increase upstream touchpoints and cycles.
 Start with isolated source directories.
 Extract a provider SDK only if T3 upstream accepts and owns the abstraction.
@@ -133,12 +133,12 @@ For text/turn/session functionality, expect these deliberate edits outside the n
   A small JSON-lines RPC client can likely use existing process/stream facilities.
 5.
   Add die to model-default/readiness tests where generic behavior still contains Codex/Claude assumptions.
-  Configure the die-only default from the `die web` launcher/settings seed where possible rather than globally changing T3 defaults.
+  Configure the die-only default from the `die web` launcher/settings seed where possible instead of globally changing T3 defaults.
 
 Full interactive job control needs more than these baseline points.
 T3's event contract can display tasks, but `ProviderAdapterShape` has no list/inspect/input/stop/snooze/watch task commands.
 Add a source-neutral optional task-control capability and corresponding contracts/server RPC/client operations/UI actions.
-This is a legitimate generic upstream candidate, but until merged it remains a fork patch across contracts, orchestration service, WS exposure, client runtime, and task UI.
+This is a legitimate generic upstream candidate, but until merged it is still a fork patch across contracts, orchestration service, WS exposure, client runtime, and task UI.
 Hiding these operations in fake prompts or Cursor ACP methods would be less maintainable and semantically wrong.
 
 ## Runtime and session ownership
@@ -158,19 +158,19 @@ Store a versioned opaque cursor, for example:
 Canonicalize and authorize the path before launch, reject symlink/path escapes, and enforce one active writer per canonical file.
 Never reconstruct die model history from T3 projections and never write normalized T3 events back into the die transcript.
 On resume, die's session is the source of truth for model continuation; T3's event store is the source of truth for already displayed activities.
-Reconcile using stable entry/tool/task IDs and idempotent append rules rather than replaying everything as new.
+Reconcile using stable entry/tool/task IDs and idempotent append rules instead of replaying everything as new.
 
 A browser reconnect should reattach to the same T3 server-owned process generation and replay T3 projections.
 A T3 server restart may start a new die RPC process on the persisted session only after obtaining the session-file lease.
 It can recover settled transcript state, but must **not claim to resume** an in-flight model stream, queued UI prompt, or process-local job.
-Mark interrupted work explicitly and reconcile surviving OS children according to die's lifecycle journal; do not silently label it completed.
+Mark interrupted work explicitly and reconcile surviving OS children according to die's lifecycle journal; don't silently label it completed.
 
 ### Child sessions and tasks
 
 Claude and Codex demonstrate the fidelity bar:
 
 - Claude maps SDK `task_started/task_progress/task_completed`, `parent_tool_use_id`, nested agent ownership, assistant/tool traffic, model and usage into generic task events (`apps/server/src/provider/Layers/ClaudeAdapter.ts`, especially the task mapping around lines 3523-3677).
-- Codex intercepts child conversation notifications so they cannot corrupt the parent turn, tracks early/unregistered child turns, synthesizes `collabAgent/*`, then maps those to generic task events (`CodexSessionRuntime.ts:932-1937`; `CodexAdapter.ts:1037-1304`).
+- Codex intercepts child conversation notifications so they can't corrupt the parent turn, tracks early/unregistered child turns, synthesizes `collabAgent/*`, then maps those to generic task events (`CodexSessionRuntime.ts:932-1937`; `CodexAdapter.ts:1037-1304`).
   This is substantially more than showing a “subagent” tool row.
 
 Die already owns shell/subagent processes in `TaskManager`.
@@ -188,36 +188,36 @@ Define a versioned **die-native task protocol**, not ACP translation. It should 
 
 The adapter maps these to T3 `task.*`, tool, usage, and runtime-warning events.
 Nested child assistant/tool items must carry agent attribution so the client re-homes them out of the parent timeline.
-Child die sessions remain descendants of the root die session; they are not independent writable T3 threads.
+Child die sessions stay descendants of the root die session; they aren't independent writable T3 threads.
 An optional read-only child detail route may show their transcript.
 Promoting/forking a child into a new top-level T3 thread is a separate feature with explicit ownership transfer.
 
 Do not synthesize a second user steer when forwarding `task-complete`/`task-attention`: die already injects those into its model queue with `triggerTurn: true`.
-The web projection may display the notification, while continuation remains owned by die.
+The web projection may display the notification, while continuation still belongs to die.
 
 ## Protocol implementation requirements
 
 The adapter/supervisor must:
 
 - launch an explicit, version-checked die binary with a controlled cwd/environment and `--mode rpc`; stdout is protocol only and stderr is bounded diagnostics;
-- correlate requests, serialize writes, bound message sizes, reject malformed envelopes, and preserve unknown custom event payloads for forward compatibility;
+- correlate requests, serialize writes, bound message sizes, reject malformed envelopes, and keep unknown custom event payloads for forward compatibility;
 - negotiate protocol/capability versions before creating a T3 session; fail visibly on an unsupported combination;
 - normalize assistant text/thinking, tools, images, files, turns, model/effort descriptors, usage/cost, requests, task events, runtime diagnostics, and stop reasons;
 - close process, streams, leases, pending requests, and subscriptions on scope exit; make stop/interrupt idempotent;
 - service extension UI requests explicitly. Unsupported interactive calls must fail with a visible typed error, never hang waiting for a TUI;
 - implement `readThread`, rollback/branch semantics, compaction and promptless continuation only when die can honor the declared capability;
-- provide T3's required text-generation service for titles/commit/PR text through bounded, isolated die helper sessions, or disable each helper explicitly.
+- give T3's required text-generation service for titles/commit/PR text through bounded, isolated die helper sessions, or disable each helper explicitly.
   Quietly borrowing Codex/Claude would violate a die-only configuration;
-- read attachments through T3's validated storage and map supported image MIME/base64 to die. T3 remains upload owner.
+- read attachments through T3's validated storage and map supported image MIME/base64 to die. T3 is still upload owner.
 
 Do not advertise generalized approvals unless die supplies a real execution policy.
-Die currently has project-resource trust and selected confirmations, not T3-style per-shell/edit approval.
+Die now has project-resource trust and selected confirmations, not T3-style per-shell/edit approval.
 A full release must either implement a die-side async policy gate (including nested execute and subagents) or clearly declare the provider's approval capability unsupported.
 Mapping T3's “ask” setting to unconditional execution is unacceptable.
 
 ## Update strategy and compatibility gates
 
-Treat both T3 and die as independently versioned dependencies. Every released artifact pins:
+T3 and die have separate versions. Track both that way. Every released artifact pins:
 
 - upstream T3 commit/tag;
 - fork commit and patch-series version;
@@ -233,9 +233,9 @@ For each candidate T3 update:
 3. Run upstream's own affected tests unchanged, then the die compatibility suite.
 4. Build the actual server+web artifact and run clean-profile migration, local launch, browser reconnect, shutdown, and rollback-to-previous-artifact smoke tests.
 5. Review the fork diff against upstream; unexpected edits or generated-file churn block release.
-6. Tag the fork, update the submodule pointer/manifest, retain the previous artifact, and publish migration/recovery notes.
+6. Tag the fork, update the submodule pointer/manifest, keep the previous artifact, and publish migration/recovery notes.
 
-Compatibility CI should use deterministic fake die peers and captured sanitized RPC fixtures; it must not require a model call. Required matrices:
+Compatibility CI should use deterministic fake die peers and captured sanitized RPC fixtures; it must not need a model call. Required matrices:
 
 - protocol negotiation: minimum/current/next-unknown versions and unknown notifications;
 - new session, first turn, multi-turn, interrupt, steer/follow-up, compaction, branch/rollback and settled resume;
@@ -248,8 +248,8 @@ Compatibility CI should use deterministic fake die peers and captured sanitized 
 - loopback transparent pairing, remote unauthenticated rejection, credential revocation, WS origin enforcement, and redaction of paths/secrets.
 
 Even with isolation, normal updates may take roughly 1-3 engineer-days when touched seams are unchanged.
-Provider/orchestration/auth migrations can take a week or more; major event or UI rewrites can require redesign.
-Budget regular ownership for upstream monitoring, security patches, fixture refresh, cross-platform artifacts, and user-session migration. “Zero-conflict upgrades” is not a credible goal.
+Provider/orchestration/auth migrations can take a week or more; major event or UI rewrites can need redesign.
+Budget regular ownership for upstream monitoring, security patches, fixture refresh, cross-platform artifacts, and user-session migration. “Zero-conflict upgrades” isn't a credible goal.
 
 ## Security and deployment modes
 
@@ -258,17 +258,17 @@ Budget regular ownership for upstream monitoring, security patches, fixture refr
 ### Local mode (default and first release)
 
 - Bind T3 to `127.0.0.1`/`::1` only.
-- Let `die web` create or consume T3's short-lived pairing/bootstrap credential and open the browser. Keep the resulting T3 session/cookie protection; do not compile auth out.
+- Let `die web` create or consume T3's short-lived pairing/bootstrap credential and open the browser. Keep the resulting T3 session/cookie protection; don't compile auth out.
 - Bind no die RPC listener. The T3 server spawns die over stdio.
 - Use a private T3 data directory and restrictive file permissions. Browser APIs receive opaque session/attachment IDs, never arbitrary filesystem paths.
 
-This provides a no-prompt local experience while retaining protection against unrelated web origins and accidental rebinding.
+This gives a no-prompt local experience while retaining protection against unrelated web origins and accidental rebinding.
 
 ### Remote mode (later, explicit opt-in)
 
-Any non-loopback bind, reverse proxy, LAN, tunnel, or Tailscale exposure requires T3 authentication/pairing, TLS at the trusted edge, strict allowed origins/forwarded-host configuration, expiry/revocation, rate and connection limits, and audit logs.
+Any non-loopback bind, reverse proxy, LAN, tunnel, or Tailscale exposure needs T3 authentication/pairing, TLS at the trusted edge, strict allowed origins/forwarded-host configuration, expiry/revocation, rate and connection limits, and audit logs.
 Do not place bearer credentials in URLs or logs.
-Provider login remains a separate server-side concern; die/provider secrets never transit to the browser.
+Provider login is still a separate server-side concern; die/provider secrets never transit to the browser.
 
 A remotely authenticated die web session is effectively remote code execution as the server user: tools can read/write the workspace and spawn processes.
 So authorization must scope accessible project roots and high-impact task controls, and deployment documentation must state that risk.
@@ -298,13 +298,13 @@ Acceptance is per advertised capability; no setting may appear to enforce a poli
 
 ### Phase 4 — remote and release hardening
 
-Add authenticated remote mode, project-root authorization, artifact signing/hash verification, cross-platform packaging, migration/rollback runbooks, and update automation that opens reviewable changes rather than auto-deploying.
+Add authenticated remote mode, project-root authorization, artifact signing/hash verification, cross-platform packaging, migration/rollback runbooks, and update automation that opens reviewable changes instead of auto-deploying.
 Acceptance includes an external security review/threat model and upgrade from the previous pinned release.
 
 A realistic initial full local integration (Phases 0-3) is several engineer-weeks, plausibly 6-10 depending on how much task protocol and approval work die needs.
 Remote/cross-platform hardening can add 2-4+ weeks.
-Extracting and upstreaming a general provider SDK is a separate multi-week effort and should not block the product.
-These are planning ranges, not commitments; task recovery and upstream orchestration churn are the main uncertainties.
+Extracting and upstreaming a general provider SDK is a separate multi-week effort and shouldn't block the product.
+These numbers help with planning. They are not commitments. Task recovery and changes in upstream orchestration are the biggest unknowns.
 
 ## Explicit non-goals and later options
 
@@ -317,7 +317,7 @@ These are planning ranges, not commitments; task recovery and upstream orchestra
 
 After the integration is proven, propose upstream changes that are genuinely generic: provider client-definition exports, a trusted provider registration API, and task-control capabilities.
 If accepted, delete corresponding fork patches.
-Until then, the pinned fork remains the honest production dependency rather than pretending an unstable internal SPI is a plugin ABI.
+Until then, the pinned fork is still the honest production dependency instead of pretending an unstable internal SPI is a plugin ABI.
 
 ## Inspected source anchors
 
@@ -327,4 +327,4 @@ Until then, the pinned fork remains the honest production dependency rather than
 - Persistence/auth: `apps/server/src/persistence/ProviderSessionRuntime.ts`, `Services/OrchestrationEventStore.ts`, auth migrations/services, and `apps/server/src/ws.ts`.
 - Die ownership/task behavior: `src/tasks/extension.ts`, `src/tasks/job-service.ts`, TaskManager/lifecycle modules, and the RPC/session sources cited in `die-web-backend-research.md`.
 - Prior research context: `wisdom/web/die-web-feasibility.md`, `die-web-t3-research.md`, and `die-web-backend-research.md`.
-  Their temporary recommendation was not used as a constraint here.
+  Their temporary recommendation wasn't used as a constraint here.

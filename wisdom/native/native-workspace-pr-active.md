@@ -16,15 +16,15 @@ Active owners:
 - task_50180e82 normal (15m): read-only prompt convention review -> wisdom/worktrees/worktree-prompt-review.md.
 - task_3526a5b7 normal (20m): read-only PR scope/reproducibility/CI/secrets readiness -> wisdom/native/native-workspace-pr-readiness.md.
 Main integrates independent findings, verifies/builds/tests, selects source+reproducible checks+useful notes, commits and pushes feature branch then opens PR.
-If genuine unresolved product decision ask user rather than invent scope.
+If genuine unresolved product decision ask user instead of invent scope.
 
 Approved API: subagent({prompt,title?,workspace:{kind:'inherit'|'worktree',baseRef?,branch?}}).
 Default inherit.
 Worktree baseRef defaults parent commit, pin once per batch; optional branch generated unique, never resets existing, single explicitbranch+batch ambiguous reject.
 Perchild worktree/cwd and setup in BOTH CLI and web.
 CLI direct Git+shell, existing repo t3.json setup, NO T3 server/DB.
-Web projectconfigured action; preserve delegated graph ownership while defer run until workspace prep, factor prep not ordinary thread launch owner.
-Respect setup async/wait policy; preserve worktree/branch afterward, no auto.env/dirtyfilecopy/destructivecleanup.
+Web projectconfigured action; keep delegated graph ownership while defer run until workspace prep, factor prep not ordinary thread launch owner.
+Respect setup async/wait policy; keep worktree/branch afterward, no auto.env/dirtyfilecopy/destructivecleanup.
 No new configformat/importexport/approvalframework/cleanupUI.
 Sidebar/repeatedparentfollowupsync/PRautomation later.
 
@@ -36,7 +36,7 @@ No live user processes/credentials/state touched; TMPDIR=/var/tmp (full /tmp).
 
 PR hygiene: CONTRIBUTING excludes dist/runtime-assets/raw artifacts/credentials/local configs. .agents/research-t3-v2*/ locally excluded via .git/info/exclude.
 Many untracked research wisdom/experiments/duplicatecandidatepatch/rollback should NOT automatically ship; readiness reviewer recommends scope. 21 historical experiments format failures don't claim globalformat success; address safely for PR.
-Must preserve handoff wisdom with source so reviewer/nextagent can reproduce.
+Must keep handoff wisdom with source so reviewer/nextagent can reproduce.
 
 ## Main prompt review received
 Read wisdom/worktrees/worktree-prompt-review.md (task_50180e82 complete).
@@ -58,7 +58,7 @@ Keep setup policy provisional until user answers; can continue Git/workspace/nat
 Additional main-owned worker task_08406a1a (30m) edits ONLY CI/release workflows (optional NEW webtestlist helper), implements revision-keyed path+focused native regression coverage.
 Feature owner informed via notes.
 User question pending CLIsetup trust/confirmation.
-Main has not staged/committed/pushed yet.
+Main hasn't staged/committed/pushed yet.
 
 ## CI worker complete
 Task_08406a1a finished .github workflow edits; main read diff.
@@ -72,7 +72,7 @@ User reports new session loses selected model; asks last-used model retention.
 Main assigned task_a6734688 normal (60m) isolated source/patch only, NO shared canonical/root edits.
 Report wisdom/models/last-used-model-fix.md, deliver incremental .agents/patches/last-used-model-incremental.patch vs recorded current canonicalhash.
 Preserve explicit overrides, existing-thread models, profile/mode independence; last explicit user selection not internal reroute/child profile.
-Feature coordinator retain workspace ownership and finish tests; main integrates model patch afterward and reruns relevant gates.
+Feature coordinator keep workspace ownership and finish tests; main integrates model patch afterward and reruns relevant gates.
 No overlap on shared checkout/patch/index.
 Include model bug fix in combined PR after review.
-CLIsetup trust question still unanswered by user; new model request is not answer.
+CLIsetup trust question still unanswered by user; new model request isn't answer.

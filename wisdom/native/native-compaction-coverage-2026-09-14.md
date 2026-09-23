@@ -16,15 +16,15 @@ Native capture leaf a5edb0d5 line1034 beyond boundary line958, so boundary guard
 No manual-shake/goal projection in branch.
 
 Epistemic limit: live native capture is memory-only, not persisted.
-The exact captured timestamp cannot be independently retrieved; 1ms live value is inferred, not directly proven.
-Worker reports timestamp reconstruction as cause; final should preserve this caveat instead of claiming unseen value is certain.
+The exact captured timestamp can't be independently retrieved; 1ms live value is inferred, not directly proven.
+Worker reports timestamp reconstruction as cause; final should keep this caveat instead of claiming unseen value is certain.
 Concrete timestamp comparison defect confirmed by source path.
 Initial explanation about newer messages was only a guess and this investigation points elsewhere.
 No native request dispatched; plaintext fallback succeeded.
 Next if asked: narrowly fix stable coverage matching without ignoring content/order or weakening genuine missing-message guard, add regression live vs reconstructed custom timestamps.
 
 User authorized continuing/fixing.
-Worker task_28d68b5f owns src/tasks/native-compaction.ts + focused tests, narrow custom-message timestamp normalization only; preserve content/details/type/order/multiplicity and boundary guards.
+Worker task_28d68b5f owns src/tasks/native-compaction.ts + focused tests, narrow custom-message timestamp normalization only; keep content/details/type/order/multiplicity and boundary guards.
 Main to review patch and run combined native/cache-affine SDK/UI checks with owned home-filesystem TMPDIR (/tmp full), build final binary, no install/commit requested.
 
 Fix implemented/reviewed: coverageMessageKey strips only top-level timestamp on role custom, all other messages unchanged.

@@ -11,14 +11,14 @@ Clones /home/tnfssc/Code/die-research; officialT3 pinned01e05c15.
 Prior notes temporary conclusions historical only.
 
 Main source finding: TaskManager already exposes subscribe(TaskEvent snapshots), list, inspect(offset/limit), write, closeStdin, kill; events spawned/activity(output|input)/completed/stopping.
-JobService parent manager owns real agent processes; grandchild managers live inside spawned orchestrator processes, so a root-only task export does NOT automatically provide complete nested tree/control.
+JobService parent manager owns real agent processes; grandchild managers live inside spawned orchestrator processes, so a root-only task export does NOT automatically give complete nested tree/control.
 Preserve completion notification ownership, no consuming ACK for UI reads.
 New versioned die management surface likely alongside existing PiRPC, need transports considered (dedicated pipe/socket vs widening pinnedPiRPC), avoid browser actions sent as model prompts.
-Child transcripts should be read-only views while child active; do not spawn duplicate executors on same live sessionfile.
+Child transcripts should be read-only views while child active; don't spawn duplicate executors on same live sessionfile.
 Full scope includes descendants, attention/input, stop/resume safety, costs and reconnect semantics; no pretending shelljobs are agents.
 
 Previous research: T3 has static internaldriver registration (custombuild required for realdie provider), generic browserdefs/schema settings, native agent/subagentevent layers to investigate.
-Cloudless removesClerk; transparentloopback pairing remains, no account UX.
+Cloudless removesClerk; transparentloopback pairing is still, no account UX.
 Upstream assets/executable packaging reusable.
 
 Main verified currentT3 providerRuntime.ts TaskAgentLinkage already has taskType, agentKind(agent/background), agentId, parentAgentId, title, role, model, effort, runHandles, outputFile, agentPath, timelineBypass; AgentsPanel.tsx exists.
@@ -26,7 +26,7 @@ Must reuse not buildparallelagentUI.
 Adapter interface has start/send/interruptTurn/respondToRequest/respondToUserInput/stopSession/readThread/rollback plus optionalcompaction, but no obviousgenericstopTask in ProviderAdapterShape; mappingworker to confirm realClaude/Codex controlpaths.
 Design issues for synthesis: stable taskIDs must be scoped by owningdie session (baretask_ IDs are process-local); retainoriginalhandles forcontrols.
 Donotflatten nestedorchestrator jobs into root; expose descendantprocess events/controlbroker.
-Reconnect snapshot+sequence/offset replay should not duplicate completion modelnotifications; UI observations separateconsumingACK.
+Reconnect snapshot+sequence/offset replay shouldn't duplicate completion modelnotifications; UI observations separateconsumingACK.
 T3ownsUI/workspace projections, dieowns execution/sessionJSONL; avoid twowriters/competingexecutors.
 Upstreamupdate compatibilityfixtures should cover tree/events/actions and stateformat—not just typelint.
 
@@ -50,4 +50,4 @@ Maintenance: pinnedmaintainedT3fork as submodule, adapterisolatedfolder, minimal
 Selectedupstreamupdates via merge/review/fixturecontract+realbrowserreconnect/task/crash tests thenpinrelease.
 Notzeroconflict; currentT3 agentprojection explicitly transitional to futureorchestrationv2, translator boundary contains that churn.
 Fullsolution phased forverification, nottemporaryscope.
-Userauthorizedresearch remains; noimplementation/services started or productionedits made.
+Userauthorizedresearch is still; noimplementation/services started or productionedits made.

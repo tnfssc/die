@@ -1,7 +1,7 @@
 # Orchestrator subagents as web GUI tasks research (pending)
 
 Started 2026-09-20T16:00:53.452Z.
-User wants mode=orchestrator in die to spawn subagents/threads as separate tasks visible in web GUI; asked to spin off subagents for deep codebase research.
+Goal: when die runs in mode=orchestrator, each spawned subagent or thread should appear as its own task in the web GUI. The user also asked for parallel codebase research.
 
 Launched research jobs:
 - task_8dd62297: project subagent/orchestrator task launching hooks
@@ -36,7 +36,7 @@ All three research agents completed. Consolidated conclusions:
 
 - Existing die subagent implementation already spawns real separate child die/Pi sessions/processes and registers them with TaskManager as kind=agent.
   Key files: src/tasks/job-service.ts, src/tasks/agent-session.ts, src/tasks/task-manager.ts, src/tasks/agent-progress.ts.
-- Orchestrator mode: SUBAGENT_TYPES includes fast/normal/orchestrator; canDelegate allows root or orchestrator child; nested orchestrators cannot spawn another orchestrator.
+- Orchestrator mode: SUBAGENT_TYPES includes fast/normal/orchestrator; canDelegate allows root or orchestrator child; nested orchestrators can't spawn another orchestrator.
   Root /mode and main orchestrator prompt are in src/tasks/instruction-mode.ts and src/prompts/main-orchestrator.md.
 - Web bridge: src/tasks/web-events.ts emits lifecycle-only die_task_event for spawned/completed when mode=rpc and DIE_WEB_TASK_EVENTS=1. src/web/launcher.ts sets it.
 - Patched T3 PiAdapter consumes die_task_event and emits Runtime task.started/task.completed with taskType subagent/shell and IDs pi-die:<external task id>; rendered through existing Agents/task UI.
@@ -48,21 +48,21 @@ Recommended implementation path:
 1.
   First make current lifecycle task cards robust: include child public session id (not raw file path), parentTaskId/parentThreadId, timestamps/status/title in WebTaskEventRecord; update PiAdapter.handleDieTaskEvent to map into RuntimeTask metadata (agentId/parentAgentId/runHandles if useful).
   Add tests in tests/web-task-events.test.ts and patched PiAdapter tests.
-2. Add reconnect snapshot: on RPC/session startup, emit/list bounded currently running TaskManager tasks so web UI does not miss starts.
-3. Add per-task stop: map GUI task id pi-die:<task_*> to jobs.stop rather than closing owning session.
+2. Add reconnect snapshot: on RPC/session startup, emit/list bounded now running TaskManager tasks so web UI doesn't miss starts.
+3. Add per-task stop: map GUI task id pi-die:<task_*> to jobs.stop instead of closing owning session.
 4.
   Only if user means separate selectable sidebar chat threads: create/import an OrchestrationThread per child persisted session, ingest child session events separately, define parent/child linkage and ownership semantics, and prevent duplicate AgentSessionScanner/Importer registrations.
   This is larger and riskier.
 
 Risks:
 - die_task_event starts are dropped if no active parent turn. Transport only start/end and in-memory maps, so restart/reconnect can lose live task state.
-- Raw session paths should not be exposed in web API. Use generated stable public child session IDs/handles.
+- Raw session paths shouldn't be exposed in web API. Use generated stable public child session IDs/handles.
 - Parent completion vs child completion/cancellation semantics need explicit definition.
 
 
 ## Deeper T3 orchestrator-v2/collab-agent finding 2026-09-20T16:11:57.595Z
 
-User pushed to look deeper: there IS relevant "orchestrator-v2-shaped" code in T3, but it is not a reusable exported orchestration engine for Die.
+User pushed to look deeper: there IS relevant "orchestrator-v2-shaped" code in T3, but it isn't a reusable exported orchestration engine for Die.
 Important files in generated T3 checkout .cache/die-t3code:
 
 - packages/client-runtime/src/state/subagentRuntime.ts lines 1-11: fold over task.* activities into orchestration-v2-shaped subagent state. deriveAgentPanelModel has v2Projection param but ChatView passes none.
@@ -74,7 +74,7 @@ Important files in generated T3 checkout .cache/die-t3code:
 - apps/server/src/provider/Layers/CodexAdapter.ts lines 1036-1043 maps synthetic collabAgent/* events into shared task.* lifecycle with RuntimeTaskId = agentThreadId, timelineBypass true; started includes parentAgentId from parentThreadId, status/progress/token/item updates are task.updated/progress.
 - packages/contracts/src/providerRuntime.ts TaskAgentLinkage fields include taskType, agentKind, agentId, parentAgentId, runHandles, agentPath, timelineBypass. classifyTaskAgentKind treats unknown/subagent/local_agent/local_workflow as agents unless monitor/plan/dream or internal background.
 
-Implication for Die: Better bridge is not just old lifecycle task cards; emit Die subagents in the same shape T3's multi-agent-v2 fold expects.
+Implication for Die: Better bridge isn't just old lifecycle task cards; emit Die subagents in the same shape T3's multi-agent-v2 fold expects.
 For Die subagent starts, use task.started payload with taskType likely local_agent or subagent, taskId stable public child session/thread id or pi-die:<task>, title/role/model/effort, parentAgentId for hierarchy, runHandles/session handle if available, timelineBypass true.
 Emit task.updated/progress for activity, task.completed/updated for terminal/idle.
 If we can surface child sessions as app-server threads, mimic Codex v2 source.subAgent.thread_spawn/collabAgent path, but for minimal integration, task.* with these linkage fields feeds AgentsPanel today.
@@ -95,7 +95,7 @@ Need consolidate evidence-backed recommendation and uncertainties; don't settle 
 
 First deeper report completed: wisdom/t3/die-t3-thread-options-research.md (task_0901b73b).
 Read executive summary and staged options.
-Concrete finding: children run --mode json -p with stdin closed; do not imply selectable child thread automatically supports steer.
+Concrete finding: children run --mode json -p with stdin closed; don't imply selectable child thread automatically supports steer.
 Report compares task cards vs read-only child-thread projection with Die ownership vs backend-owned delegation.
 Recommendation is provisional until upstream v2 and other reports reconciled.
 Report references .cache/die-t3code-v0042 while previous inspection used .cache/die-t3code; verify checkout revision equivalence before trusting line references.
@@ -107,7 +107,7 @@ No implementation decisions yet.
   PR #4779 is historical unmerged stacked observability slice; merged #5219 is main/v1 observability bridge.
   Earlier 'no API' conclusion WRONG beyond current pin.
 - Personally read upstream docs/orchestration-v2/orchestrator-mcp-server.md in .agents/research-t3-v2-pr2829: session-scoped authenticated MCP delegate_task creates child T3 thread/run, async/wait result delivery, task_status/task_cancel; create_threads for ordinary top-level threads; ThreadManagementService shared application boundary, ThreadLaunchService higher-level launch/workspace setup.
-  V2 not in pinned main; adopting requires branch repin/large port, not one hook.
+  V2 not in pinned main; adopting needs branch repin/large port, not one hook.
   Need compare feasibility, not blindly minimal cards.
 - Backend report wisdom/t3/t3-thread-execution-research.md proves .cache/die-t3code STALE (6f00d388); actual pin+patch verified in .cache/die-t3code-v0042 (719a76ca...).
   Prior generated-cache citations unreliable without checking.

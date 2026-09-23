@@ -1,7 +1,7 @@
 # Die web RPC task lifecycle emitter
 
 ## Progress
-- 2026-09-14: Read producer contract and located the existing TaskManager subscription in `src/tasks/extension.ts`.
+- 2026-09-14: The producer contract led to the existing TaskManager subscription in `src/tasks/extension.ts`.
 - Plan: add a tiny independently tested RPC-only NDJSON formatter/emitter helper, then attach it to that subscription.
   It will detect only explicit `--mode rpc`/`--mode=rpc`, source-bound command to 400 characters and output to 2000 characters, and project only contract agent metadata.
 - No CLI/web edits; no conversation messages or persistence.

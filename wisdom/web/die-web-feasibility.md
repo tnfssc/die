@@ -35,20 +35,20 @@ Evidence artifacts/web-feasibility/die-rpc-handshake.json.
 This proves subprocess protocol availability only, not T3 end-to-end functionality.
 
 Die backend worker completed task_cb1038d4; recommendation sidecar RPC.
-Critical reason: embedding SDK into T3 host changes process.execPath and existing JobService/runner uses that path to spawn die workers, so it would require real runtime refactor.
+Critical reason: embedding SDK into T3 host changes process.execPath and existing JobService/runner uses that path to spawn die workers, so it would need real runtime refactor.
 Pi-server experimental substrate not drop-in server.
 Initial web scope should use existing provider credentials, processperactivesession, basicstream/tools/customnotifications/resume; avoid promising native browser job management, descendantcost dashboards, generalized approvals/TUI-only dialogs.
 Detailed source paths in die-web-backend-research.md.
 
-Additional main findings: issue402 state_reason completed despite current source lacking Pi driver (do not infer shipped from issue state; PR5882 unmerged and current registry authoritative).
-Current T3 providerInstance.ts intentionally uses OPEN branded ProviderDriverKind and opaque driver config, unknown drivers unavailable rather than parse crash; supports future-removal/migration strategy better than old literal union fork.
+Additional main findings: issue402 state_reason completed despite current source lacking Pi driver (don't infer shipped from issue state; PR5882 unmerged and current registry authoritative).
+Current T3 providerInstance.ts intentionally uses OPEN branded ProviderDriverKind and opaque driver config, unknown drivers unavailable instead of parse crash; supports future-removal/migration strategy better than old literal union fork.
 Await T3worker exact current driver seam.
 
 T3worker complete task_3b056f17.
 Currentdriver registry static imports (internalSPI, not runtimeplugin); browser metadata registration static too, so pinned custombuild required.
 SourceMIT.
-Currentstandalone CLI archive includes executable+webassets+native externals, so reusepackaging rather than inventbundle.
-Cloudless build omits Clerk/relay config (no login); mandatory localhost pairing remains seamless via browser bootstrapURL andscope-protectedWS.
+Currentstandalone CLI archive includes executable+webassets+native externals, so reusepackaging instead of inventbundle.
+Cloudless build omits Clerk/relay config (no login); mandatory localhost pairing is still seamless via browser bootstrapURL andscope-protectedWS.
 Do notpromise literal unauthenticatedWS flag; noneexists.
 Current startup defaultsCodex project/thread, mustoverrideforDie.
 Fullnote die-web-t3-research.md.
@@ -56,7 +56,7 @@ Issue402 convertedtodiscussion, not mergedPi support.
 
 ## Final synthesis / next recommendation
 All three workers complete.
-For temporary-only goal, evaluate EXISTING no-T3-fork ACP shim first, rather than immediately committing to proper customPi-driver fork.
+For temporary-only goal, evaluate EXISTING no-T3-fork ACP shim first, instead of immediately committing to proper customPi-driver fork.
 TanJeeSchuan/pi-t3code-bridge (localpi-t3code-bridge-acp@6fed3fed) explicitly plugs into current Cursor ACP slot and supports PI_ACP_PI_BINARY override (set to die), model switching, images, resume, cancel, permissiongate.
 Caveats: Cursor labels, modelcache/refresh, Piextension/permissiongate compatibility; ambientextensions off bydefault must evaluate for die and avoid fake security claims.
 Actual browser+die integration NOT run, so this is a candidate/spike recommendation, not drop-in proven.

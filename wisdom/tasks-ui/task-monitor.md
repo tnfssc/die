@@ -1,7 +1,7 @@
 # Interactive task monitor
 
 The TUI-only `/ps` command shows jobs owned by the current session's in-memory
-`TaskManager`. It does not discover unrelated OS processes or jobs owned by
+`TaskManager`. It doesn't discover unrelated OS processes or jobs owned by
 another die process.
 
 ## Controls
@@ -29,9 +29,9 @@ plus a one-second age refresh. Closing the component unsubscribes and clears all
 timers. Stopping uses the task manager's process-group termination path. Its existing
 grace period, escalation, completion notice, and session shutdown cleanup still
 control the stop. Completed jobs leave the running list;
-their normal completion delivery is not consumed by the monitor.
+their normal completion delivery isn't consumed by the monitor.
 
 Phase 1 is observation and stop only. Sending stdin or other interaction is
-deferred. Nested worker identity is shown only when the launching job provides
-agent metadata; grandchildren running in another process are not merged into
+deferred. Nested worker identity is shown only when the launching job gives
+agent metadata; grandchildren running in another process aren't merged into
 the parent's session registry.

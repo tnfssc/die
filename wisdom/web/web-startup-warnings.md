@@ -5,11 +5,11 @@ Research only; no product changes requested/applied.
 User runtime version/hash not mapped; source findings are current pin b488c57f3f9f1688e31c53daee99e29dd1d0baa2 plus Die patch, not proof of Mac environment root cause.
 
 Inspected persistent source /home/tnfssc/.die/worktrees/die-a86675007a5e-task_49d9fc83/.cache/t3-preview-final-source (HEAD matches pin).
-Parent .cache/die-t3code is older; do not use it for current-source conclusions.
+Parent .cache/die-t3code is older; don't use it for current-source conclusions.
 
 GitVcsDriverCore.ts:63 timeout is 5 seconds; :79 environment disables GCM/Git/SSH askpass/terminal prompts. :1124 fetches current upstream remote using --git-dir <common-dir> fetch --quiet --no-tags <remote>. :944 timeout creates generic GitCommandError and discards partial stderr. :1329-1385 failed refresh is cached, failure cooldown exponential starting 30 seconds capped at 15 minutes, shared by common-dir/remote across worktrees; error swallowed and existing refs used. :1950-1971 status still reads local cached refs.
 No merge/reset or working file edits.
-This can fail on a working but >5s remote; cannot conclude credential/network root cause from timeout alone.
+This can fail on a working but >5s remote; can't conclude credential/network root cause from timeout alone.
 
 ThreadTitleRegenerationService.ts:104 uses project-resolved textGenerationModelSelection, :118 initial generation retries twice with exponential 2s delay; :122 catches non-interrupt failure, logs nested cause (:125) and completes without new title.
 Worker task_fe710234 researches provider/diagnostic detail (shared workspace, read-only).
@@ -36,5 +36,5 @@ Do not claim this was the failing user model.
 
 Closed research: stopped title worker task_fe710234 after 10-minute checkpoint; it was continuing broad read-only tracing (including historical a9b49 cache), no final integrated report and no product edits.
 Parent current-pin findings + 17 passing focused tests above are the source of truth.
-No jobs/fixes/releases remain underway.
+No jobs/fixes/releases stay underway.
 Await user Mac version, timed fetch and text-generation model selection before further root-cause work.

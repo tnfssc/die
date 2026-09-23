@@ -24,7 +24,7 @@ More diagnosis needs the user’s answers; no release/install done.
 ## Clarification: empty project homepage
 User confirms no conversation existed: cost unavailable label appeared immediately on opening die web in project homepage input corner.
 This is empty-state UI noise, not a cost propagation failure.
-Hide cost summary until recorded usage exists, preserve honest unavailable for actual unpriced usage and explicit zero costs/subtree-only usage.
+Hide cost summary until recorded usage exists, keep honest unavailable for actual unpriced usage and explicit zero costs/subtree-only usage.
 Delegated isolated UI fix; no release/install requested for this change.
 
 UI fix task_88fa0448: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_88fa0448, branch die/hide-empty-homepage-cost-summary-88fa0448.
@@ -32,7 +32,7 @@ Parent must review/integrate after completion.
 Prior e300825 tests-only investigation not integrated.
 
 UI fix completed and reviewed; cherry-picked 578202a as 3591aa2 into develop.
-Cost rendering now requires recorded own or subtree turns.
+Cost rendering now needs recorded own or subtree turns.
 Four focused tests, web typecheck, format and exact-source verification pass; parent independently verified patched source identity.
 No ingestion/runtime accounting changes, no release/install.
 Details in t3-preview-hide-empty-cost-summary.md.
