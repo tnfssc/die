@@ -19,6 +19,7 @@ def read(kind, timeout=4):
         if obj['type'] == 'error': raise AssertionError(obj)
         if obj['type'] == kind: return obj
         if obj['type'] == 'capture':
+            assert kind != 'ready', 'capture preceded ready'
             assert len(base64.b64decode(obj['data'])) == 640
     raise AssertionError('missing '+kind)
 def cmd(**kwargs):
@@ -51,6 +52,11 @@ try:
         cmd(type='flush', generation=1)
         cmd(type='play', generation=1, data=pcm)
         read('played')
+        # Drain reports must reach zero without a new play command.
+        deadline = time.monotonic() + 3
+        while True:
+            assert time.monotonic() < deadline, "no playback drain report"
+            if read('played')['queuedMs'] == 0: break
         assert any(any(base64.b64decode(read('capture')['data'])) for _ in range(100))
         feeder.join(timeout=4); assert not feeder.is_alive()
         cmd(type='stop'); read('stopped')

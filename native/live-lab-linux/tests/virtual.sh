@@ -7,7 +7,9 @@ prefix="die_lab_$$_$RANDOM"
 out="$prefix-out"
 mic="$prefix-mic"
 first=$(pactl load-module module-null-sink sink_name="$out")
-trap 'pactl unload-module "$first"' EXIT
+trap 'pactl unload-module "$first" 2>/dev/null || true' EXIT
 second=$(pactl load-module module-null-sink sink_name="$mic")
-trap 'pactl unload-module "$second"; pactl unload-module "$first"' EXIT
-python3 native/live-lab-linux/tests/protocol.py dist/live-lab-audio-linux --source "$mic.monitor" --sink "$out"
+trap 'pactl unload-module "$second" 2>/dev/null || true; pactl unload-module "$first" 2>/dev/null || true' EXIT
+python3 native/live-lab-linux/tests/protocol.py "${1:-dist/live-lab-audio-linux}" --source "$mic.monitor" --sink "$out"
+
+python3 native/live-lab-linux/tests/source-removal.py "${1:-dist/live-lab-audio-linux}" "$mic.monitor" "$out" "$second"
