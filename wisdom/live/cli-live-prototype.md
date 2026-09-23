@@ -93,3 +93,7 @@ Concrete fixes from acceptance:
 Remaining gaps: no physical microphone/speaker or normal `/live start` path was used; no acoustic quality, device, echo-cancellation, or synthetic-speech-only barge-in test was performed. The existing fake-device/controller tests remain the evidence for actual extension/session wiring; this acceptance is real-provider transport evidence and uses a fake configured-agent response bridge.
 
 Parent integrated acceptance commit 6db75c6 from /home/tnfssc/.die/worktrees/die-a86675007a5e-task_8d34cd24 (branch die/automated-real-gemini-live-acceptance-8d34cd24). Tightened evidence wording: sent is not server-processed; final-response semantics and continued conversation during a long real coding job still need stronger acceptance assertions. Values unchanged; existing “show what is real” covers this lesson.
+
+## Safety setting request in progress
+
+User requests least restrictive supported Gemini safety thresholds. task_3e323a91 checks official Live schema before changing anything. Worktree /home/tnfssc/.die/worktrees/die-a86675007a5e-task_3e323a91, branch die/configure-supported-gemini-live-safety-t-3e323a91. Do not assume generateContent safetySettings are accepted by Live. Mandatory provider protections and die permissions unchanged. Completed: official Live schema has no documented safetySettings field; runtime unchanged. Merged 3cece86 research and regression tests; parent confirmed 5 tests pass. See gemini-live-safety-settings.md.
