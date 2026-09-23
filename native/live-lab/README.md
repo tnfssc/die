@@ -1,0 +1,11 @@
+# Experimental native macOS Live Lab audio helper
+
+Build locally with Xcode Command Line Tools / Xcode: `scripts/build-live-lab-helper.sh`.
+The script builds `dist/live-lab-audio` and runs `--self-test` (no devices). Linux C ring tests:
+`clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined native/live-lab/AudioCore.c native/live-lab/test-core.c -o /tmp/live-lab-test && /tmp/live-lab-test`.
+
+Run from a **local interactive terminal** only. The helper emits protocol-v1 `hello` on launch without requesting microphone access or opening a device. Send newline JSON `{"type":"start"}` to request default-device voice processing and permission. Then send `play` with base64 little-endian signed PCM16 mono 24kHz (max 200ms) and matching integer `generation`, or `flush` with a strictly increasing generation. `stop` closes the route. Output: `ready`, `capture` (PCM16 mono 16kHz, 20ms), `played` (queuedMs, including drain to zero), `stopped`, or sanitized `error`. Stdin/stdout carry only JSON; audio bytes never go to stderr.
+
+Uses AVAudioEngine voice processing input and full-duplex source output on the current default route, AVAudioConverter capture rate conversion, and bounded lock-free SPSC rings between callbacks and non-realtime JSON/resampling code. Playback output uses linear interpolation from 24kHz; this is a prototype, not production-quality output reconstruction. Overflow drops frames and reports playback errors; route changes stop rather than silently switching to another device. For meaningful acoustic echo cancellation, test on actual Mac hardware with permission and speakers, not CI.
+
+macOS microphone TCC permission is attributed to the launching app/Terminal or signed executable, depending on launch context. A usage-description plist is embedded at link time; local unsigned binaries may require terminal microphone permission. For distribution, sign the helper with your own Developer ID and appropriate hardened-runtime microphone entitlement (`com.apple.security.device.audio-input`); sign after building, then validate permission on a consenting physical Mac. This repo does not ship a signed binary. macOS CI compilation/self-test never opens devices and cannot verify permission, latency, or echo suppression.

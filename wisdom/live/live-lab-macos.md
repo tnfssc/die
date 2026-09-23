@@ -1,0 +1,5 @@
+# Native Live Lab macOS helper draft
+
+Owns `native/live-lab` and `scripts/build-live-lab-helper.sh`. See native README for build, protocol, permission and physical acceptance. The C core was compiled and device-free ring/flush/overflow tests passed on Linux with clang and ASan/UBSan. macOS Swift/AVFoundation compilation and device acceptance remain separate proof; a macos-15 CI compile/self-test must run before reporting a Mac build as done. Never exercise the mic in CI.
+
+The input capture ring and playback ring are fixed-size and callbacks only copy or render memory; capture rate conversion and JSON run on a serial non-realtime queue. The capture converter uses AVAudioConverter for anti-aliasing on 48kHz defaults rather than decimation. The serial timer must emit played queue updates after render drains, including zero, or UI diagnostics will incorrectly hold the last enqueue count. Voice processing is intentionally required, with no fallback to unprocessed input. Default route configuration changes stop audio explicitly. No release artifacts or version changes.
