@@ -48,9 +48,9 @@ Parent also restored exact API/file/event name case where a sentence split had c
 - Typecheck and full format check passed. Diff whitespace check passed.
 - Parent compared Bun-transpiled output for all 49 changed JS/TS comment files: identical. Worker checked the other five scripts with comments removed: no executable change.
 - Fenced blocks, commands, headings, inline names, and links were checked against each worker's base and the stack base. Added formatting is not treated as a meaning change; changed referents were repaired, not waved through.
-- Local-link/anchor check against base found no new errors in the first joined set (250 links; 51 old issues). Rerun on final commit before opening PR.
+- Final local-link/anchor check: 250 links checked; no new errors against base. The 51 old issues stay outside this voice-only pass. All 248 changed existing Markdown files keep their fenced blocks. The only link-format change wraps the same Blacksmith URL in a named link. All original inline-code text still appears. Added headings do not remove old ones.
 
-Read-only final sample review task_e0b91ea5 is still outstanding. Integrate any real findings, rerun final protected-text/link checks, commit parent repairs, then push and open the PR with base feat/derived-wisdom-values.
+Read-only final sample review task_e0b91ea5 found escaped placeholder text in ten release notes. Parent restored Markdown backticks and the original quote/ellipsis/failure symbols. Checked every changed Markdown file for new escaped Unicode or placeholder markers; only those ten were affected. The sample review found no other actionable issue. It checked compaction job IDs, but did not claim to reread every file. All worker reviews are done.
 
 ## Worktrees left for follow-up
 
