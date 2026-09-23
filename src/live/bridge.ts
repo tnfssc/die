@@ -2,12 +2,21 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export type LiveBridgeEvent =
   | { type: "accepted"; requestId: string }
+  | { type: "delivery_failed"; requestId: string; reason: "send_failed" }
   | { type: "tool_started"; requestId: string; toolCallId: string; toolName: string }
   | { type: "tool_finished"; requestId: string; toolCallId: string; toolName: string; isError: boolean }
   | { type: "assistant_reply"; requestId: string; text: string; truncated: boolean }
-  | { type: "turn_ended"; requestId: string; outcome: "completed" | "aborted" | "error" };
+  | { type: "turn_ended"; requestId: string; outcome: "completed" | "aborted" | "error" }
+  | { type: "run_ended"; requestId: string };
+
+export type CurrentSessionEvent =
+  | { type: "tool_started"; scope: "current_session"; toolCallId: string; toolName: string }
+  | { type: "tool_finished"; scope: "current_session"; toolCallId: string; toolName: string; isError: boolean }
+  | { type: "assistant_reply"; scope: "current_session"; text: string; truncated: boolean }
+  | { type: "turn_ended"; scope: "current_session"; outcome: "completed" | "aborted" | "error" };
 
 export type LiveBridgeCallback = (event: LiveBridgeEvent) => void;
+export type CurrentSessionCallback = (event: CurrentSessionEvent) => void;
 
 export type LiveHandoffResult =
   | { status: "queued"; requestId: string }
@@ -24,31 +33,25 @@ export interface LiveHandoff {
 }
 
 export interface CurrentSessionBridgeOptions {
-  /** Requests retained at once, including accepted requests waiting for their turn. */
   maxActive?: number;
-  /** Recently retired IDs retained to make retries idempotent. */
   maxRecentIds?: number;
-  /** Maximum input size retained by the bridge. */
   maxMessageChars?: number;
-  /** Maximum assistant text included in one event. */
   maxReplyChars?: number;
+  /** Observes the session itself, including unassociated background resumptions. */
+  onSessionEvent?: CurrentSessionCallback;
 }
 
 export interface CurrentSessionBridge {
-  /**
-   * Queue work in the already configured Pi session. This method is synchronous;
-   * a queued result is only a local acknowledgement. Acceptance and activity are
-   * reported later through onEvent.
-   */
+  /** A queued result acknowledges only local enqueueing, not Pi acceptance. */
   handoff(input: LiveHandoff): LiveHandoffResult;
   /** Stop reporting this request. This never aborts the Pi agent. */
   cancel(requestId: string): boolean;
-  /** Detach the bridge and discard its bounded tracking state. Never aborts Pi. */
+  /** Detach the bridge. This never aborts the Pi agent. */
   stop(): void;
   readonly activeCount: number;
 }
 
-type RequestState = "awaiting_acceptance" | "accepted" | "active";
+type RequestState = "awaiting_acceptance" | "active";
 interface TrackedRequest {
   requestId: string;
   message: string;
@@ -71,7 +74,6 @@ function boundedText(message: unknown, limit: number): { text: string; truncated
   if (!message || typeof message !== "object" || (message as { role?: unknown }).role !== "assistant") return;
   const content = (message as { content?: unknown }).content;
   if (!Array.isArray(content)) return;
-
   let text = "";
   let truncated = false;
   for (const part of content) {
@@ -81,27 +83,29 @@ function boundedText(message: unknown, limit: number): { text: string; truncated
     const remaining = limit - text.length;
     if (remaining <= 0) {
       if (value.length > 0) truncated = true;
-      continue;
-    }
-    if (value.length > remaining) {
+    } else if (value.length > remaining) {
       text += value.slice(0, remaining);
       truncated = true;
-    } else {
-      text += value;
-    }
+    } else text += value;
   }
-  // Avoid returning half of a UTF-16 surrogate pair at the truncation boundary.
   if (truncated && /[\uD800-\uDBFF]$/.test(text)) text = text.slice(0, -1);
   return text.length > 0 || truncated ? { text, truncated } : undefined;
 }
 
-/**
- * Connect an external producer to the current Pi session.
- *
- * The bridge deliberately has no model, credential, permission, or abort API.
- * Tool arguments/results are not exposed. In particular, turn_ended means only
- * that Pi emitted a turn boundary; it is not a claim that background work ended.
- */
+function userText(message: unknown): string | undefined {
+  if (!message || typeof message !== "object" || (message as { role?: unknown }).role !== "user") return;
+  const content = (message as { content?: unknown }).content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return;
+  let text = "";
+  for (const part of content) {
+    if (!part || typeof part !== "object" || (part as { type?: unknown }).type !== "text") continue;
+    const value = (part as { text?: unknown }).text;
+    if (typeof value === "string") text += value;
+  }
+  return text;
+}
+
 export function createCurrentSessionBridge(
   pi: ExtensionAPI,
   options: CurrentSessionBridgeOptions = {},
@@ -110,10 +114,8 @@ export function createCurrentSessionBridge(
   const maxRecentIds = positiveInteger(options.maxRecentIds, DEFAULT_MAX_RECENT_IDS);
   const maxMessageChars = positiveInteger(options.maxMessageChars, DEFAULT_MAX_MESSAGE_CHARS);
   const maxReplyChars = positiveInteger(options.maxReplyChars, DEFAULT_MAX_REPLY_CHARS);
-
   const requests = new Map<string, TrackedRequest>();
   const awaitingAcceptance: string[] = [];
-  const awaitingTurn: string[] = [];
   const recentIds = new Set<string>();
   const recentOrder: string[] = [];
   const unsubscribe: Array<() => void> = [];
@@ -129,125 +131,116 @@ export function createCurrentSessionBridge(
       if (oldest !== undefined) recentIds.delete(oldest);
     }
   };
-
-  const removeQueuedId = (queue: string[], requestId: string) => {
-    const index = queue.indexOf(requestId);
-    if (index >= 0) queue.splice(index, 1);
+  const removeAwaiting = (requestId: string) => {
+    const index = awaitingAcceptance.indexOf(requestId);
+    if (index >= 0) awaitingAcceptance.splice(index, 1);
   };
-
-  const retire = (requestId: string, suppressPendingEvents = false) => {
+  const retire = (requestId: string, suppress = false) => {
     const request = requests.get(requestId);
-    if (suppressPendingEvents && request) request.reporting = false;
+    if (suppress && request) request.reporting = false;
     requests.delete(requestId);
-    removeQueuedId(awaitingAcceptance, requestId);
-    removeQueuedId(awaitingTurn, requestId);
+    removeAwaiting(requestId);
     if (currentRequestId === requestId) currentRequestId = undefined;
     remember(requestId);
   };
-
-  const emit = (request: TrackedRequest, event: LiveBridgeEvent) => {
-    // Pi can synchronously emit input/turn events from sendUserMessage. Deferring
-    // guarantees handoff() returns its queue acknowledgement before callbacks.
+  const dispatch = (callback: (() => void) | undefined) => {
+    if (!callback) return;
     queueMicrotask(() => {
-      if (stopped || !request.reporting) return;
+      if (stopped) return;
       try {
-        request.callback(event);
+        callback();
       } catch {
-        // An integration callback must not disrupt Pi's event dispatch.
+        /* callbacks cannot disrupt Pi dispatch */
       }
     });
   };
+  const emit = (request: TrackedRequest, event: LiveBridgeEvent) =>
+    dispatch(() => {
+      if (request.reporting) request.callback(event);
+    });
+  const emitSession = (event: CurrentSessionEvent) =>
+    dispatch(options.onSessionEvent ? () => options.onSessionEvent?.(event) : undefined);
+  const current = () => (currentRequestId ? requests.get(currentRequestId) : undefined);
 
-  const nextTracked = (queue: string[], state: RequestState): TrackedRequest | undefined => {
-    while (queue.length > 0) {
-      const requestId = queue.shift();
-      if (requestId === undefined) return;
-      const request = requests.get(requestId);
-      if (request?.state === state) return request;
-    }
-    return;
-  };
-
+  // input is only Pi's preflight hook. Acceptance is confirmed by the actual
+  // user message entering the transcript below.
   unsubscribe.push(
-    pi.on("input", (event) => {
-      if (stopped || event.source !== "extension") return;
-      // Match both source and exact text. We never infer acceptance from an
-      // unrelated agent lifecycle event.
-      const index = awaitingAcceptance.findIndex((requestId) => {
-        const request = requests.get(requestId);
-        return request?.state === "awaiting_acceptance" && request.message === event.text;
-      });
-      if (index < 0) return;
-      const [requestId] = awaitingAcceptance.splice(index, 1);
-      if (requestId === undefined) return;
-      const request = requests.get(requestId);
-      if (request?.state !== "awaiting_acceptance") return;
-      request.state = "accepted";
-      awaitingTurn.push(requestId);
-      emit(request, { type: "accepted", requestId });
-    }),
-  );
-
-  unsubscribe.push(
-    pi.on("turn_start", () => {
-      if (stopped || currentRequestId !== undefined) return;
-      const request = nextTracked(awaitingTurn, "accepted");
-      if (!request) return;
-      request.state = "active";
-      currentRequestId = request.requestId;
+    pi.on("message_end", (event) => {
+      const delivered = userText(event.message);
+      if (delivered !== undefined) {
+        const index = awaitingAcceptance.findIndex((id) => {
+          const request = requests.get(id);
+          return request?.state === "awaiting_acceptance" && request.message === delivered;
+        });
+        if (index < 0) return;
+        const requestId = awaitingAcceptance.splice(index, 1)[0];
+        const request = requestId === undefined ? undefined : requests.get(requestId);
+        if (request?.state !== "awaiting_acceptance") return;
+        if (currentRequestId !== undefined && currentRequestId !== requestId) retire(currentRequestId);
+        request.state = "active";
+        currentRequestId = requestId;
+        emit(request, { type: "accepted", requestId });
+        return;
+      }
+      const reply = boundedText(event.message, maxReplyChars);
+      if (!reply) return;
+      emitSession({ type: "assistant_reply", scope: "current_session", ...reply });
+      const request = current();
+      if (request) emit(request, { type: "assistant_reply", requestId: request.requestId, ...reply });
     }),
   );
 
   unsubscribe.push(
     pi.on("tool_execution_start", (event) => {
-      const request = currentRequestId ? requests.get(currentRequestId) : undefined;
-      if (!request) return;
-      emit(request, {
+      emitSession({
         type: "tool_started",
-        requestId: request.requestId,
+        scope: "current_session",
         toolCallId: event.toolCallId,
         toolName: event.toolName,
       });
+      const request = current();
+      if (request)
+        emit(request, {
+          type: "tool_started",
+          requestId: request.requestId,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+        });
     }),
   );
-
   unsubscribe.push(
     pi.on("tool_execution_end", (event) => {
-      const request = currentRequestId ? requests.get(currentRequestId) : undefined;
-      if (!request) return;
-      emit(request, {
+      emitSession({
         type: "tool_finished",
-        requestId: request.requestId,
+        scope: "current_session",
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         isError: event.isError,
       });
+      const request = current();
+      if (request)
+        emit(request, {
+          type: "tool_finished",
+          requestId: request.requestId,
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          isError: event.isError,
+        });
     }),
   );
-
-  unsubscribe.push(
-    pi.on("message_end", (event) => {
-      const request = currentRequestId ? requests.get(currentRequestId) : undefined;
-      if (!request) return;
-      const reply = boundedText(event.message, maxReplyChars);
-      if (!reply) return;
-      emit(request, { type: "assistant_reply", requestId: request.requestId, ...reply });
-    }),
-  );
-
   unsubscribe.push(
     pi.on("turn_end", (event) => {
-      const request = currentRequestId ? requests.get(currentRequestId) : undefined;
-      if (!request) return;
-      emit(request, { type: "turn_ended", requestId: request.requestId, outcome: event.outcome });
+      emitSession({ type: "turn_ended", scope: "current_session", outcome: event.outcome });
+      const request = current();
+      if (request) emit(request, { type: "turn_ended", requestId: request.requestId, outcome: event.outcome });
     }),
   );
-
   unsubscribe.push(
     pi.on("agent_end", () => {
-      // agent_end is only used to release the current association. It is not
-      // forwarded as completion: handed-off/background work may still exist.
-      if (currentRequestId !== undefined) retire(currentRequestId);
+      const request = current();
+      if (!request) return;
+      emit(request, { type: "run_ended", requestId: request.requestId });
+      retire(request.requestId);
     }),
   );
 
@@ -258,12 +251,10 @@ export function createCurrentSessionBridge(
     for (const request of requests.values()) request.reporting = false;
     requests.clear();
     awaitingAcceptance.length = 0;
-    awaitingTurn.length = 0;
     currentRequestId = undefined;
     recentIds.clear();
     recentOrder.length = 0;
   };
-
   unsubscribe.push(pi.on("session_shutdown", stop));
 
   return {
@@ -274,16 +265,12 @@ export function createCurrentSessionBridge(
         requestId.length === 0 ||
         requestId.length > MAX_REQUEST_ID_CHARS ||
         !/^[A-Za-z0-9._:-]+$/.test(requestId)
-      ) {
+      )
         return { status: "invalid", requestId, reason: "request_id" };
-      }
-      if (typeof message !== "string" || message.trim().length === 0 || message.length > maxMessageChars) {
+      if (typeof message !== "string" || message.trim().length === 0 || message.length > maxMessageChars)
         return { status: "invalid", requestId, reason: "message" };
-      }
       const duplicate = requests.get(requestId);
       if (duplicate) {
-        // A transport retry may provide a replacement callback, but never sends
-        // the user message twice.
         if (typeof onEvent === "function") duplicate.callback = onEvent;
         return { status: "duplicate", requestId };
       }
@@ -300,22 +287,28 @@ export function createCurrentSessionBridge(
       };
       requests.set(requestId, request);
       awaitingAcceptance.push(requestId);
+      let delivery: Promise<void>;
       try {
-        // followUp preserves current work; this is never a steering/audio-stop
-        // operation. Pi uses its existing session/model/auth/tool permissions.
-        pi.sendUserMessage(message, { deliverAs: "followUp", expandPromptTemplates: false });
+        delivery = Promise.resolve(
+          pi.sendUserMessage(message, { deliverAs: "followUp", expandPromptTemplates: false }),
+        );
       } catch {
         request.reporting = false;
         requests.delete(requestId);
-        removeQueuedId(awaitingAcceptance, requestId);
+        removeAwaiting(requestId);
         return { status: "rejected", requestId, reason: "send_failed" };
       }
+      // Delivery is intentionally not awaited. Consume rejection and report only
+      // a sanitized failure, provided transcript acceptance did not win the race.
+      void delivery.catch(() => {
+        if (stopped || requests.get(requestId) !== request || request.state !== "awaiting_acceptance") return;
+        emit(request, { type: "delivery_failed", requestId, reason: "send_failed" });
+        retire(requestId);
+      });
       return { status: "queued", requestId };
     },
     cancel(requestId: string): boolean {
       if (!requests.has(requestId)) return false;
-      // This cancels only event association. Agent cancellation is an explicit,
-      // separate concern and is intentionally unavailable through this bridge.
       retire(requestId, true);
       return true;
     },
