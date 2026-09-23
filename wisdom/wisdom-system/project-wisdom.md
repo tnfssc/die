@@ -1,23 +1,23 @@
 # Project wisdom
 
-Project wisdom is durable project context for future agents. It is not a model memory database and it does not grant permissions or override the user.
+Project wisdom is context saved for the next agent. It is not a model memory database. It gives no permission and does not beat the user.
 
 ## Shape
 
-Project wisdom lives in `wisdom/` at the repository root.
+Project wisdom lives in `wisdom/` at repo root.
 
-Organize wisdom by feature or system. Put the decision, reason, current state, and handoff with the area it explains. Do not split files only because one is a decision, audit, release note, or handoff.
+Put wisdom with the feature or system it explains. Keep the choice, reason, current state, and handoff together. Do not split files only because one part is a decision, audit, release note, or handoff.
 
-There is no required `index.md`. Create a short orientation file only when it genuinely helps. There is no pending queue and no consolidation worker; agents write useful durable context directly into the relevant wisdom file.
+No `index.md` is required. Make a short map only when it helps. There is no pending queue or cleanup worker. Agents write useful context straight into the right wisdom file.
 
 ## Prompt contract
 
-The canonical root guidance is in [src/prompts/wisdom.md](../../src/prompts/wisdom.md). It asks agents to preserve decisions, reasons, status, and handoff context with the feature they explain.
+Root guidance lives in [src/prompts/wisdom.md](../../src/prompts/wisdom.md). It tells agents to save choices, reasons, state, and handoff context with the feature they explain.
 
-[Derived values](../values.md) provide the concise cross-system layer. Read them before substantial work; review new wisdom at substantial completion/handoff and across affected systems after releases or broad reviews. Revise or merge existing principles before adding more, preserve evidence links and tradeoffs, and leave values unchanged when the review finds no new lesson. Briefly report the consolidation outcome at completion, including why no values change was needed when applicable.
+[Derived values](../values.md) hold the small cross-system layer. Read them before big work. At a big finish or handoff, review new wisdom. After a release or wide review, check all affected systems. Merge or change old lessons before adding more. Keep evidence links and tradeoffs. No new lesson? Leave values alone. At finish, say what happened: wisdom reconciled; values changed, or no change and why.
 
-This is a standing agent responsibility, not a background consolidation worker or mandatory index. See [derivation and coverage](derived-values.md) and the [practice audit](consolidation-practice-audit.md).
+This is the agent's job. It is not a background cleanup worker or required index. See [how values were derived and what was covered](derived-values.md) and the [practice audit](consolidation-practice-audit.md).
 
 ## Integration
 
-`src/wisdom/extension.ts` appends the wisdom guidance for root agents and registers `/wisdom`, which reports the durable location. Child agents do not receive the root wisdom prompt.
+`src/wisdom/extension.ts` adds wisdom guidance for root agents. It also registers `/wisdom`, which reports the durable location. Child agents do not get the root wisdom prompt.

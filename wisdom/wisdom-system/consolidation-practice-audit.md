@@ -1,35 +1,37 @@
-# Are we actually consolidating after large tasks?
+# Do we clean up wisdom after big work?
 
 ## Audit request (2026-09-23)
 
-User explicitly authorized reviewing previous sessions to check practice, not merely instructions. This is a sampled behavioral audit, not an exhaustive review of every session. No product behavior changed.
+User said to inspect old sessions and check what agents really did, not only what prompts said. This audit samples behavior. It does not read every session. No product behavior changed.
 
 ## Evidence
 
-- Sept 23 model persistence/dependency/release session (01a0cc8b-0d0e-70a1-b3dd-091e052a60a3, started 04:34 UTC): saved model/dependency wisdom and appended published release results to [v0.5.8](../releases/release-v058.md). Git commits 69fd0ec, 8d512d0, and f89864e corroborate capture/publication. This is useful task documentation, not evidence of a derived-values review.
-- The [model follow-up](../models/last-used-model-followup.md) still ends with combined validation/release pending and an anticipated v0.5.8, even though the separate release note records successful publication. Evidence of incomplete reconciliation across notes, not failure to write notes.
-- Sept 22 rename/reorganization session (01a0c965-1c62-7199-ad36-a0bc548aefae, started 13:54 UTC): explicit user request drove organization and stale terminology cleanup; release notes were updated after publication. Commit 621bb51 deliberately removed pending/index/consolidation-worker machinery in favor of direct feature wisdom. That is a requested cleanup, not proof of an automatic end-of-task habit.
-- The new values/principles synthesis was explicitly requested in this current session. Its prompt and tests are still uncommitted; values documents are untracked. It has not been built/installed/released here. Prior sessions cannot demonstrate adherence to this newly introduced requirement.
-- Current src/wisdom/extension.ts injects root guidance before agent start. It has no task-end consolidation hook; jobsChanged is a no-op. The new prompt asks for the review, but is not mechanical enforcement.
+- Sept 23 model persistence, dependency, and release session (01a0cc8b-0d0e-70a1-b3dd-091e052a60a3, started 04:34 UTC): it saved model and dependency wisdom. It also added published release results to [v0.5.8](../releases/release-v058.md). Commits 69fd0ec, 8d512d0, and f89864e back up the capture and publication. Good task notes, but no proof of a derived-values review.
+- [Model follow-up](../models/last-used-model-followup.md) still says combined checks and release are pending. It expects v0.5.8. The separate release note says publication finished. Notes were written, but were not fully brought back in sync.
+- Sept 22 rename and reorganization session (01a0c965-1c62-7199-ad36-a0bc548aefae, started 13:54 UTC): user asked for organization and stale term cleanup. Release notes changed after publication. Commit 621bb51 removed pending, index, and consolidation-worker machinery. It chose direct feature wisdom instead. This cleanup was asked for. It does not prove an automatic end-of-task habit.
+- User asked for the new values and lessons in this session. At audit time, its prompt and tests were not committed. Values files were untracked. It was not built, installed, or released. Old sessions cannot show that agents followed a new rule.
+- src/wisdom/extension.ts adds root guidance before the agent starts. It has no task-end cleanup hook. jobsChanged does nothing. The new prompt asks for review. Code does not force it.
 
 ## Conclusion
 
-Capture: yes in sampled tasks. Task-level synthesis: present in some major feature efforts, not consistent general practice. Consistent end-of-large-task reconciliation and values review: not established. Lack of a values edit alone is not failure—the instructions deliberately allow a justified no-change review—but these older sessions do not provide an explicit review outcome either.
+Sampled tasks did save notes. Some big feature work did join facts into lessons. This was not a steady habit across large tasks. Regular end-of-task cleanup and values review were not established.
 
-Read-only reviewer task_9ec9a248 completed a sampled older-session/git audit (not all 528 pre-Sept-22 session files). Additional evidence:
+No values edit does not by itself mean failure. The instructions allow review with a reason for no change. But these old sessions do not record that review either.
 
-- Sept 13, commit 14981b4: durable-memory journals capture decisions and some narrow lessons, but mostly accumulate chronological task state. An explicit consolidation command/test is not evidence of automatic task-end consolidation.
-- Sept 18, commit 8a45421: [shared-memory value](../prompts/shared-memory-value.md) is a genuine derived principle, introduced after explicit user feedback about notes left local—not a spontaneous routine retrospective.
-- Sept 19, commit 147a6d9: [resource limits](../resources/resource-limits.md) synthesizes durable resource contracts and tradeoffs; the accompanying release record remains a chronological ledger. Real feature synthesis, not general values review.
-- Sept 21, commit 9abdc41: [T3 delegation status](../t3/t3-v2-delegation-status.md) consolidates ownership, API, cancellation, lifecycle, and evidence boundaries. Another strong feature synthesis.
-- Sept 21, commits cccda34/0f8a32e: release records preserve evidence and procedure following explicit task instructions; not proof of a routine retrospective.
+Read-only reviewer task_9ec9a248 sampled old sessions and git history. It did not read all 528 session files from before Sept 22. It found more evidence:
 
-Bottom line: **note capture was common; feature consolidation happened sometimes; systematic end-of-large-task reconciliation and derived-values review was not established.** The new review habit is requested and implemented in source, but future completed tasks are needed to demonstrate adherence. No audit jobs remain.
+- Sept 13, commit 14981b4: durable-memory journals save choices and some narrow lessons. Most entries add task state in time order. A direct consolidation command and test do not prove automatic cleanup at task end.
+- Sept 18, commit 8a45421: [shared-memory value](../prompts/shared-memory-value.md) is a real derived lesson. It came after user feedback that notes stayed local. It was not an unprompted routine review.
+- Sept 19, commit 147a6d9: [resource limits](../resources/resource-limits.md) joins lasting resource contracts and tradeoffs. Its release record is still a time-ordered log. This is real feature synthesis, not a broad values review.
+- Sept 21, commit 9abdc41: [T3 delegation status](../t3/t3-v2-delegation-status.md) joins ownership, API, cancel, lifecycle, and evidence boundaries. This is another strong feature summary.
+- Sept 21, commits cccda34 and 0f8a32e: release records keep evidence and steps because the task asked for them. They do not prove a routine review.
 
-## Consolidation outcome for this audit
+Bottom line: **notes were common; feature lessons happened sometimes; regular cleanup after big work and derived-values review were not established.** Source now asks for this habit. Future finished tasks must show whether agents follow it. No audit jobs remain.
 
-Existing values 2 (evidence), 9 (deliberate changes), and 10 (resumable work) already cover the lesson; do not add another value. Recommended follow-up is a lightweight completion outcome: feature wisdom reconciled; values revised or reviewed/no change with a reason. No scheduler, queue, or mandatory reprocessing of the entire archive is needed. User has asked for assessment, so no new enforcement or install was performed.
+## Result of this audit
 
-## Authorized PR follow-up
+Values 2 (evidence), 9 (deliberate changes), and 10 (resumable work) already hold this lesson. Do not add another value. Use a small completion result instead: feature wisdom reconciled; values changed, or reviewed with no change and a reason. No scheduler, queue, or required pass over the whole archive is needed. User asked for an assessment, so this audit added no enforcement and installed nothing.
 
-User subsequently requested a pull request. Branch feat/derived-wisdom-values includes the lightweight completion-outcome instruction and its injection test; project-wisdom.md now references canonical guidance rather than quoting the old prompt. This does not retroactively establish historical compliance. Wisdom reconciled; existing values already cover the audit lesson, so no additional value was added.
+## Approved PR follow-up
+
+User later asked for a pull request. Branch feat/derived-wisdom-values has the small completion-result instruction and its injection test. project-wisdom.md points to the source guidance instead of quoting the old prompt. This does not change the old audit result. Wisdom was reconciled. Existing values already cover the lesson, so no value was added.

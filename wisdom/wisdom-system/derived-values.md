@@ -1,18 +1,18 @@
-# Wisdom → values consolidation
+# Turning wisdom into values
 
 ## Decision (2026-09-23)
 
-The user requested derived values/principles plus regular consolidation, then explicitly asked for deep parallel review covering most wisdom. Keep three layers:
+User asked for derived values and regular cleanup. User then asked for deep parallel review of most wisdom. Keep three layers:
 
-- [Values](../values.md): ten small, cross-system decision guides with evidence and tradeoffs.
-- [Domain principles](domain-principles.md): actionable rules whose scope matters.
-- Existing feature wisdom: source evidence, decisions, incidents, and operational detail. No bulk deletion or rewriting of historical records.
+- [Values](../values.md): ten small guides for choices across systems. Each keeps evidence and tradeoffs.
+- [Domain lessons](domain-principles.md): useful rules that only fit some areas.
+- Feature wisdom: source evidence, choices, incidents, and operating detail. Do not bulk-delete or rewrite old records.
 
-Values are revisable guidance, not authority above current user instructions. Source links explain derivation; they do not endorse every historical prescription in a linked note.
+Values can change. They do not beat the user's current instructions. Source links show where a value came from. A link does not approve every old rule in that note.
 
 ## Coverage
 
-Five read-only reviewers covered **all 223 pre-existing Markdown notes across 20 directories**. The memory reviewer also read this newly created consolidation note, making 224 reviewed files. Review depth was not uniform:
+Five read-only reviewers covered **all 223 old Markdown notes in 20 directories**. The memory reviewer also read this new note. That makes 224 files reviewed. Not every read had the same depth:
 
 | Area | Markdown reviewed | Full/close reads | Structured/evidence skims |
 | --- | ---: | ---: | ---: |
@@ -23,30 +23,30 @@ Five read-only reviewers covered **all 223 pre-existing Markdown notes across 20
 | History, compaction, worktrees, prompts, wisdom system, models, goals, integrations, experiments | 50 | 50 | 0 |
 | Total (including this new note) | 224 | 156 | 68 |
 
-Non-Markdown probes/artifacts were not independently audited. This is a synthesis of recorded evidence, not a claim that every historical implementation was revalidated. The parent checked synthesis links, reviewed representative sources, and verified key supersession points. Repetition across incident reports counts as recurring evidence, not independent experiments.
+Reviewers did not separately audit non-Markdown probes and artifacts. This sums up saved evidence. It does not claim every old implementation was tested again. The parent checked links, read sample sources, and checked key cases where newer work replaced old work. Repeat incident reports show a recurring issue. They are not separate experiments.
 
-Research job IDs: resources task_af112ee3, T3 task_4615ef2d, web/UI/native task_a115a14b, delivery task_62278bea, memory/workspaces task_4b613164. An initial representative review (task_159400e7) preceded broad coverage. All research used the current workspace with no edits by reviewers; no delegated implementation worktrees or branches exist for this task.
+Research jobs: resources task_af112ee3, T3 task_4615ef2d, web/UI/native task_a115a14b, delivery task_62278bea, memory/workspaces task_4b613164. A first sample review, task_159400e7, came before the wide review. Reviewers used the current workspace and made no edits. This task made no worker branches or worktrees.
 
-## Important conflicts resolved
+## Old and new facts that conflict
 
-- **Release ceremony:** [current preference](../releases/release-verification-preference.md) supersedes historical routine binary downloads/checksum rechecks. Confirm successful CI/publication; extra runtime validation needs a real risk or request.
-- **Worktree setup:** [automatic setup final](../worktrees/worktree-auto-setup-final.md) and [workspace contract](../worktrees/subagent-workspaces.md) supersede older approval/digest-gate proposals. CLI setup is automatic; child trust and web configuration are separate concerns. Do not infer a universal approval policy from old security recommendations.
-- **Compaction:** [active shake-first policy](../compaction/auto-shake-compaction.md) supersedes the older manual-only roadmap. Later current-conversation decisions within [compaction research](../compaction/compaction-research.md) supersede earlier captured-prefix restrictions. The threshold is product policy, not a universal value.
-- **T3 adoption:** [lifecycle acceptance](../t3/t3-v2-production-lifecycle-final.md) supersedes early unavailable/NOT ADOPTED status. Keep the single-owner lesson, not obsolete assignments of which runtime owns continuation.
-- **Resource findings:** [lead judgment](../resources/memory-resource-judgment.md) separates proven defects, normal retained data, scalability policy, and unreachable upstream bugs. [Terminal follow-up](../resources/resource-fixes-terminal-followup.md) replaces silent normal completion with visible failure/recovery. Do not universalize particular caps or speculative concurrency limits.
-- **Packaging and harnesses:** [single-binary packaging](../packaging/single-binary-packaging.md) supersedes sidecar recipes. [Corrected probe](../packaging/packaged-probe-final-fix.md) supersedes the earlier WebSocket harness diagnosis.
-- **Web architecture:** implemented pin-plus-patch and [loopback access boundaries](../web/die-web-upgrade-auth.md) supersede older fork/pairing proposals. Exact mechanisms remain domain policy, not universal architecture values.
-- **Preferences:** [model persistence follow-up](../models/last-used-model-followup.md) supersedes the earlier conclusion that non-persistence was intentional. Preserve explicit user choices, not incidental restore/child events.
-- **Knowledge maintenance:** [direct project wisdom](project-wisdom.md) supersedes the old pending queue/index/locking machinery. This request adds a derived layer and review habit, not a new scheduler, mandatory index, or consolidation service.
+- **Release steps:** [Current preference](../releases/release-verification-preference.md) replaces old routine binary downloads and checksum checks. Confirm CI and publication. Do more runtime checks only for a real risk or when asked.
+- **Worktree setup:** [Automatic setup final](../worktrees/worktree-auto-setup-final.md) and [workspace contract](../worktrees/subagent-workspaces.md) replace old approval and digest-gate plans. CLI setup is automatic. Child trust and web setup are separate. Old security notes do not make one approval rule for all setup.
+- **Compaction:** [Active shake-first policy](../compaction/auto-shake-compaction.md) replaces the old manual-only plan. Later choices in [compaction research](../compaction/compaction-research.md) replace early captured-prefix limits. The threshold is product policy, not a value for all work.
+- **T3 adoption:** [Lifecycle acceptance](../t3/t3-v2-production-lifecycle-final.md) replaces early unavailable/NOT ADOPTED status. Keep the single-owner lesson. Drop old claims about which runtime owns continuation.
+- **Resource findings:** [Lead judgment](../resources/memory-resource-judgment.md) keeps proven bugs apart from normal held data, scale policy, and upstream bugs we cannot reach. [Terminal follow-up](../resources/resource-fixes-terminal-followup.md) replaces quiet normal completion with visible failure and recovery. Do not turn exact caps or guessed concurrency limits into broad rules.
+- **Packaging and harnesses:** [Single-binary packaging](../packaging/single-binary-packaging.md) replaces sidecar recipes. [Corrected probe](../packaging/packaged-probe-final-fix.md) replaces the old WebSocket harness diagnosis.
+- **Web architecture:** Built pin-plus-patch and [loopback access boundaries](../web/die-web-upgrade-auth.md) replace old fork and pairing plans. Exact mechanisms stay domain policy, not broad architecture values.
+- **Preferences:** [Model persistence follow-up](../models/last-used-model-followup.md) replaces the old view that no persistence was intentional. Keep explicit user choices. Do not treat restore or child events as choices.
+- **Knowledge upkeep:** [Direct project wisdom](project-wisdom.md) replaces the old pending queue, index, and lock machinery. This work adds derived values and a review habit. It does not add a scheduler, required index, or consolidation service.
 
-## Standing instructions and maintenance
+## Standing instructions and upkeep
 
-Canonical src/prompts/wisdom.md now directs root agents to read values before substantial work and revisit lessons at substantial completion/handoff and after releases/broad reviews. Merge/revise before adding; retain source links and tradeoffs; qualify contradictions; leave values untouched when no evidence changes them. Missing values should be derived from available project evidence, not invented history.
+The source of truth is src/prompts/wisdom.md. It tells root agents to read values before big work. At a big finish or handoff, revisit lessons. After a release or wide review, look across affected systems. Merge or revise before adding. Keep links and tradeoffs. Mark conflicts and newer facts. No new evidence? Leave values alone. Missing value? Derive it from project evidence. Do not make up history.
 
-The existing wisdom extension injects these instructions. Root-only delivery is unchanged; coordinating agents remain responsible for synthesis and can pass relevant principles to workers. This is an agent instruction, not guaranteed autonomous scheduled execution. The ten project values are not embedded into every project's global prompt.
+The wisdom extension adds those instructions. It still sends them only to root agents. The lead agent must join the pieces and can give useful values to workers. This is an instruction to agents. It is not a scheduled process that runs by itself. The ten project values are not put in every project's global prompt.
 
-## Validation and remaining scope
+## Checks and what remains
 
-Focused prompt, extension, and real-SDK tests verify the new instruction reaches the assembled root request and does not change child injection policy. Validation passed: 22 tests (165 assertions), local Markdown links in the values/system documents, focused Biome formatting, and git diff --check. No full product suite was needed for this documentation/prompt-only change.
+Focused prompt, extension, and real-SDK tests show that root requests get the new instruction and child prompt rules stay the same. Checks passed: 22 tests with 165 assertions, local Markdown links in values and system notes, focused Biome formatting, and git diff --check. This docs-and-prompt change did not need the full product suite.
 
-PR preparation authorized after the practice audit: branch feat/derived-wisdom-values in /home/tnfssc/Code/die, targeting develop. Added an explicit brief completion outcome to the standing prompt and updated project-wisdom.md to reference the canonical prompt instead of duplicating stale wording. No build, installation, or release performed; installed packaged binaries need a later rebuild/install or release to pick up the prompt change. No research jobs remain outstanding.
+After the practice audit, user approved PR prep. Branch feat/derived-wisdom-values in /home/tnfssc/Code/die targets develop. The branch adds a short completion result to the standing prompt. project-wisdom.md now points to the source prompt instead of copying old words. This work was not built, installed, or released. Installed binaries need a later build/install or release to get the prompt change. No research jobs remain.
