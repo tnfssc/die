@@ -1,5 +1,8 @@
 # CLI Gemini Live concurrent-loop prototype
 
+Post-v0.7.0 platform correction: see [macOS local audio](macos-local-audio.md). Linux-only statements below describe the original implementation; pending support now includes local macOS with Homebrew SoX. SSH/web exclusions and physical-acceptance gaps remain.
+
+
 ## Workspace and ownership
 
 - Worktree: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_4b3cd724

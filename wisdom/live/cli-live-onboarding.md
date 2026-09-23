@@ -1,5 +1,8 @@
 # CLI Live onboarding
 
+Post-v0.7.0 platform correction: see [macOS local audio](macos-local-audio.md). Linux-only statements below describe the original implementation; pending support now includes local macOS with Homebrew SoX. SSH/web exclusions and physical-acceptance gaps remain.
+
+
 ## Ownership / review
 
 Feature worktree: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_d6c2c213

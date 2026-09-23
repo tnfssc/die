@@ -84,3 +84,22 @@ jobs:
           path: artifacts/ci/
           if-no-files-found: warn
           retention-days: 14
+
+  live-macos:
+    name: Local Live / macOS (no audio devices or API)
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.1
+      - run: bun install --frozen-lockfile
+      - name: Install and inspect CoreAudio-capable SoX (does not open devices)
+        shell: bash
+        run: |
+          brew install sox
+          sox --help | grep -w coreaudio
+          bun -e 'import { checkAudioCapabilities } from "./src/live/audio.ts"; const c = await checkAudioCapabilities(); if (!c.supported || !c.recorderPath || !c.playerPath) throw new Error(JSON.stringify(c));'
+      - name: Deterministic Live tests (fake audio and transport)
+        run: bun test tests/audio.test.ts tests/live-setup.test.ts tests/live-extension.test.ts tests/live-connection-test.test.ts tests/live-transport.test.ts tests/live-bridge.test.ts

@@ -55,6 +55,21 @@ describe("release automation", () => {
     expect(workflow).not.toMatch(/API_KEY|AUTH_TOKEN/);
   });
 
+  test("macOS Live CI checks Homebrew CoreAudio without opening devices or using credentials", async () => {
+    const workflow = Bun.YAML.parse(await read(".github/workflows/ci.yml")) as {
+      jobs: Record<string, { "runs-on": string; steps: { run?: string }[] }>;
+    };
+    const job = workflow.jobs["live-macos"]!;
+    expect(job["runs-on"]).toBe("macos-15");
+    const commands = job.steps.map((step) => step.run ?? "").join("\n");
+    expect(commands).toContain("brew install sox");
+    expect(commands).toContain("sox --help | grep -w coreaudio");
+    expect(commands).toContain("checkAudioCapabilities()");
+    expect(commands).toContain("tests/audio.test.ts tests/live-setup.test.ts");
+    expect(commands).not.toContain("acceptance");
+    expect(commands).not.toMatch(/API_KEY|live.env|SoxAudioAdapter|\b(rec|play) /);
+  });
+
   test("tag release is version-gated and builds Linux x64/arm64, macOS arm64, and Android binaries", async () => {
     const workflow = await read(".github/workflows/release.yml");
     expect(() => Bun.YAML.parse(workflow)).not.toThrow();
