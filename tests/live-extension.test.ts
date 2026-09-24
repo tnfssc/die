@@ -1614,7 +1614,13 @@ describe("GPT-Live wired selection", () => {
     await tick();
     expect(t.played).toHaveLength(played);
     f.event({ type: "session.output_transcript.delta", delta: "unheard answer", start_ms: 200, end_ms: 250 });
+    // GPT-Live saves adjacent provisional fragments as bounded groups, not per delta.
+    await new Promise((resolve) => setTimeout(resolve, 780));
     expect(t.transcriptEntries.at(-1)?.data).toMatchObject({ text: "unheard answer", status: "suppressed" });
+    expect(t.transcriptEntries.filter((e) => e.data.speaker === "You").at(-1)?.data).toMatchObject({
+      text: "look at the task overlapping",
+      status: "partial",
+    });
     await new Promise((resolve) => setTimeout(resolve, 110));
     expect(t.widgets.flat().join(" ")).toContain("not played");
     await t.run("status");

@@ -23,7 +23,7 @@ import { VoiceSession } from "./session";
 import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
 import { PlaybackScheduler } from "./playback";
 import { LiveWaveform } from "./waveform";
-import { TranscriptLog, VOICE_ENTRY } from "./transcript";
+import { LiveFragmentGroups, TranscriptLog, VOICE_ENTRY } from "./transcript";
 import { type VoiceCallbacks, type VoiceOrchestration, type VoiceProvider } from "./types";
 
 const ID = "die-live";
@@ -123,6 +123,11 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     private readonly waveform = new LiveWaveform();
     private waveTimer?: ReturnType<typeof setInterval>;
     readonly transcriptLog = new TranscriptLog((entry) => pi.appendEntry?.(VOICE_ENTRY, entry));
+    readonly liveFragments = new LiveFragmentGroups((speaker, text, status) => {
+      this.transcriptLog.receive(speaker, { text });
+      this.transcriptLog.finish(speaker, status);
+      if (this.alive) this.render();
+    });
     pendingBytes = 0;
     inFlight = false;
     readonly playback: PlaybackScheduler;
@@ -240,6 +245,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     }
     stop() {
       if (current !== this) return;
+      this.liveFragments.flush();
       this.transcriptLog.finish("You", "partial");
       this.transcriptLog.finish("Voice", "partial");
       current = undefined;
@@ -326,16 +332,17 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         onInputTranscript: (fragment) => {
           if (!this.alive) return;
           this.liveDelegation?.addFragment({ text: fragment.delta, startMs: fragment.startMs, endMs: fragment.endMs });
-          this.transcriptLog.receive("You", { text: fragment.delta, finished: false });
-          // Persist provisional evidence before a delegation can snapshot it. Never authorize final text.
-          this.transcriptLog.finish("You", "partial");
+          // History groups provisional evidence independently of the delegation snapshot.
+          this.liveFragments.receive("You", fragment);
           this.render();
         },
         onOutputTranscript: (fragment) => {
           if (!this.alive) return;
-          this.transcriptLog.receive("Voice", { text: fragment.delta, finished: false });
-          if (this.livePlayback?.suppressed || this.livePlayback?.speaking)
-            this.transcriptLog.finish("Voice", "suppressed");
+          this.liveFragments.receive(
+            "Voice",
+            fragment,
+            !!(this.livePlayback?.suppressed || this.livePlayback?.speaking),
+          );
           this.render();
         },
         onDelegation: (event) => {
