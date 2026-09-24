@@ -739,14 +739,40 @@ describe("Realtime handshake diagnostics (offline)", () => {
     await rejected;
     expect(errors).toEqual(["OpenAI rejected voice session setup (details withheld)"]);
   });
-  test("Bun rejected local upgrades settle with bounded unknown-status message, not false account diagnosis", async () => {
-    for (const status of [401, 403, 429, 503]) {
+  test("malformed and oversized rejection bodies retain status without leaking contents", async () => {
+    for (const body of ["{private-secret", "x".repeat(10000)]) {
+      const server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(body, { status: 403 }) });
+      const errors: string[] = [];
+      const session = new OpenAIRealtimeSession({ onError: (e) => errors.push(e.message) }, (_url, headers) =>
+        defaultSocket("ws://127.0.0.1:" + server.port + "/v1/realtime?model=gpt-realtime-2.1", headers),
+      );
+      try {
+        await session.connect("fake-key");
+        expect(errors).toHaveLength(1);
+        expect(errors[0]).toContain("HTTP 403");
+        expect(errors[0]).not.toContain("private-secret");
+      } finally {
+        session.close();
+        server.stop(true);
+      }
+    }
+  });
+  test("ws rejected local upgrades report actual HTTP status and allowlisted code without private data", async () => {
+    for (const status of [401, 403, 404, 429, 503]) {
       let receivedAuth = false;
       const server = Bun.serve({
         port: 0,
         fetch: (request) => {
           receivedAuth = request.headers.get("authorization") === "Bearer secret-key";
-          return new Response("Bearer secret-key private body", { status, headers: { "X-Private": "secret-key" } });
+          return new Response(
+            JSON.stringify({
+              error: {
+                code: status === 404 ? "model_not_found" : status === 429 ? "insufficient_quota" : "secret-key",
+                message: "private body",
+              },
+            }),
+            { status, headers: { "X-Private": "secret-key" } },
+          );
         },
       });
       const errors: { code: string; message: string }[] = [];
@@ -754,13 +780,18 @@ describe("Realtime handshake diagnostics (offline)", () => {
         defaultSocket(`ws://127.0.0.1:${server.port}/v1/realtime?model=gpt-realtime-2.1`, headers),
       );
       // The production socket constructor and header path, redirected only to an offline fixture.
-      // Never try to parse Bun's error text: it includes the URL but not the rejection status.
+      // Capture the actual HTTP rejection on the one Upgrade request.
       try {
         await session.connect("secret-key");
         expect(receivedAuth).toBe(true);
         expect(errors).toHaveLength(1);
         expect(errors[0].code).toBe("connect_failed");
-        expect(errors[0].message).toContain("status unavailable");
+        expect(errors[0].message).toContain(`HTTP ${status}`);
+        if (status === 404)
+          expect(errors[0].message).toContain(
+            "model_not_found".replace("model_not_found", "unavailable or inaccessible"),
+          );
+        if (status === 429) expect(errors[0].message).toContain("insufficient quota");
         expect(JSON.stringify(errors)).not.toContain("secret-key");
         expect(JSON.stringify(errors)).not.toContain("private body");
       } finally {

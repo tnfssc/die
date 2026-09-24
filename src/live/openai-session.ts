@@ -1,4 +1,5 @@
 import { connectionFailure } from "./openai-connect-error";
+import { upgradeSocket } from "./openai-upgrade-socket";
 import { providerFailure } from "./openai-errors";
 import { liveSystemInstruction } from "./prompt";
 import { OPENAI_REALTIME_MODELS } from "./providers";
@@ -36,8 +37,7 @@ export interface RealtimeSocket {
   addEventListener(type: "open" | "message" | "error" | "close", handler: (event: any) => void): void;
 }
 export type RealtimeSocketFactory = (url: string, headers: Record<string, string>) => RealtimeSocket;
-export const defaultSocket: RealtimeSocketFactory = (url, headers) =>
-  new WebSocket(url, { headers } as unknown as string[]);
+export const defaultSocket: RealtimeSocketFactory = (url, headers) => upgradeSocket(url, headers);
 type Call = {
   name: string;
   response?: Record<string, unknown>;

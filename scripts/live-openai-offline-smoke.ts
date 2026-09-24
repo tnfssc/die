@@ -36,3 +36,42 @@ try {
   voice.close();
   server.stop(true);
 }
+
+// Compiled transport must preserve HTTP rejection metadata without exposing response secrets.
+for (const [status, code] of [
+  [401, "invalid_api_key"],
+  [403, "model_not_found"],
+  [404, "model_not_found"],
+  [429, "insufficient_quota"],
+] as const) {
+  const rejector = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch: (request) => {
+      if (request.headers.get("authorization") !== "Bearer fake-offline-only") throw Error("auth missing");
+      return new Response(JSON.stringify({ error: { code, message: "private-body" } }), {
+        status,
+        headers: { "X-Private": "fake-offline-only" },
+      });
+    },
+  });
+  const errors: string[] = [];
+  const failed = new OpenAIRealtimeSession({ onError: (e) => errors.push(e.message) }, (_url, headers) =>
+    defaultSocket("ws://127.0.0.1:" + rejector.port + "/v1/realtime?model=gpt-realtime-2.1", headers),
+  );
+  try {
+    await failed.connect("fake-offline-only");
+    if (
+      errors.length !== 1 ||
+      !errors[0].includes("HTTP " + status) ||
+      errors[0].includes("private-body") ||
+      errors[0].includes("fake-offline-only")
+    )
+      throw Error("unsafe or missing HTTP " + status + ": " + errors);
+    if (status === 429 && !errors[0].includes("insufficient quota")) throw Error("missing allowlisted code");
+  } finally {
+    failed.close();
+    rejector.stop(true);
+  }
+}
+console.log("Compiled OpenAI upgrade rejections 401/403/404/429 passed (loopback only)");
