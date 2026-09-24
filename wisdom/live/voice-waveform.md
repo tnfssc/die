@@ -36,3 +36,10 @@ Footer deliberately collapses repeated spaces; test corrected for that.
 No device/provider calls. Parent reviewed generated text frames, not Ghostty
 physical appearance. Full tests task_82525517; build/helper task_51964a2a running.
 Installed build unchanged until both pass.
+
+Installed successfully via task_9e0d32a3. Dist/installed SHA256 both
+`e073dddfb1280835dc149297f87f2dc7412f1d142e7f4e70d20e4af515da0507`.
+192 Live/footer tests, typecheck, packaged helper self-test passed. Restart die
+for physical Ghostty check: speaking motion, quiet decay, interruption, stop.
+No acoustic changes or public release. Values unchanged; existing honest
+state/minimal UI guidance applies.
