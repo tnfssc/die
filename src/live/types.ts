@@ -13,11 +13,21 @@ export type VoiceError = {
     | "transcript_limit";
   message: string;
 };
-export type VoiceTranscript = { text: string; finished?: boolean; languageCode?: string; speakerLabel?: string };
+export type VoiceTranscript = {
+  text: string;
+  /** Semantic finality. Absence remains unknown for unsupported models. */
+  finished?: boolean;
+  rawFinished?: boolean;
+  finalitySource?: "provider" | "model_contract";
+  languageCode?: string;
+  speakerLabel?: string;
+};
 export interface VoiceCallbacks {
   onReady?: () => void;
   /** Base64 PCM16 mono 24 kHz. playbackEpoch changes ONLY on interruption; flush queued playback on onInterrupted. */
   onAudio?: (base64: string, playbackEpoch: number) => void;
+  /** Known incoming activity/interim text revokes older input; never proves finality. */
+  onInputActivity?: () => void;
   onInputTranscript?: (transcript: VoiceTranscript) => void;
   onOutputTranscript?: (transcript: VoiceTranscript, playbackEpoch: number) => void;
   onInterrupted?: (playbackEpoch: number) => void;

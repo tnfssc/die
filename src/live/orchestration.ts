@@ -11,7 +11,6 @@ export interface VoiceHost {
   context(): unknown;
   subscribe(listener: (update: any) => void): () => void;
 }
-const string = { type: "string", minLength: 1, maxLength: 4000 };
 const id = { type: "string", minLength: 1, maxLength: 128 };
 function tool(name: string, description: string, properties: object, required: string[] = []): FunctionDeclaration {
   return {
@@ -28,15 +27,15 @@ export const orchestrationTools: FunctionDeclaration[] = [
   ),
   tool(
     "agent_send",
-    "Send completed user speech verbatim as work to the configured agent in this session (follow-up). Returns queued, not completed. Never use this to cancel jobs; use job_cancel. Keep requestId stable on retry; never replay old requests on reconnect.",
-    { requestId: id, text: string },
-    ["requestId", "text"],
+    "Send the latest completed captured user speech (host supplies the text) as work to the configured agent in this session (follow-up). Returns queued, not completed. Never use this to cancel jobs; use job_cancel. Keep requestId stable on retry; never replay old requests on reconnect.",
+    { requestId: id },
+    ["requestId"],
   ),
   tool(
     "agent_steer",
-    "Steer the current configured-agent turn with completed user speech verbatim. Not child stdin. Never use this to cancel jobs; use job_cancel. Keep requestId stable on retry.",
-    { requestId: id, text: string },
-    ["requestId", "text"],
+    "Steer the current configured-agent turn with the latest completed captured user speech (host supplies the text). Not child stdin. Never use this to cancel jobs; use job_cancel. Keep requestId stable on retry.",
+    { requestId: id },
+    ["requestId"],
   ),
   tool(
     "jobs_list",
@@ -84,7 +83,7 @@ export function createOrchestration(host: VoiceHost, now: () => number = () => p
   return {
     userTranscript(value) {
       const text = value.trim();
-      pending = text && text.length <= 4000 ? { text, expiresAt: now() + ttlMs } : undefined;
+      pending = text && value.length <= 4000 ? { text, expiresAt: now() + ttlMs } : undefined;
     },
     beginUserTurn() {
       pending = undefined;
@@ -96,19 +95,23 @@ export function createOrchestration(host: VoiceHost, now: () => number = () => p
       if (!declaration) throw new Error("Unknown voice tool");
       const allowed = Object.keys((declaration.parametersJsonSchema as any).properties);
       if (Object.keys(args).some((key) => !allowed.includes(key))) throw new Error("Unexpected tool argument");
+      let captured: string | undefined;
       if (call.name === "agent_send" || call.name === "agent_steer") {
-        const requested = text(args, "text", 4000).trim();
+        text(args, "requestId", 128);
         if (pending && now() >= pending.expiresAt) pending = undefined;
-        if (pending?.text !== requested) throw new Error("Handoff requires a matching completed user transcript");
+        if (!pending)
+          throw new Error("Handoff requires a completed captured user transcript; retry after transcription");
+        captured = pending.text;
+        // Consume before calling the host, including ambiguous failures.
         pending = undefined;
       }
       switch (call.name) {
         case "session_context":
           return host.context();
         case "agent_send":
-          return host.send(text(args, "requestId", 128), text(args, "text", 4000));
+          return host.send(text(args, "requestId", 128), captured!);
         case "agent_steer":
-          return host.steer(text(args, "requestId", 128), text(args, "text", 4000));
+          return host.steer(text(args, "requestId", 128), captured!);
         case "jobs_list": {
           if (
             args.count !== undefined &&

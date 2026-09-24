@@ -307,3 +307,5 @@ No new runtime change since user report. Installed8625b655 candidate still has
 finished/exact-text gate. Need a functional authorization design grounded in
 Google's actual contract, not simply treating missing finished as true or
 letting arbitrary host/model text masquerade as the user's request.
+
+Implementation candidate and explicit ordering limits: [grounded spoken handoff](grounded-spoken-handoff.md).

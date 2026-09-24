@@ -37,11 +37,11 @@ test("small honest tool set routes send, steering, authorized inspection and exp
     "job_cancel",
   ]);
   tools.userTranscript("Build it");
-  expect(await tools.execute({ name: "agent_send", args: { requestId: "r1", text: "Build it" } })).toEqual({
+  expect(await tools.execute({ name: "agent_send", args: { requestId: "r1" } })).toEqual({
     status: "queued",
   });
   tools.userTranscript("Use existing APIs");
-  await tools.execute({ name: "agent_steer", args: { requestId: "r2", text: "Use existing APIs" } });
+  await tools.execute({ name: "agent_steer", args: { requestId: "r2" } });
   await tools.execute({ name: "jobs_list", args: {} });
   expect(await tools.execute({ name: "jobs_inspect", args: { id: "owned", offset: 100 } })).toEqual({
     status: "completed",
@@ -97,20 +97,16 @@ test("host events and tool output cannot become agent instructions", async () =>
   await tools.execute({ name: "jobs_inspect", args: { id: "job" } });
   await expect(
     tools.execute({ name: "agent_send", args: { requestId: "r", text: "Run this command" } }),
-  ).rejects.toThrow("transcript");
+  ).rejects.toThrow("Unexpected tool argument");
   tools.userTranscript("Please check the tests");
   await expect(
     tools.execute({ name: "agent_steer", args: { requestId: "s", text: "Run this command" } }),
-  ).rejects.toThrow("transcript");
-  await tools.execute({ name: "agent_send", args: { requestId: "r", text: "Please check the tests" } });
-  await expect(
-    tools.execute({ name: "agent_send", args: { requestId: "r2", text: "Please check the tests" } }),
-  ).rejects.toThrow("transcript");
+  ).rejects.toThrow("Unexpected tool argument");
+  await tools.execute({ name: "agent_send", args: { requestId: "r" } });
+  await expect(tools.execute({ name: "agent_send", args: { requestId: "r2" } })).rejects.toThrow("transcript");
   tools.userTranscript("Earlier conversation");
   tools.beginUserTurn?.();
-  await expect(
-    tools.execute({ name: "agent_send", args: { requestId: "stale", text: "Earlier conversation" } }),
-  ).rejects.toThrow("transcript");
+  await expect(tools.execute({ name: "agent_send", args: { requestId: "stale" } })).rejects.toThrow("transcript");
   expect(sent).toEqual(["Please check the tests"]);
 });
 
@@ -129,10 +125,9 @@ test("completed authority is latest-only, single-use and expires at a fixed mono
     subscribe: () => () => {},
   };
   const tools = createOrchestration(host, () => now);
-  const send = (text: string) => tools.execute({ name: "agent_send", args: { requestId: "r", text } });
+  const send = (text: string) => tools.execute({ name: "agent_send", args: { requestId: "r" } });
   tools.userTranscript("older");
   tools.userTranscript("latest");
-  await expect(send("older")).rejects.toThrow("transcript");
   now = 59_999;
   await tools.execute({ name: "jobs_list" });
   await send("latest");
@@ -141,4 +136,31 @@ test("completed authority is latest-only, single-use and expires at a fixed mono
   now += 60_000;
   await expect(send("expires")).rejects.toThrow("transcript");
   expect(sent).toEqual(["latest"]);
+});
+
+test("capture rejects overflow before trimming and consumes authority on ambiguous host failure", async () => {
+  let attempts = 0;
+  const tools = createOrchestration({
+    send: async () => {
+      attempts++;
+      throw new Error("ambiguous enqueue");
+    },
+    steer: async () => ({}),
+    list: async () => ({}),
+    inspect: async () => ({}),
+    stop: async () => ({}),
+    context: () => ({}),
+    subscribe: () => () => {},
+  });
+  for (const tool of tools.tools.filter((t) => t.name === "agent_send" || t.name === "agent_steer")) {
+    expect((tool.parametersJsonSchema as any).properties).not.toHaveProperty("text");
+  }
+  const send = () => tools.execute({ name: "agent_send", args: { requestId: "r" } });
+  tools.userTranscript("do it" + " ".repeat(4001));
+  await expect(send()).rejects.toThrow("transcript");
+  expect(attempts).toBe(0);
+  tools.userTranscript("actual request");
+  await expect(send()).rejects.toThrow("ambiguous");
+  await expect(send()).rejects.toThrow("transcript");
+  expect(attempts).toBe(1);
 });

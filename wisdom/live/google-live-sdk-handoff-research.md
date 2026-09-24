@@ -172,3 +172,5 @@ host. Explicitly decide contradictory finished=false on a model-final channel.
 Values unchanged: existing truth/unknown and owning-boundary principles cover this.
 Feature wisdom adds model-specific ADK evidence and separates adapter normalization
 from protocol guarantees.
+
+Implementation candidate and explicit ordering limits: [grounded spoken handoff](grounded-spoken-handoff.md).

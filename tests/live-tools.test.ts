@@ -59,6 +59,7 @@ describe("SDK orchestration seam", () => {
       { functionDeclarations: [{ name: "work", behavior: "NON_BLOCKING" }] },
     ]);
     h.send({ toolCall: { functionCalls: [{ id: "1", name: "work", args: { task: "a" } }] } });
+    await flush(); // Already dispatched work survives advisory cancellation.
     h.send({ toolCallCancellation: { ids: ["1"] }, serverContent: { interrupted: true } });
     h.send({ toolCall: { functionCalls: [{ id: "1", name: "work" }] } });
     h.session.sendAudio("AAAAAA==");
@@ -195,7 +196,7 @@ test("tool concurrency is bounded without blocking microphone and cancellation d
   h.session.close();
 });
 
-test("an admitted tool request survives voice disconnect, but new messages after close cannot dispatch", async () => {
+test("an undispatched tool request is revoked on disconnect, and new messages cannot dispatch", async () => {
   let calls = 0;
   const h = fixture(async () => {
     calls++;
@@ -206,7 +207,7 @@ test("an admitted tool request survives voice disconnect, but new messages after
   h.session.close();
   h.send({ toolCall: { functionCalls: [{ id: "too-late", name: "work" }] } });
   await flush();
-  expect(calls).toBe(1);
+  expect(calls).toBe(0);
   expect(h.responses).toHaveLength(0);
 });
 

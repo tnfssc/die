@@ -506,7 +506,7 @@ test("live orchestration keeps capture/playback active, forwards actual completi
   expect(t.status.at(-1)).toBe("Live listening");
   expect(t.contexts[0]).toContain("existing session");
   t.voice.onInputTranscript?.({ text: "work", finished: true });
-  const pending = t.orchestration!.execute({ name: "agent_send", args: { requestId: "same", text: "work" } });
+  const pending = t.orchestration!.execute({ name: "agent_send", args: { requestId: "same" } });
   t.capture.capture?.(Buffer.alloc(640));
   t.voice.onAudio?.(Buffer.alloc(960).toString("base64"), 0);
   await tick();
@@ -525,7 +525,7 @@ test("live orchestration keeps capture/playback active, forwards actual completi
   expect(subscribed).toBe(2);
   expect(t.contexts.at(-1)).toContain("same");
   t.voice.onInputTranscript?.({ text: "work", finished: true });
-  await t.orchestration!.execute({ name: "agent_send", args: { requestId: "same", text: "work" } });
+  await t.orchestration!.execute({ name: "agent_send", args: { requestId: "same" } });
   expect(sent).toBe(1);
   t.voice.onError?.({ code: "disconnected", message: "socket gone" });
   expect(detached).toBe(2);
@@ -858,7 +858,7 @@ test("real Session/Run preserves finished authority across tool turns, revokes o
   const receive = (v: object) => params.callbacks.onmessage(v as Parameters<LiveParams["callbacks"]["onmessage"]>[0]);
   const input = (text: string, finished = false) =>
     receive({ serverContent: { inputTranscription: { text, finished } } });
-  const send = (text: string) => tools.execute({ name: "agent_send", args: { requestId: text, text } });
+  const send = (text: string) => tools.execute({ name: "agent_send", args: { requestId: text } });
   await t.run("start");
   input("read README", true);
   receive({ toolCall: { functionCalls: [{ id: "list", name: "jobs_list" }] } });
@@ -869,7 +869,7 @@ test("real Session/Run preserves finished authority across tool turns, revokes o
     await tick();
   }
   receive({
-    toolCall: { functionCalls: [{ id: "send", name: "agent_send", args: { requestId: "r", text: "read README" } }] },
+    toolCall: { functionCalls: [{ id: "send", name: "agent_send", args: { requestId: "r" } }] },
   });
   await tick();
   expect(sent).toEqual(["read README"]);
@@ -886,13 +886,13 @@ test("real Session/Run preserves finished authority across tool turns, revokes o
   input("interrupted", true);
   receive({
     serverContent: { interrupted: true },
-    toolCall: { functionCalls: [{ id: "denied", name: "agent_send", args: { requestId: "i", text: "interrupted" } }] },
+    toolCall: { functionCalls: [{ id: "denied", name: "agent_send", args: { requestId: "i" } }] },
   });
   await tick();
   expect(sent).toEqual(["read README", "new request"]);
   receive({
     serverContent: { interrupted: true, inputTranscription: { text: "fresh", finished: true }, turnComplete: true },
-    toolCall: { functionCalls: [{ id: "fresh", name: "agent_send", args: { requestId: "f", text: "fresh" } }] },
+    toolCall: { functionCalls: [{ id: "fresh", name: "agent_send", args: { requestId: "f" } }] },
   });
   await tick();
   expect(sent).toEqual(["read README", "new request", "fresh"]);
@@ -903,11 +903,172 @@ test("real Session/Run preserves finished authority across tool turns, revokes o
   input("unused", true);
   const previous = tools;
   await t.run("stop");
-  await expect(previous.execute({ name: "agent_send", args: { requestId: "old", text: "unused" } })).rejects.toThrow(
-    "transcript",
-  );
+  await expect(previous.execute({ name: "agent_send", args: { requestId: "old" } })).rejects.toThrow("transcript");
   await t.run("start");
   expect(tools).not.toBe(previous);
   await expect(send("unused")).rejects.toThrow("transcript");
   await t.run("stop");
 });
+
+// Provider transport is fake; both the Session adapter and Run transcript gate are real.
+for (const model of ["gemini-3.8-live", "unknown-live", "gemini-3.5-live-translate"]) {
+  test("real Session/Run grounded input handoff: " + model, async () => {
+    let params!: LiveParams;
+    const sent: string[] = [];
+    const replies: any[] = [];
+    const transcripts: any[] = [];
+    const t = setup({
+      host: () => ({
+        send: async (_id, text) => {
+          sent.push(text);
+          return { queued: true };
+        },
+        steer: async (_id, text) => {
+          sent.push(text);
+          return { queued: true };
+        },
+        list: async () => ({}),
+        inspect: async () => ({}),
+        stop: async () => ({}),
+        context: () => ({}),
+        subscribe: () => () => {},
+      }),
+      voice: (callbacks, orchestration) =>
+        new VoiceSession(
+          {
+            ...callbacks,
+            onInputTranscript: (value) => {
+              transcripts.push(value);
+              callbacks.onInputTranscript?.(value);
+            },
+          },
+          () => ({
+            live: {
+              connect: async (p) => {
+                params = p;
+                return {
+                  sendRealtimeInput: () => {},
+                  sendClientContent: () => {},
+                  close: () => {},
+                  sendToolResponse: (r: unknown) => replies.push(r),
+                } as unknown as LiveConnection;
+              },
+            },
+          }),
+          orchestration,
+          model,
+        ),
+    });
+    const receive = (value: object) => params.callbacks.onmessage(value as any);
+    const input = (text: string, finished?: boolean) =>
+      receive({ serverContent: { inputTranscription: { text, ...(finished === undefined ? {} : { finished }) } } });
+    const call = (id: string, extra: object = {}) => ({
+      toolCall: { functionCalls: [{ id, name: "agent_send", args: { requestId: id, ...extra } }] },
+    });
+    await t.run("start");
+    input("captured");
+    receive(call("absent"));
+    await tick();
+    if (model === "gemini-3.8-live") {
+      expect(sent).toEqual(["captured"]);
+      expect(transcripts[0]).toEqual({ text: "captured", finished: true, finalitySource: "model_contract" });
+    } else {
+      expect(sent).toEqual([]);
+      expect(transcripts[0]).toEqual({ text: "captured" });
+    }
+    // Interrupt clears unknown partial input too; model turns do not prove finality.
+    receive({ serverContent: { interrupted: true } });
+    input("explicitly partial", false);
+    for (let i = 0; i < 3; i++) receive({ serverContent: { turnComplete: true } });
+    receive(call("false"));
+    await tick();
+    expect(transcripts.at(-1)).toMatchObject({ finished: false, rawFinished: false, finalitySource: "provider" });
+    const count = sent.length;
+    expect(count).toBe(model === "gemini-3.8-live" ? 1 : 0);
+    receive({ serverContent: { interrupted: true } });
+    // Before-transcript calls fail rather than waiting to steal newer input.
+    receive(call("before"));
+    await tick();
+    expect(replies.at(-1).functionResponses.response).toHaveProperty("error");
+    input("later input", true);
+    receive(call("before")); // duplicate failure cannot acquire new authority
+    await tick();
+    expect(sent).toHaveLength(count);
+    receive(call("after"));
+    await tick();
+    expect(sent.at(-1)).toBe("later input");
+    receive(call("after"));
+    receive(call("second-id"));
+    await tick();
+    expect(sent).toHaveLength(count + 1);
+    // Same envelope is the only bounded call-before-input association we accept.
+    receive({
+      ...call("same-envelope"),
+      serverContent: { inputTranscription: { text: "same message", finished: true } },
+    });
+    await tick();
+    expect(sent.at(-1)).toBe("same message");
+    // A scheduled call may not attach to newer input before its dispatch microtask.
+    input("old", true);
+    receive(call("stale"));
+    input("new", true);
+    await tick();
+    expect(sent.at(-1)).toBe("same message");
+    receive(call("fresh"));
+    await tick();
+    expect(sent.at(-1)).toBe("new");
+    for (const activity of [
+      { voiceActivity: { voiceActivityType: "ACTIVITY_START" } },
+      { serverContent: { interimInputTranscription: { text: "unfinished new speech", finished: true } } },
+    ]) {
+      input("old before activity", true);
+      receive(call("activity-" + replies.length));
+      receive(activity);
+      await tick();
+      receive(call("activity-retry-" + replies.length));
+      await tick();
+      expect(sent.at(-1)).toBe("new");
+    }
+    input("cancel me", true);
+    receive(call("cancelled"));
+    receive({ toolCallCancellation: { ids: ["cancelled"] } });
+    await tick();
+    receive(call("cancel-retry"));
+    await tick();
+    expect(sent.at(-1)).toBe("new");
+    input("not fabricated", true);
+    receive(call("fabricated", { text: "model imperative" }));
+    await tick();
+    expect(replies.at(-1).functionResponses.response).toHaveProperty("error");
+    receive(call("host-payload"));
+    await tick();
+    expect(sent.at(-1)).toBe("not fabricated");
+    if (model === "gemini-3.8-live") {
+      input("older segment");
+      input("latest segment");
+      receive(call("latest-segment"));
+      await tick();
+      expect(sent.at(-1)).toBe("latest segment");
+      input("late segment");
+      await tick();
+      expect(sent.at(-1)).toBe("latest segment"); // never auto-steer late segments
+      receive(call("late-fresh-call"));
+      await tick();
+      expect(sent.at(-1)).toBe("late segment");
+    }
+    input("pending delta", false);
+    input(""); // absence plus empty text is not inferred finality
+    receive(call("empty-unknown"));
+    await tick();
+    expect(replies.at(-1).functionResponses.response).toHaveProperty("error");
+    input("", true); // explicit textless final marker can finish a bounded delta
+    receive(call("empty-final"));
+    await tick();
+    expect(sent.at(-1)).toBe("pending delta");
+    input("stop", true);
+    receive(call("stop"));
+    await t.run("stop");
+    await tick();
+    expect(sent.at(-1)).toBe("pending delta");
+  });
+}

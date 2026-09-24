@@ -273,8 +273,16 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 this.render();
               }
             },
+            onInputActivity: () => {
+              if (!this.alive) return;
+              this.orchestration?.beginUserTurn?.();
+              this.inputUtterance = "";
+            },
             onInputTranscript: (t) => {
               if (!this.alive) return;
+              // Contract-final events are complete segments, not deltas. Latest
+              // segment replaces prior unfinished input; never append after dispatch.
+              if (t.finalitySource === "model_contract") this.inputUtterance = "";
               if (!this.inputUtterance && t.text) this.orchestration?.beginUserTurn?.();
               this.inputUtterance = (this.inputUtterance + t.text).slice(0, 4001);
               if (t.finished) {

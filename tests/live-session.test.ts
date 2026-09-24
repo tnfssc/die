@@ -124,7 +124,7 @@ describe("voice-only SDK session", () => {
     h.params.callbacks.onmessage(msg({ serverContent: { ...audio(), turnComplete: true } }));
     expect(out).toEqual([
       ["audio", "AAAAAA==", 0],
-      ["input", { text: "heard", finished: true, languageCode: "en" }],
+      ["input", { text: "heard", finished: true, rawFinished: true, finalitySource: "provider", languageCode: "en" }],
       ["output", { text: "said", finished: false }, 0],
       ["done", 0],
       ["flush", 1],
