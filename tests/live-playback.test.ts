@@ -65,7 +65,12 @@ function harness(
 describe("live playback scheduler", () => {
   test("played estimate excludes enqueue and pending writes; accrues only accepted playback time", async () => {
     let release!: () => void;
-    const h = harness({ send: () => new Promise((resolve) => { release = resolve; }) });
+    const h = harness({
+      send: () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    });
     h.scheduler.enqueue(Buffer.alloc(FRAME_BYTES * 2), 0);
     expect(h.scheduler.playedMs).toBe(0);
     h.scheduler.start();
@@ -106,9 +111,14 @@ describe("live playback scheduler", () => {
   });
   test("interrupt resets estimate; old success and failed write never credit new epoch", async () => {
     let rejectOld!: (error: Error) => void;
-    const h = harness({ send: (_frame, epoch) => epoch === 0
-      ? new Promise((_resolve, reject) => { rejectOld = reject; })
-      : Promise.resolve() });
+    const h = harness({
+      send: (_frame, epoch) =>
+        epoch === 0
+          ? new Promise((_resolve, reject) => {
+              rejectOld = reject;
+            })
+          : Promise.resolve(),
+    });
     h.scheduler.start();
     h.scheduler.enqueue(Buffer.alloc(FRAME_BYTES), 0);
     h.clock.advance(100);
