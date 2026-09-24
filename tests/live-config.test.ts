@@ -21,7 +21,7 @@ describe("Live voice settings (offline)", () => {
       expect(
         modelForProvider("openai", { provider: "google", model: "gemini-3.8-live", openaiModel: chosen.model }),
       ).toBe("gpt-live-1");
-      expect(unsupportedLiveTransport(chosen.model)).toContain("not supported yet");
+      expect(unsupportedLiveTransport(chosen.model)).toBeUndefined();
       expect(await readFile(path, "utf8")).not.toContain("apiKey");
     } finally {
       await rm(dir, { recursive: true, force: true });

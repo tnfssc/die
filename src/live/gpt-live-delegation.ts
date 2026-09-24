@@ -8,7 +8,7 @@ export interface LiveFragment {
 export interface LiveDelegation {
   id: string;
   offsetMs: number;
-  target?: string;
+  target: "client";
 }
 export interface DelegationSnapshot {
   delegationId: string;
@@ -28,7 +28,10 @@ export interface ContextualDelegationHost {
    * label it as final user speech. Ambiguous/irreversible actions require clarification.
    * Returns only verified dispatch status, never untrusted job output or agent reasoning.
    */
-  submitContextual(requestId: string, snapshot: DelegationSnapshot): Promise<{ queued: true } | { clarification: true }>;
+  submitContextual(
+    requestId: string,
+    snapshot: DelegationSnapshot,
+  ): Promise<{ queued: true } | { clarification: true }>;
 }
 export type DelegationResult =
   | { kind: "queued" | "clarification"; id: string; revision: number; commentary: string }
@@ -36,8 +39,14 @@ export type DelegationResult =
 
 function boundedData(value: unknown, max = 3800): string {
   let serialized: string;
-  try { serialized = JSON.stringify(value) ?? "null"; } catch { serialized = '"unavailable"'; }
-  return serialized.length <= max ? serialized : JSON.stringify({ truncated: true, preview: serialized.slice(0, 1600) });
+  try {
+    serialized = JSON.stringify(value) ?? "null";
+  } catch {
+    serialized = '"unavailable"';
+  }
+  return serialized.length <= max
+    ? serialized
+    : JSON.stringify({ truncated: true, preview: serialized.slice(0, 1600) });
 }
 /** One instance per Live connection. Closing invalidates results but never cancels backend work. */
 export class GptLiveDelegationBridge {
@@ -50,9 +59,17 @@ export class GptLiveDelegationBridge {
   constructor(private readonly host: ContextualDelegationHost) {}
 
   addFragment(fragment: LiveFragment): void {
-    if (this.closed || !Number.isFinite(fragment.startMs) || !Number.isFinite(fragment.endMs) ||
-      fragment.startMs < 0 || fragment.endMs < fragment.startMs || typeof fragment.text !== "string" ||
-      !fragment.text.trim() || fragment.text.length > 1000) return;
+    if (
+      this.closed ||
+      !Number.isFinite(fragment.startMs) ||
+      !Number.isFinite(fragment.endMs) ||
+      fragment.startMs < 0 ||
+      fragment.endMs < fragment.startMs ||
+      typeof fragment.text !== "string" ||
+      !fragment.text.trim() ||
+      fragment.text.length > 4096
+    )
+      return;
     // Corrections can arrive late. Keep order of arrival and retain timeline coordinates.
     this.fragments.push({ ...fragment });
     this.revision++;
@@ -63,12 +80,24 @@ export class GptLiveDelegationBridge {
   }
 
   /** Barge-in only invalidates spoken results. It does not stop the host agent or its jobs. */
-  interrupt(): void { this.epoch++; }
-  close(): void { this.closed = true; this.epoch++; }
+  interrupt(): void {
+    this.epoch++;
+  }
+  close(): void {
+    this.closed = true;
+    this.epoch++;
+  }
 
   async handleCreated(event: LiveDelegation): Promise<DelegationResult> {
-    if (typeof event.id !== "string" || !event.id.trim() || event.id.length > 128 ||
-      !Number.isFinite(event.offsetMs) || event.offsetMs < 0 || !Number.isSafeInteger(event.offsetMs))
+    if (
+      typeof event.id !== "string" ||
+      !event.id.trim() ||
+      event.id.length > 256 ||
+      event.target !== "client" ||
+      !Number.isFinite(event.offsetMs) ||
+      event.offsetMs < 0 ||
+      !Number.isSafeInteger(event.offsetMs)
+    )
       return { kind: "unavailable", id: "invalid" };
     const id = event.id;
     if (this.attempted.has(id)) return { kind: "duplicate", id };
@@ -84,13 +113,20 @@ export class GptLiveDelegationBridge {
       fragments: this.fragments.filter((fragment) => fragment.endMs <= event.offsetMs).map((f) => ({ ...f })),
       omittedFragments: this.omitted,
       uncertain: true,
-      hostContext: boundedData((() => { try { return this.host.context(); } catch { return { unavailable: true }; } })()),
+      hostContext: boundedData(
+        (() => {
+          try {
+            return this.host.context();
+          } catch {
+            return { unavailable: true };
+          }
+        })(),
+      ),
     };
     try {
       // No synthetic tool names, task text, cancellation, or exact speech check.
       const result = await this.host.submitContextual(id, snapshot);
-      if (this.closed || this.epoch !== epoch || this.revision !== revision)
-        return { kind: "stale", id };
+      if (this.closed || this.epoch !== epoch || this.revision !== revision) return { kind: "stale", id };
       if (result && "queued" in result && result.queued === true)
         return { kind: "queued", id, revision, commentary: "Passed your request to the current agent." };
       if (result && "clarification" in result && result.clarification === true)

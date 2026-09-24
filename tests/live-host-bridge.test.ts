@@ -396,3 +396,32 @@ test("actual TaskManager + JobService dispatch stays within owner", async () => 
   expect(result.output).toContain("bridge-test");
   bridge.close();
 });
+
+describe("GPT-Live host entry point", () => {
+  test("delegates once to same configured agent without asserting final ASR or executing tools", async () => {
+    const f = fixture();
+    const snapshot = JSON.stringify({
+      fragments: [{ text: "maybe inspect the task", provisional: true }],
+      offset_ms: 500,
+    });
+    await expect(f.bridge.delegate("live:d1", snapshot)).resolves.toEqual({ queued: true });
+    await f.bridge.delegate("live:d1", snapshot);
+    expect(f.messages).toHaveLength(1);
+    const [text, options] = f.messages[0] as [string, unknown];
+    expect(text).toContain("Transcript fragments are provisional");
+    expect(text).toContain("trusted confirmation");
+    expect(text).not.toContain("Latest captured user request (authoritative)");
+    expect(options).toEqual({ deliverAs: "followUp", expandPromptTemplates: false });
+    expect(f.calls).toEqual([]);
+    expect(() => f.bridge.delegate("live:d1", "changed snapshot")).toThrow("different content");
+    f.bridge.close();
+  });
+  test("delegation validates bounds, scope and delivery errors", async () => {
+    const f = fixture(true);
+    expect(() => f.bridge.delegate("d", "x".repeat(16_385))).toThrow();
+    await expect(f.bridge.delegate("d", "snapshot")).rejects.toThrow("delivery failed");
+    f.setSession("other");
+    expect(() => f.bridge.delegate("e", "snapshot")).toThrow("scope changed");
+    f.bridge.close();
+  });
+});

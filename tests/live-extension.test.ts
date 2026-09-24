@@ -1,3 +1,4 @@
+import { GPTLiveSession, type LiveSocket } from "../src/live/gpt-live-session";
 import { OpenAIRealtimeSession, type RealtimeSocket } from "../src/live/openai-session";
 import { describe, expect, test } from "bun:test";
 import { VoiceSession } from "../src/live/session";
@@ -1189,7 +1190,7 @@ describe("Live provider selection", () => {
     await t.run("stop");
   });
 
-  test("model selection persists, restores OpenAI choice, and GPT-Live never starts or falls back", async () => {
+  test("model selection persists, restores OpenAI choice, and GPT-Live enters its native startup without fallback", async () => {
     let saved: import("../src/live/config").LiveConfig = { provider: "google", model: "gemini-3.8-live" };
     const keys: string[] = [];
     const models: string[] = [];
@@ -1241,23 +1242,18 @@ describe("Live provider selection", () => {
       return undefined;
     };
     await restarted.run("model");
-    expect(choices[0]).toEqual([
-      "gpt-realtime-2.1",
-      "gpt-realtime-2.1-mini (selected)",
-      "gpt-live-1 (transport unsupported)",
-    ]);
+    expect(choices[0]).toEqual(["gpt-realtime-2.1", "gpt-realtime-2.1-mini (selected)", "gpt-live-1"]);
     await restarted.run("model gpt-live-1");
     await restarted.run("start");
-    expect(restarted.notices.at(-1)).toContain("transport is not supported yet");
+    expect(restarted.notices.at(-1)).not.toContain("transport is not supported yet");
     expect(saved.model).toBe("gpt-live-1");
     const persisted = setup(overrides);
     await persisted.run("status");
-    expect(persisted.notices.at(-1)).toContain("transport is not supported yet");
-    await persisted.run("start");
     expect(persisted.notices.at(-1)).toContain("gpt-live-1");
-    expect(keys).toEqual([]);
-    expect(models).toEqual([]);
-    expect(audio).toBe(0);
+    await persisted.run("start");
+    expect(keys).toEqual(["openai", "openai"]);
+    expect(models).toEqual([]); // native launch fails before provider construction
+    expect(audio).toBe(2);
     await restarted.run("status");
     expect(restarted.notices.at(-1)).toContain("gpt-live-1");
     await restarted.run("model gpt-realtime-2.1");
@@ -1486,4 +1482,154 @@ test("OpenAI late completed response cannot finish the new transcript generation
     t.transcriptEntries.filter((e) => e.data.text === "New answer" && e.data.status === "turn-boundary"),
   ).toHaveLength(1);
   await t.run("stop");
+});
+
+function liveSocketFixture() {
+  const listeners = new Map<string, ((event: any) => void)[]>();
+  const wire: any[] = [];
+  let closed = false;
+  const event = (message: any) => {
+    for (const fn of listeners.get("message") ?? []) fn({ data: JSON.stringify(message) });
+  };
+  const socket: LiveSocket = {
+    send: (text) => {
+      const message = JSON.parse(text);
+      wire.push(message);
+      if (message.type === "session.start")
+        queueMicrotask(() =>
+          event({
+            type: "session.started",
+            session: { id: "live_fake", model: "gpt-live-1", delegation: { type: "client" } },
+          }),
+        );
+      if (message.type === "session.close") queueMicrotask(() => event({ type: "session.closed" }));
+    },
+    close: () => {
+      closed = true;
+    },
+    addEventListener: (name, fn) => listeners.set(name, [...(listeners.get(name) ?? []), fn]),
+  };
+  const create = (callbacks: ConstructorParameters<typeof GPTLiveSession>[0]) =>
+    new GPTLiveSession(callbacks, (url, headers) => {
+      expect(url).toBe("wss://api.openai.com/v1/live/sessions");
+      expect(headers.Authorization).toBe("Bearer fake-test-only");
+      queueMicrotask(() => {
+        for (const fn of listeners.get("open") ?? []) fn({});
+      });
+      return socket;
+    });
+  return {
+    event,
+    create,
+    wire,
+    get closed() {
+      return closed;
+    },
+  };
+}
+
+describe("GPT-Live wired selection", () => {
+  test("genuine protocol, provisional saved snapshot delegation, continuous mic and conservative interruption", async () => {
+    const f = liveSocketFixture();
+    const delegated: any[] = [];
+    let legacy = 0,
+      stop = 0;
+    const t = setup({
+      config: { load: async () => ({ provider: "openai", model: "gpt-live-1" }), save: async () => {} },
+      gptLive: f.create,
+      voice: () => {
+        throw new Error("must not construct Realtime");
+      },
+      host: () => ({
+        context: () => ({
+          recent: [{ role: "user", text: "help with the project" }],
+          jobs: [{ id: "job", status: "running" }],
+        }),
+        delegate: async (id, text) => {
+          delegated.push({ id, snapshot: JSON.parse(text) });
+          return { queued: true };
+        },
+        send: async () => {
+          legacy++;
+        },
+        steer: async () => {
+          legacy++;
+        },
+        list: async () => [],
+        inspect: async () => ({}),
+        stop: async () => {
+          stop++;
+        },
+        subscribe: () => () => {},
+      }),
+    });
+    await t.run("start");
+    expect(t.starts).toBe(1);
+    expect(t.orchestration).toBeUndefined();
+    expect(f.wire[0].session.model).toBe("gpt-live-1");
+    f.event({ type: "session.input_transcript.delta", delta: "look at the task", start_ms: 0, end_ms: 80 });
+    f.event({ type: "session.input_transcript.delta", delta: " overlapping", start_ms: 80, end_ms: 150 });
+    f.event({
+      type: "session.delegation.created",
+      delegation: { id: "d/1", target: "client", type: "delegation" },
+      offset_ms: 100,
+    });
+    f.event({
+      type: "session.delegation.created",
+      delegation: { id: "d/1", target: "client", type: "delegation" },
+      offset_ms: 100,
+    });
+    await tick();
+    expect(delegated).toHaveLength(1);
+    expect(delegated[0].snapshot.fragments.map((p: any) => p.text)).toEqual(["look at the task"]);
+    expect(delegated[0].snapshot.uncertain).toBe(true);
+    expect(delegated[0].snapshot.hostContext).toContain("help with the project");
+    expect(f.wire.some((m) => m.type === "session.thinking.append" && m.delegation_id === "d/1")).toBe(true);
+    expect(f.wire.some((m) => m.type === "session.commentary.append" && m.delegation_id === "d/1")).toBe(true);
+    expect(t.transcriptEntries.filter((e) => e.data.speaker === "You").every((e) => e.data.status === "partial")).toBe(
+      true,
+    );
+    f.event({ type: "session.output_audio.delta", delta: Buffer.alloc(960).toString("base64") });
+    await tick();
+    expect(t.played.length).toBeGreaterThan(0);
+    const loud = Buffer.alloc(640);
+    for (let i = 0; i < loud.length; i += 2) loud.writeInt16LE(2300, i);
+    for (let i = 0; i < 4; i++) t.capture.capture?.(loud);
+    expect(t.flushes).toEqual([1]);
+    const played = t.played.length;
+    f.event({ type: "session.output_audio.delta", delta: Buffer.alloc(960).toString("base64") });
+    for (let i = 0; i < 15; i++) t.capture.capture?.(Buffer.alloc(640));
+    f.event({ type: "session.output_audio.delta", delta: Buffer.alloc(960).toString("base64") });
+    await tick();
+    expect(t.played).toHaveLength(played);
+    expect(f.wire.filter((m) => m.type === "session.input_audio.append")).toHaveLength(19);
+    expect(t.notices.some((n) => n.includes("use /live stop then /live start"))).toBe(true);
+    expect(legacy).toBe(0);
+    expect(stop).toBe(0);
+    await t.run("stop");
+    await tick();
+    expect(f.closed).toBe(true);
+    const prior = delegated.length;
+    f.event({ type: "session.delegation.created", delegation: { id: "late", target: "client" }, offset_ms: 100 });
+    expect(delegated).toHaveLength(prior);
+  });
+
+  test("opening user speech does not disable a later first response; unavailable host is honest", async () => {
+    const f = liveSocketFixture();
+    const t = setup({
+      config: { load: async () => ({ provider: "openai", model: "gpt-live-1" }), save: async () => {} },
+      gptLive: f.create,
+    });
+    await t.run("start");
+    const loud = Buffer.alloc(640);
+    for (let i = 0; i < loud.length; i += 2) loud.writeInt16LE(2300, i);
+    for (let i = 0; i < 4; i++) t.capture.capture?.(loud);
+    for (let i = 0; i < 15; i++) t.capture.capture?.(Buffer.alloc(640));
+    f.event({ type: "session.output_audio.delta", delta: Buffer.alloc(960).toString("base64") });
+    await tick();
+    expect(t.played).toHaveLength(1);
+    f.event({ type: "session.delegation.created", delegation: { id: "d", target: "client" }, offset_ms: 100 });
+    expect(f.wire.at(-1).content).toContain("No work was started");
+    await t.run("stop");
+  });
 });

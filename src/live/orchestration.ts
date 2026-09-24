@@ -4,6 +4,8 @@ import type { VoiceOrchestration } from "./types";
 
 /** This surface is backed by the current tasks extension, never a second scheduler. */
 export interface VoiceHost {
+  /** App-authored GPT-Live delegation with quoted provisional context, never final ASR. */
+  delegate?(requestId: string, context: string): Promise<unknown>;
   send(requestId: string, text: string): Promise<unknown>;
   steer(requestId: string, text: string): Promise<unknown>;
   list(options?: { cursor?: string | number; count?: number }): Promise<unknown>;

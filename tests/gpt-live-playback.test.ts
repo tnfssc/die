@@ -10,7 +10,10 @@ const loud = capture(2300);
 const soft = capture(700);
 const quiet = capture(0);
 const output = () => Buffer.alloc(960); // 20ms at 24k
-const tick = async () => { await Promise.resolve(); await Promise.resolve(); };
+const tick = async () => {
+  await Promise.resolve();
+  await Promise.resolve();
+};
 
 describe("GPT-Live processed capture activity (heuristic, not VAD)", () => {
   test("requires sustained speech and hysteretic quiet; no per-amplitude-tick transition", () => {
@@ -39,9 +42,15 @@ describe("GPT-Live bounded playback recovery", () => {
     const flushed: number[] = [];
     const errors: string[] = [];
     const playback = new GptLivePlaybackRecovery({
-      send: async (pcm, generation) => { sent.push({ pcm, generation }); },
-      flush: async (generation) => { flushed.push(generation); },
-      onError: (error) => { errors.push(error.message); },
+      send: async (pcm, generation) => {
+        sent.push({ pcm, generation });
+      },
+      flush: async (generation) => {
+        flushed.push(generation);
+      },
+      onError: (error) => {
+        errors.push(error.message);
+      },
     });
     playback.start();
     return { playback, sent, flushed, errors };

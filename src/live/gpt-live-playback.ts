@@ -1,4 +1,4 @@
-import { PlaybackScheduler, type PlaybackClock } from "./playback";
+import { PlaybackScheduler, type PlaybackClock, type PlaybackState } from "./playback";
 
 /** GPT-Live-only provisional acoustic activity detector. NOT voice classification or echo cancellation.
  * Processed capture from the native helper: 16 kHz mono signed little-endian PCM, 20 ms/frame.
@@ -7,7 +7,9 @@ export class GptLiveSpeechDetector {
   private active = false;
   private loudFrames = 0;
   private quietFrames = 0;
-  get speaking(): boolean { return this.active; }
+  get speaking(): boolean {
+    return this.active;
+  }
 
   /** Returns a transition, not one event per amplitude measurement. */
   observe(pcm: Buffer): "started" | "ended" | undefined {
@@ -42,6 +44,7 @@ export class GptLivePlaybackRecovery {
   readonly detector = new GptLiveSpeechDetector();
   readonly scheduler: PlaybackScheduler;
   private muted = false;
+  private outputSeen = false;
   private closed = false;
   private generation = 0;
   private readonly onError: (error: Error) => void;
@@ -51,31 +54,54 @@ export class GptLivePlaybackRecovery {
     flush(generation: number): Promise<void>;
     onError(error: Error): void;
     clock?: PlaybackClock;
+    onState?: (state: PlaybackState) => void;
   }) {
     this.onError = options.onError;
-    this.scheduler = new PlaybackScheduler({ ...options, onError: (error) => {
-      this.onError(error);
-      this.suppress();
-    }, maxPendingBytes: 9_600 }); // 200ms @24k PCM16
+    this.scheduler = new PlaybackScheduler({
+      ...options,
+      onError: (error) => {
+        this.onError(error);
+        this.suppress();
+      },
+      maxPendingBytes: 9_600,
+    }); // 200ms @24k PCM16
   }
-  get epoch(): number { return this.generation; }
-  get needsRetry(): boolean { return this.muted; }
-  get speaking(): boolean { return this.detector.speaking; }
-  start(): void { this.scheduler.start(); }
+  get epoch(): number {
+    return this.generation;
+  }
+  get needsRetry(): boolean {
+    return this.muted;
+  }
+  get speaking(): boolean {
+    return this.detector.speaking;
+  }
+  start(): void {
+    this.scheduler.start();
+  }
   capture(pcm: Buffer): "started" | "ended" | undefined {
     if (this.closed) return;
     const transition = this.detector.observe(pcm);
-    if (transition === "started") this.suppress();
+    if (transition === "started" && this.outputSeen) this.suppress();
     return transition;
   }
   /** PCM16 mono 24k. Enqueue only if this is the current output response. */
   output(pcm: Buffer): boolean {
-    if (this.closed || this.muted || this.speaking) return false;
+    if (this.closed || this.muted) return false;
+    // Even the first output overlapping speech has uncertain attribution.
+    if (this.speaking) {
+      this.suppress();
+      return false;
+    }
     if (!Buffer.isBuffer(pcm) || !pcm.length || pcm.length % 2) {
       this.onError(new Error("Invalid GPT-Live PCM16 output"));
       return false;
     }
-    if (this.scheduler.enqueue(pcm, this.generation)) return true;
+    this.outputSeen = true;
+    if (this.scheduler.enqueue(pcm, this.generation)) {
+      // Flush a short trailing frame; this is NOT a provider turn-complete event.
+      this.scheduler.turnComplete(this.generation);
+      return true;
+    }
     if (!this.muted) {
       this.onError(new Error("GPT-Live playback rejected; explicit retry required"));
       this.suppress();
@@ -89,6 +115,7 @@ export class GptLivePlaybackRecovery {
     this.generation++;
     this.scheduler.interrupt(this.generation);
     this.muted = false;
+    this.outputSeen = false;
     return true;
   }
   private suppress(): void {
@@ -97,5 +124,9 @@ export class GptLivePlaybackRecovery {
     this.generation++;
     this.scheduler.interrupt(this.generation);
   }
-  close(): void { this.closed = true; this.muted = true; this.scheduler.close(); }
+  close(): void {
+    this.closed = true;
+    this.muted = true;
+    this.scheduler.close();
+  }
 }
