@@ -877,3 +877,23 @@ describe("Realtime handshake diagnostics (offline)", () => {
     }
   });
 });
+
+test("transport initialization failures identify the safe stage, never exception text", async () => {
+  for (const stage of ["socket-construction", "socket-listeners"]) {
+    const errors: string[] = [];
+    const session = new OpenAIRealtimeSession({ onError: (error) => errors.push(error.message) }, () => {
+      if (stage === "socket-construction") throw new TypeError("fake-secret constructor/import URL body");
+      return {
+        readyState: 0,
+        send() {},
+        close() {},
+        addEventListener() {
+          throw new Error("fake-secret export/listener body");
+        },
+      };
+    });
+    await session.connect("fake-local-only");
+    expect(session.state).toBe("closed");
+    expect(errors).toEqual(["OpenAI transport setup failed [" + stage + "]; details withheld."]);
+  }
+});

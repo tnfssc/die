@@ -1,5 +1,5 @@
 import { GPTLiveSession, type LiveSocket } from "../src/live/gpt-live-session";
-import { OpenAIRealtimeSession, type RealtimeSocket } from "../src/live/openai-session";
+import { defaultSocket, OpenAIRealtimeSession, type RealtimeSocket } from "../src/live/openai-session";
 import { describe, expect, test } from "bun:test";
 import { VoiceSession } from "../src/live/session";
 import type { LiveParams, LiveConnection } from "../src/live/types";
@@ -1658,4 +1658,81 @@ describe("GPT-Live wired selection", () => {
     expect(f.wire.at(-1).content).toContain("No work was started");
     await t.run("stop");
   });
+});
+
+describe("Realtime startup diagnostics reach the terminal safely", () => {
+  const config = {
+    load: async () => ({ provider: "openai" as const, model: "gpt-realtime-2.1" as const }),
+    save: async () => {},
+  };
+  test("adapter connect failure retains classified detail without raw exception", async () => {
+    const t = setup({
+      config,
+      voice: (callbacks) =>
+        new OpenAIRealtimeSession(callbacks, () => {
+          throw new Error("Bearer fake-secret https://private.invalid/body");
+        }),
+    });
+    await t.run("start");
+    expect(t.notices.join("\n")).toContain("Provider connect_failed:");
+    expect(t.notices.join("\n")).not.toContain("fake-secret");
+    expect(t.notices.join("\n")).not.toContain("private.invalid");
+    expect(t.starts).toBe(0);
+  });
+  test("constructor failure names its stage and withholds arbitrary text", async () => {
+    const t = setup({
+      config,
+      voice: () => {
+        throw new Error("fake-secret import body");
+      },
+    });
+    await t.run("start");
+    expect(t.notices.join("\n")).toContain("[provider-construction]");
+    expect(t.notices.join("\n")).not.toContain("fake-secret");
+    expect(t.starts).toBe(0);
+  });
+  test("rejected lazy connect names its stage and withholds arbitrary text", async () => {
+    const t = setup({ config });
+    t.reject();
+    await t.run("start");
+    expect(t.notices.join("\n")).toContain("[provider-connect]");
+    expect(t.notices.join("\n")).not.toContain("SECRET");
+    expect(t.starts).toBe(0);
+  });
+});
+
+test("Realtime full and mini localhost HTTP diagnostics survive the extension callback", async () => {
+  let requests = 0;
+  const server = Bun.serve({
+    hostname: "127.0.0.1",
+    port: 0,
+    fetch(request) {
+      requests++;
+      expect(request.headers.get("authorization")).toBe("Bearer fake-test-only");
+      return Response.json({ error: { code: "invalid_api_key", message: "fake-private-body" } }, { status: 401 });
+    },
+  });
+  try {
+    for (const model of ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"] as const) {
+      const t = setup({
+        config: { load: async () => ({ provider: "openai", model }), save: async () => {} },
+        voice: (callbacks) =>
+          new OpenAIRealtimeSession(
+            callbacks,
+            (url, headers) =>
+              defaultSocket("ws://127.0.0.1:" + server.port + new URL(url).pathname + new URL(url).search, headers),
+            undefined,
+            model,
+          ),
+      });
+      await t.run("start");
+      expect(t.notices.join("\n")).toContain("HTTP 401");
+      expect(t.notices.join("\n")).not.toContain("fake-private-body");
+      expect(t.notices.join("\n")).not.toContain("fake-test-only");
+      expect(t.starts).toBe(0);
+    }
+    expect(requests).toBe(2);
+  } finally {
+    server.stop(true);
+  }
 });

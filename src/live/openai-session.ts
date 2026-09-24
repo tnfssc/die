@@ -166,6 +166,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
         finish();
       }, CONNECT_MS);
       timer.unref?.();
+      let setupStage = "socket-construction";
       try {
         const socket = this.factory("wss://api.openai.com/v1/realtime?model=" + encodeURIComponent(this.model), {
           Authorization: "Bearer " + apiKey,
@@ -176,6 +177,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
           return;
         }
         this.socket = socket;
+        setupStage = "socket-listeners";
         socket.addEventListener("open", () => {
           if (serial !== this.serial || this.stateValue !== "connecting") return;
           try {
@@ -260,8 +262,8 @@ export class OpenAIRealtimeSession implements VoiceProvider {
             finish();
           }
         });
-      } catch (error) {
-        this.fail("connect_failed", connectionFailure(error));
+      } catch {
+        this.fail("connect_failed", "OpenAI transport setup failed [" + setupStage + "]; details withheld.");
         finish();
       }
     });
