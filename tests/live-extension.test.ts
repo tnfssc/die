@@ -95,8 +95,10 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
     },
     ...overrides,
   };
+  const transcriptEntries: { type: string; data: any }[] = [];
   liveExtension(
     {
+      appendEntry: (type: string, data: any) => transcriptEntries.push({ type, data }),
       registerCommand: (name: string, cmd: any) => {
         expect(name).toBe("live");
         handler = cmd.handler;
@@ -129,6 +131,7 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
     run: (arg: string) => handler(arg, ctx),
     complete: (prefix: string) => complete(prefix),
     contexts,
+    transcriptEntries,
     get orchestration() {
       return orchestration;
     },
@@ -176,6 +179,26 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
   };
 }
 describe("Live voice", () => {
+  test("full received voice text persists separately from the bounded viewport and stop flushes partial text", async () => {
+    const t = setup();
+    await t.run("start");
+    const long = "A long received sentence. ".repeat(160);
+    t.voice.onInputTranscript?.({ text: long, finished: true, finalitySource: "model_contract" });
+    t.voice.onOutputTranscript?.({ text: "First half, " }, 0);
+    t.voice.onOutputTranscript?.({ text: "second half." }, 0);
+    t.voice.onTurnComplete?.(0);
+    expect(t.transcriptEntries.map((e) => e.data)).toEqual([
+      { speaker: "You", text: long, status: "final" },
+      { speaker: "Voice", text: "First half, second half.", status: "turn-boundary" },
+    ]);
+    expect(t.transcriptEntries.every((e) => e.type === "die-live-transcript")).toBe(true);
+    t.voice.onOutputTranscript?.({ text: "Unfinished reply" }, 0);
+    await t.run("stop");
+    expect(t.transcriptEntries.at(-1)?.data).toEqual({ speaker: "Voice", text: "Unfinished reply", status: "partial" });
+    t.voice.onOutputTranscript?.({ text: "stale" }, 0);
+    expect(t.transcriptEntries).toHaveLength(3);
+  });
+
   test("autocomplete lists only Live actions and filters prefixes without side effects", () => {
     const t = setup();
     expect(t.complete("")?.map((item) => item.value)).toEqual([

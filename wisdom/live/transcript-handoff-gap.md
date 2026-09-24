@@ -52,3 +52,23 @@ Old widget silently clipped each utterance to 180 characters. The coding agent s
 Now each received bounded text segment is a session custom entry (die-live-transcript); never audio. The widget is a recent viewport with explicit clipped-line and omitted-entry labels. Model-contract final input segments stay distinct; unfinished provider text is accumulated. Model turn completion is only a boundary for unfinished output. Interrupted generated output is not claimed to have been heard. Unfinished input is partial.
 
 The host sends the configured agent quoted transcript data alongside the latest captured user request. The request is authoritative; transcript is data, not instructions or permission to execute. Context is capped at 24k serialized characters, selecting only whole recent entries with an explicit count of omitted earlier entries. Larger conversations cannot truthfully be exported in full from this context alone; older session history requires separate retrieval. The provider caps text at 4096 characters per turn; handoff requests expire after 60 seconds. Session entries follow normal Pi session persistence and scope; there is no audio archive or cross-session transcript store.
+
+## Parent integration
+
+Candidate merged as 6c67c06; prompt is 0f21b16. Parent 6ec88b6 removes
+per-line final/hearing diagnostic labels, shows recent tail of long text with
+an explicit saved-text cue, restores 4000-char authority bound, and flushes
+partial display text at model completion without granting authority.
+60 focused tests/typecheck passed. Added extension persistence test for long
+input, output chunks, turn boundary, stop and stale callback (task_7ab4a411).
+
+Full history retrieval work: task_27330098, branch
+die/complete-live-transcript-retrieval-and-i-27330098, worktree
+/Users/sharath/.die/worktrees/die-f528e86af6b5-task_27330098.
+Real provider helpfulness check: task_6bd9f91c, branch
+die/probe-live-helpfulness-with-real-gemini-6bd9f91c, worktree
+/Users/sharath/.die/worktrees/die-f528e86af6b5-task_6bd9f91c.
+Both still running. Parent must integrate, align prompt with transcript access,
+run full Live suite and terminal review, build/install only after validation.
+No new build installed. Values unchanged: truthful history and usable UI
+already cover this work.
