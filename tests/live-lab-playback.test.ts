@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { FRAME_BYTES, MAX_PENDING_BYTES, PlaybackScheduler, type PlaybackClock } from "../src/live-lab/playback";
 class Clock implements PlaybackClock {
   time = 0;
+  timerLateness = 0;
   next = 0;
   timers = new Map<number, { at: number; fn: () => void }>();
   now() {
@@ -9,7 +10,7 @@ class Clock implements PlaybackClock {
   }
   setTimeout(fn: () => void, ms: number): ReturnType<typeof setTimeout> {
     const id = ++this.next;
-    this.timers.set(id, { at: this.time + ms, fn });
+    this.timers.set(id, { at: this.time + ms + this.timerLateness, fn });
     return id as unknown as ReturnType<typeof setTimeout>;
   }
   clearTimeout(id: ReturnType<typeof setTimeout>) {
@@ -32,8 +33,7 @@ class Clock implements PlaybackClock {
   }
 }
 const tick = async () => {
-  await Promise.resolve();
-  await Promise.resolve();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 function harness(
   overrides: {
@@ -79,7 +79,12 @@ describe("live-lab playback scheduler", () => {
     expect(Buffer.concat(h.sent.map((s) => s.frame))).toEqual(pcm);
     expect(h.scheduler.state.pendingBytes).toBe(0);
     expect(h.sent.at(-1)?.frame.length).toBe(222);
-    for (let i = 1; i < h.sent.length; i++) expect(h.sent[i]!.at - h.sent[i - 1]!.at).toBeGreaterThanOrEqual(20);
+    for (const send of h.sent) {
+      const totalMs = h.sent
+        .filter((s) => s.at <= send.at)
+        .reduce((sum, s) => sum + s.frame.length / 48, 0);
+      expect(totalMs).toBeLessThanOrEqual(send.at + 80);
+    }
     expect(h.errors).toHaveLength(0);
   });
   test("turn boundaries do not flush; partial chunks join, but adjacent turns remain distinct", async () => {
@@ -98,26 +103,94 @@ describe("live-lab playback scheduler", () => {
     expect(h.sent.map((s) => s.frame.length)).toEqual([960, 100, 200]);
     expect(h.flushed).toHaveLength(0);
   });
-  test("native queue measurements throttle output and no catch-up bursts after event-loop stall", async () => {
+  test("native feedback only adds throttle; recovery after a stall is bounded to a cushion", async () => {
     const h = harness();
-    h.scheduler.enqueue(Buffer.alloc(FRAME_BYTES * 20), 0);
+    h.scheduler.enqueue(Buffer.alloc(FRAME_BYTES * 200), 0);
     h.scheduler.start();
     await tick();
+    expect(h.sent).toHaveLength(4);
     h.scheduler.nativeQueued(130);
     h.clock.advance(20);
     await tick();
-    expect(h.sent).toHaveLength(1);
+    expect(h.sent).toHaveLength(4);
     h.clock.stall(1000);
     h.clock.advance(0);
     await tick();
-    expect(h.sent).toHaveLength(2);
-    h.clock.advance(0);
+    expect(h.sent).toHaveLength(8); // bounded reserve, not 51 overdue frames
+    for (let i = 0; i < 100; i++) h.scheduler.nativeQueued(0);
     await tick();
-    expect(h.sent).toHaveLength(2);
+    expect(h.sent).toHaveLength(8); // stale low snapshots cannot erase reservations
     h.clock.advance(20);
     await tick();
-    expect(h.sent).toHaveLength(3);
-    expect(Math.max(...h.sent.map((s) => s.frame.length))).toBe(960);
+    expect(h.sent).toHaveLength(9);
+  });
+  for (const blockMs of [1, 10, 32]) {
+    for (const feedback of ["none", "stale-zero", "delayed-coarse"]) {
+      test("late timers keep reserve with " + blockMs + "ms native blocks and " + feedback, async () => {
+        let queued = 0;
+        let peak = 0;
+        let empty = 0;
+        let consumed = 0;
+        const reports: { at: number; ms: number }[] = [];
+        const h = harness({
+          send: async (frame) => {
+            queued += frame.length / 48;
+            peak = Math.max(peak, queued);
+          },
+        });
+        h.clock.timerLateness = 2;
+        h.scheduler.enqueue(Buffer.alloc(FRAME_BYTES * 200), 0);
+        h.scheduler.turnComplete(0);
+        h.scheduler.start();
+        await tick();
+        for (let time = 1; time <= 2200; time++) {
+          // Native render callbacks consume in blocks independently of JS timers.
+          if (time % blockMs === 0) {
+            const used = Math.min(blockMs, queued);
+            empty += blockMs - used;
+            consumed += used;
+            queued -= used;
+          }
+          h.clock.advance(1);
+          if (feedback === "stale-zero") h.scheduler.nativeQueued(0);
+          if (feedback === "delayed-coarse" && time % 40 === 0)
+            reports.push({ at: time + 15, ms: Math.floor(queued / 10) * 10 });
+          while (reports[0]?.at === time) h.scheduler.nativeQueued(reports.shift()!.ms);
+          await tick();
+          expect(h.scheduler.state.nativeQueuedMs).toBeLessThanOrEqual(80);
+        }
+        expect(empty).toBe(0);
+        expect(consumed).toBe(Math.floor(2200 / blockMs) * blockMs);
+        // Discrete render phase can hold up to one additional callback block.
+        expect(peak).toBeLessThanOrEqual(80 + blockMs);
+        expect(peak).toBeLessThan(1000);
+        expect(h.scheduler.state.pendingBytes).toBeGreaterThan(0);
+        expect(h.errors).toHaveLength(0);
+      });
+    }
+  }
+  test("low feedback racing write completion cannot create unbounded refill", async () => {
+    const h = harness({
+      send: async () => {
+        h.scheduler.nativeQueued(0);
+      },
+    });
+    h.scheduler.enqueue(Buffer.alloc(FRAME_BYTES * 200), 0);
+    h.scheduler.start();
+    await tick();
+    expect(h.sent).toHaveLength(4);
+    expect(h.scheduler.state.nativeQueuedMs).toBe(80);
+    h.scheduler.interrupt(1); // cancel the scheduled refill immediately, even with a full cushion
+    expect(h.flushed).toEqual([1]);
+    expect(h.scheduler.state.pendingBytes).toBe(0);
+    h.clock.advance(100);
+    await tick();
+    expect(h.sent).toHaveLength(4);
+    h.scheduler.enqueue(Buffer.alloc(222, 7), 1);
+    h.scheduler.turnComplete(1);
+    await tick();
+    expect(h.sent.at(-1)?.frame).toEqual(Buffer.alloc(222, 7));
+    expect(h.sent.at(-1)?.epoch).toBe(1);
   });
   test("interrupt discards unsent old generation, native flush gates new output; stale write rejection harmless", async () => {
     let rejectOld!: (error: Error) => void;

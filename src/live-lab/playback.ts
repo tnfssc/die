@@ -34,7 +34,6 @@ export class PlaybackScheduler {
   private writing = false;
   private flushing = false;
   private timer?: ReturnType<typeof setTimeout>;
-  private nextSendAt = 0;
   private ringMs = 0;
   private ringAt = 0;
   constructor(private readonly options: PlaybackOptions) {
@@ -91,7 +90,9 @@ export class PlaybackScheduler {
   /** Native played events report ring depth, not a per-frame audible acknowledgement. */
   nativeQueued(ms: number) {
     if (this.closed || !Number.isFinite(ms) || ms < 0) return;
-    this.ringMs = ms;
+    // Reports have no write/epoch acknowledgement: a delayed low report must
+    // not erase credit already reserved for writes sent since its snapshot.
+    this.ringMs = Math.max(this.remainingRing(), ms);
     this.ringAt = this.clock.now();
     this.emit();
     this.pump();
@@ -107,7 +108,6 @@ export class PlaybackScheduler {
     this.blocked = false;
     this.ringMs = 0;
     this.ringAt = this.clock.now();
-    this.nextSendAt = 0;
     this.emit();
     if (this.active) this.flushNative();
   }
@@ -183,8 +183,9 @@ export class PlaybackScheduler {
     if (bytes < FRAME_BYTES && !boundary) return;
     if (!bytes) return;
     const now = this.clock.now();
-    // No catch-up after stalls; keep native ring shallow (~20-80ms).
-    const wait = Math.max(0, this.nextSendAt - now, this.remainingRing() - 60);
+    // Refill a small reserve, not one frame per timer. Late timers can recover
+    // without accumulating unlimited catch-up credit: at most 80ms is reserved.
+    const wait = Math.max(0, this.remainingRing() - 60);
     if (wait > 0) {
       this.cancelTimer();
       this.timer = this.clock.setTimeout(() => {
@@ -196,7 +197,6 @@ export class PlaybackScheduler {
     this.cancelTimer();
     const frame = this.take(Math.min(FRAME_BYTES, bytes));
     const epoch = this.epochValue;
-    this.nextSendAt = now + 20;
     this.ringMs = this.remainingRing() + frame.length / 48;
     this.ringAt = now;
     this.writing = true;
