@@ -241,3 +241,31 @@ All probes used explicit user cost consent. Temporary synthetic speech/CLI
 fixtures are disposable and will be removed after recording final results.
 Existing speech-probe worktree commit a64f3a8 retains detailed inconclusive
 results; branch paths above are durable. No microphone audio recorded.
+
+## Installed result and remaining handoff
+
+Final task_88c870e4 passed59 tests /288 assertions across4 files, then staged
+and installed the candidate with embedded-helper self-tests passing both before
+and after replacement. Installed CLI SHA256:
+8625b655aa87098a5114deab130107282467e3f442bf8561be8c28883c792db7.
+Version stays0.9.1 locally. Source is0b09305 plus status completion metadata
+committed in1d0df5d. No stable release/tag/push.
+
+Temporary CLI probe directories, generated speech files, probe scripts and
+JSONL events were removed after review. Probes' own tmux servers exited; the
+read-only configured-agent runs ended. No user jobs cancelled, no mic audio
+recorded, no credentials copied or printed. Durable unit regressions and
+synthetic request/event summaries above preserve the reason for the fix.
+
+One proved defect fixed: model turn completion prematurely revoked a still-live
+user request. The exact user's spoken failure is not fully resolved or proven
+fixed. Manual-activity speech showed missing finished metadata AND a model
+paraphrase, but default automatic-VAD synthetic input yielded no transcription.
+Do not convert unknown completion into authorization or call that an acoustic
+pass. Next evidence is fresh /live user speech + status completion count.
+
+Values review: refined value4, rather than adding a new value. Playback tails
+and this tool-chain failure both show that one layer's completion is not the
+end of a whole multi-step request. State must clear at its owning boundary.
+This helps asynchronous pipelines; it adds no ceremony to a single completed
+local action. Other values stay unchanged.
