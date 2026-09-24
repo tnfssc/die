@@ -1,14 +1,15 @@
 import { liveSystemInstruction } from "./prompt";
+import { OPENAI_REALTIME_MODELS } from "./providers";
 import { toolFailureResponse } from "./tool-failure";
 import { InputResampler } from "./openai-resample";
 import type { VoiceCallbacks, VoiceError, VoiceOrchestration, VoiceProvider, VoiceState } from "./types";
 
 /** Official WebSocket guide: https://developers.openai.com/api/docs/guides/realtime-websocket
  * GA Realtime events: https://developers.openai.com/api/docs/guides/realtime-conversations
- * Model in the guide as of 2026-09-24. Recheck support before changing this pin.
+ * Default model in the guide as of 2026-09-24; the catalogue also lists the mini Realtime model.
  */
-export const OPENAI_VOICE_MODEL = "gpt-realtime-2.1";
-const URL = "wss://api.openai.com/v1/realtime?model=" + encodeURIComponent(OPENAI_VOICE_MODEL);
+export const OPENAI_VOICE_MODEL = OPENAI_REALTIME_MODELS[0];
+
 const MAX_INPUT = 3200,
   MAX_PACKET = 96000,
   MAX_TURN = MAX_PACKET * 24;
@@ -89,6 +90,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
     private readonly callbacks: VoiceCallbacks,
     private readonly factory: RealtimeSocketFactory = defaultSocket,
     private readonly orchestration?: VoiceOrchestration,
+    private readonly model: (typeof OPENAI_REALTIME_MODELS)[number] = OPENAI_VOICE_MODEL,
   ) {}
   get state(): VoiceState {
     return this.stateValue;
@@ -163,7 +165,9 @@ export class OpenAIRealtimeSession implements VoiceProvider {
       }, CONNECT_MS);
       timer.unref?.();
       try {
-        const socket = this.factory(URL, { Authorization: "Bearer " + apiKey });
+        const socket = this.factory("wss://api.openai.com/v1/realtime?model=" + encodeURIComponent(this.model), {
+          Authorization: "Bearer " + apiKey,
+        });
         if (serial !== this.serial) {
           socket.close();
           finish();

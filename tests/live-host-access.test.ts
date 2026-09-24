@@ -102,6 +102,7 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   const responses: unknown[] = [];
   let tools: VoiceOrchestration | undefined;
   liveExtension(voicePi, {
+    config: { load: async () => ({ provider: "google", model: "gemini-3.8-live" }), save: async () => {} },
     local: () => true,
     key: async () => "fake-no-network",
     voice: (callbacks, orchestration) => {

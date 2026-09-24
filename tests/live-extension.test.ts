@@ -50,6 +50,7 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
   };
   const deps: LiveDependencies = {
     local: () => true,
+    config: { load: async () => ({ provider: "google", model: "gemini-3.8-live" }), save: async () => {} },
     speakerCheck: async () => "Test signal detected; compare mic/speaker route manually.",
     host: () => undefined,
     credentials: async () => ({
@@ -209,6 +210,7 @@ describe("Live voice", () => {
       "setup",
       "status",
       "provider",
+      "model",
       "mic-check",
       "speaker-check",
     ]);
@@ -668,6 +670,7 @@ test("real local speaker runner uses only injected native audio, never auth/prov
       on: () => {},
     } as any,
     {
+      config: { load: async () => ({ provider: "google", model: "gemini-3.8-live" }), save: async () => {} },
       local: () => true,
       key: async () => {
         keyCalls++;
@@ -1184,6 +1187,97 @@ describe("Live provider selection", () => {
     await t.run("status");
     expect(t.notices.at(-1)).toContain("OpenAI voice model");
     await t.run("stop");
+  });
+
+  test("model selection persists, restores OpenAI choice, and GPT-Live never starts or falls back", async () => {
+    let saved: import("../src/live/config").LiveConfig = { provider: "google", model: "gemini-3.8-live" };
+    const keys: string[] = [];
+    const models: string[] = [];
+    let audio = 0;
+    const config = {
+      load: async () => saved,
+      save: async (next: typeof saved) => {
+        saved = next;
+      },
+    };
+    const overrides: Partial<LiveDependencies> = {
+      config,
+      key: async (_signal, provider) => {
+        keys.push(provider!);
+        return "fake";
+      },
+      voice: (callbacks, _tools, _provider, model) => {
+        models.push(model!);
+        return {
+          state: "ready",
+          generation: 0,
+          connect: async () => {
+            callbacks.onReady?.();
+          },
+          sendAudio: () => {},
+          close: () => {},
+        };
+      },
+      audio: async () => {
+        audio++;
+        throw new Error("fake no device");
+      },
+    };
+    const t = setup(overrides);
+    await t.run("provider openai");
+    await t.run("model gpt-realtime-2.1-mini");
+    expect(saved).toMatchObject({ provider: "openai", model: "gpt-realtime-2.1-mini" });
+    await t.run("model unlisted");
+    expect(saved.model).toBe("gpt-realtime-2.1-mini");
+    await t.run("provider google");
+    await t.run("provider openai");
+    expect(saved.model).toBe("gpt-realtime-2.1-mini");
+    const restarted = setup(overrides);
+    await restarted.run("status");
+    expect(restarted.notices.at(-1)).toContain("gpt-realtime-2.1-mini");
+    const choices: string[][] = [];
+    restarted.ctx.ui.select = async (_title?: string, options?: string[]) => {
+      choices.push(options ?? []);
+      return undefined;
+    };
+    await restarted.run("model");
+    expect(choices[0]).toEqual([
+      "gpt-realtime-2.1",
+      "gpt-realtime-2.1-mini (selected)",
+      "gpt-live-1 (transport unsupported)",
+    ]);
+    await restarted.run("model gpt-live-1");
+    await restarted.run("start");
+    expect(restarted.notices.at(-1)).toContain("transport is not supported yet");
+    expect(saved.model).toBe("gpt-live-1");
+    const persisted = setup(overrides);
+    await persisted.run("status");
+    expect(persisted.notices.at(-1)).toContain("transport is not supported yet");
+    await persisted.run("start");
+    expect(persisted.notices.at(-1)).toContain("gpt-live-1");
+    expect(keys).toEqual([]);
+    expect(models).toEqual([]);
+    expect(audio).toBe(0);
+    await restarted.run("status");
+    expect(restarted.notices.at(-1)).toContain("gpt-live-1");
+    await restarted.run("model gpt-realtime-2.1");
+    await restarted.run("status");
+    expect(restarted.notices.at(-1)).toContain("gpt-realtime-2.1");
+  });
+
+  test("failed settings writes leave the previous selection in force", async () => {
+    const t = setup({
+      config: {
+        load: async () => ({ provider: "google", model: "gemini-3.8-live" }),
+        save: async () => {
+          throw new Error("disk test failure");
+        },
+      },
+    });
+    await t.run("provider openai");
+    expect(t.notices.at(-1)).toContain("previous choice kept");
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("Google Gemini voice model gemini-3.8-live");
   });
 
   test("OpenAI setup only rechecks canonical API key; cancellation never opens devices", async () => {

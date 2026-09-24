@@ -69,6 +69,26 @@ const pcm = (samples: number[]) => {
   return bytes;
 };
 describe("OpenAI GA offline protocol", () => {
+  test("both exact Realtime IDs reach the WebSocket URL without aliasing", async () => {
+    for (const model of ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"] as const) {
+      let url = "";
+      const socket = new FakeSocket();
+      const session = new OpenAIRealtimeSession(
+        {},
+        (u) => {
+          url = u;
+          return socket;
+        },
+        undefined,
+        model,
+      );
+      const pending = session.connect("fake-key");
+      expect(new URL(url).searchParams.get("model")).toBe(model);
+      socket.ready();
+      await pending;
+      session.close();
+    }
+  });
   test("model documented, setup first, ready on acknowledgement only; no key in events", async () => {
     const f = fixture();
     const pending = f.session.connect("secret-key");
