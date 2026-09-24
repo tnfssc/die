@@ -1,3 +1,5 @@
+import { LiveHostBridge } from "../live-lab/host-bridge";
+import { registerLiveHost } from "../live-lab/host-access";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { attachDiagnosticSink, diagnosticRecorder, recordDiagnostic } from "../diagnostics";
 import { registerOperationDiagnostics } from "../diagnostics-extension";
@@ -454,6 +456,24 @@ export default function asynchronousTasksExtension(
       );
     return service;
   };
+  let liveHost: LiveHostBridge | undefined;
+  const unregisterLiveHost = registerLiveHost(pi, (ctx) => {
+    if (ctx.sessionManager !== owningContext?.sessionManager) return undefined;
+    if (!liveHost) liveHost = new LiveHostBridge({
+      service: getService(ctx),
+      manager: getManager(ctx),
+      context: ctx,
+      sendUserMessage: (text, options) => pi.sendUserMessage(text, options),
+      confirmStop: (id) => ctx.ui.confirm("Stop job?", `Cancel job ${id}?`),
+    });
+    return liveHost;
+  });
+  pi.on("message_end", (event) => {
+    if (event.message.role !== "assistant") return;
+    const text = event.message.content.filter((part) => part.type === "text").map((part) => part.text).join(" ").slice(0, 2000);
+    if (text) liveHost?.observe({ type: "assistant", text });
+  });
+  pi.on("turn_end", () => { liveHost?.observe({ type: "turn_end" }); });
   projectWisdom = registerProjectWisdom(pi, {
     isRoot: () => subagentDepth === 0,
   });
@@ -614,6 +634,8 @@ export default function asynchronousTasksExtension(
 
   pi.on("session_shutdown", async (_event, ctx) => {
     // Pi emits this before reload/new/resume/fork as well as final quit.
+    liveHost?.close();
+    liveHost = undefined;
     clearInstructionContinuity(ctx.sessionManager as object);
     taskUi?.setStatus("die-tasks", undefined);
     instructionMode.shutdown();
