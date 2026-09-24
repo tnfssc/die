@@ -651,7 +651,8 @@ export class OpenAIRealtimeSession implements VoiceProvider {
             this.interrupt();
           this.interruptedResponse = undefined;
         } else if (m.response.status === "completed") {
-          if (id === this.activeResponse) {
+          // VAD can revoke this response before its late completed event; only the current input may close a turn.
+          if (id === this.activeResponse && !response.cancelled && response.revision === this.inputRevision) {
             ++this.diagnostics.turnCompletions;
             this.emit(() => this.callbacks.onTurnComplete?.(this.turnValue++));
             this.bytes = this.inputChars = this.outputChars = 0;

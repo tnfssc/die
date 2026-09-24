@@ -1349,3 +1349,47 @@ test("real OpenAI Session/Run hands delayed completed speech to configured agent
   expect(t.transcriptEntries.some((e) => e.data.text === "Please check today's weather in Bengaluru.")).toBe(true);
   await t.run("stop");
 });
+
+// Fake GA socket exercises the provider/extension boundary, not just extension callbacks.
+test("OpenAI late completed response cannot finish the new transcript generation", async () => {
+  const listeners = new Map<string, ((event: any) => void)[]>();
+  const socket: RealtimeSocket = {
+    readyState: 1,
+    send: () => {},
+    close: () => {},
+    addEventListener: (name, fn) => listeners.set(name, [...(listeners.get(name) ?? []), fn]),
+  };
+  const event = (message: any) => {
+    for (const fn of listeners.get("message") ?? []) fn({ data: JSON.stringify(message) });
+  };
+  const t = setup({
+    voice: (callbacks, orchestration) =>
+      new OpenAIRealtimeSession(
+        callbacks,
+        () => {
+          queueMicrotask(() => {
+            for (const fn of listeners.get("open") ?? []) fn({});
+            event({ type: "session.updated" });
+          });
+          return socket;
+        },
+        orchestration,
+      ),
+  });
+  await t.run("provider openai");
+  await t.run("start");
+  event({ type: "response.created", response: { id: "old" } });
+  event({ type: "input_audio_buffer.speech_started" });
+  event({ type: "input_audio_buffer.committed", item_id: "new-input" });
+  event({ type: "response.created", response: { id: "new" } });
+  event({ type: "response.output_audio_transcript.delta", response_id: "new", delta: "New answer" });
+  event({ type: "response.done", response: { id: "old", status: "completed" } });
+  expect(t.transcriptEntries.some((e) => e.data.text === "New answer" && e.data.status === "turn-boundary")).toBe(
+    false,
+  );
+  event({ type: "response.done", response: { id: "new", status: "completed" } });
+  expect(
+    t.transcriptEntries.filter((e) => e.data.text === "New answer" && e.data.status === "turn-boundary"),
+  ).toHaveLength(1);
+  await t.run("stop");
+});

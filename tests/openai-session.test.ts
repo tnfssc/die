@@ -315,6 +315,70 @@ describe("GA lifecycle and authority regressions", () => {
       server.stop(true);
     }
   });
+  test("late completed after VAD and new input cannot close the next generation", async () => {
+    const turns: number[] = [];
+    const f = fixture({ onTurnComplete: (turn) => turns.push(turn) });
+    await f.connect();
+    f.socket.message({ type: "input_audio_buffer.committed", item_id: "old-input" });
+    f.socket.message({ type: "response.created", response: { id: "old" } });
+    f.socket.message({ type: "input_audio_buffer.speech_started" });
+    f.socket.message({ type: "input_audio_buffer.committed", item_id: "new-input" });
+    f.socket.message({ type: "response.created", response: { id: "new" } });
+    f.socket.message({ type: "response.done", response: { id: "old", status: "completed" } });
+    expect(turns).toEqual([]);
+    expect(f.session.diagnostics.turnCompletions).toBe(0);
+    expect(f.socket.events.filter((e) => e.type === "response.create")).toHaveLength(0);
+    f.socket.message({ type: "response.done", response: { id: "new", status: "completed" } });
+    f.socket.message({ type: "response.done", response: { id: "old", status: "completed" } });
+    expect(turns).toEqual([0]);
+    expect(f.session.diagnostics.turnCompletions).toBe(1);
+    f.session.close();
+  });
+  test("late completed cleanup keeps accepted tool result but never resumes revoked response", async () => {
+    let resolve!: (value: unknown) => void;
+    const f = fixture(
+      {},
+      {
+        tools: [{ name: "session_context", parametersJsonSchema: { type: "object" } }],
+        userTranscript: () => {},
+        execute: () =>
+          new Promise((r) => {
+            resolve = r;
+          }),
+      },
+    );
+    await f.connect();
+    f.socket.message({ type: "response.created", response: { id: "old" } });
+    f.socket.message({
+      type: "response.function_call_arguments.done",
+      response_id: "old",
+      call_id: "accepted",
+      name: "session_context",
+      arguments: "{}",
+    });
+    await Bun.sleep(0);
+    f.socket.message({ type: "input_audio_buffer.speech_started" });
+    f.socket.message({ type: "response.created", response: { id: "new" } });
+    f.socket.message({ type: "response.done", response: { id: "old", status: "completed" } });
+    resolve("finished");
+    await Bun.sleep(0);
+    expect(f.socket.events.filter((e) => e.item?.call_id === "accepted")).toHaveLength(1);
+    expect(f.socket.events.filter((e) => e.type === "response.create")).toHaveLength(0);
+    f.session.close();
+  });
+  test("completed response invalidated by speech without a successor cannot finish turn", async () => {
+    const turns: number[] = [];
+    const f = fixture({ onTurnComplete: (turn) => turns.push(turn) });
+    await f.connect();
+    f.socket.message({ type: "response.created", response: { id: "old" } });
+    f.socket.message({ type: "input_audio_buffer.speech_started" });
+    f.socket.message({ type: "response.done", response: { id: "old", status: "completed" } });
+    expect(turns).toEqual([]);
+    f.socket.message({ type: "response.created", response: { id: "new" } });
+    f.socket.message({ type: "response.done", response: { id: "new", status: "completed" } });
+    expect(turns).toEqual([0]);
+    f.session.close();
+  });
   test("out-of-order ASR remains displayable but cannot authorize a newer response", async () => {
     const authority: string[] = [],
       display: string[] = [];
