@@ -155,9 +155,9 @@ export async function generateThirdPartyNotices(
   lines.push(
     "=".repeat(78),
     "BUN RUNTIME UPSTREAM LICENSING",
-    "The standalone executable contains the Bun 1.4.1 runtime. Bun's upstream",
+    "The standalone executable contains the Bun 1.4.2 runtime. Bun's upstream",
     "license and linked-library notices are reproduced below.",
-    "Source: https://github.com/oven-sh/bun/tree/bun-v1.4.1",
+    "Source: https://github.com/oven-sh/bun/tree/bun-v1.4.2",
     "",
     bunLicense.trimEnd(),
     "",
