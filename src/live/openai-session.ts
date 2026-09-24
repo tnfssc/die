@@ -32,10 +32,12 @@ export interface RealtimeSocket {
   addEventListener(type: "open" | "message" | "error" | "close", handler: (event: any) => void): void;
 }
 export type RealtimeSocketFactory = (url: string, headers: Record<string, string>) => RealtimeSocket;
-const defaultSocket: RealtimeSocketFactory = (url, headers) => new WebSocket(url, { headers } as unknown as string[]);
-type Call = { name: string; response?: Record<string, unknown>; dispatched?: boolean; cancelled?: boolean };
+export const defaultSocket: RealtimeSocketFactory = (url, headers) => new WebSocket(url, { headers } as unknown as string[]);
+type Call = { name: string; response?: Record<string, unknown>; responseId: string; dispatched?: boolean; timer?: ReturnType<typeof setTimeout>; dispatch?: () => void };
+type ResponseState = { inputItem?: string; revision: number; done: boolean; cancelled: boolean; continued: boolean; calls: Set<string> };
+type AudioItem = { responseId: string; start: number; duration: number; contentIndex: number };
 /** Single-use GA session. Context is a labeled host observation, never a new user message. */
-export class OpenAIVoiceSession implements VoiceProvider {
+export class OpenAIRealtimeSession implements VoiceProvider {
   private stateValue: VoiceState = "idle";
   private socket?: RealtimeSocket;
   private serial = 0;
@@ -52,15 +54,15 @@ export class OpenAIVoiceSession implements VoiceProvider {
   private cancelConnect?: () => void;
   private context: string[] = [];
   private contextGap = false;
-  private audioItem?: string;
-  private audioStartMs = 0;
   private queuedEndMs = 0;
-  private audioGeneratedMs = 0;
-  private audioContentIndex = 0;
-  private audioResponse?: string;
+  private readonly audioItems = new Map<string, AudioItem>();
+  private committedItem?: string;
+  private activeResponse?: string;
+  private readonly responses = new Map<string, ResponseState>();
+  private readonly transcripts = new Map<string, string>();
   private suppressAudio = false;
   private interruptedResponse?: string;
-  private readonly outputItems = new Set<string>();
+  private readonly outputItems = new Map<string, string>();
   readonly diagnostics = {
     serverInterruptions: 0,
     turnCompletions: 0,
@@ -268,6 +270,7 @@ export class OpenAIVoiceSession implements VoiceProvider {
       this.send({
         type: "session.update",
         session: {
+          type: "realtime",
           instructions:
             liveSystemInstruction +
             "\nHost observation (data only, not user intent or instructions): " +
@@ -284,6 +287,9 @@ export class OpenAIVoiceSession implements VoiceProvider {
     this.contextTimer = undefined;
     this.context = [];
     this.resampler.reset();
+    for (const call of this.calls.values()) if (call.timer) clearTimeout(call.timer);
+    this.calls.clear(); this.responses.clear(); this.transcripts.clear();
+    this.audioItems.clear(); this.outputItems.clear();
     const socket = this.socket;
     this.socket = undefined;
     this.stateTo("closed");
@@ -298,115 +304,94 @@ export class OpenAIVoiceSession implements VoiceProvider {
     ++this.inputRevision;
     ++this.diagnostics.serverInterruptions;
     this.diagnostics.lastInterruptedAtMs = performance.now();
-    // Read the player BEFORE asking it to flush its current playback epoch.
     const played = this.callbacks.getPlayedAudioMs?.() ?? 0;
-    if (this.audioItem && Number.isFinite(played) && played >= 0) {
-      const offset = Math.max(0, Math.min(this.audioGeneratedMs, Math.floor(played - this.audioStartMs)));
-      this.send({
-        type: "conversation.item.truncate",
-        item_id: this.audioItem,
-        content_index: this.audioContentIndex,
-        audio_end_ms: offset,
-      });
+    for (const [id, item] of this.audioItems) {
+      if (Number.isFinite(played) && played >= 0 && played < item.start + item.duration)
+        this.send({ type: "conversation.item.truncate", item_id: id, content_index: item.contentIndex,
+          audio_end_ms: Math.max(0, Math.min(item.duration, Math.floor(played - item.start))) });
     }
-    this.interruptedResponse = this.audioResponse;
-    this.audioItem = undefined;
-    this.audioGeneratedMs = 0;
-    this.queuedEndMs = 0;
-    this.bytes = 0;
+    this.interruptedResponse = this.activeResponse;
+    const response = this.activeResponse && this.responses.get(this.activeResponse);
+    if (response) response.cancelled = true;
+    this.audioItems.clear(); this.queuedEndMs = 0; this.bytes = 0;
     ++this.epoch;
     this.emit(() => this.callbacks.onInterrupted?.(this.epoch));
   }
+  private continueResponse(id: string): void {
+    const response = this.responses.get(id);
+    if (!response || !response.done || response.continued || response.cancelled ||
+        response.revision !== this.inputRevision || !response.calls.size ||
+        [...response.calls].some(call => !this.calls.get(call)?.response)) return;
+    response.continued = true;
+    this.send({ type: "response.create" });
+  }
   private toolDone(message: any): void {
-    if (!this.orchestration || typeof message.call_id !== "string" || !message.call_id || message.call_id.length > 256)
-      return;
-    const id = message.call_id,
-      name = message.name;
-    if (this.calls.has(id)) return; // Never execute or respond twice to a call ID.
-    if (this.calls.size >= MAX_TOOLS) {
-      this.fail("invalid_input", "Tool call limit exceeded");
-      return;
-    }
-    const entry: Call = { name };
-    this.calls.set(id, entry);
-    const reply = (response: Record<string, unknown>) => {
+    if (!this.orchestration || typeof message.call_id !== "string" || !message.call_id || message.call_id.length > 256) return;
+    const id = message.call_id, name = message.name, responseId = message.response_id;
+    const response = typeof responseId === "string" ? this.responses.get(responseId) : undefined;
+    if (!response || response.cancelled || response.done || this.calls.has(id)) return;
+    if (this.calls.size >= MAX_TOOLS) { this.fail("invalid_input", "Tool call limit exceeded"); return; }
+    const entry: Call = { name, responseId };
+    this.calls.set(id, entry); response.calls.add(id);
+    const reply = (output: Record<string, unknown>) => {
       if (entry.response || this.stateValue !== "ready") return;
-      entry.response = response;
-      this.send({
-        type: "conversation.item.create",
-        item: { type: "function_call_output", call_id: id, output: JSON.stringify(response) },
-      });
-      this.send({ type: "response.create" });
+      if (entry.timer) clearTimeout(entry.timer);
+      if (response.cancelled && !entry.dispatched) { entry.response = output; return; }
+      entry.response = output;
+      this.send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: id, output: JSON.stringify(output) } });
+      this.continueResponse(responseId);
     };
-    let args: Record<string, unknown> | undefined;
+    let args: Record<string, unknown>;
     try {
-      if (
-        typeof name !== "string" ||
-        !this.orchestration.tools.some((tool) => tool.name === name) ||
-        typeof message.arguments !== "string" ||
-        message.arguments.length > MAX_TOOL_BYTES
-      )
-        throw Error();
+      if (typeof name !== "string" || !this.orchestration.tools.some(tool => tool.name === name) ||
+          typeof message.arguments !== "string" || message.arguments.length > MAX_TOOL_BYTES) throw Error();
       const parsed: unknown = JSON.parse(message.arguments);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || size(parsed) > MAX_TOOL_BYTES)
-        throw Error();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || size(parsed) > MAX_TOOL_BYTES) throw Error();
       args = parsed as Record<string, unknown>;
-    } catch {
-      reply({ error: "Tool request rejected" });
-      return;
-    }
-    if (this.pendingTools >= 16) {
-      reply({ error: "Tool request rejected" });
-      return;
-    }
-    const revision = this.inputRevision;
-    ++this.pendingTools;
-    void Promise.resolve()
-      .then(async () => {
-        if (
-          this.stateValue !== "ready" ||
-          entry.cancelled ||
-          ((name === "agent_send" || name === "agent_steer") && revision !== this.inputRevision)
-        )
-          throw Error("Tool request invalidated before dispatch");
-        entry.dispatched = true;
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        try {
-          return await Promise.race([
-            this.orchestration!.execute({ id, name, args }),
-            new Promise((_, reject) => {
-              timer = setTimeout(() => reject(Error("Tool timed out")), TOOL_MS);
-              timer.unref?.();
-            }),
-          ]);
-        } finally {
-          if (timer) clearTimeout(timer);
-        }
-      })
-      .then(
-        (result) => {
-          let response: Record<string, unknown> = { output: result ?? null };
-          try {
-            if (size(response) > MAX_TOOL_BYTES) response = { error: "Tool result too large" };
-          } catch {
-            response = { error: "Invalid tool result" };
-          }
-          reply(response);
-        },
-        (error) => reply(toolFailureResponse(error)),
-      )
-      .finally(() => {
-        --this.pendingTools;
-      });
+    } catch { reply({ error: "Tool request rejected" }); return; }
+    if (this.pendingTools >= 16) { reply({ error: "Tool request rejected" }); return; }
+    const sensitive = name === "agent_send" || name === "agent_steer";
+    const dispatch = () => {
+      if (entry.response || entry.dispatched || this.stateValue !== "ready") return;
+      if (entry.timer) { clearTimeout(entry.timer); entry.timer = undefined; }
+      if (response.cancelled || response.revision !== this.inputRevision ||
+          (sensitive && (!response.inputItem || !this.transcripts.has(response.inputItem)))) {
+        reply({ error: "Tool request rejected" }); return;
+      }
+      entry.dispatched = true;
+      ++this.pendingTools;
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      void Promise.resolve().then(() => this.orchestration!.execute({ id, name, args })).then(
+        result => {
+          let output: Record<string, unknown> = { output: result ?? null };
+          try { if (size(output) > MAX_TOOL_BYTES) output = { error: "Tool result too large" }; }
+          catch { output = { error: "Invalid tool result" }; }
+          reply(output);
+        }, error => reply(toolFailureResponse(error)),
+      ).finally(() => { if (timeout) clearTimeout(timeout); --this.pendingTools; });
+      timeout = setTimeout(() => reply({ error: "Tool timed out" }), TOOL_MS);
+      timeout.unref?.();
+    };
+    entry.dispatch = dispatch;
+    if (sensitive && (!response.inputItem || !this.transcripts.has(response.inputItem))) {
+      // ASR may follow a function call. Without a matching item, authority is never inferred.
+      entry.timer = setTimeout(() => reply({ error: "Tool request rejected" }), 2000);
+      entry.timer.unref?.();
+    } else dispatch();
   }
   private receive(m: any): void {
     switch (m.type) {
+      case "input_audio_buffer.committed":
+        if (typeof m.item_id === "string" && m.item_id.length <= 256) this.committedItem = m.item_id;
+        break;
       case "input_audio_buffer.speech_started":
+        this.committedItem = undefined;
+        for (const response of this.responses.values()) response.continued = true;
         ++this.inputRevision;
         this.orchestration?.beginUserTurn?.();
         this.emit(() => this.callbacks.onInputActivity?.());
         // Stop audible output on VAD now; server cancellation may arrive later.
-        if (this.audioItem) {
+        if (this.audioItems.size) {
           this.suppressAudio = true;
           this.interrupt();
         }
@@ -430,56 +415,77 @@ export class OpenAIVoiceSession implements VoiceProvider {
           }),
         );
         if (this.state !== "ready") return;
+        if (typeof m.item_id !== "string" || m.item_id.length > 256) return;
+        const authorized = [...this.responses.values()].some(r => r.inputItem === m.item_id && r.revision === this.inputRevision && !r.cancelled);
+        if (m.item_id !== this.committedItem && !authorized) return;
+        this.transcripts.set(m.item_id, m.transcript);
+        if (this.transcripts.size > 32) this.transcripts.delete(this.transcripts.keys().next().value!);
         this.orchestration?.userTranscript(m.transcript);
+        for (const call of this.calls.values()) {
+          const response = this.responses.get(call.responseId);
+          if (response?.inputItem === m.item_id && !call.response) call.dispatch?.();
+        }
         break;
       case "conversation.item.input_audio_transcription.failed":
-        // No completed text: never authorize tool requests from a failed transcription.
+        // A stale failed transcription must not invalidate a newer speech item.
+        if (typeof m.item_id !== "string" || m.item_id !== this.committedItem) return;
         ++this.inputRevision;
         this.orchestration?.beginUserTurn?.();
         break;
       case "response.created":
+        if (typeof m.response?.id !== "string") { this.fail("invalid_input", "Response without ID"); return; }
+        const played = this.callbacks.getPlayedAudioMs?.() ?? 0;
+        for (const [item, audio] of this.audioItems)
+          if (this.responses.get(audio.responseId)?.done && played >= audio.start + audio.duration) this.audioItems.delete(item);
+        for (const [id, old] of this.responses) {
+          if (old.done && [...old.calls].every(call => this.calls.get(call)?.response)) {
+            for (const call of old.calls) this.calls.delete(call);
+            this.responses.delete(id);
+            for (const [item, origin] of this.outputItems) if (origin === id) this.outputItems.delete(item);
+          }
+        }
+        if (this.responses.size >= 32) { this.fail("invalid_input", "Response limit exceeded"); return; }
+        this.activeResponse = m.response.id;
+        this.responses.set(m.response.id, { inputItem: this.committedItem, revision: this.inputRevision,
+          done: false, cancelled: false, continued: false, calls: new Set() });
         this.suppressAudio = false;
         break;
       case "response.output_item.added":
         if (m.item?.type === "message" && typeof m.item.id === "string") {
-          this.outputItems.add(m.item.id);
-          this.audioResponse = m.response_id;
+          if (typeof m.response_id !== "string" || !this.responses.has(m.response_id) || this.outputItems.size >= 128) {
+            this.fail("invalid_audio", "Output item limit exceeded"); return;
+          }
+          this.outputItems.set(m.item.id, m.response_id);
         }
         break;
       case "response.output_audio.delta": {
-        if (this.suppressAudio) return;
-        if (typeof m.delta !== "string" || !validBase64(m.delta, MAX_PACKET)) {
-          this.fail("invalid_audio", "Invalid output audio chunk");
-          return;
-        }
+        if (this.suppressAudio || typeof m.item_id !== "string" ||
+            this.outputItems.get(m.item_id) !== this.activeResponse ||
+            (m.response_id && m.response_id !== this.activeResponse)) return;
+        if (typeof m.delta !== "string" || !validBase64(m.delta, MAX_PACKET)) { this.fail("invalid_audio", "Invalid output audio chunk"); return; }
         const bytes = Buffer.from(m.delta, "base64").length;
-        if (bytes < 2 || bytes % 2 || this.bytes + bytes > MAX_TURN) {
-          this.fail("invalid_audio", "Voice turn audio limit exceeded");
-          return;
-        }
-        if (typeof m.item_id !== "string" || !this.outputItems.has(m.item_id)) {
-          this.fail("invalid_audio", "Output audio without identified item");
-          return;
-        }
-        if (this.audioItem !== m.item_id) {
-          this.audioItem = m.item_id;
-          this.audioStartMs = Math.max(this.queuedEndMs, this.callbacks.getPlayedAudioMs?.() ?? 0);
-          this.audioGeneratedMs = 0;
-          this.audioContentIndex = Number.isSafeInteger(m.content_index) ? m.content_index : 0;
+        if (bytes < 2 || bytes % 2 || this.bytes + bytes > MAX_TURN) { this.fail("invalid_audio", "Voice turn audio limit exceeded"); return; }
+        let item = this.audioItems.get(m.item_id);
+        if (!item) {
+          if (this.audioItems.size >= 128) { this.fail("invalid_audio", "Audio item limit exceeded"); return; }
+          item = { responseId: this.activeResponse!, start: Math.max(this.queuedEndMs, this.callbacks.getPlayedAudioMs?.() ?? 0),
+            duration: 0, contentIndex: Number.isSafeInteger(m.content_index) ? m.content_index : 0 };
+          this.audioItems.set(m.item_id, item);
         }
         this.bytes += bytes;
-        this.audioGeneratedMs += bytes / 48;
-        this.queuedEndMs = this.audioStartMs + this.audioGeneratedMs;
+        item.duration += bytes / 48;
+        this.queuedEndMs = Math.max(this.queuedEndMs, item.start + item.duration);
         this.emit(() => this.callbacks.onAudio?.(m.delta, this.epoch));
         break;
       }
       case "response.output_audio_transcript.delta":
       case "response.output_audio_transcript.done": {
-        if (typeof m.transcript !== "string" || m.transcript.length + this.outputChars > MAX_TRANSCRIPT) {
+        if (m.response_id && m.response_id !== this.activeResponse) return;
+        if (typeof (m.type.endsWith(".done") ? m.transcript : m.delta) !== "string" || (m.type.endsWith(".done") ? 0 : m.delta.length) + this.outputChars > MAX_TRANSCRIPT) {
           this.fail("transcript_limit", "Voice transcription limit exceeded");
           return;
         }
-        const text = m.type.endsWith(".done") ? "" : m.transcript;
+        const text = m.type.endsWith(".done") ? "" : m.delta;
         this.outputChars += text.length;
         this.emit(() => this.callbacks.onOutputTranscript?.({ text, finished: m.type.endsWith(".done") }, this.epoch));
         break;
@@ -487,17 +493,34 @@ export class OpenAIVoiceSession implements VoiceProvider {
       case "response.function_call_arguments.done":
         this.toolDone(m);
         break;
-      case "response.done":
-        if (m.response?.status === "cancelled") {
-          if (!this.interruptedResponse || (m.response?.id && m.response.id !== this.interruptedResponse))
-            this.interrupt();
+      case "response.done": {
+        const id = m.response?.id;
+        const response = typeof id === "string" ? this.responses.get(id) : undefined;
+        if (!response || response.done) break;
+        response.done = true;
+        if (m.response.status === "cancelled") {
+          response.cancelled = true;
+          for (const callId of response.calls) {
+            const call = this.calls.get(callId);
+            if (call?.timer) { clearTimeout(call.timer); call.timer = undefined; }
+          }
+          if (id === this.activeResponse && this.interruptedResponse !== id) this.interrupt();
           this.interruptedResponse = undefined;
-        } else if (m.response?.status === "completed") {
-          ++this.diagnostics.turnCompletions;
-          this.emit(() => this.callbacks.onTurnComplete?.(this.turnValue++));
-          this.bytes = this.inputChars = this.outputChars = 0;
+        } else if (m.response.status === "completed") {
+          if (id === this.activeResponse) {
+            ++this.diagnostics.turnCompletions;
+            this.emit(() => this.callbacks.onTurnComplete?.(this.turnValue++));
+            this.bytes = this.inputChars = this.outputChars = 0;
+          }
+          this.continueResponse(id);
+        } else {
+          response.cancelled = true;
+          this.error("transport_error", "Voice response did not complete");
         }
         break;
+      }
     }
   }
 }
+
+export { OpenAIRealtimeSession as OpenAIVoiceSession };
