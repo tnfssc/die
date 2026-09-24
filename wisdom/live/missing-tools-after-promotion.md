@@ -1,5 +1,12 @@
 # Live says it has no tools
 
+Current state: one confirmed tool-chain timing defect is fixed in0b09305.
+A completed request survives model turns, but remains exact-match, single-use,
+latest-only and valid for60s. New input/interruption/stop revoke it. Real
+Google -> configured-agent read-only handoff passed, including after a model
+turn boundary. Natural spoken handoff is NOT fully proven; see speech limits
+below. Installation and checks are recorded at the end.
+
 User on installed promoted Live reports Gemini said it had no tools or ability
 to do things. Do not dismiss this because declarations exist in source. Need
 actual session host binding and SDK setup evidence. Current main workspace:
@@ -196,3 +203,41 @@ No device/provider calls or CLI installation/release by worker. Parent must
 repeat exact real-provider CLI chain before installation; this does not prove
 real speech end-to-end. Values unchanged: existing real-path evidence, bounded
 state and truthful-limits principles apply.
+
+## Candidate real-provider recheck
+
+Integrated worker0d1982e as0b09305. Actual Run/Session regression verifies
+jobs_list -> multiple model turns -> exact handoff once. Parent146 Live tests
+passed with1 opt-in provider skip; typecheck passed. New status-only test also
+passed: /live status reports provider-marked completed input transcript count,
+without storing/logging words. This distinguishes tools-present from absent
+completion markers in a future real spoken trial.
+
+Candidate first natural text-driven chain passed both jobs_list and agent_send,
+but Gemini chose both before model turnComplete; do not use that run alone to
+claim the boundary fixed. Parent then forced a second SDK text phase only AFTER
+the first model turn completed, without refreshing the original fixed grant.
+Structural trace task_38eea84e: jobs_list success -> voice_turn_complete ->
+handoff_requested_after_model_turn -> exact agent_send success -> real
+configured openai-codex/gpt-6-astra agent -> execute -> verified README first
+line -> agent end. This uses installed CLI host plus candidate source
+VoiceSession/orchestration in an explicit probe extension; typed request grant
+was deliberately seeded, not speech-recognized. Actual production Run callback
+is separately tested. No user files/jobs were modified or cancelled.
+
+Native audio code, VAD and provider transport unchanged. No finished-marker or
+exact-text weakening. Typecheck, fresh embedded-helper build and self-test
+passed (task_fdeb0372). Final four-file regression + install/installed self-test
+runs as task_88c870e4. Local version remains0.9.1, no publish/tag/push.
+
+Next: user should restart die, try “List my current jobs,” then a harmless
+coding handoff, and paste /live status before stopping if it fails. New status
+includes agent binding, configured tool count and completed input transcripts.
+If real automatic-VAD input never produces finished markers, investigate that
+specific actual stream; manual-activity synthetic rejection alone does not
+justify treating unknown completion as true or trusting model paraphrases.
+
+All probes used explicit user cost consent. Temporary synthetic speech/CLI
+fixtures are disposable and will be removed after recording final results.
+Existing speech-probe worktree commit a64f3a8 retains detailed inconclusive
+results; branch paths above are durable. No microphone audio recorded.

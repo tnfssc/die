@@ -87,6 +87,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     readonly playback: PlaybackScheduler;
     generation = 0;
     inputFrames = 0;
+    completedInputTranscripts = 0;
     outputBytes = 0;
     turns = 0;
     queuedMs = 0;
@@ -277,6 +278,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               if (!this.inputUtterance && t.text) this.orchestration?.beginUserTurn?.();
               this.inputUtterance = (this.inputUtterance + t.text).slice(0, 4001);
               if (t.finished) {
+                this.completedInputTranscripts++;
                 this.orchestration?.userTranscript(this.inputUtterance);
                 this.inputUtterance = "";
               }
@@ -359,6 +361,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 (current.host ? "connected" : "unavailable") +
                 " · tools configured " +
                 (current.orchestration?.tools.length ?? 0) +
+                " · completed input transcripts " +
+                current.completedInputTranscripts +
                 " · native VP " +
                 (current.audio?.diagnostics.ready
                   ? (current.audio.diagnostics.ready.voiceProcessingEnabled ? "enabled" : "disabled") +

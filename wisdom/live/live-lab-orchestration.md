@@ -57,3 +57,15 @@ Runtime trace: src/cli.ts registers die-tools before die-live. Pi's DefaultResou
 Updated tests/live-host-access.test.ts uses exported createEventBus from the installed pinned SDK, distinct API wrappers, unavailable-before-start / wrong-owner / unavailable-after-shutdown checks, all six declarations, and existing real bridge/VoiceSession dispatch coverage. No production boundary change justified. Missing host still currently warns then permits audio-only running in src/live/extension.ts; that is not proof of healthy orchestration and remains a separate status/product-boundary concern for the parent task. Provider declaration acceptance remains unproven here.
 
 Validation: frozen worktree dependencies and prepare:assets; host access + bridge tests (8 tests, 51 assertions); bun run check. No devices, provider calls, application installs/releases, credential reads, or user jobs. Values unchanged: evidence honesty, existing authority, and truthful status already cover this investigation.
+
+## Model turns are not user-request boundaries
+
+The earlier rule expiring unused speech at every model turnComplete was wrong
+for NON_BLOCKING tool chains. Real Google/installed-host probing showed a
+successful jobs_list followed by model completion, then an exact authorized
+agent_send rejected because the grant had already been cleared. Current code
+keeps the latest completed exact request once for60s; fresh input, interruption
+and stop revoke it. See [measured failure and fix](missing-tools-after-promotion.md).
+This does not settle the separate missing-finished-marker/paraphrase behavior
+seen in manual-activity synthetic speech. Native automatic input still needs
+real spoken acceptance. Tool source now lives in src/live.

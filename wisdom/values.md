@@ -22,9 +22,9 @@ From: [execution ownership](t3/t3-thread-execution-research.md), [continuation o
 
 ## 4. Make stopped work safe to pick up
 
-Work crosses process or network? Keep same ID through retries. Save what must happen before doing it. Retry must not do it twice. Accepted, running, done, delivered, and acknowledged are not same thing. Unsure what happened? Look before trying again. Save state where recovery needs it. No need do this for every small local step.
+Work crosses process or network? Keep same ID through retries. Save what must happen before doing it. Retry must not do it twice. Accepted, running, done, delivered, and acknowledged are not same thing. Many steps? One step ending does not end the whole request. Clear state only at the right boundary. Unsure what happened? Look before trying again. Save state where recovery needs it. No need do this for every small local step.
 
-From: [production requirements](t3/t3-v2-production-requirements.md), [replay and acknowledgment review](t3/t3-v2-production-backend-review-fixes.md), [worktree lifecycle](worktrees/worktree-cli-lifecycle-investigation.md).
+From: [production requirements](t3/t3-v2-production-requirements.md), [replay and acknowledgment review](t3/t3-v2-production-backend-review-fixes.md), [worktree lifecycle](worktrees/worktree-cli-lifecycle-investigation.md), [Live tool turns](live/missing-tools-after-promotion.md).
 
 ## 5. Keep use bounded. No quiet loss.
 

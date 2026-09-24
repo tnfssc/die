@@ -283,6 +283,17 @@ describe("Live voice", () => {
     expect(t.notices.at(-1)).toContain("agent connected · tools configured 6");
     await t.run("stop");
   });
+  test("status distinguishes partial transcription from provider-marked completion", async () => {
+    const t = setup();
+    await t.run("start");
+    t.voice.onInputTranscript?.({ text: "synthetic request" });
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("completed input transcripts 0");
+    t.voice.onInputTranscript?.({ text: "", finished: true });
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("completed input transcripts 1");
+    await t.run("stop");
+  });
   test("status exposes missing agent tools instead of presenting voice as fully connected", async () => {
     const t = setup(); // No host supplied by this fixture.
     await t.run("start");
