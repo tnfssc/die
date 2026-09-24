@@ -42,3 +42,14 @@ describe("Live footer waveform", () => {
     expect(wave.tick(true, 4600)).toBe(renderWave(0));
   });
 });
+
+test("ordinary speech moves, quiet scheduled frames lower output, and old mic peaks do not return", () => {
+  expect(new Set([0, 1, 2, 3, 4].map((p) => renderWave(0.12, p))).size).toBeGreaterThan(1);
+  const wave = new LiveWaveform();
+  wave.capture(pcm(28000));
+  wave.scheduled(pcm(25000), 0, 80);
+  wave.tick(true, 0);
+  wave.scheduled(pcm(0), 80, 80);
+  for (let i = 1; i < 30; i++) wave.tick(true, i * 80);
+  expect(wave.tick(false, 2500)).toBe(renderWave(0));
+});

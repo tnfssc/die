@@ -17,6 +17,7 @@ import {
   renderCompactFooter as renderSingleRowFooter,
   renderDetailedFooter,
 } from "../src/ui/footer";
+import { renderWave } from "../src/live/waveform";
 import { CacheCountdown } from "../src/tasks/cache-countdown";
 
 const theme = { fg: (color: string, text: string) => `\x1b[${color === "accent" ? 36 : 90}m${text}\x1b[0m` } as Theme;
@@ -49,14 +50,25 @@ function fixture() {
 describe("compact extension footer", () => {
   test("Live reactive line stays in existing compact status row", () => {
     const { ctx, data, statuses } = fixture();
-    statuses.set("die-live", "live ──━━──");
+    const voice = "Live speaking  " + renderWave(0.12, 2);
+    statuses.set("die-live", voice);
     for (const width of [60, 90, 140]) {
       const lines = plain(renderSingleRowFooter(ctx, data, theme, width));
       expect(lines).toHaveLength(1);
-      expect(lines[0]).toContain("live ──━━──");
+      expect(lines[0]).toContain(voice.replace(/ +/g, " "));
       expect(lines[0]).not.toContain("+1 status");
       expect(visibleWidth(lines[0]!)).toBeLessThanOrEqual(width);
     }
+  });
+  test("braille animation stays one row and within narrow terminal widths", () => {
+    const { ctx, data, statuses } = fixture();
+    for (const width of [1, 10, 24, 40, 60, 90])
+      for (let phase = 0; phase < 8; phase++) {
+        statuses.set("die-live", "Live speaking  " + renderWave(0.2, phase));
+        const lines = renderSingleRowFooter(ctx, data, theme, width);
+        expect(lines).toHaveLength(1);
+        expect(visibleWidth(lines[0]!)).toBeLessThanOrEqual(width);
+      }
   });
   test("/status toggles details without replacing the editor or changing the draft", async () => {
     const { ctx, data } = fixture();

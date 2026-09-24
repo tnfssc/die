@@ -16,11 +16,12 @@ export function pcmLevel(pcm: Buffer): number {
 
 /** Pure fixed-width braille renderer. 0 is quiet; phase only moves when there is signal. */
 export function renderWave(level: number, phase = 0): string {
-  const strength = Number.isFinite(level) ? Math.max(0, Math.min(1, level)) : 0;
+  const raw = Number.isFinite(level) ? Math.max(0, Math.min(1, level)) : 0;
+  const strength = raw < 0.015 ? 0 : Math.min(1, Math.sqrt(raw) * 1.4);
   if (strength < 0.015) return "⠐".repeat(WAVE_CELLS);
   let result = "";
   for (let i = 0; i < WAVE_CELLS; i++) {
-    const shape = 0.62 + 0.38 * Math.abs(Math.sin(i * 0.92 + phase * 0.37));
+    const shape = 0.2 + 0.8 * Math.abs(Math.sin(i * 0.65 - phase * 0.45));
     const height = Math.max(1, Math.min(4, Math.ceil(strength * shape * 4)));
     // Braille rows are numbered 1,2,3,7 and 4,5,6,8 on left/right.
     const masks = [0, 0x12, 0x36, 0x77, 0xff];
@@ -39,7 +40,7 @@ export class LiveWaveform {
     this.mic = Math.max(this.mic, pcmLevel(pcm));
   }
   scheduled(pcm: Buffer, now: number, queuedMs: number) {
-    this.output = Math.max(this.output, pcmLevel(pcm));
+    this.output = pcmLevel(pcm);
     this.outputUntil = Math.max(this.outputUntil, now + Math.max(100, Number.isFinite(queuedMs) ? queuedMs : 0));
   }
   /** Extend only while native reports queued audio; this is an estimate, not an audible ACK. */
@@ -57,7 +58,7 @@ export class LiveWaveform {
     this.shown += (target - this.shown) * (target > this.shown ? 0.8 : 0.36);
     if (this.shown < 0.012) this.shown = 0;
     if (this.shown > 0.015) this.phase++;
-    if (!speaking) this.mic = 0;
+    this.mic = 0; // Do not replay stale mic peaks after an assistant reply.
     if (now > this.outputUntil) this.output = 0;
     return renderWave(this.shown, this.phase);
   }
