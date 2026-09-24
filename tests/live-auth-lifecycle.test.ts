@@ -200,3 +200,34 @@ test("cancelled credential inspection and factory calls fail before resolving ke
   await expect(service.loadKey(controller.signal)).rejects.toThrow();
   await expect(createDefaultLiveCredentialService(controller.signal)).rejects.toThrow();
 });
+
+test("OpenAI Live uses only canonical openai API key, never codex OAuth or Google's key", async () => {
+  const { dir, runtime, credentials } = await fixture({
+    "openai-codex": { type: "oauth", refresh: "fake-refresh", access: "fake-access", expires: Date.now() + 100000 },
+    google: { type: "api_key", key: "fake-google-only" },
+  });
+  const live = createLiveCredentialService(runtime, credentials, "openai");
+  expect(await live.status()).toEqual({ state: "missing", canImport: true });
+  await expect(live.loadKey()).rejects.toThrow("OpenAI API key");
+  expect(await live.importLiveEnv(join(dir, "missing.env"))).toEqual({
+    imported: false,
+    status: { state: "missing", canImport: true },
+  });
+  await storeKey(runtime, "openai", "fake-openai-api-key");
+  expect(await live.status()).toEqual({ state: "stored_api_key", canImport: false });
+  expect(await live.loadKey()).toBe("fake-openai-api-key");
+  expect((await credentials.read("openai-codex"))?.type).toBe("oauth");
+});
+
+test("OpenAI OAuth is refused without exposing its access token", async () => {
+  const { runtime, credentials } = await fixture({
+    openai: { type: "oauth", refresh: "fake-refresh", access: "fake-secret-access", expires: Date.now() + 100000 },
+  });
+  const live = createLiveCredentialService(runtime, credentials, "openai");
+  expect(await live.status()).toEqual({ state: "oauth", canImport: false });
+  await expect(live.loadKey()).rejects.toThrow("OpenAI API key");
+  expect(await live.importLiveEnv("missing.env")).toEqual({
+    imported: false,
+    status: { state: "oauth", canImport: false },
+  });
+});

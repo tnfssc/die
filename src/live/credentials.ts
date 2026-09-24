@@ -8,6 +8,8 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { AuthStorage } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js";
 
 const GOOGLE_PROVIDER = "google";
+const OPENAI_PROVIDER = "openai";
+export type LiveProviderId = "google" | "openai";
 
 export const liveCredentialsPath = () => join(homedir(), ".die", "live.env");
 
@@ -70,8 +72,8 @@ export interface LiveCredentialService {
   importLiveEnv(path?: string, signal?: AbortSignal): Promise<LiveCredentialImportResult>;
 }
 
-function storedGoogle(credentials: readonly CredentialInfo[]): CredentialInfo | undefined {
-  return credentials.find((credential) => credential.providerId === GOOGLE_PROVIDER);
+function storedProvider(credentials: readonly CredentialInfo[], provider: LiveProviderId): CredentialInfo | undefined {
+  return credentials.find((credential) => credential.providerId === provider);
 }
 
 /**
@@ -81,17 +83,21 @@ function storedGoogle(credentials: readonly CredentialInfo[]): CredentialInfo | 
 export function createLiveCredentialService(
   runtime: LiveCredentialRuntime,
   credentials: CredentialStore,
+  provider: LiveProviderId = "google",
 ): LiveCredentialService {
   const status = async (signal?: AbortSignal): Promise<LiveCredentialStatus> => {
     signal?.throwIfAborted();
-    const stored = storedGoogle(await runtime.listCredentials({ signal }));
+    const stored = storedProvider(await runtime.listCredentials({ signal }), provider);
     if (stored) {
       return stored.type === "api_key"
         ? { state: "stored_api_key", canImport: false }
         : { state: "oauth", canImport: false };
     }
 
-    const configured = await runtime.checkAuth(GOOGLE_PROVIDER, { signal });
+    // OpenAI Live accepts only the canonical stored openai API key, not ambient
+    // credentials, the distinct openai-codex OAuth provider, or subscriptions.
+    if (provider === OPENAI_PROVIDER) return { state: "missing", canImport: true };
+    const configured = await runtime.checkAuth(provider, { signal });
     if (!configured) return { state: "missing", canImport: true };
     return configured.type === "api_key"
       ? { state: "configured_api_key", canImport: false }
@@ -103,19 +109,24 @@ export function createLiveCredentialService(
     async loadKey(signal?: AbortSignal): Promise<string> {
       const current = await status(signal);
       if (current.state === "oauth") {
-        throw new Error("Live requires a Google API key; OAuth credentials cannot be used.");
+        throw new Error(
+          `Live requires a ${provider === "google" ? "Google" : "OpenAI"} API key; OAuth credentials cannot be used.`,
+        );
       }
-      const result = await runtime.getAuth(GOOGLE_PROVIDER, { signal });
+      if (provider === OPENAI_PROVIDER && current.state !== "stored_api_key") {
+        throw new Error("Live requires a configured OpenAI API key in canonical auth storage.");
+      }
+      const result = await runtime.getAuth(provider, { signal });
       const key = result?.auth.apiKey;
       if (typeof key !== "string" || key.length === 0) {
-        throw new Error("Live requires a configured Google API key.");
+        throw new Error(`Live requires a configured ${provider === "google" ? "Google" : "OpenAI"} API key.`);
       }
       return key;
     },
     async importLiveEnv(path = liveCredentialsPath(), signal?: AbortSignal): Promise<LiveCredentialImportResult> {
       signal?.throwIfAborted();
       let current = await status(signal);
-      if (!current.canImport) return { imported: false, status: current };
+      if (provider !== "google" || !current.canImport) return { imported: false, status: current };
 
       // Reading is deliberately after the guard: an existing provider credential means the
       // migration file is not touched at all.
@@ -143,7 +154,10 @@ export function createLiveCredentialService(
 }
 
 /** Lazy call-site factory: same canonical auth.json, stock Google provider, no catalogue/network refresh. */
-export async function createDefaultLiveCredentialService(signal?: AbortSignal): Promise<LiveCredentialService> {
+export async function createDefaultLiveCredentialService(
+  signal?: AbortSignal,
+  provider: LiveProviderId = "google",
+): Promise<LiveCredentialService> {
   signal?.throwIfAborted();
   const credentials = AuthStorage.create(
     join(process.env.DIE_CODING_AGENT_DIR ?? join(homedir(), ".die", "agent"), "auth.json"),
@@ -155,5 +169,5 @@ export async function createDefaultLiveCredentialService(signal?: AbortSignal): 
     allowModelNetwork: false,
     signal,
   });
-  return createLiveCredentialService(runtime, credentials);
+  return createLiveCredentialService(runtime, credentials, provider);
 }

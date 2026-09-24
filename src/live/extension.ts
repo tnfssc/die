@@ -1,6 +1,8 @@
 import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { createDefaultLiveCredentialService, type LiveCredentialService } from "./credentials";
+import { createDefaultLiveCredentialService, type LiveCredentialService, type LiveProviderId } from "./credentials";
+import { LIVE_PROVIDERS } from "./providers";
+import { OpenAIRealtimeSession } from "./openai-session";
 import { liveLocalOnly } from "./status";
 import { runLiveSetup } from "./setup";
 import { LiveAudio, type AudioCallbacks, type AudioSetupError } from "./audio";
@@ -11,7 +13,7 @@ import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
 import { PlaybackScheduler } from "./playback";
 import { LiveWaveform } from "./waveform";
 import { TranscriptLog, VOICE_ENTRY } from "./transcript";
-import { VOICE_MODEL, type VoiceCallbacks, type VoiceOrchestration } from "./types";
+import { type VoiceCallbacks, type VoiceOrchestration } from "./types";
 
 const ID = "die-live";
 const MAX_VISIBLE = 8;
@@ -25,11 +27,12 @@ export interface LiveDependencies {
   local(mode: string): boolean;
   /** Local-only bounded test; result is a sanitized human-readable summary, never PCM. */
   speakerCheck(args: { audio: LiveDependencies["audio"]; signal: AbortSignal }): Promise<string>;
-  key(signal: AbortSignal): Promise<string>;
-  credentials(signal: AbortSignal): Promise<LiveCredentialService>;
+  key(signal: AbortSignal, provider?: LiveProviderId): Promise<string>;
+  credentials(signal: AbortSignal, provider?: LiveProviderId): Promise<LiveCredentialService>;
   voice(
     callbacks: VoiceCallbacks,
     orchestration?: VoiceOrchestration,
+    provider?: LiveProviderId,
   ): Pick<VoiceSession, "connect" | "sendAudio" | "close" | "state" | "generation"> &
     Partial<Pick<VoiceSession, "sendContext" | "diagnostics">>;
   host(pi: ExtensionAPI, ctx: ExtensionContext): VoiceHost | undefined;
@@ -48,8 +51,12 @@ const defaults: LiveDependencies = {
     (process.platform === "darwin" || process.platform === "linux") &&
     liveLocalOnly(mode, process.env, Boolean(process.stdin.isTTY && process.stdout.isTTY)),
   credentials: createDefaultLiveCredentialService,
-  key: async (signal) => (await createDefaultLiveCredentialService(signal)).loadKey(signal),
-  voice: (callbacks, orchestration) => new VoiceSession(callbacks, undefined, orchestration),
+  key: async (signal, provider = "google") =>
+    (await createDefaultLiveCredentialService(signal, provider)).loadKey(signal),
+  voice: (callbacks, orchestration, provider = "google") =>
+    provider === "openai"
+      ? new OpenAIRealtimeSession(callbacks, undefined, orchestration)
+      : new VoiceSession(callbacks, undefined, orchestration),
   host: getLiveHost,
   audio: (callbacks, signal) => LiveAudio.launch({ callbacks, signal }),
 };
@@ -60,6 +67,7 @@ type NativeVoice = ReturnType<LiveDependencies["voice"]>;
 /** Native full-duplex voice; configured agent work has an independent lifecycle. */
 export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDependencies> = {}): void {
   const deps = { ...defaults, ...injected };
+  let selectedProvider: LiveProviderId = "google";
   let current: Run | undefined;
   let sequence = 0;
   let confirmation: number | undefined;
@@ -68,6 +76,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
   let speakerProbe: AbortController | undefined;
   class Run {
     readonly id = ++sequence;
+    readonly provider = selectedProvider;
     readonly controller = new AbortController();
     voice?: NativeVoice;
     orchestration?: VoiceOrchestration;
@@ -268,6 +277,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         this.voice = deps.voice(
           {
             onAudio: (pcm, epoch) => this.output(pcm, epoch),
+            getPlayedAudioMs: () => this.playback.playedMs,
             onInterrupted: (epoch) => this.interrupt(epoch),
             onTurnComplete: () => {
               if (this.alive) {
@@ -310,6 +320,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             onError: (e) => this.fail("Provider " + e.code),
           },
           this.orchestration,
+          this.provider,
         );
         await this.voice.connect(key);
         if (!this.alive) return;
@@ -354,9 +365,9 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     }
   }
   pi.registerCommand("live", {
-    description: "Toggle voice with Google Gemini (paid; microphone and speakers)",
+    description: "Toggle voice with selected voice provider (paid; microphone and speakers)",
     getArgumentCompletions: (prefix) => {
-      const matches = ["start", "stop", "setup", "status", "mic-check", "speaker-check"].filter((value) =>
+      const matches = ["start", "stop", "setup", "status", "provider", "mic-check", "speaker-check"].filter((value) =>
         value.startsWith(prefix),
       );
       return matches.length ? matches.map((value) => ({ value, label: value })) : null;
@@ -370,7 +381,9 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             ? "Live " +
                 (current.state === "running" ? (current.speaking ? "speaking" : "listening") : "connecting") +
                 " · " +
-                VOICE_MODEL +
+                LIVE_PROVIDERS[current.provider].label +
+                " voice model " +
+                LIVE_PROVIDERS[current.provider].voiceModel +
                 " · input " +
                 current.inputFrames +
                 " frames · output " +
@@ -401,9 +414,52 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 ? "Local mic check running; provider not connected. Agent work is unchanged."
                 : entry
                   ? "Live setup."
-                  : "Live off.",
+                  : "Live off · " +
+                    LIVE_PROVIDERS[selectedProvider].label +
+                    " voice model " +
+                    LIVE_PROVIDERS[selectedProvider].voiceModel +
+                    ". Coding-agent model is configured separately.",
           "info",
         );
+      } else if (action === "provider" || action.startsWith("provider ")) {
+        if (active) {
+          ctx.ui.notify("Live is busy; stop it before changing voice provider.", "info");
+          return;
+        }
+        const owner = sequence;
+        const requested = action.slice("provider".length).trim();
+        let choice: LiveProviderId | undefined;
+        if (requested === "google" || requested === "openai") choice = requested;
+        else if (!requested) {
+          const options = (["google", "openai"] as const).map(
+            (id) =>
+              `${LIVE_PROVIDERS[id].label} · voice model ${LIVE_PROVIDERS[id].voiceModel}${selectedProvider === id ? " (selected)" : ""}`,
+          );
+          const picked = await ctx.ui.select("Live voice provider (coding-agent model is separate)", options);
+          choice = picked === options[0] ? "google" : picked === options[1] ? "openai" : undefined;
+        } else {
+          ctx.ui.notify("Usage: /live provider [google|openai]", "info");
+          return;
+        }
+        if (
+          choice &&
+          sequence === owner &&
+          !current &&
+          !entry &&
+          confirmation === undefined &&
+          !probe &&
+          !speakerProbe
+        ) {
+          selectedProvider = choice;
+          ctx.ui.notify(
+            "Live voice provider: " +
+              LIVE_PROVIDERS[choice].label +
+              " · voice model " +
+              LIVE_PROVIDERS[choice].voiceModel +
+              ". Coding-agent model is separate.",
+            "info",
+          );
+        }
       } else if (action === "mic-check") {
         if (!deps.local(ctx.mode)) {
           ctx.ui.notify("Mic check requires a local interactive terminal.", "warning");
@@ -538,16 +594,19 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           let key: string | undefined;
           if (action === "start") {
             try {
-              key = await deps.key(controller.signal);
+              key = await deps.key(controller.signal, selectedProvider);
             } catch {
               // Missing or incompatible auth gets focused setup, never a raw provider error.
             }
           }
           if (!alive()) return;
           if (!key) {
-            const credentials = await deps.credentials(controller.signal);
+            const credentials = await deps.credentials(controller.signal, selectedProvider);
             if (!alive()) return;
-            const start = await runLiveSetup(ctx.ui, credentials, controller.signal);
+            const start =
+              selectedProvider === "google"
+                ? await runLiveSetup(ctx.ui, credentials, controller.signal)
+                : await runOpenAISetup(ctx.ui, credentials, controller.signal);
             if (!alive() || !start) return;
             key = await credentials.loadKey(controller.signal);
           }
@@ -558,11 +617,16 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           run.render(true);
           await run.start(key);
         } catch {
-          if (alive()) ctx.ui.notify("Could not read Google credentials. Try /live setup.", "warning");
+          if (alive())
+            ctx.ui.notify(
+              "Could not read " + LIVE_PROVIDERS[selectedProvider].label + " API key. Try /live setup.",
+              "warning",
+            );
         } finally {
           if (entry === controller) entry = undefined;
         }
-      } else if (action) ctx.ui.notify("Usage: /live [start|setup|stop|status|mic-check|speaker-check]", "info");
+      } else if (action)
+        ctx.ui.notify("Usage: /live [start|setup|stop|status|provider|mic-check|speaker-check]", "info");
     },
   });
   pi.on("session_shutdown", () => {
@@ -583,4 +647,34 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     speakerProbe?.abort();
     current?.stop();
   });
+}
+
+/** OpenAI Live only accepts the canonical openai API key, never openai-codex OAuth. */
+async function runOpenAISetup(
+  ui: Pick<ExtensionContext["ui"], "select" | "notify">,
+  credentials: LiveCredentialService,
+  signal: AbortSignal,
+): Promise<boolean> {
+  let explained = false;
+  while (!signal.aborted) {
+    const status = await credentials.status(signal);
+    if (signal.aborted) return false;
+    if (status.state === "stored_api_key" || status.state === "configured_api_key") {
+      const choice = await ui.select("OpenAI Live voice model (coding-agent model is separate)", [
+        "Start voice",
+        "Done",
+      ]);
+      return !signal.aborted && choice === "Start voice";
+    }
+    if (!explained) {
+      ui.notify(
+        "OpenAI Live requires a canonical openai provider API key in agent auth. ChatGPT subscriptions and openai-codex OAuth do not work. Configure the openai API key outside Live; never paste keys into chat. Then recheck.",
+        "info",
+      );
+      explained = true;
+    }
+    const choice = await ui.select("OpenAI API key required", ["Recheck", "Cancel"]);
+    if (signal.aborted || choice !== "Recheck") return false;
+  }
+  return false;
 }

@@ -1140,3 +1140,72 @@ test("rejected Live startup leaves no animation updates", async () => {
   await new Promise((resolve) => setTimeout(resolve, 180));
   expect(t.status.length).toBe(count);
 });
+
+describe("Live provider selection", () => {
+  test("default Gemini and selected OpenAI are voice models separate from coding agent; busy switches blocked", async () => {
+    const keys: string[] = [];
+    const voices: string[] = [];
+    const t = setup({
+      key: async (_signal, provider) => {
+        keys.push(provider ?? "google");
+        return "fake-key";
+      },
+      voice: (callbacks, _orchestration, provider) => {
+        voices.push(provider ?? "google");
+        return {
+          state: "ready",
+          generation: 0,
+          connect: async () => {
+            callbacks.onReady?.();
+          },
+          sendAudio: () => {},
+          close: () => {},
+        };
+      },
+    });
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("Google Gemini voice model");
+    await t.run("start");
+    expect(keys).toEqual(["google"]);
+    await t.run("provider openai");
+    expect(t.notices.at(-1)).toContain("stop it");
+    await t.run("stop");
+    await t.run("provider openai");
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("OpenAI voice model");
+    expect(t.notices.at(-1)).toContain("Coding-agent model is configured separately");
+    await t.run("start");
+    expect(keys).toEqual(["google", "openai"]);
+    expect(voices).toEqual(["google", "openai"]);
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("OpenAI voice model");
+    await t.run("stop");
+  });
+
+  test("OpenAI setup only rechecks canonical API key; cancellation never opens devices", async () => {
+    let loaded = 0;
+    const t = setup({
+      key: async () => {
+        throw new Error("no key");
+      },
+      credentials: async (_signal, provider) => {
+        expect(provider).toBe("openai");
+        return {
+          status: async () => ({ state: "missing", canImport: true }),
+          loadKey: async () => {
+            loaded++;
+            throw new Error("unreachable");
+          },
+          importLiveEnv: async () => {
+            throw new Error("must not import Gemini key");
+          },
+        };
+      },
+    });
+    await t.run("provider openai");
+    await t.run("start");
+    expect(t.notices.join(" ")).toContain("openai-codex OAuth do not work");
+    expect(loaded).toBe(0);
+    expect(t.launches).toBe(0);
+  });
+});

@@ -1,0 +1,7 @@
+# Live voice provider selection (offline integration)
+
+This branch adds /live provider [google|openai] with Gemini as the default; the selection lasts for the extension session and cannot change while Live is busy. Voice-model labels are distinct from the configured coding-agent model. No change to waveform, transcript orchestration, native audio or speaker choices is needed: the provider implements the existing VoiceSession callback seam. OpenAI startup reads canonical `openai` API-key auth only (replace the NUL delimiters with backticks when reading this note), not `openai-codex` OAuth or a ChatGPT subscription. Its setup offers instructions/recheck only; it never reads a migration file or asks for key entry in chat. Gemini's legacy explicit import remains unchanged.
+
+Extension callback getPlayedAudioMs delegates to scheduler.playedMs (cumulative duration in the current playback epoch), not bytes received or queued. The scheduler and OpenAI session are separate workers; verify their final seam together. Offline auth tests passed in this worktree; no paid-provider call. Source branch worktree: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_5d34370c-a86675007a5e-task_10ff2c5c. Environment setup: /home/tnfssc/.local/share/mise/installs/bun/1.4.2/bin/bun install --frozen-lockfile; use the absolute Bun binary because mise.toml is untrusted here.
+
+Existing values remain sufficient: honest provider/auth labeling and preserving working UI/audio paths. This is a local Live recipe, not a new general principle.
