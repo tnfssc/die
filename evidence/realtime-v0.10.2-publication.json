@@ -1,0 +1,115 @@
+{
+  "verifiedAt": "2026-09-24T13:21:05.309Z",
+  "latestEndpoint": "https://api.github.com/repos/tnfssc/die/releases/latest",
+  "release": {
+    "tag": "v0.10.2",
+    "url": "https://github.com/tnfssc/die/releases/tag/v0.10.2",
+    "publishedAt": "2026-09-24T13:20:04Z",
+    "draft": false,
+    "prerelease": false
+  },
+  "commit": "39a2aeb062f95a77276a1920725f8d6d005e481b",
+  "ci": "https://github.com/tnfssc/die/actions/runs/36003473642",
+  "dryRun": "https://github.com/tnfssc/die/actions/runs/36003473539",
+  "publication": "https://github.com/tnfssc/die/actions/runs/36004652180",
+  "jobs": [
+    {
+      "name": "Find successful develop dry run at tag commit",
+      "conclusion": "success"
+    },
+    {
+      "name": "Stage assets from verified develop dry run",
+      "conclusion": "success"
+    },
+    {
+      "name": "Native macOS arm64 helper (no devices)",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Linux, macOS, and Android release",
+      "conclusion": "skipped"
+    },
+    {
+      "name": "Actual Mac release binary and old updater (no devices)",
+      "conclusion": "success"
+    },
+    {
+      "name": "Publish stable release after native and updater gates",
+      "conclusion": "success"
+    }
+  ],
+  "assets": [
+    {
+      "name": "die-android-arm64",
+      "size": 208140032,
+      "state": "uploaded",
+      "digest": "sha256:d8b01f1280838ee6a04469e40474ec63a97d938188bd5da0b5703f3a2b61ad4d"
+    },
+    {
+      "name": "die-android-arm64.sha256",
+      "size": 84,
+      "state": "uploaded",
+      "digest": "sha256:02cdb851bc773bd86349dec5ba6f931b4bcce47f31afa43bf21944eb810ef332"
+    },
+    {
+      "name": "die-darwin-arm64",
+      "size": 182946162,
+      "state": "uploaded",
+      "digest": "sha256:d803f403a6c8d1acc6127c6a71af6962e4047c29d92bdd16f9c89782561e0ee2"
+    },
+    {
+      "name": "die-darwin-arm64.sha256",
+      "size": 83,
+      "state": "uploaded",
+      "digest": "sha256:75973a11d6a9ae9513a2296f38fe8b82195305dd25a8c5cd2b81ec5496757222"
+    },
+    {
+      "name": "die-linux-arm64",
+      "size": 200919336,
+      "state": "uploaded",
+      "digest": "sha256:c56a9d721eef3ef7ecb2e22e89d6abbe62014b60bf046bc671ac03326d6a61dc"
+    },
+    {
+      "name": "die-linux-arm64.sha256",
+      "size": 82,
+      "state": "uploaded",
+      "digest": "sha256:2fd8a9e6d5926dd1fb1a423c40654a4918da1c98216698f6163bfa17c62fd3ab"
+    },
+    {
+      "name": "die-linux-x64",
+      "size": 200963552,
+      "state": "uploaded",
+      "digest": "sha256:5ebde20b2786629c9301075d1195bc82783ea55964ab7e66406071c57d7059e5"
+    },
+    {
+      "name": "die-linux-x64.sha256",
+      "size": 80,
+      "state": "uploaded",
+      "digest": "sha256:efc36fdfa558946a7fc2b9be16bf789189ef6d61a5798a6b122d97354a7f2ee1"
+    },
+    {
+      "name": "LICENSE",
+      "size": 1081,
+      "state": "uploaded",
+      "digest": "sha256:efed5aae7bdeb998d5ffcd69133ce61f0cdf9e010cdb84348947cc99ed5787a0"
+    },
+    {
+      "name": "SOURCE.txt",
+      "size": 771,
+      "state": "uploaded",
+      "digest": "sha256:f9e14af3185d9e13c260f299abd7303e0bb4becc3f6aad0515ec58f4741c6650"
+    },
+    {
+      "name": "THIRD_PARTY_LICENSES.txt",
+      "size": 708007,
+      "state": "uploaded",
+      "digest": "sha256:8db68755d689cc8b65d407da32fed463cb9390bd02680ff87584e34fc4688a4b"
+    },
+    {
+      "name": "THIRD_PARTY_NOTICES.md",
+      "size": 1385,
+      "state": "uploaded",
+      "digest": "sha256:c94f8abe5f7616552b168fe186d7b039c98269d8bf65b7b87a4b367fc19b8f0d"
+    }
+  ]
+}

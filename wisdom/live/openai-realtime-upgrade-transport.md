@@ -17,3 +17,15 @@ Release worktree: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_cbad3b1c; br
 Next stable version 0.10.2. Preserve remote develop by ordinary fast-forward push only, then await successful exact-SHA develop dry run before immutable annotated tag. Verify latest release, all 12 assets, updater/native gates. Do not download released binaries merely to rehash or install locally. [Release notes](../../support/release-v0.10.2.md) contain the exact same-model retry instructions.
 
 Values reviewed and unchanged: existing privacy, bounded resources, truthful unknowns, immutable/user-work safety and real-path proof cover this work; no new general lesson warrants another value.
+
+## Published
+
+[v0.10.2](https://github.com/tnfssc/die/releases/tag/v0.10.2) published 2026-09-24T13:20:04Z, verified Latest, not draft/prerelease. Annotated immutable tag targets 39a2aeb062f95a77276a1920725f8d6d005e481b. [CI](https://github.com/tnfssc/die/actions/runs/36003473642), [develop dry run](https://github.com/tnfssc/die/actions/runs/36003473539), and [publication](https://github.com/tnfssc/die/actions/runs/36004652180) succeeded. Tag workflow reused exact-SHA staged assets; duplicate full matrix was skipped as designed.
+
+Release gates: 1009 deterministic tests passed, 17 skipped, zero failed; format/lint/typecheck/compiled standalone smoke, four release builds, web backend 67/cache 135/terminal recovery 38 tests passed. Actual Linux and Mac payloads passed checksum-failure preservation and replacement SHA256/version 0.10.2 through pinned v0.7.1 updater source compiled with the current toolchain (not the historical full executable). Mac helper ASan/UBSan, device-free self-test and protocol v1 passed. Tag workflow rechecked staged checksums/source identity and Mac updater/helper before publishing.
+
+[Release metadata evidence](../../evidence/realtime-v0.10.2-publication.json) confirms all 12 expected assets uploaded/nonempty. Release notes accurately state unknown remote cause and same-model retry; no paid call, physical device use, redundant released-binary download or local install. Remote develop was preserved via fast-forward; no force push, old tag rewrite, or GPT-Live/Gemini/Mac code change. Publication evidence is a documentation-only follow-up.
+
+User retry: `die update`, restart die, `/live provider openai`, `/live model gpt-realtime-2.1`, `/live status`, `/live start`. Keep the same saved key and report only the new sanitized error plus model. Normal API billing may apply. Actual remote cause remains UNKNOWN until that retry supplies evidence.
+
+Values reviewed after release and unchanged: existing truthful proof, security/privacy, bounded use and immutable-history principles suffice.
