@@ -109,3 +109,8 @@ integration; do not assume unit copy alone proves terminal rendering.
 
 Latest user requirements (toggle + autocomplete) arrived while runtime worker
 was running. Parent must apply/test both after cherry-pick. No install yet.
+
+Parent rebuilt renamed native helper locally: build/self-test passed. Installer
+tests remained green; release test first rerun failed only because one old
+assertion still required Homebrew SoX. Updated it to the native fake-provider
+suite, keeping no-device/no-credential checks. Full rerun after runtime merge.
