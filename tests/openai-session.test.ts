@@ -557,3 +557,30 @@ test("speech before the first audio delta suppresses old output and labels recei
   expect(transcript).toEqual([{ text: "received but interrupted", finished: false, interrupted: true }]);
   f.session.close();
 });
+
+test("server cancellation without a speech event revokes late ASR authority", async () => {
+  const captures: string[] = [];
+  const f = fixture({}, { tools: [], userTranscript: (text) => captures.push(text), execute: async () => ({}) });
+  await f.connect();
+  f.socket.message({ type: "input_audio_buffer.committed", item_id: "u-cancelled" });
+  f.socket.message({ type: "response.created", response: { id: "r-cancelled" } });
+  f.socket.message({ type: "response.done", response: { id: "r-cancelled", status: "cancelled" } });
+  f.socket.message({
+    type: "conversation.item.input_audio_transcription.completed",
+    item_id: "u-cancelled",
+    transcript: "late request",
+  });
+  expect(captures).toEqual([]);
+  f.session.close();
+});
+
+test("closing synchronously from connecting state never creates a socket", async () => {
+  const f = fixture({
+    onState: (state) => {
+      if (state === "connecting") f.session.close();
+    },
+  });
+  await f.session.connect("fake-test-only");
+  expect(f.session.state).toBe("closed");
+  expect(f.url).toBe("");
+});

@@ -144,8 +144,9 @@ export class OpenAIRealtimeSession implements VoiceProvider {
       this.fail("invalid_input", "API key is required");
       return;
     }
-    this.stateTo("connecting");
     const serial = ++this.serial;
+    this.stateTo("connecting");
+    if (this.state !== "connecting" || serial !== this.serial) return;
     await new Promise<void>((resolve) => {
       let settled = false;
       const finish = () => {
@@ -324,6 +325,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
     }
   }
   private interrupt(): void {
+    this.committedItem = undefined;
     this.orchestration?.beginUserTurn?.();
     ++this.inputRevision;
     ++this.diagnostics.serverInterruptions;
@@ -424,6 +426,10 @@ export class OpenAIRealtimeSession implements VoiceProvider {
         response.revision !== this.inputRevision ||
         (sensitive && (!response.inputItem || !this.transcripts.has(response.inputItem)))
       ) {
+        reply({ error: "Tool request rejected" });
+        return;
+      }
+      if (this.pendingTools >= 16) {
         reply({ error: "Tool request rejected" });
         return;
       }
@@ -641,7 +647,8 @@ export class OpenAIRealtimeSession implements VoiceProvider {
               call.timer = undefined;
             }
           }
-          if (id === this.activeResponse && this.interruptedResponse !== id) this.interrupt();
+          if (id === this.activeResponse && this.interruptedResponse !== id && response.revision === this.inputRevision)
+            this.interrupt();
           this.interruptedResponse = undefined;
         } else if (m.response.status === "completed") {
           if (id === this.activeResponse) {
