@@ -1,6 +1,10 @@
 import type { VoiceTranscript } from "./types";
 export const VOICE_ENTRY = "die-live-transcript";
-export type TranscriptEntry = { speaker: "You" | "Voice"; text: string; status: "final" | "turn-boundary" | "interrupted" | "partial" };
+export type TranscriptEntry = {
+  speaker: "You" | "Voice";
+  text: string;
+  status: "final" | "turn-boundary" | "interrupted" | "partial";
+};
 /** Received text is not audio or evidence that generated speech was heard. */
 export class TranscriptLog {
   private pending: Record<"You" | "Voice", string> = { You: "", Voice: "" };
@@ -20,20 +24,32 @@ export class TranscriptLog {
     this.save(entry);
     this.recent.push(entry);
     while (this.recent.length > 24 || this.recent.reduce((n, e) => n + e.text.length, 0) > 32768) {
-      this.recent.shift(); this.omitted++;
+      this.recent.shift();
+      this.omitted++;
     }
   }
-  reset(): void { this.pending = { You: "", Voice: "" }; this.recent = []; this.omitted = 0; }
+  reset(): void {
+    this.pending = { You: "", Voice: "" };
+    this.recent = [];
+    this.omitted = 0;
+  }
   /** Widget is a viewport: shortened lines and omitted entries are always labeled. */
   view(clean: (text: string) => string): string[] {
     const render = (e: TranscriptEntry) => {
       const text = clean(e.text);
-      return e.speaker + " [" + e.status + (e.speaker === "Voice" ? ", hearing unverified" : "") + "]: " +
-        (text.length > 700 ? text.slice(0, 700) + "… [" + (text.length - 700) + " chars not shown here]" : text);
+      const label = e.speaker + (e.status === "interrupted" ? " (interrupted)" : "");
+      // Keep live text moving instead of freezing on the start of a long reply.
+      // The complete received entry is kept separately in session history.
+      return label + ": " + (text.length > 2400 ? "… [earlier text saved] " + text.slice(-2400) : text);
     };
     const entries = this.recent.slice(-4);
     const hidden = this.omitted + this.recent.length - entries.length;
-    return [ ...(hidden ? ["[" + hidden + " earlier transcript entries not shown; session history retains received text]"] : []),
-      ...entries.map(render), ...(["You", "Voice"] as const).filter(s => this.pending[s]).map(s => render({ speaker: s, text: this.pending[s], status: "partial" })) ];
+    return [
+      ...(hidden ? ["Earlier conversation saved in session history."] : []),
+      ...entries.map(render),
+      ...(["You", "Voice"] as const)
+        .filter((s) => this.pending[s])
+        .map((s) => render({ speaker: s, text: this.pending[s], status: "partial" })),
+    ];
   }
 }

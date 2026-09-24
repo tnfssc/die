@@ -130,7 +130,7 @@ describe("voice-only SDK session", () => {
       ["output", { text: "said", finished: false }, 0],
       ["done", 0],
       ["flush", 1],
-      ["output", { text: "", finished: true }, 1],
+      ["output", { text: "", finished: true, interrupted: true }, 1],
       ["done", 1],
       ["audio", "AAAAAA==", 1],
       ["done", 2],

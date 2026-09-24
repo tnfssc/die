@@ -256,6 +256,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             onTurnComplete: () => {
               if (this.alive) {
                 this.transcriptLog.finish("Voice", "turn-boundary");
+                this.transcriptLog.finish("You", "partial");
                 this.turns++;
                 this.generationFinished = true;
                 this.playback.turnComplete(this.generation);
@@ -275,7 +276,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               // segment replaces prior unfinished input; never append after dispatch.
               if (t.finalitySource === "model_contract") this.inputUtterance = "";
               if (!this.inputUtterance && t.text) this.orchestration?.beginUserTurn?.();
-              this.inputUtterance += t.text;
+              this.inputUtterance = (this.inputUtterance + t.text).slice(0, 4001);
               if (t.finished) {
                 this.completedInputTranscripts++;
                 this.orchestration?.userTranscript(this.inputUtterance);
