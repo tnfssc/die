@@ -1,6 +1,7 @@
 # Grounded spoken handoff candidate (2026-09-24)
 
-Worktree: /Users/sharath/.die/worktrees/die-f528e86af6b5-task_d89ea45b
+Initial worktree: /Users/sharath/.die/worktrees/die-f528e86af6b5-task_d89ea45b
+Review of candidate 2789302: /Users/sharath/.die/worktrees/die-f528e86af6b5-task_c403a669
 
 Context: [physical failure](missing-tools-after-promotion.md),
 [pinned Google research](google-live-sdk-handoff-research.md). Six tools and a
@@ -36,17 +37,32 @@ not authentication of exact spoken intent.
 
 No cross-message waiting queue. Without input/tool correlation IDs we cannot
 prove a call preceding a transcript belongs to that future input. Reject calls
-without eligible capture; a fresh tool call after transcription can retry. A
-failed call ID stays failed and cannot acquire later authority. Same-envelope
+without eligible capture; do not advise blind retries after transcription. Session
+returns only typed allowlisted public failure codes/messages, never raw exception
+text; unrelated failures remain generic. SDK call receipts replay failures.
+Orchestration tombstones every valid handoff requestId it attempts, including
+rejections (also unexpected text arguments), before inspecting capture. A fresh
+SDK call ID cannot rebind that requestId to newer input, across send/steer.
+The set holds at most 256 IDs per orchestration lifetime, with no TTL or eviction;
+at capacity new handoffs fail closed, while read tools remain available. Replacing
+the live session creates a new set; this is not durable cross-reconnect identity.
+Host idempotency remains independent. IDs rejected before orchestration execution
+are not in this set; Session retains its separate SDK call receipts. Same-envelope
 input runs before tool scheduling; this is the only bounded ordering deferral.
 The dispatch microtask also checks input revision, cancellation and session state
-so a call scheduled before newer input cannot attach to it.
+so newer input observed before that check invalidates the scheduled call.
+This is the orchestration-dispatch boundary, not actual host enqueue. Once
+execute starts, capture is consumed synchronously and the payload is fixed.
+LiveHostBridge.once enqueues in a later microtask, checking host scope but not
+Session input revision/cancellation; activity in that gap does not cancel the
+fixed handoff. Do not describe this as revocation until host acceptance.
 
 Known fresh transcription, optional ACTIVITY_START/interim signals, interruption,
 stop/close and cancellation of an undispatched handoff revoke authority. Interim
 signals clear unfinished capture, conservatively, rather than merging independent
 channels. Provider delivery of activity signals is not assumed. Accepted host
-work is never cancelled by these signals. Existing job_cancel trusted UI
+work is never cancelled by these signals; nor is a handoff already dispatched
+to orchestration but awaiting the bridge enqueue. Existing job_cancel trusted UI
 confirmation and playback/audio epochs remain independent.
 
 Each contract-final segment replaces unfinished capture; multiple unconsumed
@@ -58,20 +74,26 @@ tool-mediated handoff. Existing UI displays captured transcription.
 
 Residual limits: sentence finality is not whole-request finality; no protocol
 correlation ID proves the selected segment and call share intent. A late call
-can select the latest unconsumed eligible segment; speech not yet reported as
-activity/transcript is unobservable. Missing/out-of-order signals can still cause
+with a fresh model-invented requestId can select the latest unconsumed eligible
+segment. Tombstones do not prove input/call correlation or solve that association;
+speech not yet reported as activity/transcript is unobservable. Missing/out-of-order signals can still cause
 rejection or association ambiguity. Multi-sentence grouping and cross-message
 call-before-input are intentionally not solved by timers or speculative queues.
 Trusted Send/confirmation or explicit input framing remains the stricter fallback.
 
 ## Checks / handoff
 
-93 focused tests pass across live-session, live-extension, live-orchestration,
+97 focused tests pass across live-session, live-extension, live-orchestration,
 live-tools, live-host-bridge, live-playback, live-audio-lifecycle. Real Session/Run
 seams cover supported absence, unknown/Translate, explicit false, textless
 markers, before/after/same-envelope calls, turn chains, latest segments, duplicate
 IDs, cancel/interrupt/stop/new activity, and rejection of fabricated tool text.
-Orchestration tests cover expiry, overflow and ambiguous failure consumption.
+Orchestration tests cover expiry, overflow, ambiguous failure consumption, rejected
+request rebinding with fresh SDK IDs (both send/steer), and fail-closed tombstone
+capacity without eviction. Real Session/Run tests assert public pre-transcript
+reasons and reject the old request after newer activity despite a fresh SDK ID.
+Session tests verify typed errors use fixed messages and spoofed/unknown codes
+or raw exception details cannot leak.
 Host bridge tests retain trusted cancellation confirmation; audio tests remain
 green. bun run check passes (including local asset preparation and tsc).
 Dependencies were reused from the existing main checkout; no dependency install.

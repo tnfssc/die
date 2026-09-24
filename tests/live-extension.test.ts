@@ -989,10 +989,18 @@ for (const model of ["gemini-3.8-live", "unknown-live", "gemini-3.5-live-transla
     // Before-transcript calls fail rather than waiting to steal newer input.
     receive(call("before"));
     await tick();
-    expect(replies.at(-1).functionResponses.response).toHaveProperty("error");
+    expect(replies.at(-1).functionResponses.response).toEqual({
+      code: "transcript_unavailable",
+      error: "Handoff requires an eligible completed captured user transcript. This request was not sent.",
+    });
+    receive({ voiceActivity: { voiceActivityType: "ACTIVITY_START" } });
     input("later input", true);
     receive(call("before")); // duplicate failure cannot acquire new authority
     await tick();
+    expect(sent).toHaveLength(count);
+    receive(call("fresh-sdk-id", { requestId: "before" }));
+    await tick();
+    expect(replies.at(-1).functionResponses.response.code).toBe("request_already_used");
     expect(sent).toHaveLength(count);
     receive(call("after"));
     await tick();

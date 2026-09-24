@@ -1,4 +1,5 @@
 import type { FunctionDeclaration } from "@google/genai";
+import { PublicToolFailure } from "./tool-failure";
 import type { VoiceOrchestration } from "./types";
 
 /** This surface is backed by the current tasks extension, never a second scheduler. */
@@ -79,6 +80,10 @@ export function createOrchestration(host: VoiceHost, now: () => number = () => p
   // One completed input request, never observations/history. Model turns are not
   // input boundaries: NON_BLOCKING tools may span several of them.
   const ttlMs = 60_000;
+  // Never evict: a forgotten rejected ID could otherwise acquire newer input.
+  // At capacity fail closed until this orchestration/session is replaced.
+  const attemptedRequests = new Set<string>();
+  const maxRequests = 256;
   let pending: { text: string; expiresAt: number } | undefined;
   return {
     userTranscript(value) {
@@ -93,14 +98,19 @@ export function createOrchestration(host: VoiceHost, now: () => number = () => p
       const args = call.args ?? {};
       const declaration = orchestrationTools.find((t) => t.name === call.name);
       if (!declaration) throw new Error("Unknown voice tool");
+      if (call.name === "agent_send" || call.name === "agent_steer") {
+        const requestId = text(args, "requestId", 128);
+        if (attemptedRequests.has(requestId)) throw new PublicToolFailure("request_already_used");
+        if (attemptedRequests.size >= maxRequests) throw new PublicToolFailure("request_limit");
+        // Tombstone even rejected requests, across send/steer and fresh SDK call IDs.
+        attemptedRequests.add(requestId);
+      }
       const allowed = Object.keys((declaration.parametersJsonSchema as any).properties);
       if (Object.keys(args).some((key) => !allowed.includes(key))) throw new Error("Unexpected tool argument");
       let captured: string | undefined;
       if (call.name === "agent_send" || call.name === "agent_steer") {
-        text(args, "requestId", 128);
         if (pending && now() >= pending.expiresAt) pending = undefined;
-        if (!pending)
-          throw new Error("Handoff requires a completed captured user transcript; retry after transcription");
+        if (!pending) throw new PublicToolFailure("transcript_unavailable");
         captured = pending.text;
         // Consume before calling the host, including ambiguous failures.
         pending = undefined;

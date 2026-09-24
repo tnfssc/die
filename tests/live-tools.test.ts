@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { PublicToolFailure } from "../src/live/tool-failure";
 import { VoiceSession } from "../src/live/session.js";
 import type { LiveAdapter, LiveConnection, LiveParams } from "../src/live/types.js";
 
@@ -86,7 +87,7 @@ describe("SDK orchestration seam", () => {
     let count = 0;
     const h = fixture(async (call) => {
       count++;
-      if (call.id === "bad") throw Error("secret");
+      if (call.id === "bad") throw Object.assign(Error("secret"), { code: "transcript_unavailable" });
       return new Promise((resolve) => {
         finish = resolve;
       });
@@ -277,5 +278,45 @@ test("update flood drops old observations honestly while audio continues", async
   expect(packet).toContain("verified-999");
   expect(h.audio).toHaveLength(1000);
   expect(h.session.state).toBe("ready");
+  h.session.close();
+});
+
+test("Session exposes allowlisted typed reasons, never exception messages or unknown codes", async () => {
+  const h = fixture(async (call) => {
+    const failure = new PublicToolFailure("transcript_unavailable");
+    failure.message = "secret exception detail";
+    if (call.id === "unknown-code") (failure as any).code = "secret_code";
+    throw failure;
+  });
+  await h.session.connect("fake");
+  h.send({
+    toolCall: {
+      functionCalls: [
+        { id: "typed", name: "work" },
+        { id: "unknown-code", name: "work" },
+      ],
+    },
+  });
+  await flush();
+  expect(h.responses).toContainEqual({
+    functionResponses: {
+      scheduling: "WHEN_IDLE",
+      id: "typed",
+      name: "work",
+      response: {
+        code: "transcript_unavailable",
+        error: "Handoff requires an eligible completed captured user transcript. This request was not sent.",
+      },
+    },
+  });
+  expect(h.responses).toContainEqual({
+    functionResponses: {
+      scheduling: "WHEN_IDLE",
+      id: "unknown-code",
+      name: "work",
+      response: { error: "Tool execution failed" },
+    },
+  });
+  expect(JSON.stringify(h.responses)).not.toContain("secret");
   h.session.close();
 });

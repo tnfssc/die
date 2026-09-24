@@ -1,4 +1,5 @@
 import { Behavior, FunctionResponseScheduling, GoogleGenAI, Modality } from "@google/genai";
+import { toolFailureResponse } from "./tool-failure";
 import {
   VOICE_MODEL,
   type LiveAdapter,
@@ -344,7 +345,8 @@ export class VoiceSession {
       const inputRevision = this.inputRevision;
       ++this.pendingTools;
       // Defer invocation: SDK onmessage must return before any agent work begins. An
-      // interruption/cancellation can revoke undispatched handoffs, never accepted jobs.
+      // interruption/cancellation can revoke handoffs only before this dispatch.
+      // The host bridge may enqueue in a later microtask; that is not rechecked here.
       void Promise.resolve()
         .then(() => {
           if (
@@ -366,7 +368,7 @@ export class VoiceSession {
             }
             reply(response);
           },
-          () => reply({ error: "Tool execution failed" }),
+          (error) => reply(toolFailureResponse(error)),
         )
         .finally(() => {
           --this.pendingTools;
