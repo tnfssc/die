@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { VoiceSession } from "../src/live/session.js";
+import { liveSystemInstruction } from "../src/live/prompt.js";
 import type { LiveAdapter, LiveParams, LiveConnection } from "../src/live/types.js";
 
 function harness() {
@@ -66,6 +67,7 @@ describe("voice-only SDK session", () => {
       realtimeInputConfig: { automaticActivityDetection: { disabled: false } },
     });
     expect(h.params.config?.tools).toBeUndefined();
+    expect(h.params.config?.systemInstruction).toBe(liveSystemInstruction);
     h.params.callbacks.onmessage(msg({ setupComplete: {} }));
     expect(s.state).toBe("connecting");
     expect(h.sends).toHaveLength(0);

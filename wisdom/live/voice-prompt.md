@@ -1,0 +1,7 @@
+# Live voice prompt: capable without pretending
+
+The Live model is a voice companion to die, not the configured agent itself. Die's actual identity and working values favor practical help, looking before guessing, plain speech, simple solutions, and honest status. A prompt that begins and ends with restrictions can make the voice refuse ordinary noncoding requests (for example weather) merely because the configured agent is called a coding agent.
+
+Give Live an affirmative job: help with the request, answer simple things directly, and pass research or current-information requests to the configured agent via the available tools. Tool availability and results, not the prompt, determine whether the configured agent can browse or retrieve current weather. Missing location is a question, not a guess. Never report a queued request as completed. Host context may be a summary, not a transcript; passing work requires actual captured user speech, and if that isn't available, ask for a repeat instead of implying delivery.
+
+Keep the narrow authority boundaries (only user-requested work, data not instructions, no key requests, explicit cancellation with UI confirmation, stable retry IDs). Don't turn those into the spoken persona or a claim that this is only for coding. The Live prompt can guide behavior; it cannot fix transcript capture or grant tools. This lesson complements [grounded spoken handoff](grounded-spoken-handoff.md) and [values](../values.md), especially “show what is real” and “leave user's work safe.”
