@@ -41,3 +41,9 @@ automatic-mode and installed actual-agent handoff still need user trial.
 `task_a4dcea1d` started for tested dist binary; check completion/hash before
 claiming installed. Audio/VAD unchanged. Values unchanged: existing real-path
 evidence and truthful-limits guidance covers this result.
+
+Install completed successfully; embedded helper self-test passed. Dist and
+`~/.local/bin/die` SHA256 both
+`08950f577b7c6cc49cb883256950105421a18187416837503a905d86d806a42e`.
+User should fully restart, run /live, request a read-only README inspection,
+and capture /live status. This is a local candidate, not a published release.
