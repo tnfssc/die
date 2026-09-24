@@ -278,7 +278,7 @@ describe("Live voice", () => {
     };
     await t.run("");
     expect([t.launches, t.keyCalls, t.starts]).toEqual([1, 1, 1]);
-    expect(t.status.at(-1)).toBe("Live listening");
+    expect(t.status.at(-1)).toStartWith("Live listening");
     await t.run("stop");
   });
   test("status does not inspect auth or open audio", async () => {
@@ -527,7 +527,7 @@ test("live orchestration keeps capture/playback active, forwards actual completi
   });
   (t.ctx as any).model = { provider: "configured", id: "coding-model" };
   await t.run("start");
-  expect(t.status.at(-1)).toBe("Live listening");
+  expect(t.status.at(-1)).toStartWith("Live listening");
   expect(t.contexts[0]).toContain("existing session");
   t.voice.onInputTranscript?.({ text: "work", finished: true });
   const pending = t.orchestration!.execute({ name: "agent_send", args: { requestId: "same" } });
@@ -1104,3 +1104,39 @@ for (const model of ["gemini-3.8-live", "unknown-live", "gemini-3.5-live-transla
     expect(sent.at(-1)).toBe("pending delta");
   });
 }
+
+test("Live waveform goes through setStatus, follows PCM, native drain, interruption and stop", async () => {
+  const t = setup();
+  await t.run("start");
+  expect(t.status.at(-1)).toContain("Live listening");
+  const loud = Buffer.alloc(960, 0x7f);
+  t.capture.capture?.(loud);
+  await new Promise((resolve) => setTimeout(resolve, 110));
+  const listen = t.status.at(-1)!;
+  expect(listen).toContain("Live listening  ");
+  expect(listen).not.toContain("⠐".repeat(10));
+  t.voice.onAudio?.(loud.toString("base64"), 0);
+  t.capture.played?.(100);
+  await new Promise((resolve) => setTimeout(resolve, 110));
+  expect(t.status.at(-1)).toContain("Live speaking  ");
+  t.voice.onTurnComplete?.(0);
+  expect(t.status.at(-1)).toContain("Live speaking"); // native still has buffered sound
+  t.voice.onInterrupted?.(1);
+  expect(t.status.at(-1)).toContain("Live listening  " + "⠐".repeat(10));
+  const count = t.status.length;
+  await t.run("stop");
+  await new Promise((resolve) => setTimeout(resolve, 190));
+  expect(t.status.length).toBe(count + 1); // no leftover animation timer
+  expect(t.status.at(-1)).toBeUndefined();
+});
+
+test("rejected Live startup leaves no animation updates", async () => {
+  const t = setup();
+  t.reject();
+  await t.run("start");
+  expect(t.status.some((value) => value?.startsWith("Live connecting  ·"))).toBe(true);
+  expect(t.status.at(-1)).toBeUndefined();
+  const count = t.status.length;
+  await new Promise((resolve) => setTimeout(resolve, 180));
+  expect(t.status.length).toBe(count);
+});

@@ -9,6 +9,7 @@ import { boundedHostContext, createOrchestration, type VoiceHost } from "./orche
 import { VoiceSession } from "./session";
 import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
 import { PlaybackScheduler } from "./playback";
+import { LiveWaveform } from "./waveform";
 import { TranscriptLog, VOICE_ENTRY } from "./transcript";
 import { VOICE_MODEL, type VoiceCallbacks, type VoiceOrchestration } from "./types";
 
@@ -82,6 +83,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     private lastRender = 0;
     private lastStatus?: string;
     private lastWidget?: string;
+    private readonly waveform = new LiveWaveform();
+    private waveTimer?: ReturnType<typeof setInterval>;
     readonly transcriptLog = new TranscriptLog((entry) => pi.appendEntry?.(VOICE_ENTRY, entry));
     pendingBytes = 0;
     inFlight = false;
@@ -95,8 +98,11 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     readonly lines: string[] = [];
     constructor(readonly ctx: ExtensionContext) {
       this.playback = new PlaybackScheduler({
-        send: (frame, epoch) =>
-          this.audio ? this.audio.play(frame, epoch) : Promise.reject(new Error("Audio not ready")),
+        send: (frame, epoch) => {
+          if (!this.audio) return Promise.reject(new Error("Audio not ready"));
+          this.waveform.scheduled(frame, performance.now(), this.playback.state.nativeQueuedMs);
+          return this.audio.play(frame, epoch);
+        },
         flush: (epoch) => (this.audio ? this.audio.flush(epoch) : Promise.reject(new Error("Audio not ready"))),
         onError: () => this.fail("Playback failed or response exceeded the bounded audio budget"),
         onState: (s) => {
@@ -130,7 +136,11 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       }
       this.lastRender = Date.now();
       const presentation = this.state === "running" ? (this.speaking ? "speaking" : "listening") : "connecting";
-      const status = "Live " + presentation;
+      const status =
+        "Live " +
+        presentation +
+        "  " +
+        (this.state === "running" ? this.waveform.tick(this.speaking, performance.now()) : "··········");
       if (status !== this.lastStatus) {
         this.ctx.ui.setStatus(ID, status);
         this.lastStatus = status;
@@ -178,8 +188,9 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       this.speaking = false;
       this.generationFinished = false;
       this.heardQueue = false;
+      this.waveform.resetOutput();
       this.playback.interrupt(epoch);
-      this.render();
+      this.render(true);
     }
     fail(message: string) {
       if (!this.alive) return;
@@ -198,6 +209,9 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       this.unsubscribeHost = undefined;
       this.state = "off";
       this.playback.close();
+      if (this.waveTimer) clearInterval(this.waveTimer);
+      this.waveTimer = undefined;
+      this.waveform.resetOutput();
       this.pendingBytes = 0;
       this.lines.length = 0;
       this.transcriptLog.reset();
@@ -223,6 +237,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             capture: (pcm) => {
               if (this.alive && this.state === "running") {
                 this.inputFrames++;
+                this.waveform.capture(pcm);
                 this.voice?.sendAudio(pcm.toString("base64"));
                 this.render();
               }
@@ -232,6 +247,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 this.queuedMs = ms;
                 if (ms > 0) this.heardQueue = true;
                 this.playback.nativeQueued(ms);
+                this.waveform.queued(performance.now(), ms);
                 this.drain();
                 this.render();
               }
@@ -324,6 +340,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         if (!this.alive) return;
         this.playback.start();
         if (!this.alive) return;
+        this.waveTimer = setInterval(() => this.render(true), 80);
+        this.waveTimer.unref?.();
         this.render(true);
       } catch {
         if (this.alive)
