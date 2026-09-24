@@ -1,5 +1,9 @@
 # Native Live promotion
 
+Current state: integrated on feat/native-live and installed locally on the
+user’s Apple Silicon Mac. /live toggles, action autocomplete works, /live-lab
+is gone. See final validation and installation below. No release published.
+
 User asked to make the working Live Lab the only Live implementation, then
 asked for direct /live entry and a careful, minimal setup flow. This is a
 replacement, not a compatibility layer. Historical release notes keep their
@@ -67,7 +71,7 @@ build-live-linux-helper.sh and live-helper-bundle.ts. No lab alias.
   UI smoke where available before installation/release claims.
 - Preserve historical notes rather than rewriting old release evidence.
 
-No promotion code integrated or installed yet. Values unchanged for now:
+Initial plan had no promotion code integrated or installed. Values unchanged:
 existing simplest-useful-design and truthful-UI guidance cover this work.
 
 ## Autocomplete follow-up
@@ -185,3 +189,10 @@ Wisdom updated for new UX, helper paths, packaging, proof and Linux limit.
 Values unchanged: existing minimal design, platform proof, clear limits and
 safe ownership lessons already cover this work. Physical /live toggle and
 speaker behavior after rename still need the user's next run.
+
+Installation completed with exit0. Installed --version is0.9.1; embedded
+--live-self-test/protocol v1 passed. Built and installed SHA256 match:
+af2ed1f0e2b10477d90199c1c306ecc1d95e2537df6c3675f8a5f621995725e6.
+Runtime source matches e8f4250; later commits only adjust tests/docs. User
+should restart die and try /live twice. Normal release remains unpublished.
+Temporary UI-review script/frames were deleted after inspection.
