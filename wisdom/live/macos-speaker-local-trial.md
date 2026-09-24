@@ -176,3 +176,25 @@ Integration first run:101 pass,1 fail. The failure expected one immediate
 Updated that assertion and added explicit zero writes before native ready.
 Rerun task_9b258ec6 includes all Live tests and typecheck. Candidate packaged
 build and embedded-helper self-test passed (task_d5e31776); not installed yet.
+
+## Candidate installed for physical trial
+
+Integration rerun passed102 tests across14 files (20573 assertions), and
+bun run check passed. Changed TS files pass Biome format and git diff --check.
+Candidate build task_d5e31776 passed embedded-helper self-test. Runtime source
+is2b42641; follow-up tests/evidence committed ind4268de on
+fix/live-playback-cushion. No source change after build affects runtime.
+
+Installed via DIE_SKIP_BUILD=1 sh scripts/install-local.sh. Installed version
+still0.9.1 (local candidate, not a published release). Installed helper
+self-test/protocol v1 passed. Built and installed CLI SHA256 both:
+c2ff60af0a9dff52aebf98dfd1a9db777de34c0448b6139c25f177b380ff29f7.
+
+Ask user to restart die, request a20-second reply and stay quiet, report
+crackle/finish and status, then test saying “stop” during another reply.
+Headphone control and native startup must still work. No provider/mic
+recordings were taken by agent; no audio files need deletion. Temporary
+FFI probe is removed after saving numeric evidence above. Physical quality
+still pending; native held-tail boundary issue remains separate, unpatched.
+Wisdom updated; values unchanged because real-path proof and bounded-use
+values already cover the lesson. No release or remote push done.
