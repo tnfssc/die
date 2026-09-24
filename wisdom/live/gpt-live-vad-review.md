@@ -1,5 +1,7 @@
 # GPT-Live WS local speech/interruption review (2026-09-24)
 
+**Follow-up:** the static review below describes the initial strict latch. Parent subsequently required practical automatic recovery; implemented detector-end plus200ms captured-quiet guard on the same continuous WS, with stale-tail/mid-sentence limits. See [current playback policy](gpt-live-playback.md). Dependency findings remain unchanged.
+
 Scope: HEAD `src/live/gpt-live-playback.ts` and `src/live/extension.ts`; documentation and package metadata fetched publicly, no paid API, device access, or runtime VAD validation. This is a local playback policy review, **not** a parity or production barge-in claim.
 
 ## Official evidence and its limits

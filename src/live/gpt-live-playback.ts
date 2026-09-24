@@ -7,6 +7,10 @@ export class GptLiveSpeechDetector {
   private active = false;
   private loudFrames = 0;
   private quietFrames = 0;
+  private quietFrame = true;
+  get quiet(): boolean {
+    return this.quietFrame;
+  }
   get speaking(): boolean {
     return this.active;
   }
@@ -20,6 +24,7 @@ export class GptLiveSpeechDetector {
       energy += sample * sample;
     }
     const rms = Math.sqrt(energy / 320);
+    this.quietFrame = rms < 0.013;
     // Conservative fixed thresholds; noise/echo may still trip this heuristic.
     if (!this.active) {
       this.loudFrames = rms >= 0.032 ? this.loudFrames + 1 : 0; // ~ -30 dBFS, 80 ms sustained
@@ -36,15 +41,16 @@ export class GptLiveSpeechDetector {
   }
 }
 
-/** Bounded GPT-Live WS output. With no server output response boundary, interruption or
- * overflow latches output OFF until an explicit user-visible retry/reset after silence.
- * Reset does not prove that subsequent WS chunks are fresh: caller must discard old output
- * or create a fresh session/response before invoking it. Never gates mic capture. */
+/** Bounded continuous GPT-Live output, with best-effort local interruption/recovery.
+ * Drop output during qualified acoustic activity and 200ms additional captured quiet.
+ * Resume NEW arriving stream chunks automatically; no remote old/new guarantee exists.
+ * A stale server tail can therefore be heard after recovery. Never gates microphone. */
 export class GptLivePlaybackRecovery {
   readonly detector = new GptLiveSpeechDetector();
   readonly scheduler: PlaybackScheduler;
   private muted = false;
-  private outputSeen = false;
+  private faulted = false;
+  private quietGuardFrames = 0;
   private closed = false;
   private generation = 0;
   private readonly onError: (error: Error) => void;
@@ -59,21 +65,21 @@ export class GptLivePlaybackRecovery {
     this.onError = options.onError;
     this.scheduler = new PlaybackScheduler({
       ...options,
-      onError: (error) => {
-        this.onError(error);
-        this.suppress();
-      },
+      onError: (error) => this.fail(error),
       maxPendingBytes: 9_600,
-    }); // 200ms @24k PCM16
+    }); // 200ms pending @24k PCM16 plus bounded native reserve
   }
   get epoch(): number {
     return this.generation;
   }
-  get needsRetry(): boolean {
+  get suppressed(): boolean {
     return this.muted;
   }
   get speaking(): boolean {
     return this.detector.speaking;
+  }
+  get suppressionReason(): "speech" | "settling" | "error" | undefined {
+    return this.faulted ? "error" : this.speaking ? "speech" : this.muted ? "settling" : undefined;
   }
   start(): void {
     this.scheduler.start();
@@ -81,45 +87,42 @@ export class GptLivePlaybackRecovery {
   capture(pcm: Buffer): "started" | "ended" | undefined {
     if (this.closed) return;
     const transition = this.detector.observe(pcm);
-    if (transition === "started" && this.outputSeen) this.suppress();
+    if (transition === "started") {
+      this.quietGuardFrames = 10;
+      this.suppress(true);
+    } else if (transition === "ended") {
+      this.quietGuardFrames = 10; // after the detector's 300ms qualified quiet
+    } else if (this.muted && !this.faulted && !this.speaking) {
+      // The native helper continuously emits 20ms processed frames. Do not recover
+      // from a stopped capture stream or from a short noisy gap inside speech.
+      this.quietGuardFrames = this.detector.quiet ? this.quietGuardFrames - 1 : 10;
+      if (this.quietGuardFrames <= 0) this.muted = false;
+    }
     return transition;
   }
-  /** PCM16 mono 24k. Enqueue only if this is the current output response. */
+  /** PCM16 mono24k. Suppressed chunks are discarded, never queued for replay. */
   output(pcm: Buffer): boolean {
-    if (this.closed || this.muted) return false;
-    // Even the first output overlapping speech has uncertain attribution.
-    if (this.speaking) {
-      this.suppress();
-      return false;
-    }
+    if (this.closed || this.muted || this.speaking || this.faulted) return false;
     if (!Buffer.isBuffer(pcm) || !pcm.length || pcm.length % 2) {
-      this.onError(new Error("Invalid GPT-Live PCM16 output"));
+      this.fail(new Error("Invalid GPT-Live PCM16 output"));
       return false;
     }
-    this.outputSeen = true;
     if (this.scheduler.enqueue(pcm, this.generation)) {
-      // Flush a short trailing frame; this is NOT a provider turn-complete event.
+      // Drain short final frames; NOT a provider turn-complete event.
       this.scheduler.turnComplete(this.generation);
       return true;
     }
-    if (!this.muted) {
-      this.onError(new Error("GPT-Live playback rejected; explicit retry required"));
-      this.suppress();
-    }
+    if (!this.faulted) this.fail(new Error("GPT-Live playback rejected"));
     return false;
   }
-  /** Must be called only after a fresh response/session is explicitly established. */
-  resetForFreshResponse(): boolean {
-    if (this.closed || this.speaking || !this.muted) return false;
-    // Flush once more so old native writes cannot be mistaken for this response.
-    this.generation++;
-    this.scheduler.interrupt(this.generation);
-    this.muted = false;
-    this.outputSeen = false;
-    return true;
+  private fail(error: Error): void {
+    if (this.closed || this.faulted) return;
+    this.faulted = true;
+    this.suppress();
+    this.onError(error);
   }
-  private suppress(): void {
-    if (this.muted || this.closed) return;
+  private suppress(force = false): void {
+    if (this.closed || (this.muted && !force)) return;
     this.muted = true;
     this.generation++;
     this.scheduler.interrupt(this.generation);

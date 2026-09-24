@@ -106,7 +106,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     liveVoice?: GPTLiveSession;
     liveDelegation?: GptLiveDelegationBridge;
     livePlayback?: GptLivePlaybackRecovery;
-    private retryNotice = false;
+
     orchestration?: VoiceOrchestration;
     private inputUtterance = "";
     host?: VoiceHost;
@@ -287,19 +287,13 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     }
     checkLiveInterruption() {
       const playback = this.livePlayback;
-      if (!playback || !this.alive || !playback.needsRetry) return;
+      if (!playback || !this.alive || !playback.suppressed) return;
       if (playback.epoch > this.generation) {
         this.liveDelegation?.interrupt();
         this.interrupt(playback.epoch);
       }
-      if (!this.retryNotice) {
-        this.retryNotice = true;
-        this.ctx.ui.notify(
-          "GPT-Live output paused after local acoustic activity. Mic and agent work continue. This WebSocket has no old/new audio boundary; use /live stop then /live start and retry for fresh audio. Detection is an acoustic heuristic, not validated VAD.",
-          "warning",
-        );
-      }
     }
+
     createLiveVoice() {
       const host = this.host;
       if (host?.delegate) {
@@ -340,7 +334,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         onOutputTranscript: (fragment) => {
           if (!this.alive) return;
           this.transcriptLog.receive("Voice", { text: fragment.delta, finished: false });
-          if (this.livePlayback?.needsRetry || this.livePlayback?.speaking)
+          if (this.livePlayback?.suppressed || this.livePlayback?.speaking)
             this.transcriptLog.finish("Voice", "suppressed");
           this.render();
         },
@@ -373,7 +367,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         },
       });
       this.ctx.ui.notify(
-        "GPT-Live uses continuous PCM and provisional transcripts. Local interruption uses a limited acoustic heuristic; after interruption audio stays paused until you restart Live. Microphone capture is never muted by playback.",
+        "GPT-Live uses continuous PCM and provisional transcripts. Local interruption uses a limited acoustic heuristic. Output resumes after qualified quiet plus a 200ms guard; stale server audio may still be heard. Microphone capture is never muted by playback.",
         "info",
       );
     }
@@ -587,8 +581,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                   ? " · client delegation " +
                     (current.liveDelegation ? "connected" : "unavailable") +
                     " · GPT-Live output " +
-                    (current.livePlayback?.needsRetry
-                      ? "paused; restart Live for fresh audio"
+                    (current.livePlayback?.suppressed
+                      ? "suppressed during speech/quiet guard"
                       : "active; limited acoustic detector")
                   : "") +
                 ". Agent work is independent of voice."

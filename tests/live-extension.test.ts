@@ -1619,9 +1619,17 @@ describe("GPT-Live wired selection", () => {
     expect(t.widgets.flat().join(" ")).toContain("not played");
     await t.run("status");
     expect(t.notices.at(-1)).toContain("client delegation connected");
-    expect(t.notices.at(-1)).toContain("output paused");
+    expect(t.notices.at(-1)).toContain("output suppressed during speech/quiet guard");
     expect(f.wire.filter((m) => m.type === "session.input_audio.append")).toHaveLength(19);
-    expect(t.notices.some((n) => n.includes("use /live stop then /live start"))).toBe(true);
+    expect(t.notices.some((n) => n.includes("200ms guard"))).toBe(true);
+    for (let i = 0; i < 10; i++) t.capture.capture?.(Buffer.alloc(640));
+    f.event({ type: "session.output_audio.delta", delta: Buffer.alloc(960).toString("base64") });
+    await tick();
+    expect(t.played).toHaveLength(played + 1);
+    expect(t.played.at(-1)?.generation).toBe(1);
+    expect(f.wire.filter((m) => m.type === "session.input_audio.append")).toHaveLength(29);
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("output active");
     expect(legacy).toBe(0);
     expect(stop).toBe(0);
     await t.run("stop");
@@ -1642,7 +1650,7 @@ describe("GPT-Live wired selection", () => {
     const loud = Buffer.alloc(640);
     for (let i = 0; i < loud.length; i += 2) loud.writeInt16LE(2300, i);
     for (let i = 0; i < 4; i++) t.capture.capture?.(loud);
-    for (let i = 0; i < 15; i++) t.capture.capture?.(Buffer.alloc(640));
+    for (let i = 0; i < 25; i++) t.capture.capture?.(Buffer.alloc(640));
     f.event({ type: "session.output_audio.delta", delta: Buffer.alloc(960).toString("base64") });
     await tick();
     expect(t.played).toHaveLength(1);

@@ -55,27 +55,29 @@ describe("GPT-Live bounded playback recovery", () => {
     playback.start();
     return { playback, sent, flushed, errors };
   }
-  test("speech flushes pending PCM, drops output during speech and after quiet until explicit fresh response", async () => {
+  test("speech flushes output, suppresses during speech and quiet guard, then automatically resumes arriving stream", async () => {
     const h = harness();
     expect(h.playback.output(output())).toBe(true);
     await tick();
     for (let i = 0; i < 3; i++) expect(h.playback.capture(loud)).toBeUndefined();
     expect(h.playback.capture(loud)).toBe("started");
-    expect(h.playback.needsRetry).toBe(true);
+    expect(h.playback.suppressed).toBe(true);
     expect(h.playback.epoch).toBe(1);
     expect(h.flushed).toEqual([1]);
-    expect(h.playback.resetForFreshResponse()).toBe(false);
     expect(h.playback.output(output())).toBe(false);
     for (let i = 0; i < 15; i++) h.playback.capture(quiet);
     expect(h.playback.speaking).toBe(false);
-    expect(h.playback.output(output())).toBe(false); // quiet/ack alone isn't an old/new boundary
-    expect(h.playback.resetForFreshResponse()).toBe(true);
-    expect(h.playback.epoch).toBe(2);
-    expect(h.flushed).toEqual([1, 2]);
-    await tick();
+    expect(h.playback.suppressionReason).toBe("settling");
+    for (let i = 0; i < 9; i++) h.playback.capture(quiet);
+    expect(h.playback.output(output())).toBe(false);
+    h.playback.capture(quiet);
+    expect(h.playback.suppressed).toBe(false);
+    // Same socket, no invented server marker or reset. New arriving bytes may
+    // still be an old server tail: best effort, not proven generation attribution.
     expect(h.playback.output(output())).toBe(true);
     await tick();
-    expect(h.sent.at(-1)?.generation).toBe(2);
+    expect(h.sent.at(-1)?.generation).toBe(1);
+    expect(h.flushed).toEqual([1]);
     h.playback.close();
   });
   test("overflow fails closed and flushes; cannot accumulate seconds of queued PCM", () => {
@@ -83,7 +85,7 @@ describe("GPT-Live bounded playback recovery", () => {
     expect(h.playback.output(Buffer.alloc(9_600))).toBe(true);
     expect(h.playback.output(output())).toBe(true); // first 20ms already in flight
     expect(h.playback.output(output())).toBe(false);
-    expect(h.playback.needsRetry).toBe(true);
+    expect(h.playback.suppressed).toBe(true);
     expect(h.playback.scheduler.state.pendingBytes).toBe(0);
     expect(h.flushed).toEqual([1]);
     expect(h.errors.some((e) => e.includes("pending budget"))).toBe(true);
@@ -94,7 +96,7 @@ describe("GPT-Live bounded playback recovery", () => {
     expect(h.playback.output(Buffer.alloc(1))).toBe(false);
     expect(h.playback.capture(quiet)).toBeUndefined();
     expect(h.playback.speaking).toBe(false);
-    expect(h.playback.needsRetry).toBe(false);
+    expect(h.playback.suppressionReason).toBe("error");
     h.playback.close();
   });
 });
@@ -171,4 +173,43 @@ test("local interruption flushes immediately despite an outstanding native pipe 
   expect(writes).toBe(1);
   expect(playback.scheduler.playedMs).toBe(0);
   playback.close();
+});
+
+test("noise during settling resets the guard; renewed speech flushes again; no indefinite mute", async () => {
+  const flushed: number[] = [];
+  const p = new GptLivePlaybackRecovery({
+    send: async () => {},
+    flush: async (e) => {
+      flushed.push(e);
+    },
+    onError: () => {},
+  });
+  p.start();
+  for (let i = 0; i < 4; i++) p.capture(loud);
+  for (let i = 0; i < 20; i++) p.capture(quiet);
+  p.capture(soft); // below onset but above quiet threshold: reset short guard
+  for (let i = 0; i < 9; i++) p.capture(quiet);
+  expect(p.output(output())).toBe(false);
+  for (let i = 0; i < 4; i++) p.capture(loud);
+  expect(flushed).toEqual([1, 2]);
+  for (let i = 0; i < 25; i++) p.capture(quiet);
+  expect(p.suppressed).toBe(false);
+  expect(p.output(output())).toBe(true);
+  p.close();
+});
+
+test("hard output errors do not silently recover when capture becomes quiet", () => {
+  const errors: string[] = [];
+  const p = new GptLivePlaybackRecovery({
+    send: async () => {},
+    flush: async () => {},
+    onError: (e) => errors.push(e.message),
+  });
+  p.start();
+  expect(p.output(Buffer.alloc(1))).toBe(false);
+  for (let i = 0; i < 50; i++) p.capture(quiet);
+  expect(p.suppressionReason).toBe("error");
+  expect(p.output(output())).toBe(false);
+  expect(errors).toEqual(["Invalid GPT-Live PCM16 output"]);
+  p.close();
 });

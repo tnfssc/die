@@ -1,6 +1,6 @@
 # Explicit Live models and GPT-Live design gate (2026-09-24)
 
-The selection-only gate below is historical. Actual independent adapter/bridge/native wiring now exists; see [implementation evidence and outstanding parent playback-policy review](gpt-live-implementation.md).
+The selection-only gate below is historical. Actual independent adapter/bridge/native wiring now exists; see [current implementation evidence and parent-review handoff](gpt-live-implementation.md).
 
 Baseline 9023d41111c7cc25a0be2e9b1085dfc175faa7bc: retain interrupted-response completion fixes and Mac audio graph. Read values, OpenAI research/provider/integration notes and Mac current speaker audit. No publication, provider calls, secrets or devices.
 

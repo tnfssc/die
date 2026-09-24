@@ -107,15 +107,22 @@ try {
     dispatches !== 1 ||
     played !== 1 ||
     flushed !== 1 ||
-    !playback.needsRetry ||
+    !playback.suppressed ||
     errors.length
   )
     throw Error(
       "GPT-Live integration smoke failed: " +
         JSON.stringify({ configured, input, commentary, dispatches, played, flushed, errors }),
     );
+  for (let i = 0; i < 25; i++) {
+    playback.capture(Buffer.alloc(640));
+    voice.appendMicrophone(Buffer.alloc(640));
+  }
+  if (playback.suppressed || !playback.output(Buffer.alloc(960))) throw Error("no automatic recovery");
   await voice.close();
-  console.log("GPT-Live loopback handshake/PCM/delegation/local interruption/close passed; no external API or devices");
+  console.log(
+    "GPT-Live loopback handshake/PCM/delegation/local interruption/recovery/close passed; no external API or devices",
+  );
 } finally {
   bridge.close();
   playback.close();
