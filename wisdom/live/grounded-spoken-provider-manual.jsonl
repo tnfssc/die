@@ -1,0 +1,18 @@
+{"ms":846,"event":"fixture","mode":"manual","model":"gemini-3.8-live","phrase":"Please ask the coding agent to inspect the README and report its first heading without changing any files.","pcmBytes":181610,"sampleRate":16000}
+{"ms":849,"event":"state","state":"connecting"}
+{"ms":1540,"event":"state","state":"ready"}
+{"ms":1942,"event":"manual_activity_start"}
+{"ms":8416,"event":"manual_activity_end"}
+{"ms":8669,"event":"wire_input","envelope":3,"text":"Please ask the coding agent to inspect the README and report its first heading without changing any files.","rawFinished":"absent"}
+{"ms":8670,"event":"normalized_input","text":"Please ask the coding agent to inspect the README and report its first heading without changing any files.","finished":true,"finalitySource":"model_contract","rawFinished":"absent"}
+{"ms":8670,"event":"capture_committed","text":"Please ask the coding agent to inspect the README and report its first heading without changing any files."}
+{"ms":9094,"event":"wire_tools","envelope":7,"calls":[{"name":"agent_send","args":{"requestId":"a6f3b0e4-4d87-4d92-8070-9b4e3bd71415"},"id":"call_640294"}]}
+{"ms":9096,"event":"host_send","requestId":"a6f3b0e4-4d87-4d92-8070-9b4e3bd71415","text":"Please ask the coding agent to inspect the README and report its first heading without changing any files."}
+{"ms":9096,"event":"tool_response","response":{"functionResponses":{"id":"call_640294","name":"agent_send","response":{"output":{"status":"captured_only","noJobCreated":true}},"scheduling":"WHEN_IDLE"}}}
+{"ms":9099,"event":"wire_boundary","envelope":9,"turnComplete":true}
+{"ms":9100,"event":"turn_complete","turn":0}
+{"ms":14218,"event":"wire_boundary","envelope":43,"turnComplete":true}
+{"ms":14218,"event":"turn_complete","turn":1}
+{"ms":30851,"event":"state","state":"closed"}
+{"ms":30852,"event":"summary","hostCalls":1,"diagnostics":{"serverInterruptions":0,"turnCompletions":2}}
+{"ms":30854,"event":"temporary_audio_removed"}

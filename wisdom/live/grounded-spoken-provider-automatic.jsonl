@@ -1,0 +1,7 @@
+{"ms":742,"event":"fixture","mode":"automatic","model":"gemini-3.8-live","phrase":"Please ask the coding agent to inspect the README and report its first heading without changing any files.","pcmBytes":181610,"sampleRate":16000}
+{"ms":745,"event":"state","state":"connecting"}
+{"ms":1399,"event":"state","state":"ready"}
+{"ms":8222,"event":"audio_stream_end"}
+{"ms":30747,"event":"state","state":"closed"}
+{"ms":30747,"event":"summary","hostCalls":0,"diagnostics":{"serverInterruptions":0,"turnCompletions":0}}
+{"ms":30748,"event":"temporary_audio_removed"}
