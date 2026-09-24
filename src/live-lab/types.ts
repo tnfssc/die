@@ -1,4 +1,4 @@
-import type { GoogleGenAI } from "@google/genai";
+import type { FunctionDeclaration, GoogleGenAI } from "@google/genai";
 
 export const VOICE_MODEL = "gemini-3.8-live" as const;
 export type VoiceState = "idle" | "connecting" | "ready" | "closed";
@@ -30,3 +30,9 @@ export interface VoiceCallbacks {
 export type LiveAdapter = (apiKey: string) => { live: Pick<GoogleGenAI["live"], "connect"> };
 export type LiveParams = Parameters<GoogleGenAI["live"]["connect"]>[0];
 export type LiveConnection = Awaited<ReturnType<GoogleGenAI["live"]["connect"]>>;
+
+/** Tool calls belong to the model; host job updates use sendContext, never tool responses. */
+export interface VoiceOrchestration {
+  tools: FunctionDeclaration[];
+  execute(call: { id?: string; name?: string; args?: Record<string, unknown> }): Promise<unknown>;
+}

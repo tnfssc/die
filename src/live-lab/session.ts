@@ -1,10 +1,11 @@
-import { GoogleGenAI, Modality } from "@google/genai";
+import { Behavior, GoogleGenAI, Modality } from "@google/genai";
 import {
   VOICE_MODEL,
   type LiveAdapter,
   type LiveConnection,
   type LiveParams,
   type VoiceCallbacks,
+  type VoiceOrchestration,
   type VoiceError,
   type VoiceState,
   type VoiceTranscript,
@@ -15,6 +16,11 @@ const MAX_OUTPUT = 96000; // 2 seconds PCM16 mono 24 kHz per packet
 const MAX_TURN_OUTPUT = 24 * MAX_OUTPUT;
 const MAX_TRANSCRIPT = 4096;
 const CONNECT_TIMEOUT_MS = 15000;
+const MAX_TOOL_BYTES = 16384;
+const MAX_TOOL_CALLS = 256;
+const MAX_PENDING_TOOLS = 16;
+const MAX_CONTEXT = 4096;
+const jsonSize = (value: unknown): number => Buffer.byteLength(JSON.stringify(value));
 const base64Bytes = (s: string): number => {
   if (!s || s.length > 128000 || s.length % 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(s)) return -1;
   return (s.length / 4) * 3 - (s.endsWith("==") ? 2 : s.endsWith("=") ? 1 : 0);
@@ -34,9 +40,12 @@ export class VoiceSession {
   private outputChars = 0;
   private ended = false;
   private cancelConnect?: () => void;
+  private readonly seenCalls = new Set<string>();
+  private pendingTools = 0;
   constructor(
     private readonly callbacks: VoiceCallbacks,
     private readonly adapter: LiveAdapter = (apiKey) => new GoogleGenAI({ apiKey }),
+    private readonly orchestration?: VoiceOrchestration,
   ) {}
   get state(): VoiceState {
     return this.stateValue;
@@ -102,8 +111,20 @@ export class VoiceSession {
         model: VOICE_MODEL,
         config: {
           systemInstruction:
-            "You are the voice-only conversation prototype in die. Talk naturally and keep replies brief unless asked for more. You have no access to the coding agent, project files, or tools in this prototype. Never claim to have started or completed work. If asked to act on the project, explain that the work handoff is not connected yet. Do not ask for API keys.",
+            "You are the voice-only conversation prototype in die. Talk naturally and keep replies brief unless asked for more. Never claim work has started or completed without a grounded tool result or host update. Do not ask for API keys.",
           responseModalities: [Modality.AUDIO],
+          ...(this.orchestration?.tools.length
+            ? {
+                tools: [
+                  {
+                    functionDeclarations: this.orchestration.tools.map((tool) => ({
+                      ...tool,
+                      behavior: Behavior.NON_BLOCKING,
+                    })),
+                  },
+                ],
+              }
+            : {}),
           inputAudioTranscription: {},
           outputAudioTranscription: {},
           realtimeInputConfig: { automaticActivityDetection: { disabled: false } },
@@ -175,6 +196,20 @@ export class VoiceSession {
       this.fail("transport_error", "Could not end audio stream");
     }
   }
+  /** Grounded host update, NOT a response to a model tool call. Buffered in conversation order;
+   * turnComplete:false avoids requesting an unsolicited spoken turn during live audio. */
+  sendContext(text: string): void {
+    if (this.stateValue !== "ready" || !this.connection) return;
+    if (!text || text.length > MAX_CONTEXT) {
+      this.error("invalid_input", "Invalid context length");
+      return;
+    }
+    try {
+      this.connection.sendClientContent({ turns: [{ role: "user", parts: [{ text }] }], turnComplete: false });
+    } catch {
+      this.fail("transport_error", "Could not send context");
+    }
+  }
   close(): void {
     if (this.stateValue === "closed") return;
     ++this.epoch;
@@ -208,8 +243,70 @@ export class VoiceSession {
       ...(value.speakerLabel ? { speakerLabel: value.speakerLabel } : {}),
     };
   }
+  private handleToolCalls(calls: NonNullable<Message["toolCall"]>["functionCalls"]): void {
+    if (!this.orchestration) return;
+    for (const call of calls ?? []) {
+      if (this.stateValue !== "ready") return;
+      // Only identified, declared calls are executable. Keep IDs for the lifetime of the
+      // connection so retransmissions cannot run a side-effect twice.
+      if (!call.id || this.seenCalls.has(call.id)) continue;
+      if (call.id.length > 256 || !call.name || call.name.length > 128) {
+        this.fail("invalid_input", "Invalid tool call identifier");
+        return;
+      }
+      if (this.seenCalls.size >= MAX_TOOL_CALLS) {
+        this.fail("invalid_input", "Tool call limit exceeded");
+        return;
+      }
+      this.seenCalls.add(call.id);
+      const name = call.name;
+      const reply = (response: Record<string, unknown>) => {
+        if (this.stateValue !== "ready" || !this.connection) return;
+        try {
+          this.connection.sendToolResponse({ functionResponses: { id: call.id, name, response } });
+        } catch {
+          this.fail("transport_error", "Could not send tool response");
+        }
+      };
+      let valid = false;
+      try {
+        valid =
+          !!name &&
+          this.orchestration.tools.some((tool) => tool.name === name) &&
+          (!call.args ||
+            (typeof call.args === "object" && !Array.isArray(call.args) && jsonSize(call.args) <= MAX_TOOL_BYTES));
+      } catch {
+        /* malformed or cyclic input */
+      }
+      if (!valid || this.pendingTools >= MAX_PENDING_TOOLS) {
+        reply({ error: "Tool request rejected" });
+        continue;
+      }
+      ++this.pendingTools;
+      // Defer invocation: SDK onmessage must return before any agent work begins. An
+      // interruption/cancellation affects playback, not the underlying agent job.
+      void Promise.resolve()
+        .then(() => this.orchestration!.execute({ id: call.id, name, args: call.args }))
+        .then(
+          (result) => {
+            let response: Record<string, unknown> = { output: result ?? null };
+            try {
+              if (jsonSize(response) > MAX_TOOL_BYTES) response = { error: "Tool result too large" };
+            } catch {
+              response = { error: "Invalid tool result" };
+            }
+            reply(response);
+          },
+          () => reply({ error: "Tool execution failed" }),
+        )
+        .finally(() => {
+          --this.pendingTools;
+        });
+    }
+  }
   private receive(message: Message): void {
-    // No tool requests are advertised or executed.
+    // Cancellation notification is advisory; running agent jobs are never cancelled.
+    this.handleToolCalls(message.toolCall?.functionCalls);
     const content = message.serverContent;
     if (content) {
       if (content.interrupted) {
