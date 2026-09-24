@@ -183,6 +183,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     }
     interrupt(epoch: number) {
       if (!this.alive || epoch <= this.generation) return;
+      this.orchestration?.beginUserTurn?.();
+      this.inputUtterance = "";
       this.generation = epoch;
       this.pendingBytes = 0;
       this.queuedMs = 0;
@@ -200,6 +202,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     stop() {
       if (current !== this) return;
       current = undefined;
+      this.orchestration?.beginUserTurn?.();
+      this.inputUtterance = "";
       this.controller.abort();
       this.unsubscribeHost?.();
       this.unsubscribeHost = undefined;
@@ -260,9 +264,6 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             onAudio: (pcm, epoch) => this.output(pcm, epoch),
             onInterrupted: (epoch) => this.interrupt(epoch),
             onTurnComplete: () => {
-              // Calls in this SDK message are admitted in a microtask first.
-              queueMicrotask(() => this.orchestration?.endUserTurn?.());
-              this.inputUtterance = "";
               if (this.alive) {
                 this.turns++;
                 this.generationFinished = true;
@@ -273,6 +274,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             },
             onInputTranscript: (t) => {
               if (!this.alive) return;
+              if (!this.inputUtterance && t.text) this.orchestration?.beginUserTurn?.();
               this.inputUtterance = (this.inputUtterance + t.text).slice(0, 4001);
               if (t.finished) {
                 this.orchestration?.userTranscript(this.inputUtterance);

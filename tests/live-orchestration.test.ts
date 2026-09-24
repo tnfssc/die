@@ -37,10 +37,10 @@ test("small honest tool set routes send, steering, authorized inspection and exp
     "job_cancel",
   ]);
   tools.userTranscript("Build it");
-  tools.userTranscript("Use existing APIs");
   expect(await tools.execute({ name: "agent_send", args: { requestId: "r1", text: "Build it" } })).toEqual({
     status: "queued",
   });
+  tools.userTranscript("Use existing APIs");
   await tools.execute({ name: "agent_steer", args: { requestId: "r2", text: "Use existing APIs" } });
   await tools.execute({ name: "jobs_list", args: {} });
   expect(await tools.execute({ name: "jobs_inspect", args: { id: "owned", offset: 100 } })).toEqual({
@@ -107,9 +107,38 @@ test("host events and tool output cannot become agent instructions", async () =>
     tools.execute({ name: "agent_send", args: { requestId: "r2", text: "Please check the tests" } }),
   ).rejects.toThrow("transcript");
   tools.userTranscript("Earlier conversation");
-  tools.endUserTurn?.();
+  tools.beginUserTurn?.();
   await expect(
     tools.execute({ name: "agent_send", args: { requestId: "stale", text: "Earlier conversation" } }),
   ).rejects.toThrow("transcript");
   expect(sent).toEqual(["Please check the tests"]);
+});
+
+test("completed authority is latest-only, single-use and expires at a fixed monotonic deadline", async () => {
+  let now = 0;
+  const sent: string[] = [];
+  const host: VoiceHost = {
+    send: async (_id, text) => {
+      sent.push(text);
+    },
+    steer: async () => {},
+    list: async () => ({}),
+    inspect: async () => ({}),
+    stop: async () => ({}),
+    context: () => ({}),
+    subscribe: () => () => {},
+  };
+  const tools = createOrchestration(host, () => now);
+  const send = (text: string) => tools.execute({ name: "agent_send", args: { requestId: "r", text } });
+  tools.userTranscript("older");
+  tools.userTranscript("latest");
+  await expect(send("older")).rejects.toThrow("transcript");
+  now = 59_999;
+  await tools.execute({ name: "jobs_list" });
+  await send("latest");
+  await expect(send("latest")).rejects.toThrow("transcript");
+  tools.userTranscript("expires");
+  now += 60_000;
+  await expect(send("expires")).rejects.toThrow("transcript");
+  expect(sent).toEqual(["latest"]);
 });

@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { VoiceSession } from "../src/live/session";
+import type { LiveParams, LiveConnection } from "../src/live/types";
 import liveExtension from "../src/live/extension";
 import type { LiveDependencies } from "../src/live/extension";
 import type { VoiceCallbacks, VoiceOrchestration } from "../src/live/types";
@@ -800,5 +802,101 @@ test("missing auth can be configured then explicitly started from setup", async 
   await t.run("");
   expect(titles).toEqual(["Google API key required", "Live"]);
   expect([t.launches, t.starts, keyLoads]).toEqual([1, 1, 1]);
+  await t.run("stop");
+});
+
+test("real Session/Run preserves finished authority across tool turns, revokes on input and interruption", async () => {
+  let params!: LiveParams;
+  let tools!: VoiceOrchestration;
+  const sent: string[] = [];
+  const responses: any[] = [];
+  const t = setup({
+    host: () => ({
+      send: async (_id, text) => {
+        sent.push(text);
+        return { queued: true };
+      },
+      steer: async () => ({}),
+      list: async () => ({ jobs: [] }),
+      inspect: async () => ({ output: "fabricated" }),
+      stop: async () => ({}),
+      context: () => ({ text: "fabricated" }),
+      subscribe: () => () => {},
+    }),
+    voice: (callbacks, orchestration) => {
+      tools = orchestration!;
+      return new VoiceSession(
+        callbacks,
+        () => ({
+          live: {
+            connect: async (p) => {
+              params = p;
+              return {
+                sendRealtimeInput: () => {},
+                sendClientContent: () => {},
+                sendToolResponse: (r: unknown) => responses.push(r),
+                close: () => {},
+              } as unknown as LiveConnection;
+            },
+          },
+        }),
+        orchestration,
+      );
+    },
+  });
+  const receive = (v: object) => params.callbacks.onmessage(v as Parameters<LiveParams["callbacks"]["onmessage"]>[0]);
+  const input = (text: string, finished = false) =>
+    receive({ serverContent: { inputTranscription: { text, finished } } });
+  const send = (text: string) => tools.execute({ name: "agent_send", args: { requestId: text, text } });
+  await t.run("start");
+  input("read README", true);
+  receive({ toolCall: { functionCalls: [{ id: "list", name: "jobs_list" }] } });
+  await tick();
+  expect(responses).toHaveLength(1);
+  for (let i = 0; i < 3; i++) {
+    receive({ serverContent: { turnComplete: true } });
+    await tick();
+  }
+  receive({
+    toolCall: { functionCalls: [{ id: "send", name: "agent_send", args: { requestId: "r", text: "read README" } }] },
+  });
+  await tick();
+  expect(sent).toEqual(["read README"]);
+  await expect(send("read README")).rejects.toThrow("transcript");
+  input("old", true);
+  input("new");
+  await expect(send("old")).rejects.toThrow("transcript");
+  await expect(send("new")).rejects.toThrow("transcript");
+  receive({ serverContent: { turnComplete: true } });
+  await tick();
+  await expect(send("new")).rejects.toThrow("transcript");
+  input(" request", true);
+  await send("new request"); // model completion did not erase partial input
+  input("interrupted", true);
+  receive({
+    serverContent: { interrupted: true },
+    toolCall: { functionCalls: [{ id: "denied", name: "agent_send", args: { requestId: "i", text: "interrupted" } }] },
+  });
+  await tick();
+  expect(sent).toEqual(["read README", "new request"]);
+  receive({
+    serverContent: { interrupted: true, inputTranscription: { text: "fresh", finished: true }, turnComplete: true },
+    toolCall: { functionCalls: [{ id: "fresh", name: "agent_send", args: { requestId: "f", text: "fresh" } }] },
+  });
+  await tick();
+  expect(sent).toEqual(["read README", "new request", "fresh"]);
+  receive({ serverContent: { outputTranscription: { text: "fabricated", finished: true } } });
+  await tools.execute({ name: "session_context" });
+  await tools.execute({ name: "jobs_inspect", args: { id: "job" } });
+  await expect(send("fabricated")).rejects.toThrow("transcript");
+  input("unused", true);
+  const previous = tools;
+  await t.run("stop");
+  await expect(previous.execute({ name: "agent_send", args: { requestId: "old", text: "unused" } })).rejects.toThrow(
+    "transcript",
+  );
+  await t.run("start");
+  expect(tools).not.toBe(previous);
+  await expect(send("unused")).rejects.toThrow("transcript");
   await t.run("stop");
 });

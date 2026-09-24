@@ -76,19 +76,18 @@ export function boundedHostContext(value: unknown): string {
     (serialized.length <= 3800 ? serialized : JSON.stringify({ truncated: true, preview: serialized.slice(0, 1600) }))
   );
 }
-export function createOrchestration(host: VoiceHost): VoiceOrchestration {
-  // Only completed input speech authorizes handoffs; observations are never authority.
-  const pending: string[] = [];
+export function createOrchestration(host: VoiceHost, now: () => number = () => performance.now()): VoiceOrchestration {
+  // One completed input request, never observations/history. Model turns are not
+  // input boundaries: NON_BLOCKING tools may span several of them.
+  const ttlMs = 60_000;
+  let pending: { text: string; expiresAt: number } | undefined;
   return {
     userTranscript(value) {
       const text = value.trim();
-      if (text && text.length <= 4000) {
-        pending.push(text);
-        if (pending.length > 8) pending.shift();
-      }
+      pending = text && text.length <= 4000 ? { text, expiresAt: now() + ttlMs } : undefined;
     },
-    endUserTurn() {
-      pending.length = 0;
+    beginUserTurn() {
+      pending = undefined;
     },
     tools: orchestrationTools,
     async execute(call) {
@@ -99,9 +98,9 @@ export function createOrchestration(host: VoiceHost): VoiceOrchestration {
       if (Object.keys(args).some((key) => !allowed.includes(key))) throw new Error("Unexpected tool argument");
       if (call.name === "agent_send" || call.name === "agent_steer") {
         const requested = text(args, "text", 4000).trim();
-        const index = pending.indexOf(requested);
-        if (index < 0) throw new Error("Handoff requires a matching completed user transcript");
-        pending.splice(index, 1);
+        if (pending && now() >= pending.expiresAt) pending = undefined;
+        if (pending?.text !== requested) throw new Error("Handoff requires a matching completed user transcript");
+        pending = undefined;
       }
       switch (call.name) {
         case "session_context":

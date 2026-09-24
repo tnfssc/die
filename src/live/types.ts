@@ -36,7 +36,7 @@ export interface VoiceOrchestration {
   tools: FunctionDeclaration[];
   /** Completed input speech only; never host updates or model output. */
   userTranscript(text: string): void;
-  /** Expire unused speech authority after its response turn. */
-  endUserTurn?(): void;
+  /** Revoke pending authority on fresh input or interruption, not model turn completion. */
+  beginUserTurn?(): void;
   execute(call: { id?: string; name?: string; args?: Record<string, unknown> }): Promise<unknown>;
 }

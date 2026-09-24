@@ -155,3 +155,44 @@ synthetic silence. No native capture/VAD settings changed. Further production
 speech behavior still needs observed real user input; generated audio is not a
 replacement for it. Temporary synthesized files/metadata remain under
 /tmp/die-synthetic-speech-705ada19 until parent cleanup. No mic was captured.
+
+
+## Completed transcript lifetime fix (2026-09-24)
+
+Source: parent task report to worker task_37f3ab60. Parent reproduced with
+installed CLI host + real Google + current VoiceSession/createOrchestration:
+completed, authorized read-only text -> jobs_list -> provider turnComplete ->
+exact-text agent_send denied. Direct agent_send succeeded through configured
+openai-codex agent reading scratch README and replying a marker. This separates
+premature authority expiry from host discovery/agent routing. Worker did not
+repeat these paid/provider probes. Synthetic speech probes reportedly gave no
+responses; absence of a finished transcription marker is NOT established.
+
+Worker worktree: /Users/sharath/.die/worktrees/die-f528e86af6b5-task_37f3ab60.
+Fix in live/orchestration, types, extension: one latest completed input grant,
+exact existing trimmed matching and single-use consumption, fixed 60s TTL
+(performance.now; injectable clock). New nonempty input revokes previous grant;
+provider interruption and stop revoke it too. Each Run creates fresh orchestration.
+Model turnComplete neither revokes authority nor clears partial input. Only an
+actual input finished marker finalizes the accumulated request. Interruption
+clears partial input before same-message transcription is processed; admission
+still uses Session's existing microtask ordering. No Session code changed.
+
+Tradeoff: an unused completed request may authorize its exact text for up to
+60 seconds across NON_BLOCKING tool/model turns, but never after fresh input,
+interruption, consumption or teardown. Slow chains beyond 60s must obtain fresh
+input. Latest-only storage intentionally removes prior multi-request history.
+Host observations/model output cannot mint grants. Request/job cancellation
+rules, status agent binding/tool counts, devices, SDK transport and audio unchanged.
+
+Validation: 58 tests passed across live-extension, live-orchestration,
+live-tools, live-session; bun run check passed. Added actual VoiceSession + Run
+callback regression with fake SDK/host: jobs_list then multiple model completions
+then exact handoff once; partial input surviving model completion but not
+authorizing; old grant revoked by input/interruption; interrupted+finished
+transcript+tool in one packet; fabricated outputs/context denied; stop/restart
+cannot reuse grant. Clock test covers fixed TTL and latest-only/single-use grant.
+No device/provider calls or CLI installation/release by worker. Parent must
+repeat exact real-provider CLI chain before installation; this does not prove
+real speech end-to-end. Values unchanged: existing real-path evidence, bounded
+state and truthful-limits principles apply.
