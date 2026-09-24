@@ -20,7 +20,7 @@ Explicit CJS index.js and ESM wrapper.mjs package imports resolve to the same pa
 
 Integrated local validation: 93 focused session/extension tests pass, TypeScript check passes, targeted formatting passes, lint exits zero (existing warnings remain). The new terminal integration uses real localhost 401/default transport for both models and proves HTTP 401 is displayed without fake key/body; startup construction/connect and adapter constructor/listener failures have safe-stage regression coverage.
 
-Focused macOS full CLI/source probe dispatched on branch commit 5bc5a1c: https://github.com/tnfssc/die/actions/runs/36006968095 (pending). It builds the full CLI without native helper/device actions. No release or merge is part of this branch.
+Focused macOS full CLI/source probe dispatched on branch commit 5bc5a1c: https://github.com/tnfssc/die/actions/runs/36006968095 **passed**, macos-15 job 107657509138 in 6m25s. It built the full CLI through bun run build/scripts/build.ts, then passed both source and full compiled default transport probes for full/mini session.updated and HTTP 401. Native helper/device job was skipped. No release or merge is part of this branch.
 
 Work retained:
 - Parent: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_5010a15e, branch die/trace-compiled-realtime-failure-5010a15e.
