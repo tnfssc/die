@@ -1,4 +1,4 @@
-import { EventEmitter } from "node:events";
+import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { expect, test } from "bun:test";
 import liveExtension from "../src/live/extension";
 import { VoiceSession } from "../src/live/session";
@@ -9,18 +9,10 @@ import { getLiveHost } from "../src/live/host-access";
 test("tasks extension exposes its real shared JobService/TaskManager and retains bridge until shutdown", async () => {
   const handlers = new Map<string, Function[]>();
   const sent: unknown[] = [];
-  const bus = new EventEmitter();
-  const events = () => ({
-    emit: (name: string, data: unknown) => {
-      bus.emit(name, data);
-    },
-    on: (name: string, handler: (data: unknown) => void) => {
-      bus.on(name, handler);
-      return () => {
-        bus.off(name, handler);
-      };
-    },
-  });
+  // Pi 0.87.1 wraps listeners in an async error boundary. Use that actual
+  // implementation rather than assuming raw EventEmitter dispatch semantics.
+  const bus = createEventBus();
+  const events = () => ({ emit: bus.emit, on: bus.on });
   let voiceCommand!: (args: string, ctx: any) => Promise<void>;
   const voicePi = {
     events: events(),
@@ -70,7 +62,9 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   const fire = async (name: string, event: unknown = {}) => {
     for (const fn of handlers.get(name) ?? []) await fn(event, ctx);
   };
+  expect(getLiveHost(voicePi, ctx)).toBeUndefined();
   await fire("session_start");
+  expect(getLiveHost(voicePi, { ...ctx, sessionManager: { ...sessionManager } })).toBeUndefined();
   const host = getLiveHost(voicePi, ctx)!;
   expect(host).toBeDefined();
   expect(getLiveHost(voicePi, ctx)).toBe(host);
@@ -132,7 +126,14 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
     }),
   });
   await voiceCommand("start", ctx);
-  expect(tools?.tools.map((t) => t.name)).toContain("agent_steer");
+  expect(tools?.tools.map((t) => t.name)).toEqual([
+    "session_context",
+    "agent_send",
+    "agent_steer",
+    "jobs_list",
+    "jobs_inspect",
+    "job_cancel",
+  ]);
   sdk.callbacks.onmessage({
     serverContent: { inputTranscription: { text: "please adjust", finished: true }, turnComplete: true },
     toolCall: {
