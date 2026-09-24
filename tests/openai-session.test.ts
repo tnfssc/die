@@ -737,7 +737,7 @@ test("explicit provider failures preserve selected model and redact untrusted me
       expect(errors).toHaveLength(1);
       expect(errors[0]).not.toContain("SECRET");
       expect(errors[0]).not.toContain("unknown-secret");
-      if (code === "unknown-secret") expect(errors[0]).toBe("OpenAI rejected voice session setup (details withheld)");
+      if (code === "unknown-secret") expect(errors[0]).toBe("OpenAI rejected voice session setup");
       else expect(errors[0]).toContain(model);
       if (code === "insufficient_quota") expect(errors[0]).toContain("insufficient quota");
       if (code === "rate_limit_exceeded") expect(errors[0]).toContain("rate limit");
@@ -774,7 +774,7 @@ describe("Realtime handshake diagnostics (offline)", () => {
     const rejected = c.connect("secret-key");
     socket.message({ type: "error", error: { message: "secret-key" } });
     await rejected;
-    expect(errors).toEqual(["OpenAI rejected voice session setup (details withheld)"]);
+    expect(errors).toEqual(["OpenAI rejected voice session setup"]);
   });
   test("malformed and oversized rejection bodies retain status without leaking contents", async () => {
     for (const body of ["{private-secret", "x".repeat(10000)]) {
