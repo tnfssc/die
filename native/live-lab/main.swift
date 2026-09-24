@@ -222,7 +222,9 @@ final class Lab {
             // Non-acoustic diagnostics; no samples or device identity in protocol events.
             event(["type":"ready", "voiceProcessingEnabled":audio.inputNode.isVoiceProcessingEnabled,
                 "voiceProcessingBypassed":audio.inputNode.isVoiceProcessingBypassed,
-                "captureRate":inputFormat.sampleRate, "renderRate":outputFormat.sampleRate])
+                "captureRate":inputFormat.sampleRate, "renderRate":outputFormat.sampleRate,
+                "captureChannels":audio.inputNode.outputFormat(forBus: 0).channelCount,
+                "renderChannels":audio.outputNode.inputFormat(forBus: 0).channelCount])
             t.setEventHandler { [weak self] in
                 guard let self, self.running else { return }
                 self.drainCapture()

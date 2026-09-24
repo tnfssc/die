@@ -17,6 +17,10 @@ export type AudioDiagnostics = {
     voiceProcessingBypassed: boolean;
     captureRate: number;
     renderRate: number;
+    /** Post-start negotiated input-node output channels; tap forwards channel 0 only. */
+    captureChannels?: number;
+    /** Post-start negotiated output-node input channels (not source node channels). */
+    renderChannels?: number;
   };
 };
 /** Error is terminal (static code/message), closed fires exactly once on either failure or normal shutdown.
@@ -277,6 +281,18 @@ export class LiveLabAudio {
           voiceProcessingBypassed: m.voiceProcessingBypassed,
           captureRate: m.captureRate,
           renderRate: m.renderRate,
+          ...(typeof m.captureChannels === "number" &&
+          Number.isInteger(m.captureChannels) &&
+          m.captureChannels > 0 &&
+          m.captureChannels <= 256
+            ? { captureChannels: m.captureChannels }
+            : {}),
+          ...(typeof m.renderChannels === "number" &&
+          Number.isInteger(m.renderChannels) &&
+          m.renderChannels > 0 &&
+          m.renderChannels <= 256
+            ? { renderChannels: m.renderChannels }
+            : {}),
         };
       this.state = "running";
       this.signal("ready");

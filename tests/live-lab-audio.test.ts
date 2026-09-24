@@ -198,3 +198,36 @@ test("bounded native ready metadata and full-duplex capture during queued playba
   expect(invalid.audio.diagnostics.ready).toBeUndefined();
   invalid.audio.close();
 });
+
+test("ready channel metadata is optional and independently sanitized", async () => {
+  const base = {
+    type: "ready",
+    voiceProcessingEnabled: true,
+    voiceProcessingBypassed: false,
+    captureRate: 48000,
+    renderRate: 48000,
+  };
+  for (const [channels, expected] of [
+    [
+      { captureChannels: 9, renderChannels: 2 },
+      { captureChannels: 9, renderChannels: 2 },
+    ],
+    [{ captureChannels: 0, renderChannels: 1.5 }, {}],
+    [{ captureChannels: Infinity, renderChannels: 257 }, {}],
+    [{ captureChannels: "2", renderChannels: 1 }, { renderChannels: 1 }],
+  ] as const) {
+    const { audio, worker } = await open();
+    const started = audio.start();
+    await tick();
+    worker.emitMessage({ ...base, ...channels });
+    await started;
+    expect(audio.diagnostics.ready).toEqual({
+      voiceProcessingEnabled: true,
+      voiceProcessingBypassed: false,
+      captureRate: 48000,
+      renderRate: 48000,
+      ...expected,
+    });
+    audio.close();
+  }
+});
