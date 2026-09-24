@@ -36,6 +36,10 @@ export class PlaybackScheduler {
   private timer?: ReturnType<typeof setTimeout>;
   private ringMs = 0;
   private ringAt = 0;
+  private acceptedMs = 0;
+  private elapsedMs = 0;
+  private countedMs = 0;
+  private countedAt = 0;
   constructor(private readonly options: PlaybackOptions) {
     this.clock = options.clock ?? realClock;
     this.limit = options.maxPendingBytes ?? MAX_PENDING_BYTES;
@@ -49,6 +53,24 @@ export class PlaybackScheduler {
       inFlight: this.writing,
       epoch: this.epochValue,
     };
+  }
+  /** Estimated played PCM time in this epoch, not bytes generated or merely queued.
+   * No native DAC acknowledgement exists; this is a conservative wall-clock/ring estimate. */
+  get playedMs(): number {
+    if (this.closed) return this.countedMs;
+    this.advancePlayedClock();
+    // Native feedback is ring depth, not an epoch-tagged playback acknowledgement.
+    // Never let late/high feedback retract already reported progress.
+    this.countedMs = Math.max(
+      this.countedMs,
+      Math.min(this.elapsedMs, Math.max(0, this.acceptedMs - this.remainingRing())),
+    );
+    return this.countedMs;
+  }
+  private advancePlayedClock() {
+    const now = this.clock.now();
+    if (!this.closed) this.elapsedMs = Math.min(this.acceptedMs, this.elapsedMs + Math.max(0, now - this.countedAt));
+    this.countedAt = now;
   }
   private emit() {
     this.options.onState?.(this.state);
@@ -102,6 +124,10 @@ export class PlaybackScheduler {
     if (this.closed || !Number.isSafeInteger(epoch) || epoch <= this.epochValue) return;
     this.cancelTimer();
     this.epochValue = epoch;
+    this.acceptedMs = 0;
+    this.elapsedMs = 0;
+    this.countedMs = 0;
+    this.countedAt = this.clock.now();
     this.pieces = [];
     this.pending = 0;
     this.overflowed = false;
@@ -113,6 +139,7 @@ export class PlaybackScheduler {
   }
   close() {
     if (this.closed) return;
+    void this.playedMs;
     this.closed = true;
     this.active = false;
     this.cancelTimer();
@@ -209,6 +236,10 @@ export class PlaybackScheduler {
     }
     Promise.resolve(result).then(
       () => {
+        if (!this.closed && epoch === this.epochValue) {
+          this.advancePlayedClock();
+          this.acceptedMs += frame.length / 48;
+        }
         this.writing = false;
         if (this.closed) return;
         this.emit();

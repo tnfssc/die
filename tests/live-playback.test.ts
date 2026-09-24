@@ -63,6 +63,76 @@ function harness(
   return { clock, sent, flushed, errors, scheduler };
 }
 describe("live playback scheduler", () => {
+  test("played estimate excludes enqueue and pending writes; accrues only accepted playback time", async () => {
+    let release!: () => void;
+    const h = harness({ send: () => new Promise((resolve) => { release = resolve; }) });
+    h.scheduler.enqueue(Buffer.alloc(FRAME_BYTES * 2), 0);
+    expect(h.scheduler.playedMs).toBe(0);
+    h.scheduler.start();
+    h.clock.advance(500);
+    expect(h.scheduler.playedMs).toBe(0); // stalled pipe, not played
+    release();
+    await tick();
+    expect(h.scheduler.playedMs).toBe(0); // success is not an audible ack
+    h.clock.advance(10);
+    expect(h.scheduler.playedMs).toBe(10);
+    h.clock.advance(100);
+    expect(h.scheduler.playedMs).toBe(20); // gap does not count as audio
+    release();
+    await tick();
+    expect(h.scheduler.playedMs).toBe(20);
+    h.clock.advance(8);
+    expect(h.scheduler.playedMs).toBe(28);
+    h.clock.advance(100);
+    expect(h.scheduler.playedMs).toBe(40);
+    h.scheduler.close();
+    h.clock.advance(100);
+    expect(h.scheduler.playedMs).toBe(40);
+  });
+  test("native ring feedback delays estimate, without moving it backwards", async () => {
+    const h = harness();
+    h.scheduler.enqueue(Buffer.alloc(FRAME_BYTES * 2), 0);
+    h.scheduler.start();
+    await tick();
+    h.clock.advance(20);
+    await tick();
+    expect(h.scheduler.playedMs).toBe(20);
+    h.scheduler.nativeQueued(80);
+    expect(h.scheduler.playedMs).toBe(20);
+    h.clock.advance(20);
+    expect(h.scheduler.playedMs).toBe(20);
+    h.clock.advance(60);
+    expect(h.scheduler.playedMs).toBe(40);
+  });
+  test("interrupt resets estimate; old success and failed write never credit new epoch", async () => {
+    let rejectOld!: (error: Error) => void;
+    const h = harness({ send: (_frame, epoch) => epoch === 0
+      ? new Promise((_resolve, reject) => { rejectOld = reject; })
+      : Promise.resolve() });
+    h.scheduler.start();
+    h.scheduler.enqueue(Buffer.alloc(FRAME_BYTES), 0);
+    h.clock.advance(100);
+    h.scheduler.interrupt(1);
+    expect(h.scheduler.playedMs).toBe(0);
+    rejectOld(new Error("cancelled"));
+    await tick();
+    h.scheduler.enqueue(Buffer.alloc(FRAME_BYTES), 1);
+    await tick();
+    expect(h.scheduler.playedMs).toBe(0);
+    h.clock.advance(10);
+    expect(h.scheduler.playedMs).toBe(10);
+    h.scheduler.interrupt(2);
+    expect(h.scheduler.playedMs).toBe(0);
+    h.clock.advance(100);
+    expect(h.scheduler.playedMs).toBe(0);
+    const failed = harness({ send: () => Promise.reject(new Error("pipe failed")) });
+    failed.scheduler.start();
+    failed.scheduler.enqueue(Buffer.alloc(FRAME_BYTES), 0);
+    await tick();
+    failed.clock.advance(100);
+    expect(failed.scheduler.playedMs).toBe(0);
+    expect(failed.errors).toHaveLength(1);
+  });
   test("burst of seconds drains at wall time; turnComplete retains every sample including fractional tail", async () => {
     const h = harness();
     const pcm = Buffer.alloc(48_000 * 4 + 222);
