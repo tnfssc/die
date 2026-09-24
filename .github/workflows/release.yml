@@ -310,7 +310,7 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
             --generate-notes \
-            --notes-file support/release-v0.10.2.md \
+            --notes-file support/release-v0.11.0.md \
             --title "$GITHUB_REF_NAME" \
             dist/release/die-linux-x64 \
             dist/release/die-linux-x64.sha256 \

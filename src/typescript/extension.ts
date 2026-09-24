@@ -90,7 +90,9 @@ export function registerExecuteTool(
       const execution = executeIsolated(
         params.code,
         ctx.cwd,
-        signal ? AbortSignal.any([signal, shutdown.signal, stopSignal.signal]) : AbortSignal.any([shutdown.signal, stopSignal.signal]),
+        signal
+          ? AbortSignal.any([signal, shutdown.signal, stopSignal.signal])
+          : AbortSignal.any([shutdown.signal, stopSignal.signal]),
         params.timeoutSeconds ? params.timeoutSeconds * 1_000 : undefined,
         {
           executablePath,
