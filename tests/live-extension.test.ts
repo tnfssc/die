@@ -207,6 +207,7 @@ describe("Live voice", () => {
       "stop",
       "setup",
       "status",
+      "provider",
       "mic-check",
       "speaker-check",
     ]);
@@ -285,7 +286,9 @@ describe("Live voice", () => {
     const t = setup();
     await t.run("status");
     expect([t.launches, t.keyCalls, t.starts]).toEqual([0, 0, 0]);
-    expect(t.notices).toEqual(["Live off."]);
+    expect(t.notices).toEqual([
+      "Live off · Google Gemini voice model gemini-3.8-live. Coding-agent model is configured separately.",
+    ]);
   });
   test("status distinguishes the connected agent and six configured declarations", async () => {
     const unused = async () => {
@@ -1208,4 +1211,49 @@ describe("Live provider selection", () => {
     expect(loaded).toBe(0);
     expect(t.launches).toBe(0);
   });
+});
+
+test("newer provider selection invalidates an older open selection menu", async () => {
+  const t = setup();
+  let resolve!: (choice: string) => void;
+  let choices: string[] = [];
+  t.ctx.ui.select = async (_title, options) => {
+    choices = options ?? [];
+    return new Promise<string>((done) => {
+      resolve = done;
+    });
+  };
+  const pending = t.run("provider");
+  await t.run("provider openai");
+  resolve(choices[0]!);
+  await pending;
+  await t.run("status");
+  expect(t.notices.at(-1)).toContain("OpenAI voice model");
+});
+
+test("OpenAI received transcript display alone cannot grant agent handoff authority", async () => {
+  let sends = 0;
+  const t = setup({
+    host: () => ({
+      context: () => ({}),
+      subscribe: () => () => {},
+      send: async () => {
+        sends++;
+        return {};
+      },
+      steer: async () => ({}),
+      list: async () => ({}),
+      inspect: async () => ({}),
+      stop: async () => ({}),
+    }),
+  });
+  await t.run("provider openai");
+  await t.run("start");
+  t.voice.onInputTranscript?.({ text: "stale completed ASR", finished: true, finalitySource: "provider" });
+  expect(t.transcriptEntries.some((e) => e.data.text === "stale completed ASR")).toBe(true);
+  await expect(
+    t.orchestration!.execute({ id: "call-stale", name: "agent_send", args: { requestId: "stale" } }),
+  ).rejects.toThrow();
+  expect(sends).toBe(0);
+  await t.run("stop");
 });

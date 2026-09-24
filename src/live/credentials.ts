@@ -54,7 +54,7 @@ export type LiveCredentialStatus =
   | { state: "stored_api_key"; canImport: false }
   | { state: "configured_api_key"; canImport: false }
   | { state: "oauth"; canImport: false }
-  | { state: "missing"; canImport: true };
+  | { state: "missing"; canImport: boolean };
 
 export interface LiveCredentialImportResult {
   imported: boolean;
@@ -66,7 +66,7 @@ type LiveCredentialRuntime = Pick<ModelRuntime, "checkAuth" | "getAuth" | "listC
 export interface LiveCredentialService {
   /** Credential state suitable for UI; this never returns key or token material. */
   status(signal?: AbortSignal): Promise<LiveCredentialStatus>;
-  /** Resolve Google's API key through ModelRuntime. OAuth access tokens are never returned. */
+  /** Resolve the selected provider API key through ModelRuntime. OAuth access tokens are never returned. */
   loadKey(signal?: AbortSignal): Promise<string>;
   /** Explicitly migrate live.env into the runtime's existing AuthStorage, if Google is unconfigured. */
   importLiveEnv(path?: string, signal?: AbortSignal): Promise<LiveCredentialImportResult>;
@@ -96,7 +96,7 @@ export function createLiveCredentialService(
 
     // OpenAI Live accepts only the canonical stored openai API key, not ambient
     // credentials, the distinct openai-codex OAuth provider, or subscriptions.
-    if (provider === OPENAI_PROVIDER) return { state: "missing", canImport: true };
+    if (provider === OPENAI_PROVIDER) return { state: "missing", canImport: false };
     const configured = await runtime.checkAuth(provider, { signal });
     if (!configured) return { state: "missing", canImport: true };
     return configured.type === "api_key"

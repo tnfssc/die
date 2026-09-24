@@ -207,11 +207,11 @@ test("OpenAI Live uses only canonical openai API key, never codex OAuth or Googl
     google: { type: "api_key", key: "fake-google-only" },
   });
   const live = createLiveCredentialService(runtime, credentials, "openai");
-  expect(await live.status()).toEqual({ state: "missing", canImport: true });
+  expect(await live.status()).toEqual({ state: "missing", canImport: false });
   await expect(live.loadKey()).rejects.toThrow("OpenAI API key");
   expect(await live.importLiveEnv(join(dir, "missing.env"))).toEqual({
     imported: false,
-    status: { state: "missing", canImport: true },
+    status: { state: "missing", canImport: false },
   });
   await storeKey(runtime, "openai", "fake-openai-api-key");
   expect(await live.status()).toEqual({ state: "stored_api_key", canImport: false });

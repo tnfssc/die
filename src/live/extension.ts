@@ -2,7 +2,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createDefaultLiveCredentialService, type LiveCredentialService, type LiveProviderId } from "./credentials";
 import { LIVE_PROVIDERS } from "./providers";
-import { OpenAIRealtimeSession } from "./openai-session";
+import { OpenAIVoiceSession as OpenAIRealtimeSession } from "./openai-session";
 import { liveLocalOnly } from "./status";
 import { runLiveSetup } from "./setup";
 import { LiveAudio, type AudioCallbacks, type AudioSetupError } from "./audio";
@@ -13,7 +13,7 @@ import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
 import { PlaybackScheduler } from "./playback";
 import { LiveWaveform } from "./waveform";
 import { TranscriptLog, VOICE_ENTRY } from "./transcript";
-import { type VoiceCallbacks, type VoiceOrchestration } from "./types";
+import { type VoiceCallbacks, type VoiceOrchestration, type VoiceProvider } from "./types";
 
 const ID = "die-live";
 const MAX_VISIBLE = 8;
@@ -33,8 +33,10 @@ export interface LiveDependencies {
     callbacks: VoiceCallbacks,
     orchestration?: VoiceOrchestration,
     provider?: LiveProviderId,
-  ): Pick<VoiceSession, "connect" | "sendAudio" | "close" | "state" | "generation"> &
-    Partial<Pick<VoiceSession, "sendContext" | "diagnostics">>;
+  ): Pick<VoiceProvider, "connect" | "sendAudio" | "close" | "state" | "generation"> &
+    Partial<Pick<VoiceProvider, "sendContext">> & {
+      diagnostics?: { serverInterruptions: number; turnCompletions: number; lastInterruptedAtMs?: number };
+    };
   host(pi: ExtensionAPI, ctx: ExtensionContext): VoiceHost | undefined;
   audio(
     callbacks: AudioCallbacks,
@@ -298,6 +300,15 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             },
             onInputTranscript: (t) => {
               if (!this.alive) return;
+              // Realtime ASR is item-correlated and may arrive out of order. Its
+              // provider owns capture authority; received display text must not
+              // re-authorize stale speech. Keep Gemini's existing capture path.
+              if (this.provider === "openai") {
+                if (t.finished) this.completedInputTranscripts++;
+                this.transcriptLog.receive("You", t);
+                this.render();
+                return;
+              }
               // Contract-final events are complete segments, not deltas. Latest
               // segment replaces prior unfinished input; never append after dispatch.
               if (t.finalitySource === "model_contract") this.inputUtterance = "";
@@ -426,7 +437,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           ctx.ui.notify("Live is busy; stop it before changing voice provider.", "info");
           return;
         }
-        const owner = sequence;
+        const owner = ++sequence;
         const requested = action.slice("provider".length).trim();
         let choice: LiveProviderId | undefined;
         if (requested === "google" || requested === "openai") choice = requested;
@@ -668,7 +679,7 @@ async function runOpenAISetup(
     }
     if (!explained) {
       ui.notify(
-        "OpenAI Live requires a canonical openai provider API key in agent auth. ChatGPT subscriptions and openai-codex OAuth do not work. Configure the openai API key outside Live; never paste keys into chat. Then recheck.",
+        "OpenAI Live requires a canonical openai provider API key in agent auth. ChatGPT subscriptions and openai-codex OAuth do not work. Use /login → Sign in with an API key → OpenAI, then /live setup. Never paste keys into chat.",
         "info",
       );
       explained = true;
