@@ -24,3 +24,7 @@ Full-rate lag search (0–450ms, both polarities) computes normalized correlatio
 The runner has a 6s acquisition deadline, 4s capture cap, bounded 300ms stop wait, late-launch close ownership, and finally zeroes owned PCM/reference/play buffers. Normal immutable protocol/base64 buffers are transient process memory managed by the existing bridge; no raw audio is persisted or logged. Summary retains only bounded measurements/processing flags and rates/channel counts. Auth, provider and agent-host factories are not called by the real local runner integration test.
 
 Independent engine review corrected phase-decimated correlation and added inverted/off-grid residual, overflow, pending-playback and hung-write cancellation cases (worker `die/review-speaker-measurement-safety-and-va-11d3cd7c`, worktree `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_c71f40f3-a86675007a5e-task_11d3cd7c`, commit 7b119da).
+
+## Publication
+
+Released in stable [v0.9.1](https://github.com/tnfssc/die/releases/tag/v0.9.1), source `9275510`; [normal release gates passed](https://github.com/tnfssc/die/actions/runs/35965351525), including actual Mac compiled helper/embedded executable smoke without devices. See [publication proof](../releases/release-v0.9.1.md). User: `die update`, restart `die`, `/live-lab speaker-check`. This release collects evidence; it does not claim speaker self-interruption fixed.
