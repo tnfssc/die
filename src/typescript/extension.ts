@@ -21,7 +21,7 @@ export function registerExecuteTool(
   jobHandler?: (ctx: ExtensionContext, method: string, params: unknown, signal: AbortSignal) => Promise<unknown>,
   executablePath?: string,
   outputPad?: (cwd: string) => number,
-): void {
+): { stopForeground: (ctx: ExtensionContext) => number } {
   // pi 0.85 exposes outputPad through its public SettingsManager but not in
   // ToolRenderContext. Remove this narrow compatibility seam when the context
   // carries the setting directly. Cache just as InteractiveMode does at startup.
@@ -41,8 +41,10 @@ export function registerExecuteTool(
     if (shutdown.signal.aborted) shutdown = new AbortController();
   });
   const active = new Set<Promise<unknown>>();
+  const foreground = new Map<AbortController, unknown>();
   pi.on("session_shutdown", async () => {
     shutdown.abort("shutdown");
+    foreground.clear();
     await Promise.allSettled([...active]);
   });
 
@@ -80,11 +82,13 @@ export function registerExecuteTool(
       const recordForAttachment = owner ? diagnosticRecorder(owner) : undefined;
       const backgroundIds: string[] = [];
       const handoffWaits = new AbortController();
+      const stopSignal = new AbortController();
+      if (owner) foreground.set(stopSignal, owner);
       let handoffMessage: string | undefined;
       const execution = executeIsolated(
         params.code,
         ctx.cwd,
-        signal ? AbortSignal.any([signal, shutdown.signal]) : shutdown.signal,
+        signal ? AbortSignal.any([signal, shutdown.signal, stopSignal.signal]) : AbortSignal.any([shutdown.signal, stopSignal.signal]),
         params.timeoutSeconds ? params.timeoutSeconds * 1_000 : undefined,
         {
           executablePath,
@@ -162,7 +166,19 @@ export function registerExecuteTool(
         };
       } finally {
         active.delete(execution);
+        foreground.delete(stopSignal);
       }
     },
   });
+  return {
+    stopForeground: (ctx) => {
+      let requested = 0;
+      for (const [controller, owner] of foreground) {
+        if (owner !== ctx.sessionManager || controller.signal.aborted) continue;
+        controller.abort("stop-work");
+        requested++;
+      }
+      return requested; // request issued, not proof the worker has exited
+    },
+  };
 }

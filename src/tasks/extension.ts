@@ -489,9 +489,9 @@ export default function asynchronousTasksExtension(
     (ctx, method, params, signal) => {
       if (method.startsWith("history.")) return history.handle(method, params, ctx);
       if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
-      if (method === "jobs.stop" && liveHost) {
+      if ((method === "jobs.stop" || method === "jobs.stopWork") && liveHost) {
         return liveHost
-          .confirmDelegatedAgentStop(params && typeof params === "object" ? (params as { id?: unknown }).id : undefined)
+          .confirmDelegatedAgentStop(method === "jobs.stopWork" ? "current-session work" : params && typeof params === "object" ? (params as { id?: unknown }).id : undefined)
           .then(() => getService(ctx).handle(method, params, ctx, signal));
       }
       return getService(ctx).handle(method, params, ctx, signal);

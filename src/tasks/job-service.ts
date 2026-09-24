@@ -776,6 +776,55 @@ export class JobService {
           throw new Error("closeInput is unsupported for scoped native tasks");
         return preview(this.manager.closeInput(params.id));
       }
+      case "jobs.stopWork": {
+        // The manager belongs to this session. The native adapter's authenticated
+        // list is likewise scoped by the backend; never enumerate global tasks.
+        z.parse(z.strictObject({}), input);
+        const results: Array<{ id: string; kind: "local" | "native"; outcome: "acknowledged" | "pending" | "finished" | "error"; status?: string; error?: string }> = [];
+        const local = this.manager.list().filter((task) => task.status === "running");
+        const bridge = t3BridgeEnvironment(this.environment);
+        let discoveryError: string | undefined;
+        const nativeIds: string[] = [];
+        if (bridge.kind === "remote") {
+          try {
+            await this.#withNative(bridge, async (adapter) => {
+              let cursor: string | undefined;
+              const seen = new Set<string>();
+              // Listing must finish before cancellation, so a broken cursor cannot
+              // silently turn a partial page into a claim of complete coverage.
+              for (let pageNumber = 0; pageNumber < 100; pageNumber++) {
+                const page = await adapter.list({ count: 100, ...(cursor ? { cursor } : {}) }, signal);
+                for (const task of page.tasks) if (task.status === "running") nativeIds.push(task.taskId);
+                if (!page.nextCursor) return;
+                if (seen.has(page.nextCursor)) throw new Error("Native task list repeated its cursor");
+                seen.add(page.nextCursor);
+                cursor = page.nextCursor;
+              }
+              throw new Error("Native task list exceeded 100 pages");
+            });
+          } catch (error) {
+            discoveryError = error instanceof Error ? error.message : String(error);
+          }
+        }
+        for (const task of local) {
+          try {
+            const stopped = this.manager.kill(task.id);
+            results.push({ id: task.id, kind: "local", outcome: stopped.status === "running" ? "pending" : stopped.status === "killed" ? "acknowledged" : "finished", status: stopped.status });
+          } catch (error) {
+            results.push({ id: task.id, kind: "local", outcome: "error", error: error instanceof Error ? error.message : String(error) });
+          }
+        }
+        if (bridge.kind === "remote") for (const id of new Set(nativeIds)) {
+          try {
+            const stopped = await this.#withNative(bridge, (adapter) => adapter.cancel(id, signal));
+            results.push({ id, kind: "native", outcome: stopped.status === "running" ? "pending" : stopped.status === "cancelled" ? "acknowledged" : "finished", status: stopped.status });
+          } catch (error) {
+            results.push({ id, kind: "native", outcome: "error", error: error instanceof Error ? error.message : String(error) });
+          }
+        }
+        this.#refresh();
+        return { jobs: results, complete: discoveryError === undefined, ...(discoveryError ? { discoveryError } : {}) };
+      }
       case "jobs.stop": {
         const params = z.parse(Id, input);
         if (!this.#isLocalTask(params.id)) {

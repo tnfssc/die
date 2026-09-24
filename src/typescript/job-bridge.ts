@@ -175,6 +175,7 @@ export interface ExecuteJobGlobals {
     inspect(id: string, options?: Options): Promise<unknown>;
     input(id: string, data?: unknown, options?: Options): Promise<unknown>;
     stop(id: string): Promise<unknown>;
+    stopWork(): Promise<unknown>;
     snooze(id: string, options: { minutes: number }): Promise<unknown>;
     setWatch(id: string, options: { enabled: boolean }): Promise<unknown>;
     closeInput(id: string): Promise<unknown>;
@@ -392,6 +393,7 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
       inspect: async (id, options) => request("jobs.inspect", combine(options, { id })),
       input: async (id, data, options) => request("jobs.input", combine(options, { id, data })),
       stop: async (id) => request("jobs.stop", { id }),
+      stopWork: async () => request("jobs.stopWork", {}),
       snooze: async (id, options) => request("jobs.snooze", combine(options, { id })),
       setWatch: async (id, options) => request("jobs.setWatch", combine(options, { id })),
       closeInput: async (id) => request("jobs.closeInput", { id }),

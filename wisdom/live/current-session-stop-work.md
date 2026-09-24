@@ -1,0 +1,7 @@
+# Current-session stop work (2026-09-24)
+
+The execute worker's bridge already routes jobs methods to the session-attached JobService. Use that same route for scoped cancellation, not a second Live-only task registry or arbitrary JS voice execution. Local TaskManager lists only its attached session; the authenticated native adapter lists scoped tasks with pagination. A cancel response with status running is a request acknowledged but still pending, not proof of exit. Keep per-task failures and discovery failures separate; an incomplete native listing must never be called a full stop.
+
+Foreground execute calls run outside JobService and cannot stop themselves from inside the worker without losing their response. registerExecuteTool now returns stopForeground(ctx), which aborts only active execute invocations whose sessionManager is that exact context's manager. A host integrating this should invoke it separately from jobs.stopWork and label its return count as requests, not completed terminations. jobs.stopWork intentionally leaves the foreground worker alive to return its per-job report. Live delegated cancellation confirmation remains at the existing host gate; do not add permissions or bypass the current gate.
+
+Fake-manager/native-adapter tests cover running/finished local filtering, unrelated manager isolation, native pages, pending responses, partial discovery and cancel errors. No real user jobs or devices were stopped. Values unchanged: scope/safety, simplest existing authority and truthful reporting already state this lesson.

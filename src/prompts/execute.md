@@ -25,6 +25,7 @@
   - `await jobs.input(id, data, {closeInput?})` — Send input. Input stays open unless `closeInput: true`.
   - `await jobs.closeInput(id)` — No more input coming. Job keeps going.
   - `await jobs.stop(id)` — Stop job.
+  - `await jobs.stopWork()` — Request cancellation of running jobs scoped to this session; reports per-job acknowledged/pending/errors and whether discovery completed. It does not stop the foreground execute call itself.
   Job still running? Attention message gives you turn to check it. Comes after 5 minutes with no activity, or every 10 minutes even if busy. Job keeps running.
   - `await jobs.snooze(id, {minutes})` — Delay attention messages. More than 0, max 55 minutes.
   - `await jobs.setWatch(id, {enabled})` — Attention messages on by default. `false` turns off, `true` turns on. Finish or fail still sends message.
