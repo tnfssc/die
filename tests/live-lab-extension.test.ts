@@ -230,6 +230,16 @@ describe("opt-in voice-only lab", () => {
     expect(denied.notices.join(" ")).toContain("[launch]");
     expect(denied.notices.join(" ")).not.toContain("SECRET");
   });
+  test("mic-check reports safe native stage and NSError number without helper text", async () => {
+    const t = setup();
+    t.audio.start = async () => {
+      t.capture.error?.("engine_start", "secret device name", { domain: "NSOSStatusErrorDomain", number: -10875 });
+      throw new Error("secret device name");
+    };
+    await t.run("mic-check");
+    expect(t.notices.join(" ")).toContain("[engine_start] (NSError NSOSStatusErrorDomain -10875)");
+    expect(t.notices.join(" ")).not.toContain("secret");
+  });
   test("session change aborts pending mic-check before devices open", async () => {
     const t = setup();
     t.defer();

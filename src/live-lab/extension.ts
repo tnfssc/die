@@ -2,7 +2,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createDefaultLiveCredentialService } from "../live/credentials";
 import { liveLocalOnly } from "../live/status";
-import { LiveLabAudio, type AudioCallbacks } from "./audio";
+import { LiveLabAudio, type AudioCallbacks, type AudioSetupError } from "./audio";
 import { VoiceSession } from "./session";
 import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
 import { PlaybackScheduler } from "./playback";
@@ -216,7 +216,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
                 this.render();
               }
             },
-            error: (code) => this.fail(audioDiagnostic(code)),
+            error: (code, _message, detail) => this.fail(audioDiagnostic(code, detail)),
             closed: () => {
               if (this.alive) this.fail(audioDiagnostic("helper_failure"));
             },
@@ -339,11 +339,13 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
         probe = controller;
         let audio: LabAudio | undefined;
         let code: string | undefined;
+        let setup: AudioSetupError | undefined;
         try {
           audio = await deps.audio(
             {
-              error: (value) => {
+              error: (value, _message, detail) => {
                 code = value;
+                setup = detail;
               },
             },
             controller.signal,
@@ -353,7 +355,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           if (!controller.signal.aborted)
             ctx.ui.notify(
               code
-                ? "Mic check: " + audioDiagnostic(code)
+                ? "Mic check: " + audioDiagnostic(code, setup)
                 : "Audio route ready [ready]. No provider or recording saved; this does not prove sound quality.",
               code ? "warning" : "info",
             );
@@ -361,7 +363,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           if (!controller.signal.aborted)
             ctx.ui.notify(
               "Mic check: " +
-                (code ? audioDiagnostic(code) : audio ? audioDiagnostic("helper_failure") : audioLaunchDiagnostic()),
+                (code ? audioDiagnostic(code, setup) : audio ? audioDiagnostic("helper_failure") : audioLaunchDiagnostic()),
               "warning",
             );
         } finally {

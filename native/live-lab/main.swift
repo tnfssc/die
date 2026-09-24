@@ -142,6 +142,18 @@ final class Lab {
         default: starting = false; error("permission", "Microphone permission denied")
         }
     }
+    // Only structured, bounded error metadata crosses the helper boundary.
+    func setupError(_ phase: String, _ cause: Error) {
+        let ns = cause as NSError
+        let domain = ns.domain
+        var payload: [String: Any] = ["type":"error", "code":phase,
+            "message":"Could not start default audio route with voice processing"]
+        if domain.count <= 80 && domain.range(of: "^[A-Za-z0-9._-]+$", options: .regularExpression) != nil {
+            payload["domain"] = domain
+            payload["number"] = ns.code
+        }
+        event(payload)
+    }
     func open() {
         guard starting else { return }
         let audio = AVAudioEngine()
@@ -157,11 +169,14 @@ final class Lab {
                   inputFormat.sampleRate <= 192000 else { throw NSError(domain: "input-format", code: 1) }
             captureRate = inputFormat.sampleRate
             phase = "output_format"
-            let mixFormat = audio.mainMixerNode.outputFormat(forBus: 0)
-            guard mixFormat.sampleRate >= 24000, mixFormat.sampleRate <= 192000,
+            // Voice processing can change I/O formats; wire the mixer to the actual
+            // output I/O format before deriving the source rate (Apple AVEchoTouch).
+            let outputFormat = audio.outputNode.inputFormat(forBus: 0)
+            guard outputFormat.sampleRate >= 24000, outputFormat.sampleRate <= 192000,
+                outputFormat.channelCount > 0,
                 let sourceFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
-                    sampleRate: mixFormat.sampleRate, channels: 1, interleaved: false) else { throw NSError(domain: "output-format", code: 1) }
-            let source = AVAudioSourceNode { [core, rate = mixFormat.sampleRate] _, _, frameCount, buffers -> OSStatus in
+                    sampleRate: outputFormat.sampleRate, channels: 1, interleaved: false) else { throw NSError(domain: "output-format", code: 1) }
+            let source = AVAudioSourceNode { [core, rate = outputFormat.sampleRate] _, _, frameCount, buffers -> OSStatus in
                 let list = UnsafeMutableAudioBufferListPointer(buffers)
                 guard list.count == 1, let first = list.first, let memory = first.mData,
                       first.mDataByteSize >= frameCount * 4 else { return -1 }
@@ -169,9 +184,13 @@ final class Lab {
                 ll_render(core, memory.assumingMemoryBound(to: Float.self), Int32(frames), rate)
                 return noErr
             }
-            phase = "audio_start"
+            phase = "output_connect"
+            audio.connect(audio.mainMixerNode, to: audio.outputNode, format: outputFormat)
+            phase = "source_attach"
             audio.attach(source)
+            phase = "source_connect"
             audio.connect(source, to: audio.mainMixerNode, format: sourceFormat)
+            phase = "tap_install"
             audio.inputNode.installTap(onBus: 0, bufferSize: 1024, format: inputFormat) { [core] buffer, _ in
                 guard let channel = buffer.floatChannelData?[0] else { return }
                 var offset = 0
@@ -187,6 +206,7 @@ final class Lab {
                 self?.error("route_lost", "Audio device route changed; restart with start after stop")
                 self?.stop()
             }
+            phase = "engine_start"
             try audio.start()
             engine = audio
             starting = false
@@ -214,7 +234,7 @@ final class Lab {
             if tapInstalled { audio.inputNode.removeTap(onBus: 0) }
             if let notification { NotificationCenter.default.removeObserver(notification); self.notification = nil }
             audio.stop(); starting = false
-            self.error(phase, "Could not start default audio route with voice processing")
+            setupError(phase, error)
         }
     }
     func drainCapture() {

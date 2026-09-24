@@ -6,13 +6,14 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 type Worker = Pick<ChildProcessWithoutNullStreams, "stdin" | "stdout" | "stderr" | "on" | "off" | "kill">;
+export type AudioSetupError = { domain: string; number: number };
 export type AudioDiagnostics = { queuedMs: number; captureFrames: number; capturedBytes: number };
 /** Error is terminal (static code/message), closed fires exactly once on either failure or normal shutdown.
  * Observers must not throw; observer exceptions are isolated. */
 export type AudioCallbacks = {
   capture?: (pcm16: Buffer) => void;
   played?: (queuedMs: number) => void;
-  error?: (code: string, message: string) => void;
+  error?: (code: string, message: string, setup?: AudioSetupError) => void;
   closed?: () => void;
 };
 export type AudioOptions = {
@@ -257,7 +258,11 @@ export class LiveLabAudio {
       return;
     }
     if (m.type === "error") {
-      this.fail(new Error("Audio helper reported an error"), safeCode(m.code));
+      const setup = typeof m.domain === "string" && /^[A-Za-z0-9._-]{1,80}$/.test(m.domain) &&
+        typeof m.number === "number" && Number.isSafeInteger(m.number) &&
+        m.number >= -2147483648 && m.number <= 2147483647
+          ? { domain: m.domain, number: m.number } : undefined;
+      this.fail(new Error("Audio helper reported an error"), safeCode(m.code), setup);
       return;
     }
     if (this.state !== "running") throw new Error("Unexpected audio helper event");
@@ -393,10 +398,10 @@ export class LiveLabAudio {
   close() {
     this.shutdown();
   }
-  private fail(error: Error, code = "helper_failure") {
-    this.shutdown(error, code);
+  private fail(error: Error, code = "helper_failure", setup?: AudioSetupError) {
+    this.shutdown(error, code, setup);
   }
-  private shutdown(error?: Error, code = "helper_failure") {
+  private shutdown(error?: Error, code = "helper_failure", setup?: AudioSetupError) {
     if (this.state === "closed") return;
     this.state = "closed";
     this.line = Buffer.alloc(0);
@@ -434,7 +439,7 @@ export class LiveLabAudio {
     this.reapTimer.unref?.();
     if (error) {
       try {
-        this.options.callbacks?.error?.(code, safeMessage(undefined));
+        this.options.callbacks?.error?.(code, safeMessage(undefined), setup);
       } catch {
         /* observer */
       }
