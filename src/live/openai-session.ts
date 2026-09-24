@@ -27,14 +27,31 @@ const validBase64 = (s: string, max: number): boolean =>
 const size = (x: unknown): number => Buffer.byteLength(JSON.stringify(x));
 export interface RealtimeSocket {
   readyState: number;
+  readonly bufferedAmount?: number;
   send(data: string): void;
   close(): void;
   addEventListener(type: "open" | "message" | "error" | "close", handler: (event: any) => void): void;
 }
 export type RealtimeSocketFactory = (url: string, headers: Record<string, string>) => RealtimeSocket;
-export const defaultSocket: RealtimeSocketFactory = (url, headers) => new WebSocket(url, { headers } as unknown as string[]);
-type Call = { name: string; response?: Record<string, unknown>; responseId: string; dispatched?: boolean; timer?: ReturnType<typeof setTimeout>; dispatch?: () => void };
-type ResponseState = { inputItem?: string; revision: number; done: boolean; cancelled: boolean; continued: boolean; calls: Set<string> };
+export const defaultSocket: RealtimeSocketFactory = (url, headers) =>
+  new WebSocket(url, { headers } as unknown as string[]);
+type Call = {
+  name: string;
+  response?: Record<string, unknown>;
+  responseId: string;
+  dispatched?: boolean;
+  scheduled?: boolean;
+  timer?: ReturnType<typeof setTimeout>;
+  dispatch?: () => void;
+};
+type ResponseState = {
+  inputItem?: string;
+  revision: number;
+  done: boolean;
+  cancelled: boolean;
+  continued: boolean;
+  calls: Set<string>;
+};
 type AudioItem = { responseId: string; start: number; duration: number; contentIndex: number };
 /** Single-use GA session. Context is a labeled host observation, never a new user message. */
 export class OpenAIRealtimeSession implements VoiceProvider {
@@ -112,6 +129,10 @@ export class OpenAIRealtimeSession implements VoiceProvider {
   private send(event: Record<string, unknown>): void {
     if (this.stateValue !== "ready" || !this.socket) return;
     try {
+      if ((this.socket.bufferedAmount ?? 0) > 1_048_576) {
+        this.fail("transport_error", "Voice connection send queue exceeded its limit");
+        return;
+      }
       this.socket.send(JSON.stringify(event));
     } catch {
       this.fail("transport_error", "Could not send voice event");
@@ -288,8 +309,11 @@ export class OpenAIRealtimeSession implements VoiceProvider {
     this.context = [];
     this.resampler.reset();
     for (const call of this.calls.values()) if (call.timer) clearTimeout(call.timer);
-    this.calls.clear(); this.responses.clear(); this.transcripts.clear();
-    this.audioItems.clear(); this.outputItems.clear();
+    this.calls.clear();
+    this.responses.clear();
+    this.transcripts.clear();
+    this.audioItems.clear();
+    this.outputItems.clear();
     const socket = this.socket;
     this.socket = undefined;
     this.stateTo("closed");
@@ -307,70 +331,129 @@ export class OpenAIRealtimeSession implements VoiceProvider {
     const played = this.callbacks.getPlayedAudioMs?.() ?? 0;
     for (const [id, item] of this.audioItems) {
       if (Number.isFinite(played) && played >= 0 && played < item.start + item.duration)
-        this.send({ type: "conversation.item.truncate", item_id: id, content_index: item.contentIndex,
-          audio_end_ms: Math.max(0, Math.min(item.duration, Math.floor(played - item.start))) });
+        this.send({
+          type: "conversation.item.truncate",
+          item_id: id,
+          content_index: item.contentIndex,
+          audio_end_ms: Math.max(0, Math.min(item.duration, Math.floor(played - item.start))),
+        });
     }
     this.interruptedResponse = this.activeResponse;
     const response = this.activeResponse && this.responses.get(this.activeResponse);
     if (response) response.cancelled = true;
-    this.audioItems.clear(); this.queuedEndMs = 0; this.bytes = 0;
+    this.audioItems.clear();
+    this.queuedEndMs = 0;
+    this.bytes = 0;
     ++this.epoch;
     this.emit(() => this.callbacks.onInterrupted?.(this.epoch));
   }
   private continueResponse(id: string): void {
     const response = this.responses.get(id);
-    if (!response || !response.done || response.continued || response.cancelled ||
-        response.revision !== this.inputRevision || !response.calls.size ||
-        [...response.calls].some(call => !this.calls.get(call)?.response)) return;
+    if (
+      !response ||
+      !response.done ||
+      response.continued ||
+      response.cancelled ||
+      response.revision !== this.inputRevision ||
+      !response.calls.size ||
+      [...response.calls].some((call) => !this.calls.get(call)?.response)
+    )
+      return;
     response.continued = true;
     this.send({ type: "response.create" });
   }
   private toolDone(message: any): void {
-    if (!this.orchestration || typeof message.call_id !== "string" || !message.call_id || message.call_id.length > 256) return;
-    const id = message.call_id, name = message.name, responseId = message.response_id;
+    if (!this.orchestration || typeof message.call_id !== "string" || !message.call_id || message.call_id.length > 256)
+      return;
+    const id = message.call_id,
+      name = message.name,
+      responseId = message.response_id;
     const response = typeof responseId === "string" ? this.responses.get(responseId) : undefined;
     if (!response || response.cancelled || response.done || this.calls.has(id)) return;
-    if (this.calls.size >= MAX_TOOLS) { this.fail("invalid_input", "Tool call limit exceeded"); return; }
+    if (this.calls.size >= MAX_TOOLS) {
+      this.fail("invalid_input", "Tool call limit exceeded");
+      return;
+    }
     const entry: Call = { name, responseId };
-    this.calls.set(id, entry); response.calls.add(id);
+    this.calls.set(id, entry);
+    response.calls.add(id);
     const reply = (output: Record<string, unknown>) => {
       if (entry.response || this.stateValue !== "ready") return;
       if (entry.timer) clearTimeout(entry.timer);
-      if (response.cancelled && !entry.dispatched) { entry.response = output; return; }
+      if (response.cancelled && !entry.dispatched) {
+        entry.response = output;
+        return;
+      }
       entry.response = output;
-      this.send({ type: "conversation.item.create", item: { type: "function_call_output", call_id: id, output: JSON.stringify(output) } });
+      this.send({
+        type: "conversation.item.create",
+        item: { type: "function_call_output", call_id: id, output: JSON.stringify(output) },
+      });
       this.continueResponse(responseId);
     };
     let args: Record<string, unknown>;
     try {
-      if (typeof name !== "string" || !this.orchestration.tools.some(tool => tool.name === name) ||
-          typeof message.arguments !== "string" || message.arguments.length > MAX_TOOL_BYTES) throw Error();
+      if (
+        typeof name !== "string" ||
+        !this.orchestration.tools.some((tool) => tool.name === name) ||
+        typeof message.arguments !== "string" ||
+        message.arguments.length > MAX_TOOL_BYTES
+      )
+        throw Error();
       const parsed: unknown = JSON.parse(message.arguments);
-      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || size(parsed) > MAX_TOOL_BYTES) throw Error();
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || size(parsed) > MAX_TOOL_BYTES)
+        throw Error();
       args = parsed as Record<string, unknown>;
-    } catch { reply({ error: "Tool request rejected" }); return; }
-    if (this.pendingTools >= 16) { reply({ error: "Tool request rejected" }); return; }
+    } catch {
+      reply({ error: "Tool request rejected" });
+      return;
+    }
+    if (this.pendingTools >= 16) {
+      reply({ error: "Tool request rejected" });
+      return;
+    }
     const sensitive = name === "agent_send" || name === "agent_steer";
     const dispatch = () => {
-      if (entry.response || entry.dispatched || this.stateValue !== "ready") return;
-      if (entry.timer) { clearTimeout(entry.timer); entry.timer = undefined; }
-      if (response.cancelled || response.revision !== this.inputRevision ||
-          (sensitive && (!response.inputItem || !this.transcripts.has(response.inputItem)))) {
-        reply({ error: "Tool request rejected" }); return;
+      if (entry.response || entry.dispatched || entry.scheduled || this.stateValue !== "ready") return;
+      if (entry.timer) {
+        clearTimeout(entry.timer);
+        entry.timer = undefined;
       }
-      entry.dispatched = true;
+      if (
+        response.cancelled ||
+        response.revision !== this.inputRevision ||
+        (sensitive && (!response.inputItem || !this.transcripts.has(response.inputItem)))
+      ) {
+        reply({ error: "Tool request rejected" });
+        return;
+      }
+      entry.scheduled = true;
       ++this.pendingTools;
-      let timeout: ReturnType<typeof setTimeout> | undefined;
-      void Promise.resolve().then(() => this.orchestration!.execute({ id, name, args })).then(
-        result => {
-          let output: Record<string, unknown> = { output: result ?? null };
-          try { if (size(output) > MAX_TOOL_BYTES) output = { error: "Tool result too large" }; }
-          catch { output = { error: "Invalid tool result" }; }
-          reply(output);
-        }, error => reply(toolFailureResponse(error)),
-      ).finally(() => { if (timeout) clearTimeout(timeout); --this.pendingTools; });
-      timeout = setTimeout(() => reply({ error: "Tool timed out" }), TOOL_MS);
-      timeout.unref?.();
+      void Promise.resolve()
+        .then(() => {
+          if (this.stateValue !== "ready" || response.cancelled || response.revision !== this.inputRevision)
+            throw new Error("Tool request invalidated before dispatch");
+          entry.dispatched = true;
+          return this.orchestration!.execute({ id, name, args });
+        })
+        .then(
+          (result) => {
+            let output: Record<string, unknown> = { output: result ?? null };
+            try {
+              if (size(output) > MAX_TOOL_BYTES) output = { error: "Tool result too large" };
+            } catch {
+              output = { error: "Invalid tool result" };
+            }
+            reply(output);
+          },
+          (error) => reply(toolFailureResponse(error)),
+        )
+        .finally(() => {
+          if (entry.timer) clearTimeout(entry.timer);
+          --this.pendingTools;
+        });
+      entry.timer = setTimeout(() => reply({ error: "Tool timed out" }), TOOL_MS);
+      entry.timer.unref?.();
     };
     entry.dispatch = dispatch;
     if (sensitive && (!response.inputItem || !this.transcripts.has(response.inputItem))) {
@@ -385,6 +468,11 @@ export class OpenAIRealtimeSession implements VoiceProvider {
         if (typeof m.item_id === "string" && m.item_id.length <= 256) this.committedItem = m.item_id;
         break;
       case "input_audio_buffer.speech_started":
+        this.suppressAudio = true;
+        if (this.activeResponse) {
+          const active = this.responses.get(this.activeResponse);
+          if (active) active.cancelled = true;
+        }
         this.committedItem = undefined;
         for (const response of this.responses.values()) response.continued = true;
         ++this.inputRevision;
@@ -397,6 +485,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
         }
         break;
       case "conversation.item.input_audio_transcription.completed":
+        if (typeof m.item_id === "string" && this.transcripts.has(m.item_id)) return;
         if (
           typeof m.transcript !== "string" ||
           m.transcript.length > MAX_TRANSCRIPT ||
@@ -416,7 +505,9 @@ export class OpenAIRealtimeSession implements VoiceProvider {
         );
         if (this.state !== "ready") return;
         if (typeof m.item_id !== "string" || m.item_id.length > 256) return;
-        const authorized = [...this.responses.values()].some(r => r.inputItem === m.item_id && r.revision === this.inputRevision && !r.cancelled);
+        const authorized = [...this.responses.values()].some(
+          (r) => r.inputItem === m.item_id && r.revision === this.inputRevision && !r.cancelled,
+        );
         if (m.item_id !== this.committedItem && !authorized) return;
         this.transcripts.set(m.item_id, m.transcript);
         if (this.transcripts.size > 32) this.transcripts.delete(this.transcripts.keys().next().value!);
@@ -433,43 +524,74 @@ export class OpenAIRealtimeSession implements VoiceProvider {
         this.orchestration?.beginUserTurn?.();
         break;
       case "response.created":
-        if (typeof m.response?.id !== "string") { this.fail("invalid_input", "Response without ID"); return; }
+        if (typeof m.response?.id !== "string") {
+          this.fail("invalid_input", "Response without ID");
+          return;
+        }
         const played = this.callbacks.getPlayedAudioMs?.() ?? 0;
         for (const [item, audio] of this.audioItems)
-          if (this.responses.get(audio.responseId)?.done && played >= audio.start + audio.duration) this.audioItems.delete(item);
+          if (this.responses.get(audio.responseId)?.done && played >= audio.start + audio.duration)
+            this.audioItems.delete(item);
         for (const [id, old] of this.responses) {
-          if (old.done && [...old.calls].every(call => this.calls.get(call)?.response)) {
+          if (old.done && [...old.calls].every((call) => this.calls.get(call)?.response)) {
             for (const call of old.calls) this.calls.delete(call);
             this.responses.delete(id);
             for (const [item, origin] of this.outputItems) if (origin === id) this.outputItems.delete(item);
           }
         }
-        if (this.responses.size >= 32) { this.fail("invalid_input", "Response limit exceeded"); return; }
+        if (this.responses.size >= 32) {
+          this.fail("invalid_input", "Response limit exceeded");
+          return;
+        }
         this.activeResponse = m.response.id;
-        this.responses.set(m.response.id, { inputItem: this.committedItem, revision: this.inputRevision,
-          done: false, cancelled: false, continued: false, calls: new Set() });
+        this.responses.set(m.response.id, {
+          inputItem: this.committedItem,
+          revision: this.inputRevision,
+          done: false,
+          cancelled: false,
+          continued: false,
+          calls: new Set(),
+        });
         this.suppressAudio = false;
         break;
       case "response.output_item.added":
         if (m.item?.type === "message" && typeof m.item.id === "string") {
           if (typeof m.response_id !== "string" || !this.responses.has(m.response_id) || this.outputItems.size >= 128) {
-            this.fail("invalid_audio", "Output item limit exceeded"); return;
+            this.fail("invalid_audio", "Output item limit exceeded");
+            return;
           }
           this.outputItems.set(m.item.id, m.response_id);
         }
         break;
       case "response.output_audio.delta": {
-        if (this.suppressAudio || typeof m.item_id !== "string" ||
-            this.outputItems.get(m.item_id) !== this.activeResponse ||
-            (m.response_id && m.response_id !== this.activeResponse)) return;
-        if (typeof m.delta !== "string" || !validBase64(m.delta, MAX_PACKET)) { this.fail("invalid_audio", "Invalid output audio chunk"); return; }
+        if (
+          this.suppressAudio ||
+          typeof m.item_id !== "string" ||
+          this.outputItems.get(m.item_id) !== this.activeResponse ||
+          (m.response_id && m.response_id !== this.activeResponse)
+        )
+          return;
+        if (typeof m.delta !== "string" || !validBase64(m.delta, MAX_PACKET)) {
+          this.fail("invalid_audio", "Invalid output audio chunk");
+          return;
+        }
         const bytes = Buffer.from(m.delta, "base64").length;
-        if (bytes < 2 || bytes % 2 || this.bytes + bytes > MAX_TURN) { this.fail("invalid_audio", "Voice turn audio limit exceeded"); return; }
+        if (bytes < 2 || bytes % 2 || this.bytes + bytes > MAX_TURN) {
+          this.fail("invalid_audio", "Voice turn audio limit exceeded");
+          return;
+        }
         let item = this.audioItems.get(m.item_id);
         if (!item) {
-          if (this.audioItems.size >= 128) { this.fail("invalid_audio", "Audio item limit exceeded"); return; }
-          item = { responseId: this.activeResponse!, start: Math.max(this.queuedEndMs, this.callbacks.getPlayedAudioMs?.() ?? 0),
-            duration: 0, contentIndex: Number.isSafeInteger(m.content_index) ? m.content_index : 0 };
+          if (this.audioItems.size >= 128) {
+            this.fail("invalid_audio", "Audio item limit exceeded");
+            return;
+          }
+          item = {
+            responseId: this.activeResponse!,
+            start: Math.max(this.queuedEndMs, this.callbacks.getPlayedAudioMs?.() ?? 0),
+            duration: 0,
+            contentIndex: Number.isSafeInteger(m.content_index) ? m.content_index : 0,
+          };
           this.audioItems.set(m.item_id, item);
         }
         this.bytes += bytes;
@@ -480,14 +602,26 @@ export class OpenAIRealtimeSession implements VoiceProvider {
       }
       case "response.output_audio_transcript.delta":
       case "response.output_audio_transcript.done": {
-        if (m.response_id && m.response_id !== this.activeResponse) return;
-        if (typeof (m.type.endsWith(".done") ? m.transcript : m.delta) !== "string" || (m.type.endsWith(".done") ? 0 : m.delta.length) + this.outputChars > MAX_TRANSCRIPT) {
+        if (m.response_id && !this.responses.has(m.response_id)) return;
+        if (
+          typeof (m.type.endsWith(".done") ? m.transcript : m.delta) !== "string" ||
+          (m.type.endsWith(".done") ? 0 : m.delta.length) + this.outputChars > MAX_TRANSCRIPT
+        ) {
           this.fail("transcript_limit", "Voice transcription limit exceeded");
           return;
         }
         const text = m.type.endsWith(".done") ? "" : m.delta;
         this.outputChars += text.length;
-        this.emit(() => this.callbacks.onOutputTranscript?.({ text, finished: m.type.endsWith(".done") }, this.epoch));
+        this.emit(() =>
+          this.callbacks.onOutputTranscript?.(
+            {
+              text,
+              finished: m.type.endsWith(".done"),
+              ...(this.suppressAudio || this.responses.get(m.response_id)?.cancelled ? { interrupted: true } : {}),
+            },
+            this.epoch,
+          ),
+        );
         break;
       }
       case "response.function_call_arguments.done":
@@ -502,7 +636,10 @@ export class OpenAIRealtimeSession implements VoiceProvider {
           response.cancelled = true;
           for (const callId of response.calls) {
             const call = this.calls.get(callId);
-            if (call?.timer) { clearTimeout(call.timer); call.timer = undefined; }
+            if (call?.timer) {
+              clearTimeout(call.timer);
+              call.timer = undefined;
+            }
           }
           if (id === this.activeResponse && this.interruptedResponse !== id) this.interrupt();
           this.interruptedResponse = undefined;
@@ -522,5 +659,3 @@ export class OpenAIRealtimeSession implements VoiceProvider {
     }
   }
 }
-
-export { OpenAIRealtimeSession as OpenAIVoiceSession };

@@ -12,8 +12,6 @@ export class InputResampler {
       const at = this.count++;
       if (at) {
         while (this.next <= at * 3) {
-          const base = Math.floor(this.next / 3);
-          const fraction = (this.next % 3) / 3;
           // next is measured in thirds of an input sample (3 output samples per 2 input).
           const position = this.next / 3;
           if (position < at - 1) throw new Error("Resampler phase lost");

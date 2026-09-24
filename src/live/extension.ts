@@ -2,7 +2,7 @@ import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createDefaultLiveCredentialService, type LiveCredentialService, type LiveProviderId } from "./credentials";
 import { LIVE_PROVIDERS } from "./providers";
-import { OpenAIVoiceSession as OpenAIRealtimeSession } from "./openai-session";
+import { OpenAIRealtimeSession } from "./openai-session";
 import { liveLocalOnly } from "./status";
 import { runLiveSetup } from "./setup";
 import { LiveAudio, type AudioCallbacks, type AudioSetupError } from "./audio";

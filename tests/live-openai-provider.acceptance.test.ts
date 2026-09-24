@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createDefaultLiveCredentialService } from "../src/live/credentials";
-import { OpenAIVoiceSession as OpenAIRealtimeSession } from "../src/live/openai-session";
+import { OpenAIRealtimeSession } from "../src/live/openai-session";
 import { orchestrationTools } from "../src/live/orchestration";
 
 // PAID, KEY-ACCESS OPT-IN: run only after explicit user consent. No devices,

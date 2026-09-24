@@ -1,3 +1,4 @@
+import { OpenAIRealtimeSession, type RealtimeSocket } from "../src/live/openai-session";
 import { describe, expect, test } from "bun:test";
 import { VoiceSession } from "../src/live/session";
 import type { LiveParams, LiveConnection } from "../src/live/types";
@@ -1255,5 +1256,96 @@ test("OpenAI received transcript display alone cannot grant agent handoff author
     t.orchestration!.execute({ id: "call-stale", name: "agent_send", args: { requestId: "stale" } }),
   ).rejects.toThrow();
   expect(sends).toBe(0);
+  await t.run("stop");
+});
+
+test("real OpenAI Session/Run hands delayed completed speech to configured agent once", async () => {
+  const listeners = new Map<string, ((event: any) => void)[]>();
+  const wire: any[] = [];
+  const sent: string[] = [];
+  const socket: RealtimeSocket = {
+    readyState: 1,
+    send: (text) => {
+      wire.push(JSON.parse(text));
+    },
+    close: () => {},
+    addEventListener: (name, fn) => {
+      listeners.set(name, [...(listeners.get(name) ?? []), fn]);
+    },
+  };
+  const event = (message: any) => {
+    for (const fn of listeners.get("message") ?? []) fn({ data: JSON.stringify(message) });
+  };
+  const t = setup({
+    voice: (callbacks, orchestration) =>
+      new OpenAIRealtimeSession(
+        callbacks,
+        () => {
+          queueMicrotask(() => {
+            for (const fn of listeners.get("open") ?? []) fn({});
+            event({ type: "session.created", session: { id: "session-offline" } });
+            event({ type: "session.updated", session: { id: "session-offline" } });
+          });
+          return socket;
+        },
+        orchestration,
+      ),
+    host: () => ({
+      context: () => ({ agent: "configured" }),
+      subscribe: () => () => {},
+      send: async (_id, text) => {
+        sent.push(text);
+        return { status: "queued" };
+      },
+      steer: async () => ({}),
+      list: async () => [],
+      inspect: async () => ({}),
+      stop: async () => ({}),
+    }),
+  });
+  await t.run("provider openai");
+  await t.run("start");
+  event({ type: "input_audio_buffer.speech_started", item_id: "user-1", audio_start_ms: 0 });
+  event({ type: "input_audio_buffer.speech_stopped", item_id: "user-1", audio_end_ms: 800 });
+  event({ type: "input_audio_buffer.committed", item_id: "user-1", previous_item_id: null });
+  event({ type: "response.created", response: { id: "response-1", status: "in_progress" } });
+  const call = {
+    id: "item-call-1",
+    type: "function_call",
+    call_id: "call-1",
+    name: "agent_send",
+    arguments: JSON.stringify({ requestId: "request-1" }),
+    status: "completed",
+  };
+  event({
+    type: "response.output_item.added",
+    response_id: "response-1",
+    output_index: 0,
+    item: { ...call, arguments: "", status: "in_progress" },
+  });
+  event({
+    type: "response.function_call_arguments.done",
+    response_id: "response-1",
+    item_id: call.id,
+    call_id: call.call_id,
+    name: call.name,
+    arguments: call.arguments,
+    output_index: 0,
+  });
+  event({ type: "response.output_item.done", response_id: "response-1", output_index: 0, item: call });
+  event({ type: "response.done", response: { id: "response-1", status: "completed", output: [call] } });
+  await tick();
+  expect(sent).toEqual([]);
+  event({
+    type: "conversation.item.input_audio_transcription.completed",
+    item_id: "user-1",
+    content_index: 0,
+    transcript: "Please check today's weather in Bengaluru.",
+  });
+  await tick();
+  expect(sent).toEqual(["Please check today's weather in Bengaluru."]);
+  expect(wire.filter((m) => m.item?.type === "function_call_output")).toHaveLength(1);
+  expect(wire.filter((m) => m.type === "response.create")).toHaveLength(1);
+  expect(t.transcriptEntries.some((e) => e.data.text === "Please check today's weather in Bengaluru.")).toBe(true);
   await t.run("stop");
 });
