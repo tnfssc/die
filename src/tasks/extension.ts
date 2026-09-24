@@ -25,6 +25,7 @@ import {
   JobAttentionScheduler,
 } from "./job-attention";
 import { JobService } from "./job-service";
+import { installLocalAgentTermination } from "./local-agent-termination";
 import { registerManualShake } from "./manual-shake";
 import { registerNativeCodexCompaction } from "./native-compaction";
 import { registerNativeFastMode } from "./native-fast-mode";
@@ -194,6 +195,7 @@ export default function asynchronousTasksExtension(
     }
   };
   let manager: TaskManager | undefined;
+  let detachLocalTermination: (() => void) | undefined;
   let owningContext: ExtensionContext | undefined;
   let managerRecorder: ((input: Parameters<typeof recordDiagnostic>[1]) => void) | undefined;
   let detachManagerDiagnostics: (() => void) | undefined;
@@ -379,6 +381,11 @@ export default function asynchronousTasksExtension(
         },
       );
       const ownedManager = manager;
+      // Only the local CLI subagent receives a parent SIGTERM. Its own async
+      // children live in detached groups, outside the parent group signal.
+      if (subagentDepth > 0 && environmentDepth > 0 && !t3NativeSession) {
+        detachLocalTermination = installLocalAgentTermination(process, ownedManager, (code) => process.exit(code));
+      }
       detachManagerDiagnostics = attachDiagnosticSink(manager, (_type, data) =>
         recordOwned(data as Parameters<typeof recordDiagnostic>[1]),
       );
@@ -692,6 +699,8 @@ export default function asynchronousTasksExtension(
     attentions.dispose();
     attention?.dispose();
     await manager?.shutdown();
+    detachLocalTermination?.();
+    detachLocalTermination = undefined;
     detachManagerDiagnostics?.();
     detachManagerDiagnostics = undefined;
     managerRecorder = undefined;
