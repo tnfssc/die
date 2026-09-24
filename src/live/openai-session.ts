@@ -320,6 +320,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
         },
       });
   }
+  closeError?: string;
   close(): void {
     this.orchestration?.beginUserTurn?.();
     if (this.stateValue === "closed") return;
@@ -341,7 +342,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
     try {
       socket?.close();
     } catch {
-      /* socket */
+      this.closeError = "Provider connection close failed";
     }
   }
   private interrupt(): void {

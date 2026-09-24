@@ -242,6 +242,7 @@ export class VoiceSession {
       this.fail("transport_error", "Could not send context");
     }
   }
+  closeError?: string;
   close(): void {
     this.orchestration?.beginUserTurn?.();
     if (this.stateValue === "closed") return;
@@ -256,7 +257,7 @@ export class VoiceSession {
     try {
       connection?.close();
     } catch {
-      /* SDK */
+      this.closeError = "Provider connection close failed";
     }
   }
   private transcript(

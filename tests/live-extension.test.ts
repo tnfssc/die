@@ -1,3 +1,4 @@
+import { stopCurrentLive } from "../src/live/lifecycle-access";
 import { GPTLiveSession, type LiveSocket } from "../src/live/gpt-live-session";
 import { OpenAIRealtimeSession, type RealtimeSocket } from "../src/live/openai-session";
 import { describe, expect, test } from "bun:test";
@@ -99,8 +100,18 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
     ...overrides,
   };
   const transcriptEntries: { type: string; data: any }[] = [];
+  const listeners = new Map<string, (value: unknown) => void>();
+  const events = {
+    on: (name: string, cb: (value: unknown) => void) => {
+      listeners.set(name, cb);
+      return () => listeners.delete(name);
+    },
+    emit: (name: string, value: unknown) => listeners.get(name)?.(value),
+  };
+  const pi = { events } as any;
   liveExtension(
     {
+      events,
       appendEntry: (type: string, data: any) => transcriptEntries.push({ type, data }),
       registerCommand: (name: string, cmd: any) => {
         expect(name).toBe("live");
@@ -115,6 +126,11 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
     deps,
   );
   const ctx = {
+    sessionManager: {
+      getSessionId: () => "voice-owner",
+      getSessionFile: () => "voice-file",
+      getLeafId: () => "voice-branch",
+    },
     mode: "tui",
     ui: {
       confirm: async () => consent,
@@ -131,6 +147,7 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
     },
   };
   return {
+    stop: (context: any = ctx) => stopCurrentLive(pi, context),
     run: (arg: string) => handler(arg, ctx),
     complete: (prefix: string) => complete(prefix),
     contexts,
@@ -182,6 +199,107 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
   };
 }
 describe("Live voice", () => {
+  test("scoped execute self-stop awaits mic and provider teardown, not job cancellation", async () => {
+    let release!: () => void;
+    let stopped = false;
+    let providerClosed = false;
+    const t = setup({
+      audio: async () => ({
+        diagnostics: { queuedMs: 0, captureFrames: 0, capturedBytes: 0 },
+        start: async () => {},
+        play: async () => {},
+        flush: async () => {},
+        stop: () =>
+          new Promise<void>((resolve) => {
+            release = () => {
+              stopped = true;
+              resolve();
+            };
+          }),
+        close: () => {},
+      }),
+      voice: () => ({
+        state: "ready",
+        generation: 0,
+        sendAudio: () => {},
+        connect: async () => {},
+        close: () => {
+          providerClosed = true;
+        },
+      }),
+    });
+    await t.run("start");
+    expect(
+      (await t.stop({ sessionManager: { getSessionId: () => "other", getSessionFile: () => "voice-file" } })).stopped,
+    ).toBe(false);
+    const pending = t.stop();
+    await tick();
+    expect(providerClosed).toBe(true);
+    expect(stopped).toBe(false);
+    release();
+    expect(await pending).toEqual({ stopped: true, errors: [], jobsUnchanged: true });
+    expect(stopped).toBe(true);
+    expect((await t.stop()).stopped).toBe(false);
+  });
+  test("self-stop does not claim teardown of a still-pending audio launch", async () => {
+    const t = setup();
+    t.defer();
+    const start = t.run("start");
+    await tick();
+    expect(await t.stop()).toEqual({
+      stopped: false,
+      errors: ["Audio startup has not finished; teardown is not yet observed"],
+      jobsUnchanged: true,
+    });
+    t.resolveLaunch();
+    await start;
+    await tick();
+    expect(t.closes).toBe(1);
+  });
+  test("provider socket close errors still release audio and are not acknowledged as success", async () => {
+    let stopped = false;
+    const t = setup({
+      voice: () => ({
+        state: "ready",
+        generation: 0,
+        sendAudio: () => {},
+        connect: async () => {},
+        close: () => {
+          throw new Error("sensitive provider text");
+        },
+      }),
+      audio: async () => ({
+        diagnostics: { queuedMs: 0, captureFrames: 0, capturedBytes: 0 },
+        start: async () => {},
+        play: async () => {},
+        flush: async () => {},
+        stop: async () => {
+          stopped = true;
+        },
+        close: () => {},
+      }),
+    });
+    await t.run("start");
+    expect(await t.stop()).toEqual({ stopped: false, errors: ["Provider socket close failed"], jobsUnchanged: true });
+    expect(stopped).toBe(true);
+  });
+  test("self-stop reports audio teardown failure rather than claiming completion", async () => {
+    const t = setup({
+      audio: async () => ({
+        diagnostics: { queuedMs: 0, captureFrames: 0, capturedBytes: 0 },
+        start: async () => {},
+        play: async () => {},
+        flush: async () => {},
+        stop: async () => {
+          throw new Error("sensitive error");
+        },
+        close: () => {},
+      }),
+    });
+    await t.run("start");
+    expect(await t.stop()).toEqual({ stopped: false, errors: ["Audio stop failed"], jobsUnchanged: true });
+  });
+
   test("full received voice text persists separately from the bounded viewport and stop flushes partial text", async () => {
     const t = setup();
     await t.run("start");

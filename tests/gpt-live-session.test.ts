@@ -246,6 +246,7 @@ test("close deadline reports unknown final usage and no queued PCM survives clos
   await closing;
   expect(finalized).toEqual([false]);
   expect(errors).toEqual(["Live session.close timed out; final usage unknown"]);
+  expect(session.closeError).toBe("Live session.close timed out; final usage unknown");
 });
 
 test("general host observations use nullable delegation and enforce conservative text token budget", async () => {

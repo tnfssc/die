@@ -43,6 +43,10 @@ const validB64 = (s: unknown): s is string =>
 export class GPTLiveSession {
   private phase: "idle" | "connecting" | "ready" | "closing" | "closed" = "idle";
   private socket?: LiveSocket;
+  private closureError?: string;
+  get closeError() {
+    return this.closureError;
+  }
   private timer?: ReturnType<typeof setTimeout>;
   private finishConnect?: () => void;
   private finishClose?: () => void;
@@ -71,6 +75,7 @@ export class GPTLiveSession {
   }
   private done(finalized: boolean, reason?: string, usage?: unknown) {
     if (this.phase === "closed") return;
+    if (this.phase === "closing" && reason) this.closureError = reason;
     this.phase = "closed";
     ++this.serial;
     this.clearTimer();
@@ -79,7 +84,7 @@ export class GPTLiveSession {
     try {
       this.socket?.close();
     } catch {
-      /* socket already gone */
+      this.closureError = "Live socket close failed";
     }
     this.socket = undefined;
     this.finishConnect?.();

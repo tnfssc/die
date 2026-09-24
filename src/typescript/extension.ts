@@ -7,6 +7,7 @@ import { toolParameters } from "../tool-schema";
 import { executeInputPreview, executeOutputPreview } from "../ui/execution-previews";
 import { executeIsolated, formatResult } from "./execution";
 import { withJobCancellation } from "./job-bridge";
+import { stopCurrentLive } from "../live/lifecycle-access";
 
 const HandoffParameters = z.object({ message: z.string().check(z.minLength(1), z.maxLength(2000)) });
 
@@ -79,6 +80,7 @@ export function registerExecuteTool(
       const params = z.parse(ExecuteParameters, input);
       const owner = ctx.sessionManager;
       const ownerSessionId = owner?.getSessionId?.();
+      const ownerLeafId = owner?.getLeafId?.();
       const recordForAttachment = owner ? diagnosticRecorder(owner) : undefined;
       const backgroundIds: string[] = [];
       const handoffWaits = new AbortController();
@@ -103,6 +105,18 @@ export function registerExecuteTool(
               handoffMessage = request.message;
               handoffWaits.abort(); // release outstanding foreground waits, not managed jobs
               return { accepted: true };
+            }
+            if (method === "live.stop") {
+              if (
+                signal.aborted ||
+                shutdown.signal.aborted ||
+                owner?.getSessionId?.() !== ownerSessionId ||
+                owner?.getLeafId?.() !== ownerLeafId
+              )
+                throw new Error("Live stop request belongs to an inactive session");
+              if (params && (typeof params !== "object" || Array.isArray(params) || Object.keys(params).length))
+                throw new Error("live.stop accepts no options; stop jobs explicitly with jobs.stop(exactId)");
+              return stopCurrentLive(pi, ctx);
             }
             if (!jobHandler) throw new Error("Session job helpers are unavailable");
             const result = await jobHandler(ctx, method, params, withJobCancellation(signal, handoffWaits.signal));

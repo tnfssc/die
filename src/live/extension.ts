@@ -18,6 +18,7 @@ import { liveLocalOnly } from "./status";
 import { runLiveSetup } from "./setup";
 import { LiveAudio, type AudioCallbacks, type AudioSetupError } from "./audio";
 import { getLiveHost } from "./host-access";
+import { registerLiveStop, type LiveStopResult } from "./lifecycle-access";
 import { boundedHostContext, createOrchestration, type VoiceHost } from "./orchestration";
 import { VoiceSession } from "./session";
 import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
@@ -102,6 +103,9 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     readonly provider = selected.provider;
     readonly model = selected.model;
     readonly controller = new AbortController();
+    readonly sessionId: string | undefined;
+    readonly leafId: string | undefined;
+    private stopping?: Promise<LiveStopResult>;
     voice?: NativeVoice;
     liveVoice?: GPTLiveSession;
     liveDelegation?: GptLiveDelegationBridge;
@@ -112,6 +116,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     host?: VoiceHost;
     unsubscribeHost?: () => void;
     audio?: NativeAudio;
+    private audioLaunchPending = false;
     state = "starting"; // lifecycle only: capture and pump run regardless of presentation
     speaking = false;
     generationFinished = false;
@@ -139,6 +144,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     queuedMs = 0;
     readonly lines: string[] = [];
     constructor(readonly ctx: ExtensionContext) {
+      this.sessionId = ctx.sessionManager?.getSessionId?.();
+      this.leafId = ctx.sessionManager?.getLeafId?.() ?? undefined;
       const playbackOptions: ConstructorParameters<typeof PlaybackScheduler>[0] = {
         send: (frame, epoch) => {
           if (!this.audio) return Promise.reject(new Error("Audio not ready"));
@@ -244,7 +251,12 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       this.ctx.ui.notify("Live stopped: " + message + ". No agent work was cancelled.", "warning");
     }
     stop() {
-      if (current !== this) return;
+      void this.stopObserved();
+    }
+    stopObserved(): Promise<LiveStopResult> {
+      if (this.stopping) return this.stopping;
+      if (current !== this)
+        return Promise.resolve({ stopped: false, errors: ["Live session is no longer active"], jobsUnchanged: true });
       this.liveFragments.flush();
       this.transcriptLog.finish("You", "partial");
       this.transcriptLog.finish("Voice", "partial");
@@ -266,18 +278,49 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       this.transcriptLog.reset();
       if (this.renderTimer) clearTimeout(this.renderTimer);
       this.renderTimer = undefined;
-      this.voice?.close();
-      void this.liveVoice?.close().catch(() => {});
+      const voice = this.voice;
+      const liveVoice = this.liveVoice;
       const audio = this.audio;
+      const audioLaunchPending = this.audioLaunchPending;
       this.audio = undefined;
-      if (audio) {
-        void audio
-          .stop()
-          .catch(() => {})
-          .finally(() => audio.close());
-      }
       this.ctx.ui.setStatus(ID, undefined);
       this.ctx.ui.setWidget(ID, undefined);
+      this.stopping = (async () => {
+        const errors: string[] = audioLaunchPending
+          ? ["Audio startup has not finished; teardown is not yet observed"]
+          : [];
+        await Promise.all([
+          (async () => {
+            if (!audio) return;
+            try {
+              await audio.stop();
+            } catch {
+              errors.push("Audio stop failed");
+            }
+            try {
+              audio.close();
+            } catch {
+              errors.push("Audio close failed");
+            }
+          })(),
+          (async () => {
+            try {
+              voice?.close();
+              if (voice && "closeError" in voice && typeof voice.closeError === "string") errors.push(voice.closeError);
+            } catch {
+              errors.push("Provider socket close failed");
+            }
+            try {
+              await liveVoice?.close();
+              if (liveVoice?.closeError) errors.push(liveVoice.closeError);
+            } catch {
+              errors.push("Live provider socket close failed");
+            }
+          })(),
+        ]);
+        return { stopped: errors.length === 0, errors, jobsUnchanged: true };
+      })();
+      return this.stopping;
     }
     liveObservation(value: unknown) {
       if (!this.liveVoice || !this.alive) return;
@@ -381,6 +424,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     async start(key: string) {
       try {
         // Hello does not open devices. Provider setup must succeed BEFORE audio.start().
+        this.audioLaunchPending = true;
         this.audio = await deps.audio(
           {
             capture: (pcm) => {
@@ -412,6 +456,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           },
           this.controller.signal,
         );
+        this.audioLaunchPending = false;
         if (!this.alive) {
           this.audio.close();
           return;
@@ -521,6 +566,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         this.waveTimer.unref?.();
         this.render(true);
       } catch {
+        this.audioLaunchPending = false;
         if (this.alive)
           this.fail(
             this.audio
@@ -530,6 +576,19 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       }
     }
   }
+  registerLiveStop(pi, async (request) => {
+    const run = current;
+    const sessionId = request.sessionManager?.getSessionId?.();
+    if (
+      !run ||
+      !sessionId ||
+      run.sessionId !== sessionId ||
+      run.leafId !== request.sessionManager?.getLeafId?.() ||
+      run.ctx.sessionManager?.getSessionFile?.() !== request.sessionManager?.getSessionFile?.()
+    )
+      return { stopped: false, errors: ["No Live voice session belongs to this agent session"], jobsUnchanged: true };
+    return run.stopObserved();
+  });
   pi.registerCommand("live", {
     description: "Toggle voice with selected voice provider (paid; microphone and speakers)",
     getArgumentCompletions: (prefix) => {
