@@ -135,6 +135,20 @@ describe("voice-only SDK session", () => {
     ]);
     expect(s.generation).toBe(1);
     expect(s.turn).toBe(3);
+    expect(s.diagnostics).toMatchObject({ serverInterruptions: 1, turnCompletions: 3 });
+    expect(s.diagnostics.lastInterruptedAtMs).toBeGreaterThan(0);
+  });
+  test("normal completion and local transport failure never count as provider interruption", async () => {
+    const h = harness();
+    const s = new VoiceSession({}, h.adapter);
+    const connecting = s.connect("key");
+    h.ready();
+    await connecting;
+    h.params.callbacks.onmessage(msg({ serverContent: { turnComplete: true } }));
+    expect(s.diagnostics).toEqual({ serverInterruptions: 0, turnCompletions: 1, lastInterruptedAtMs: undefined });
+    h.params.callbacks.onerror?.({} as ErrorEvent);
+    expect(s.state).toBe("closed");
+    expect(s.diagnostics.serverInterruptions).toBe(0);
   });
   test("invalid output mime/rate and aggregate audio limit fail safely once", async () => {
     for (const [content, expected] of [

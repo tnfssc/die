@@ -157,3 +157,29 @@ test("structured setup error preserves only bounded domain and numeric code", as
   await expect(pending).rejects.toThrow();
   expect(other).toEqual([undefined]);
 });
+
+test("bounded native ready metadata and full-duplex capture during queued playback", async () => {
+  const frames: Buffer[] = [];
+  const { audio, worker } = await open({ callbacks: { capture: (b: Buffer) => frames.push(b) } });
+  const started = audio.start();
+  await tick();
+  worker.emitMessage({ type: "ready", voiceProcessingEnabled: true, voiceProcessingBypassed: false,
+    captureRate: 48000, renderRate: 48000, secret: "discard" });
+  await started;
+  expect(audio.diagnostics.ready).toEqual({ voiceProcessingEnabled: true, voiceProcessingBypassed: false,
+    captureRate: 48000, renderRate: 48000 });
+  await audio.play(Buffer.alloc(960), 0);
+  worker.emitMessage({ type: "played", queuedMs: 200 });
+  worker.emitMessage({ type: "capture", data: Buffer.alloc(640).toString("base64") });
+  expect(audio.diagnostics).toMatchObject({ queuedMs: 200, captureFrames: 1, capturedBytes: 640 });
+  expect(frames).toHaveLength(1);
+  audio.close();
+  const invalid = await open();
+  const waiting = invalid.audio.start();
+  await tick();
+  invalid.worker.emitMessage({ type: "ready", voiceProcessingEnabled: "true", voiceProcessingBypassed: false,
+    captureRate: Infinity, renderRate: 48000 });
+  await waiting;
+  expect(invalid.audio.diagnostics.ready).toBeUndefined();
+  invalid.audio.close();
+});

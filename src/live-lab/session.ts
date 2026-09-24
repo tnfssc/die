@@ -61,6 +61,12 @@ export class VoiceSession {
   get turn(): number {
     return this.turnValue;
   }
+  /** Provider events only. Local helper errors are separate; timestamps are monotonic process-relative ms. */
+  readonly diagnostics = {
+    serverInterruptions: 0,
+    turnCompletions: 0,
+    lastInterruptedAtMs: undefined as number | undefined,
+  };
   readonly model = VOICE_MODEL;
 
   private emit(fn: () => void): void {
@@ -346,6 +352,8 @@ export class VoiceSession {
     const content = message.serverContent;
     if (content) {
       if (content.interrupted) {
+        ++this.diagnostics.serverInterruptions;
+        this.diagnostics.lastInterruptedAtMs = performance.now();
         ++this.playbackEpochValue;
         this.turnBytes = 0;
         this.emit(() => this.callbacks.onInterrupted?.(this.playbackEpochValue));
@@ -384,6 +392,7 @@ export class VoiceSession {
         if (this.stateValue !== "ready") return;
       }
       if (content.turnComplete) {
+        ++this.diagnostics.turnCompletions;
         this.emit(() => this.callbacks.onTurnComplete?.(this.turnValue));
         if (this.stateValue !== "ready") return;
         ++this.turnValue;
