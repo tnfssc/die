@@ -76,3 +76,82 @@ Do not claim the tool issue is fixed. No native audio behavior changed.
 Probe source files removed after saving these results; no recordings made.
 
 Installed CLI SHA256: 68f8f9747659a84eadcdfe88e1091d4ca324ed8ff6a4c7e24bd6185f8b73285f.
+
+## User authorizes further real probing
+
+User explicitly said to probe/test and not worry about paid costs. Parent
+explained scope: actual provider/installed CLI, harmless read-only handoff,
+no cancellation of user jobs, no keys or mic audio in logs.
+
+Speech worker task_705ada19 owns synthesized-speech -> Gemini transcription ->
+actual createOrchestration gate evidence. Worktree
+/Users/sharath/.die/worktrees/die-f528e86af6b5-task_705ada19. It may use up to3
+bounded paid sessions, inert host fixture only, no microphone or actual agent
+jobs. Investigate finished flags, exact-text gate and tool/turn timing before
+changing authority. Parent owns compiled CLI/agent route independently.
+
+Parent installed-CLI probe task_19910656 uses a private disposable directory
+/var/folders/bf/b99kjy314x36r9t_6ffs0d2m0000gn/T/die-installed-live-probe-nT90BG.
+An explicit diagnostic extension in a fresh --no-session CLI asks the real
+compiled tasks extension for its host over the shared bus, then uses real
+VoiceSession/SDK and real createOrchestration to ask jobs_list and agent_send.
+Only granted request: read the fixture README.md and report its first line;
+no edits/background jobs. Handoff authority is seeded from that fixed request
+for this typed harness, NOT evidence of speech transcription (worker owns that).
+The process environment is cleared to HOME/PATH/TERM/offline, preventing
+inherited native bridge scope from attaching to original user jobs. Existing
+canonical auth is read in place, never copied. No audio devices are opened.
+Only structural events/model ID and a known-reply boolean are recorded; no
+real session text, keys or microphone audio. Probe owns its tmux server and
+must kill it; delete scripts/events after reviewing. Results pending.
+
+## Concrete installed-CLI result (not a source-only test)
+
+First installed CLI probe: actual shared host connected, TUI mode,
+configured gpt-6-astra agent, jobs_list succeeded. Gemini then emitted model
+turnComplete before a later agent_send with EXACT authorized text. That send
+was rejected by createOrchestration because endUserTurn had erased authority.
+No agent job started. This is a proven premature-expiry defect across
+NON_BLOCKING tool/model turns. It may explain user trouble but is not yet a
+reproduction of their exact spoken interaction.
+
+Control probe task_97420398: same installed CLI, real Google SDK/tools, same
+fixed read-only request, but direct agent_send without preliminary jobs_list.
+It succeeded: real configured openai-codex/gpt-6-astra agent started, used its
+execute tool, read the disposable README, and replied its known first line.
+No user files/jobs were touched. Structural events saved temporarily under
+probe directory; no transcript/secret/audio logs. This proves actual compiled
+host discovery and handoff work, rather than only fixture dispatch.
+
+Fix worker task_37f3ab60 at
+/Users/sharath/.die/worktrees/die-f528e86af6b5-task_37f3ab60,
+branch die/fix-speech-authority-lifetime-across-too-37f3ab60, produced0d1982e.
+It keeps latest completed exact-text authority once for60s across model turns;
+new input, interruption and stop revoke it. Finished-marker requirement remains.
+Worker58 focused tests/typecheck passed. Parent reviewing/integrating and will
+repeat identical real-provider chained request before installation.
+
+## Synthetic speech limits and additional diagnostic
+
+Speech worker a64f3a8 (task_705ada19, branch
+ die/probe-real-gemini-spoken-tool-handoff-705ada19) tested3 sessions with valid
+synthesized PCM16/mono16k speech,100ms paced packets, source AAD enabled. All
+connected and sent6 tools, but none emitted transcriptions/tools/turnComplete
+before30s close. Inert host; no real agent calls. Parent verified WAV format,
+nonzero peaks25650/25712 and RMS about-16.5/-15.5dBFS. Do not infer a tools
+failure from provider silence. Raw2 setup/other messages existed.
+
+Parent then ran ONE diagnostic with explicit activityStart/activityEnd,
+automatic VAD disabled and20ms packets. Real input transcription appeared:
+“Ask the configured agent to read readme.md and report its first line.” It
+had NO finished flag; agent_send instead supplied the paraphrase “Please read
+the README.md file and report its first line.” Both attempted calls were
+rejected, then model said it was having trouble communicating with the agent.
+This demonstrates missing completion/paraphrase rejection in MANUAL activity
+mode; it does not prove production automatic VAD sends the same markers.
+No authority weakening is justified from assuming those modes are identical.
+Final control with AAD enabled/20ms produced no transcript/calls, matching prior
+synthetic silence. No native capture/VAD settings changed. Further production
+speech behavior still needs observed real user input; generated audio is not a
+replacement for it. Temporary synthesized files/metadata remain under
+/tmp/die-synthetic-speech-705ada19 until parent cleanup. No mic was captured.
