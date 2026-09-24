@@ -102,7 +102,7 @@ jobs:
         run: bun test ./tests 2>&1 | tee artifacts/release/tests.log
       - name: Standalone smoke test
         shell: bash
-        run: bun run smoke 2>&1 | tee artifacts/release/smoke.log
+        run: bun run smoke -- --reuse-build 2>&1 | tee artifacts/release/smoke.log
       - uses: actions/download-artifact@v4
         with:
           name: release-mac-arm64-helper
