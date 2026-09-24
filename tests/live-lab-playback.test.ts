@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { FRAME_BYTES, MAX_PENDING_BYTES, PlaybackScheduler, type PlaybackClock } from "../src/live-lab/playback";
+import { FRAME_BYTES, MAX_PENDING_BYTES, type PlaybackClock, PlaybackScheduler } from "../src/live-lab/playback";
+
 class Clock implements PlaybackClock {
   time = 0;
   timerLateness = 0;
@@ -80,9 +81,7 @@ describe("live-lab playback scheduler", () => {
     expect(h.scheduler.state.pendingBytes).toBe(0);
     expect(h.sent.at(-1)?.frame.length).toBe(222);
     for (const send of h.sent) {
-      const totalMs = h.sent
-        .filter((s) => s.at <= send.at)
-        .reduce((sum, s) => sum + s.frame.length / 48, 0);
+      const totalMs = h.sent.filter((s) => s.at <= send.at).reduce((sum, s) => sum + s.frame.length / 48, 0);
       expect(totalMs).toBeLessThanOrEqual(send.at + 80);
     }
     expect(h.errors).toHaveLength(0);

@@ -277,11 +277,12 @@ describe("opt-in voice-only lab", () => {
     const originalStart = t.audio.start;
     t.audio.start = async () => {
       t.voice.onAudio?.(Buffer.alloc(9600).toString("base64"), 0);
+      expect(t.played).toHaveLength(0); // No writes before native readiness.
       await originalStart();
     };
     await t.run("start");
     await tick();
-    expect(t.played.map((p) => p.length)).toEqual([960]);
+    expect(t.played.map((p) => p.length)).toEqual([960, 960, 960, 960]); // Bounded 80ms reserve.
     t.voice.onAudio?.(Buffer.alloc(2_880_002).toString("base64"), 0);
     expect(t.status.at(-1)).toBeUndefined();
     expect(t.notices.join(" ")).toContain("bounded audio budget");
