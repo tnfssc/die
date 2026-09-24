@@ -16,6 +16,31 @@ test("known delayed residual has normalized correlation and lag", () => {
   expect(result.correlation).toBeGreaterThan(0.95);
   expect(result.lagMs).toBe(100);
 });
+test("off-grid delays and inverted phase are detected without decimation aliases", () => {
+  const lag = 1603;
+  const inverted = analyzeSpeakerCheck(baseline, combined(lag, -1), reference);
+  expect(inverted.status).toBe("correlated_return");
+  expect(inverted.correlation).toBeGreaterThan(0.95);
+  expect(inverted.polarity).toBe("inverted");
+  expect(inverted.lagMs).toBe(100);
+
+  // Reference energy on a phase skipped by a 4:1 decimated search.
+  const sparse = new Int16Array(reference.length);
+  let seed = 179;
+  for (let i = 1; i < sparse.length; i += 4) {
+    seed ^= seed << 13;
+    seed ^= seed >>> 17;
+    seed ^= seed << 5;
+    sparse[i] = (seed & 1) ? 1000 : -1000;
+  }
+  const captured = new Int16Array(RATE * 1.7);
+  captured.set(sparse, 1603);
+  const result = analyzeSpeakerCheck(baseline, captured, sparse);
+  expect(result.status).toBe("correlated_return");
+  expect(result.correlation).toBe(1);
+  expect(result.polarity).toBe("normal");
+  expect(result.lagMs).toBe(100);
+});
 test("uncorrelated broadband noise is not called echo", () => {
   let seed = 110;
   const noise = combined(0, 0);
@@ -157,4 +182,48 @@ test("late factory completion is closed after abort", async () => {
   release(late.audio);
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(late.stats().closed).toBe(1);
+});
+
+test("capture overflow and pending playback remain inconclusive", async () => {
+  const overflow = await runSpeakerCheck(async (cb) => {
+    const fake = fakeAudio(cb);
+    return {
+      ...fake.audio,
+      async start() {
+        cb.capture?.(Buffer.alloc(2 * RATE * 5));
+      },
+    };
+  }, new AbortController().signal);
+  expect(overflow).toMatchObject({ status: "inconclusive", reason: "capture_overflow" });
+
+  const pending = await runSpeakerCheck(async (cb) => {
+    const fake = fakeAudio(cb, { capture: true });
+    return {
+      ...fake.audio,
+      async play(frame: Buffer, gen: number) {
+        await fake.audio.play(frame, gen);
+        cb.played?.(500);
+      },
+    };
+  }, new AbortController().signal);
+  expect(pending).toMatchObject({ status: "inconclusive", reason: "playback_pending" });
+});
+test("abort interrupts an uncooperative playback write and closes owned audio", async () => {
+  const abort = new AbortController();
+  let started!: () => void;
+  const playing = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const fake = fakeAudio({});
+  const result = runSpeakerCheck(async () => ({
+    ...fake.audio,
+    play: async () => {
+      started();
+      await new Promise<void>(() => {});
+    },
+  }), abort.signal);
+  await playing;
+  abort.abort();
+  await expect(result).rejects.toThrow(/aborted/);
+  expect(fake.stats()).toEqual({ stopped: 1, closed: 1, plays: 0 });
 });

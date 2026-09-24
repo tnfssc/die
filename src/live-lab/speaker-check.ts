@@ -8,7 +8,10 @@ export type SpeakerCheckAudioFactory = (
 export type SpeakerCheckResult = {
   status: "correlated_return" | "no_correlated_return" | "no_signal" | "clipping" | "inconclusive";
   correlation?: number;
+  /** Lag relative to first submitted playback frame, not measured speaker output latency. */
   lagMs?: number;
+  /** Sign of the matched waveform; present only for a correlated return. */
+  polarity?: "normal" | "inverted";
   baselineDbfs?: number;
   playbackDbfs?: number;
   tailDbfs?: number;
@@ -69,8 +72,9 @@ function clipped(a: Int16Array): boolean {
   for (const x of a) if (Math.abs(x) >= 32000) hits++;
   return hits > a.length * 0.001;
 }
-/** Pure lag-search normalized correlation, at 16 kHz. Capture starts at playback write boundary.
- * Includes 450ms of lag and posttail. Search is bounded by 1s reference and 4s capture cap.
+/** Full-rate, phase-independent normalized lag search at 16 kHz. Caller splits capture
+ * at the first playback submission; lag is relative to that boundary, not a render tap.
+ * Search is limited to 450ms lag, 1s reference and a 4s capture cap.
  */
 export function analyzeSpeakerCheck(
   baseline: Int16Array,
@@ -88,29 +92,35 @@ export function analyzeSpeakerCheck(
   if (playbackDbfs < -68 && tailDbfs < -68 && baselineDbfs < -68) return { status: "no_signal", ...levels };
   if (baselineDbfs > -24) return { status: "inconclusive", reason: "high_background", ...levels };
   let referenceEnergy = 0;
-  for (let i = 0; i < reference.length; i += 4) referenceEnergy += (reference[i] ?? 0) ** 2;
+  for (let i = 0; i < reference.length; i++) referenceEnergy += reference[i]! ** 2;
   let best = 0,
-    bestLag = 0;
+    bestLag = 0,
+    bestSign = 1;
   const maxLag = Math.min(RATE * 0.45, playbackAndTail.length - reference.length);
-  for (let lag = 0; lag <= maxLag; lag += 4) {
+  // Search every sample: stepping the reference or lag by four misses some phases
+  // altogether (and can mistake a decimation alias for a matching waveform).
+  for (let lag = 0; lag <= maxLag; lag++) {
     let dot = 0,
       energy = 0;
-    for (let i = 0; i < reference.length; i += 4) {
-      const value = playbackAndTail[lag + i] ?? 0;
-      dot += (reference[i] ?? 0) * value;
+    for (let i = 0; i < reference.length; i++) {
+      const value = playbackAndTail[lag + i]!;
+      dot += reference[i]! * value;
       energy += value * value;
     }
     const correlation = energy ? dot / Math.sqrt(referenceEnergy * energy) : 0;
-    if (correlation > best) {
-      best = correlation;
+    if (Math.abs(correlation) > best) {
+      best = Math.abs(correlation);
+      bestSign = Math.sign(correlation);
       bestLag = lag;
     }
   }
   const correlation = Math.round(best * 1000) / 1000;
+  const matched = correlation >= 0.35 && playbackDbfs > baselineDbfs + 3;
   return {
-    status: correlation >= 0.35 && playbackDbfs > baselineDbfs + 3 ? "correlated_return" : "no_correlated_return",
+    status: matched ? "correlated_return" : "no_correlated_return",
     correlation,
     lagMs: Math.round((bestLag / RATE) * 1000),
+    ...(matched ? { polarity: bestSign < 0 ? "inverted" as const : "normal" as const } : {}),
     ...levels,
   };
 }
