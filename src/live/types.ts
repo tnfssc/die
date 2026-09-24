@@ -21,6 +21,8 @@ export type VoiceTranscript = {
   finalitySource?: "provider" | "model_contract";
   languageCode?: string;
   speakerLabel?: string;
+  /** Output from a cancelled model envelope, not verified playback. */
+  interrupted?: boolean;
 };
 export interface VoiceCallbacks {
   onReady?: () => void;

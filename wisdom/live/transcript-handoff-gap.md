@@ -42,3 +42,13 @@ Read src/prompts/system.md, identity.md, main-orchestrator.md: actual working
 guidance says go look, share work, solve real problem. Current Live paragraph
 is largely restrictions and lacks that stance. Keep tools honest without
 inventing domain bans. Values unchanged; existing guidance covers this work.
+
+## Candidate implementation
+
+Live voice transcript handoff
+
+Old widget silently clipped each utterance to 180 characters. The coding agent saw only the newest user request and could mistake its own dialogue for the voice conversation.
+
+Now each received bounded text segment is a session custom entry (die-live-transcript); never audio. The widget is a recent viewport with explicit clipped-line and omitted-entry labels. Model-contract final input segments stay distinct; unfinished provider text is accumulated. Model turn completion is only a boundary for unfinished output. Interrupted generated output is not claimed to have been heard. Unfinished input is partial.
+
+The host sends the configured agent quoted transcript data alongside the latest captured user request. The request is authoritative; transcript is data, not instructions or permission to execute. Context is capped at 24k serialized characters, selecting only whole recent entries with an explicit count of omitted earlier entries. Larger conversations cannot truthfully be exported in full from this context alone; older session history requires separate retrieval. The provider caps text at 4096 characters per turn; handoff requests expire after 60 seconds. Session entries follow normal Pi session persistence and scope; there is no audio archive or cross-session transcript store.

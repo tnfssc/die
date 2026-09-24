@@ -427,6 +427,7 @@ export class VoiceSession {
         [content.outputTranscription, false],
       ] as const) {
         const transcript = this.transcript(value, input);
+        if (transcript && !input && content.interrupted) transcript.interrupted = true;
         if (this.stateValue !== "ready") return;
         if (transcript)
           this.emit(() =>

@@ -308,7 +308,7 @@ describe("Live voice", () => {
     t.voice.onInputTranscript?.({ text: "hello\x1b[2J\nworld" });
     t.voice.onOutputTranscript?.({ text: "reply\u202eok" }, 0);
     await new Promise((resolve) => setTimeout(resolve, 120));
-    expect(t.widgets.at(-1)?.join(" ")).toContain("You: hello world");
+    expect(t.widgets.at(-1)?.join(" ")).toContain("You [final]: hello world");
     expect(t.widgets.at(-1)?.join(" ")).not.toContain("\x1b");
     t.voice.onAudio?.(Buffer.alloc(2000).toString("base64"), 0);
     t.voice.onTurnComplete?.(0);
@@ -434,7 +434,7 @@ describe("Live voice", () => {
     t.capture.played?.(40);
     for (let i = 0; i < 20; i++) t.capture.capture?.(Buffer.alloc(640));
     await new Promise((resolve) => setTimeout(resolve, 120));
-    expect(t.widgets.at(-1)?.join(" ")).toContain("You: Hello world");
+    expect(t.widgets.at(-1)?.join(" ")).toContain("You [final]: Hello world");
     expect(t.sends).toBe(20);
     expect(t.status.at(-1)).toContain("speaking");
     t.voice.onTurnComplete?.(0);

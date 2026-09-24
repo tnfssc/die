@@ -9,6 +9,7 @@ import { boundedHostContext, createOrchestration, type VoiceHost } from "./orche
 import { VoiceSession } from "./session";
 import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
 import { PlaybackScheduler } from "./playback";
+import { TranscriptLog, VOICE_ENTRY } from "./transcript";
 import { VOICE_MODEL, type VoiceCallbacks, type VoiceOrchestration } from "./types";
 
 const ID = "die-live";
@@ -81,7 +82,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     private lastRender = 0;
     private lastStatus?: string;
     private lastWidget?: string;
-    private readonly utterances: Record<"You" | "Voice", string> = { You: "", Voice: "" };
+    readonly transcriptLog = new TranscriptLog((entry) => pi.appendEntry?.(VOICE_ENTRY, entry));
     pendingBytes = 0;
     inFlight = false;
     readonly playback: PlaybackScheduler;
@@ -134,29 +135,12 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         this.ctx.ui.setStatus(ID, status);
         this.lastStatus = status;
       }
-      const lines = [...this.lines];
-      for (const label of ["You", "Voice"] as const)
-        if (this.utterances[label]) lines.push(label + ": " + this.utterances[label]);
-      const visible = lines.slice(-MAX_VISIBLE);
+      const visible = [...this.lines.slice(-1), ...this.transcriptLog.view(clean)].slice(-MAX_VISIBLE);
       const widget = JSON.stringify(visible);
       if (widget !== this.lastWidget) {
         this.ctx.ui.setWidget(ID, visible.length ? visible : undefined);
         this.lastWidget = widget;
       }
-    }
-    transcript(label: "You" | "Voice", text: string, finished?: boolean) {
-      if (!this.alive) return;
-      const fragment = clean(text);
-      const previous = this.utterances[label];
-      // Transcript events are deltas. Keep boundaries legible without removing supplied spaces.
-      const separator = "";
-      this.utterances[label] = (previous + separator + fragment).slice(0, 180);
-      if (finished) {
-        if (this.utterances[label]) this.lines.push(label + ": " + this.utterances[label]);
-        this.lines.splice(0, Math.max(0, this.lines.length - MAX_VISIBLE));
-        this.utterances[label] = "";
-      }
-      this.render();
     }
     drain() {
       if (
@@ -186,6 +170,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       if (!this.alive || epoch <= this.generation) return;
       this.orchestration?.beginUserTurn?.();
       this.inputUtterance = "";
+      this.transcriptLog.finish("Voice", "interrupted");
+      this.transcriptLog.finish("You", "partial");
       this.generation = epoch;
       this.pendingBytes = 0;
       this.queuedMs = 0;
@@ -202,6 +188,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     }
     stop() {
       if (current !== this) return;
+      this.transcriptLog.finish("You", "partial");
+      this.transcriptLog.finish("Voice", "partial");
       current = undefined;
       this.orchestration?.beginUserTurn?.();
       this.inputUtterance = "";
@@ -212,6 +200,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       this.playback.close();
       this.pendingBytes = 0;
       this.lines.length = 0;
+      this.transcriptLog.reset();
       if (this.renderTimer) clearTimeout(this.renderTimer);
       this.renderTimer = undefined;
       this.voice?.close();
@@ -266,6 +255,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             onInterrupted: (epoch) => this.interrupt(epoch),
             onTurnComplete: () => {
               if (this.alive) {
+                this.transcriptLog.finish("Voice", "turn-boundary");
                 this.turns++;
                 this.generationFinished = true;
                 this.playback.turnComplete(this.generation);
@@ -277,6 +267,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               if (!this.alive) return;
               this.orchestration?.beginUserTurn?.();
               this.inputUtterance = "";
+              this.transcriptLog.finish("You", "partial");
             },
             onInputTranscript: (t) => {
               if (!this.alive) return;
@@ -284,15 +275,21 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               // segment replaces prior unfinished input; never append after dispatch.
               if (t.finalitySource === "model_contract") this.inputUtterance = "";
               if (!this.inputUtterance && t.text) this.orchestration?.beginUserTurn?.();
-              this.inputUtterance = (this.inputUtterance + t.text).slice(0, 4001);
+              this.inputUtterance += t.text;
               if (t.finished) {
                 this.completedInputTranscripts++;
                 this.orchestration?.userTranscript(this.inputUtterance);
                 this.inputUtterance = "";
               }
-              this.transcript("You", t.text, t.finished);
+              this.transcriptLog.receive("You", t);
+              this.render();
             },
-            onOutputTranscript: (t) => this.transcript("Voice", t.text, t.finished),
+            onOutputTranscript: (t) => {
+              if (!this.alive) return;
+              this.transcriptLog.receive("Voice", t.interrupted ? { ...t, finished: false } : t);
+              if (t.interrupted) this.transcriptLog.finish("Voice", "interrupted");
+              this.render();
+            },
             onError: (e) => this.fail("Provider " + e.code),
           },
           this.orchestration,

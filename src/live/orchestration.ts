@@ -88,7 +88,7 @@ export function createOrchestration(host: VoiceHost, now: () => number = () => p
   return {
     userTranscript(value) {
       const text = value.trim();
-      pending = text && value.length <= 4000 ? { text, expiresAt: now() + ttlMs } : undefined;
+      pending = text && value.length <= 4096 ? { text, expiresAt: now() + ttlMs } : undefined;
     },
     beginUserTurn() {
       pending = undefined;
