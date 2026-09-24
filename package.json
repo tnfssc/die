@@ -1,6 +1,6 @@
 {
   "name": "die",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "private": true,
   "type": "module",
   "bin": {
@@ -31,7 +31,7 @@
     "@google/genai": "2.24.0",
     "es-module-lexer": "^3.0.2",
     "resolve.exports": "2.0.3",
-    "ws": "8.18.3",
+    "ws": "8.21.3",
     "zod": "4.6.5"
   },
   "devDependencies": {

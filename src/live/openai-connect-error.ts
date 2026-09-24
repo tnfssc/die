@@ -18,7 +18,9 @@ export function connectionFailure(event: unknown): string {
     case 404:
       return withDetail("OpenAI WebSocket endpoint or model unavailable (HTTP 404).");
     case 429:
-      return detail ? "OpenAI WebSocket rejected (HTTP 429). " + detail : "OpenAI WebSocket rate limited (HTTP 429). Retry later.";
+      return detail
+        ? "OpenAI WebSocket rejected (HTTP 429). " + detail
+        : "OpenAI WebSocket rate limited (HTTP 429). Retry later.";
     default:
       if (typeof status === "number")
         return withDetail(

@@ -1,3 +1,4 @@
+import { createServer } from "node:net";
 import { connectionFailure } from "../src/live/openai-connect-error";
 import { describe, expect, test } from "bun:test";
 import {
@@ -755,6 +756,45 @@ describe("Realtime handshake diagnostics (offline)", () => {
         session.close();
         server.stop(true);
       }
+    }
+  });
+  test("stalled rejection is bounded and closes the original connection", async () => {
+    let requests = 0;
+    let peerClosed = false;
+    const peers = new Set<import("node:net").Socket>();
+    const server = createServer((socket) => {
+      peers.add(socket);
+      socket.on("close", () => {
+        peerClosed = true;
+        peers.delete(socket);
+      });
+      socket.once("data", () => {
+        requests++;
+        socket.write("HTTP/1.1 403 Forbidden\r\nContent-Length: 10000\r\n\r\nprivate-partial-body");
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("loopback address missing");
+    const errors: string[] = [];
+    const session = new OpenAIRealtimeSession({ onError: (e) => errors.push(e.message) }, (_url, headers) =>
+      defaultSocket("ws://127.0.0.1:" + address.port + "/v1/realtime?model=gpt-realtime-2.1", headers),
+    );
+    try {
+      const started = Date.now();
+      await session.connect("fake-key");
+      expect(Date.now() - started).toBeLessThan(3000);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("HTTP 403");
+      expect(errors[0]).not.toContain("private-partial-body");
+      expect(session.state).toBe("closed");
+      for (let i = 0; i < 50 && !peerClosed; i++) await Bun.sleep(10);
+      expect(peerClosed).toBe(true);
+      expect(requests).toBe(1);
+    } finally {
+      session.close();
+      for (const peer of peers) peer.destroy();
+      server.close();
     }
   });
   test("ws rejected local upgrades report actual HTTP status and allowlisted code without private data", async () => {

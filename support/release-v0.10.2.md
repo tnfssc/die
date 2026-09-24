@@ -1,0 +1,5 @@
+Realtime now reports actionable handshake diagnostics from the original authenticated WebSocket Upgrade: HTTP status and a small allowlist of provider error codes, without exposing response bodies, headers, URLs or credentials. Session-setup failures remain distinct. The ws transport is pinned to current stable 8.21.3 after checking the official npm registry and advisories.
+
+This is **not a proven fix** for the reported `connect_failed`: the actual remote cause is still unknown. The same key working with GPT-Live does not prove Realtime endpoint/model access. No extra provider probe, automatic retry or fallback model was added. GPT-Live, Gemini and Mac audio behavior are unchanged.
+
+Retry: run `die update`, restart die, select `/live provider openai` and the **same** `/live model gpt-realtime-2.1`, confirm with `/live status`, then run `/live start`. Keep the same saved key; do not paste it into chat. If it fails, share only the new sanitized error and selected model, not keys or raw logs. Starting voice may incur normal API charges; no paid API call or physical-device test was performed for this release.

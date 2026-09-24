@@ -1,0 +1,38 @@
+{
+  "checkedAt": "2026-09-24T13:06:34.546Z",
+  "registry": "https://registry.npmjs.org/ws/latest",
+  "auditEndpoint": "https://registry.npmjs.org/-/npm/v1/security/advisories/bulk",
+  "latest": "8.21.3",
+  "integrity": "sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==",
+  "checks": {
+    "8.18.3": {
+      "ws": [
+        {
+          "id": 1119108,
+          "url": "https://github.com/advisories/GHSA-58qx-3vcg-4xpx",
+          "title": "ws: Uninitialized memory disclosure",
+          "severity": "moderate",
+          "vulnerable_versions": ">=8.0.0 <8.20.1",
+          "cwe": ["CWE-908"],
+          "cvss": {
+            "score": 4.4,
+            "vectorString": "CVSS:3.1/AV:N/AC:H/PR:H/UI:N/S:U/C:H/I:N/A:N"
+          }
+        },
+        {
+          "id": 1123259,
+          "url": "https://github.com/advisories/GHSA-96hv-2xvq-fx4p",
+          "title": "ws: Memory exhaustion DoS from tiny fragments and data chunks",
+          "severity": "high",
+          "vulnerable_versions": ">=8.0.0 <8.21.0",
+          "cwe": ["CWE-400", "CWE-770", "CWE-1050"],
+          "cvss": {
+            "score": 7.5,
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          }
+        }
+      ]
+    },
+    "8.21.3": {}
+  }
+}
