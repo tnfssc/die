@@ -20,6 +20,9 @@ export interface DelegationSnapshot {
   uncertain: true;
   /** Data-only, bounded serialization of the current configured agent's context. */
   hostContext: string;
+  /** Local continuous-capture clock: approximate alignment, never server-verified. */
+  hostContextOffsetMs: number;
+  contextClock: "local-capture-approximate";
 }
 export interface ContextualDelegationHost {
   context(): unknown;
@@ -56,7 +59,26 @@ export class GptLiveDelegationBridge {
   private epoch = 0;
   private closed = false;
   private readonly attempted = new Set<string>();
-  constructor(private readonly host: ContextualDelegationHost) {}
+  private contexts: { offsetMs: number; data: string }[] = [];
+  constructor(private readonly host: ContextualDelegationHost) {
+    this.saveContext(0);
+  }
+
+  /** Save context when observed, not later when an old delegation finally arrives. */
+  saveContext(offsetMs: number): void {
+    if (this.closed || !Number.isSafeInteger(offsetMs) || offsetMs < 0) return;
+    let data: string;
+    try {
+      data = boundedData(this.host.context());
+    } catch {
+      return;
+    }
+    const last = this.contexts.at(-1);
+    if (last && (last.data === data || offsetMs < last.offsetMs)) return;
+    if (last) this.revision++;
+    this.contexts.push({ offsetMs, data });
+    if (this.contexts.length > 16) this.contexts.shift();
+  }
 
   addFragment(fragment: LiveFragment): void {
     if (
@@ -106,6 +128,8 @@ export class GptLiveDelegationBridge {
     this.attempted.add(id); // before any async operation, including rejected requests
     const epoch = this.epoch;
     const revision = this.revision;
+    const context = [...this.contexts].reverse().find((entry) => entry.offsetMs <= event.offsetMs);
+    if (!context) return { kind: "unavailable", id };
     const snapshot: DelegationSnapshot = {
       delegationId: id,
       offsetMs: event.offsetMs,
@@ -113,15 +137,9 @@ export class GptLiveDelegationBridge {
       fragments: this.fragments.filter((fragment) => fragment.endMs <= event.offsetMs).map((f) => ({ ...f })),
       omittedFragments: this.omitted,
       uncertain: true,
-      hostContext: boundedData(
-        (() => {
-          try {
-            return this.host.context();
-          } catch {
-            return { unavailable: true };
-          }
-        })(),
-      ),
+      hostContext: context.data,
+      hostContextOffsetMs: context.offsetMs,
+      contextClock: "local-capture-approximate",
     };
     try {
       // No synthetic tool names, task text, cancellation, or exact speech check.
@@ -133,6 +151,8 @@ export class GptLiveDelegationBridge {
         return { kind: "clarification", id, revision, commentary: "Could you clarify your request?" };
       return { kind: "unavailable", id };
     } catch {
+      // Rejection is just as stale as success after correction/interruption/closure.
+      if (this.closed || this.epoch !== epoch || this.revision !== revision) return { kind: "stale", id };
       // Do not expose raw errors or untrusted backend output as speech.
       return { kind: "unavailable", id };
     }

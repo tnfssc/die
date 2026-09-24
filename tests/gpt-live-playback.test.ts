@@ -98,3 +98,77 @@ describe("GPT-Live bounded playback recovery", () => {
     h.playback.close();
   });
 });
+
+test("GPT-Live queue paces at most an 80ms native reserve even after a delayed timer", async () => {
+  let now = 0,
+    serial = 0;
+  const timers = new Map<number, () => void>();
+  const writes: number[] = [];
+  const playback = new GptLivePlaybackRecovery({
+    clock: {
+      now: () => now,
+      setTimeout: (fn) => {
+        const id = ++serial;
+        timers.set(id, fn);
+        return id as any;
+      },
+      clearTimeout: (id) => {
+        timers.delete(id as any);
+      },
+    },
+    send: async () => {
+      writes.push(now);
+    },
+    flush: async () => {},
+    onError: () => {
+      throw Error("unexpected");
+    },
+  });
+  playback.start();
+  playback.output(Buffer.alloc(9600));
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  expect(writes).toHaveLength(4);
+  expect(playback.scheduler.state.nativeQueuedMs).toBe(80);
+  expect(playback.scheduler.state.pendingBytes).toBe(5760);
+  now = 500;
+  const fire = [...timers.values()];
+  timers.clear();
+  fire.forEach((fn) => fn());
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  expect(writes).toHaveLength(8); // no unlimited catch-up credit
+  expect(playback.scheduler.state.nativeQueuedMs).toBe(80);
+  for (let i = 0; i < 4; i++) playback.capture(loud);
+  expect(playback.scheduler.state.pendingBytes).toBe(0);
+  expect(timers.size).toBe(0);
+  playback.close();
+});
+
+test("local interruption flushes immediately despite an outstanding native pipe write", async () => {
+  let settle!: () => void;
+  const flushes: number[] = [];
+  let writes = 0;
+  const playback = new GptLivePlaybackRecovery({
+    send: () => {
+      writes++;
+      return new Promise((resolve) => {
+        settle = resolve;
+      });
+    },
+    flush: async (epoch) => {
+      flushes.push(epoch);
+    },
+    onError: () => {
+      throw Error("unexpected");
+    },
+  });
+  playback.start();
+  playback.output(Buffer.alloc(1920));
+  for (let i = 0; i < 4; i++) playback.capture(loud);
+  expect(flushes).toEqual([1]);
+  expect(playback.scheduler.state.pendingBytes).toBe(0);
+  settle();
+  await tick();
+  expect(writes).toBe(1);
+  expect(playback.scheduler.playedMs).toBe(0);
+  playback.close();
+});

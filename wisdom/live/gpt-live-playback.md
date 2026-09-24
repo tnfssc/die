@@ -1,5 +1,7 @@
 # GPT-Live local interruption helper (experimental)
 
+Integration status: wired in extension; see [implementation and parent-review blocker](gpt-live-implementation.md). The original isolated-worker evidence below is historical.
+
 The native audio helper emits **processed PCM16 mono 16 kHz, exactly 20 ms (640 bytes)**. Playback accepts 24 kHz PCM16 mono. There is no trustworthy user-speech signal from output chunks or delayed transcript fragments. The reviewed native WS design calls for local interruption and a 100–250 ms bounded playback queue; no deterministic old/new server output boundary exists.
 
 ## VAD choice

@@ -1,5 +1,7 @@
 # GPT-Live delegation bridge (context-aware host contract)
 
+Integration status: wired in extension; see [implementation and parent-review blocker](gpt-live-implementation.md). The original isolated-worker evidence below is historical.
+
 tests/gpt-live-delegation.test.ts exercises the isolated bridge. This module is not wired into the extension yet: integration must implement `submitContextual` in the current host/session adapter, then connect the Live protocol and playback. It is intentionally **not** VoiceOrchestration.execute(agent_send), which consumes a *completed authoritative* user transcript. Live's delegation.created supplies only id, target and offset_ms, no task text or tool arguments.
 
 Create one GptLiveDelegationBridge per Live connection. Feed timestamped provisional fragments via addFragment(startMs,endMs,text); call handleCreated({id,offsetMs,target}) on delegation.created. Snapshots include only fragments whose endMs <= offsetMs; overlap, omission, late delivery and ASR corrections remain uncertain. No offset implies final speech. The bridge bounds 32 fragments / 6 KB, individual fragments 1000 chars, host context to 3800 chars, ID ledger 256 non-evictable IDs; once exhausted reconnect is required, and old IDs must not be replayed into a new connection. Errors don't divulge job output.

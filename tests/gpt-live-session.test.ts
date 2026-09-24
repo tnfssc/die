@@ -169,7 +169,7 @@ test("final usage is only known on session.closed, early provider errors are san
   socket.fire("open");
   socket.event({ type: "error", error: { message: "SECRET key", code: "invalid_api_key" } });
   await start;
-  expect(errors).toEqual(["Live provider reported an error"]);
+  expect(errors).toEqual(["OpenAI rejected the API key for gpt-live-1. Use /login to configure an OpenAI API key."]);
   expect(closed).toEqual([{ finalized: false, usage: undefined }]);
   const f = fixture({ onClosed: (finalized, usage) => closed.push({ finalized, usage }) });
   const p = f.session.connect("fake");
@@ -194,4 +194,84 @@ test("rejects different resolved model or delegation before audio can flow", asy
   await start;
   expect(errors).toEqual(["Invalid Live session.started"]);
   expect(session.appendMicrophone(new Uint8Array(640))).toBe(false);
+});
+
+test("timeout and explicit close invalidate pending handshake and stale callbacks", async () => {
+  const errors: string[] = [];
+  const socket = new Socket();
+  let audio = 0;
+  const session = new GPTLiveSession(
+    {
+      onError: (e) => errors.push(e),
+      onAudio: () => {
+        audio++;
+      },
+    },
+    () => socket,
+    { connectMs: 5, closeMs: 5 },
+  );
+  const pending = session.connect("fake");
+  await Bun.sleep(10);
+  await pending;
+  expect(session.state).toBe("closed");
+  expect(errors).toEqual(["Live session start timed out"]);
+  socket.ready();
+  socket.event({ type: "session.output_audio.delta", delta: Buffer.alloc(960).toString("base64") });
+  expect(audio).toBe(0);
+  expect(socket.sent).toEqual([]);
+  const f = fixture();
+  const connect = f.session.connect("fake");
+  await f.session.close();
+  await connect;
+  f.socket.ready();
+  expect(f.session.state).toBe("closed");
+  expect(f.socket.sent).toEqual([]);
+});
+
+test("close deadline reports unknown final usage and no queued PCM survives closure", async () => {
+  const socket = new Socket();
+  const finalized: boolean[] = [];
+  const errors: string[] = [];
+  const session = new GPTLiveSession(
+    { onClosed: (f) => finalized.push(f), onError: (e) => errors.push(e) },
+    () => socket,
+    { connectMs: 50, closeMs: 5 },
+  );
+  const pending = session.connect("fake");
+  socket.ready();
+  await pending;
+  const closing = session.close();
+  expect(session.appendMicrophone(Buffer.alloc(640))).toBe(false);
+  await Bun.sleep(10);
+  await closing;
+  expect(finalized).toEqual([false]);
+  expect(errors).toEqual(["Live session.close timed out; final usage unknown"]);
+});
+
+test("general host observations use nullable delegation and enforce conservative text token budget", async () => {
+  const f = fixture();
+  const connect = f.session.connect("fake");
+  f.socket.ready();
+  await connect;
+  expect(f.session.observation("Quoted untrusted host data", true)).toBe(true);
+  expect(f.socket.sent.at(-1)).toEqual({
+    type: "session.commentary.append",
+    delegation_id: null,
+    content: "Quoted untrusted host data",
+  });
+  expect(() => f.session.observation("💬".repeat(121))).toThrow();
+  f.socket.event({ type: "session.closed" });
+});
+
+test("explicit quota and model errors are classified without leaking raw content or fallback", async () => {
+  for (const code of ["insufficient_quota", "model_not_found", "rate_limit_exceeded", "invalid_api_key"]) {
+    const errors: string[] = [];
+    const f = fixture({ onError: (e) => errors.push(e) });
+    const connect = f.session.connect("fake");
+    f.socket.event({ type: "error", error: { code, message: "SECRET" } });
+    await connect;
+    expect(errors[0]).toContain("gpt-live-1");
+    expect(errors[0]).not.toContain("SECRET");
+    expect(f.endpoints).toHaveLength(1);
+  }
 });

@@ -200,7 +200,7 @@ export class LiveHostBridge {
         !entry ||
         (entry.speaker !== "You" && entry.speaker !== "Voice") ||
         typeof entry.text !== "string" ||
-        !["final", "partial", "turn-boundary", "interrupted"].includes(entry.status)
+        !["final", "partial", "turn-boundary", "interrupted", "suppressed"].includes(entry.status)
       ) {
         unreadableEntries++;
         continue;
@@ -278,6 +278,17 @@ export class LiveHostBridge {
   }
   steer(requestId: string, text: string): Promise<{ queued: true }> {
     return this.queue(requestId, text, "steer");
+  }
+  /** A queued delegation may cause later agent work, even after voice disconnects.
+   * There is no reliable per-tool origin attribution, so require trusted cancellation
+   * confirmation for the rest of this host session once a delegation was delivered.
+   * This checks no model text and never expands the existing tool permission surface. */
+  async confirmDelegatedAgentStop(id: unknown): Promise<void> {
+    if (![...this.requests.values()].some((r) => r.operation === "live-delegation" && r.state !== "failed")) return;
+    this.assertActive();
+    if (typeof id !== "string" || !id || id.length > 256) throw new Error("Invalid cancellation target");
+    if (!(await this.host.confirmStop(id))) throw new Error("User did not confirm cancellation");
+    this.assertActive();
   }
   /** A Live client delegation is not a captured final utterance. Same configured agent and permissions. */
   delegate(requestId: string, context: string): Promise<{ queued: true }> {

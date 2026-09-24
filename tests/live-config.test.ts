@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadLiveConfig, parseLiveConfig, saveLiveConfig } from "../src/live/config";
-import { modelForProvider, unsupportedLiveTransport } from "../src/live/providers";
+import { modelForProvider } from "../src/live/providers";
 
 describe("Live voice settings (offline)", () => {
   test("missing file defaults Google; saved choice survives reload without a key", async () => {
@@ -21,7 +21,6 @@ describe("Live voice settings (offline)", () => {
       expect(
         modelForProvider("openai", { provider: "google", model: "gemini-3.8-live", openaiModel: chosen.model }),
       ).toBe("gpt-live-1");
-      expect(unsupportedLiveTransport(chosen.model)).toBeUndefined();
       expect(await readFile(path, "utf8")).not.toContain("apiKey");
     } finally {
       await rm(dir, { recursive: true, force: true });

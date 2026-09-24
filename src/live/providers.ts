@@ -27,7 +27,3 @@ export function modelForProvider(
       ? VOICE_MODEL
       : (previous.openaiModel ?? OPENAI_REALTIME_MODELS[0]);
 }
-export function unsupportedLiveTransport(_model: LiveModelId): string | undefined {
-  // All persisted choices have distinct, wired implementations. No model substitution.
-  return undefined;
-}

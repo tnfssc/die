@@ -1,3 +1,4 @@
+import { getLiveHost } from "../src/live/host-access";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -88,8 +89,18 @@ function load(depth = 0, type?: string, options: any = {}) {
     handlers = new Map<string, Function[]>(),
     messages: any[] = [];
   let active: string[] = [];
+  const bus = new Map<string, (data: any) => void>();
+  const events = {
+    on: (name: string, fn: (data: any) => void) => {
+      bus.set(name, fn);
+      return () => bus.delete(name);
+    },
+    emit: (name: string, data: any) => bus.get(name)?.(data),
+  };
   extension(
     {
+      events,
+      sendUserMessage: (text: string) => messages.push(text),
       registerTool: (t: any) => tools.set(t.name, t),
       registerCommand() {},
       registerFlag() {},
@@ -108,7 +119,7 @@ function load(depth = 0, type?: string, options: any = {}) {
     for (const h of handlers.get(event) ?? []) result = await h(...args);
     return result;
   };
-  return { tools, fire, messages, active: () => active };
+  return { tools, fire, messages, events, active: () => active };
 }
 test("root and all agent profiles expose only execute", async () => {
   for (const [depth, type] of [
@@ -630,5 +641,44 @@ test("shutdown persists every shell ownership cause without duplicating inspect 
     mock.mockRestore();
     await e.fire("session_shutdown", {}, ctx);
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("GPT-Live delegation cannot bypass the current agent jobs.stop confirmation", async () => {
+  const e = load();
+  let rpc: any;
+  const mock = spyOn(execution, "executeIsolated").mockImplementation(async (_c, _w, _s, _t, options) => {
+    rpc = options!.jobHandler;
+    return {
+      exitCode: 0,
+      stdout: "",
+      stderr: "",
+      stdoutLost: false,
+      stderrLost: false,
+      timedOut: false,
+      cancelled: false,
+      images: [],
+    };
+  });
+  const ctx = contextFixture({ sessionManager: { getSessionFile: () => undefined, getBranch: () => [] } });
+  let confirms = 0;
+  ctx.ui.confirm = async (_title, body) => {
+    confirms++;
+    expect(body).toContain("fake-exact-job");
+    return false;
+  };
+  try {
+    await e.fire("session_start", {}, ctx);
+    const host = getLiveHost({ events: e.events } as any, ctx)!;
+    expect(host).toBeDefined();
+    await host.delegate("d", '{"fragments":[{"text":"cancel maybe"}]}');
+    await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, ctx);
+    await expect(rpc("jobs.stop", { id: "fake-exact-job" }, new AbortController().signal)).rejects.toThrow(
+      "did not confirm",
+    );
+    expect(confirms).toBe(1);
+  } finally {
+    mock.mockRestore();
+    await e.fire("session_shutdown", {}, ctx);
   }
 });

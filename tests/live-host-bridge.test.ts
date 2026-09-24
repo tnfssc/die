@@ -425,3 +425,16 @@ describe("GPT-Live host entry point", () => {
     f.bridge.close();
   });
 });
+
+test("configured-agent stop following a GPT-Live delegation requires trusted confirmation, even after voice detaches", async () => {
+  const f = fixture();
+  await expect(f.bridge.confirmDelegatedAgentStop("owned")).resolves.toBeUndefined(); // unrelated typed/legacy session
+  await f.bridge.delegate("live:cancel", JSON.stringify({ fragments: [{ text: "cancel maybe" }] }));
+  await expect(f.bridge.confirmDelegatedAgentStop("owned")).rejects.toThrow("did not confirm");
+  expect(f.calls).toEqual([]);
+  f.allow();
+  await expect(f.bridge.confirmDelegatedAgentStop("owned")).resolves.toBeUndefined();
+  f.setSession("other");
+  await expect(f.bridge.confirmDelegatedAgentStop("owned")).rejects.toThrow("scope changed");
+  f.bridge.close();
+});

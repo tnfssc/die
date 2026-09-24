@@ -30,9 +30,11 @@ describe("GPT-Live contextual delegation", () => {
     expect(captured[0]?.uncertain).toBe(true);
     expect(captured[0]?.hostContext.length).toBeLessThan(3900);
     expect(Object.keys(captured[0] ?? {}).sort()).toEqual([
+      "contextClock",
       "delegationId",
       "fragments",
       "hostContext",
+      "hostContextOffsetMs",
       "offsetMs",
       "omittedFragments",
       "revision",
@@ -146,4 +148,41 @@ describe("GPT-Live contextual delegation", () => {
       id: "bounded",
     });
   });
+});
+
+test("dispatch rejection after interruption or close cannot produce stale commentary", async () => {
+  for (const invalidate of ["interrupt", "close"] as const) {
+    let reject!: (e: Error) => void;
+    const { bridge } = fixture(
+      async () =>
+        new Promise((_resolve, fail) => {
+          reject = fail;
+        }),
+    );
+    const pending = bridge.handleCreated({ id: "d", target: "client", offsetMs: 0 });
+    bridge[invalidate]();
+    reject(new Error("private failure"));
+    expect(await pending).toEqual({ kind: "stale", id: "d" });
+  }
+});
+
+test("delayed delegation uses saved host context at its offset, not future task or conversation state", async () => {
+  let task = "before";
+  const snapshots: DelegationSnapshot[] = [];
+  const bridge = new GptLiveDelegationBridge({
+    context: () => ({ task }),
+    submitContextual: async (_id, snapshot) => {
+      snapshots.push(snapshot);
+      return { queued: true };
+    },
+  });
+  task = "after";
+  bridge.saveContext(200);
+  await bridge.handleCreated({ id: "old", target: "client", offsetMs: 100 });
+  await bridge.handleCreated({ id: "new", target: "client", offsetMs: 250 });
+  expect(snapshots[0]?.hostContext).toContain("before");
+  expect(snapshots[0]?.hostContextOffsetMs).toBe(0);
+  expect(snapshots[1]?.hostContext).toContain("after");
+  expect(snapshots[1]?.hostContextOffsetMs).toBe(200);
+  expect(snapshots[1]?.contextClock).toBe("local-capture-approximate");
 });

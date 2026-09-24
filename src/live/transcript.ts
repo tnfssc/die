@@ -3,7 +3,7 @@ export const VOICE_ENTRY = "die-live-transcript";
 export type TranscriptEntry = {
   speaker: "You" | "Voice";
   text: string;
-  status: "final" | "turn-boundary" | "interrupted" | "partial";
+  status: "final" | "turn-boundary" | "interrupted" | "partial" | "suppressed";
 };
 /** Received text is not audio or evidence that generated speech was heard. */
 export class TranscriptLog {
@@ -48,7 +48,8 @@ export class TranscriptLog {
   view(clean: (text: string) => string): string[] {
     const render = (e: TranscriptEntry) => {
       const text = clean(e.text);
-      const label = e.speaker + (e.status === "interrupted" ? " (interrupted)" : "");
+      const label =
+        e.speaker + (e.status === "suppressed" ? " (not played)" : e.status === "interrupted" ? " (interrupted)" : "");
       // Keep live text moving instead of freezing on the start of a long reply.
       // The complete received entry is kept separately in session history.
       return label + ": " + (text.length > 2400 ? "… [earlier text saved] " + text.slice(-2400) : text);

@@ -1,3 +1,4 @@
+import { providerFailure } from "./openai-errors";
 import { InputResampler } from "./openai-resample";
 
 /** Primary GPT-Live WS; intentionally separate from Realtime's completed-turn contract. */
@@ -52,6 +53,7 @@ export class GPTLiveSession {
     private readonly callbacks: GPTLiveCallbacks,
     private readonly factory: LiveSocketFactory = (url, headers) =>
       new WebSocket(url, { headers } as unknown as string[]),
+    private readonly timeouts = { connectMs: CONNECT_MS, closeMs: CLOSE_MS },
   ) {}
   get state() {
     return this.phase;
@@ -125,7 +127,7 @@ export class GPTLiveSession {
     const serial = ++this.serial;
     await new Promise<void>((resolve) => {
       this.finishConnect = resolve;
-      this.timer = setTimeout(() => this.fail("Live session start timed out"), CONNECT_MS);
+      this.timer = setTimeout(() => this.fail("Live session start timed out"), this.timeouts.connectMs);
       this.timer.unref?.();
       try {
         const socket = this.factory(URL, { Authorization: "Bearer " + key });
@@ -191,7 +193,9 @@ export class GPTLiveSession {
         typeof event.session?.id !== "string" ||
         !event.session.id ||
         event.session.model !== "gpt-live-1" ||
-        event.session.delegation?.type !== "client"
+        (event.session.delegation != null && event.session.delegation.type !== "client") ||
+        (event.session.audio?.format != null &&
+          (event.session.audio.format.type !== "audio/pcm" || event.session.audio.format.rate !== 24000))
       ) {
         this.fail("Invalid Live session.started");
         return;
@@ -208,7 +212,7 @@ export class GPTLiveSession {
       return;
     }
     if (event.type === "error") {
-      this.fail("Live provider reported an error");
+      this.fail(providerFailure(event.error, "gpt-live-1", "Live provider reported an error"));
       return;
     }
     if (this.phase !== "ready") return;
@@ -310,7 +314,10 @@ export class GPTLiveSession {
     this.phase = "closing";
     await new Promise<void>((resolve) => {
       this.finishClose = resolve;
-      this.timer = setTimeout(() => this.fail("Live session.close timed out; final usage unknown"), CLOSE_MS);
+      this.timer = setTimeout(
+        () => this.fail("Live session.close timed out; final usage unknown"),
+        this.timeouts.closeMs,
+      );
       this.timer.unref?.();
       this.send({ type: "session.close" });
     });
