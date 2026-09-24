@@ -495,7 +495,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
           this.interrupt();
         }
         break;
-      case "conversation.item.input_audio_transcription.completed":
+      case "conversation.item.input_audio_transcription.completed": {
         if (typeof m.item_id === "string" && this.transcripts.has(m.item_id)) return;
         if (
           typeof m.transcript !== "string" ||
@@ -528,13 +528,14 @@ export class OpenAIRealtimeSession implements VoiceProvider {
           if (response?.inputItem === m.item_id && !call.response) call.dispatch?.();
         }
         break;
+      }
       case "conversation.item.input_audio_transcription.failed":
         // A stale failed transcription must not invalidate a newer speech item.
         if (typeof m.item_id !== "string" || m.item_id !== this.committedItem) return;
         ++this.inputRevision;
         this.orchestration?.beginUserTurn?.();
         break;
-      case "response.created":
+      case "response.created": {
         if (typeof m.response?.id !== "string") {
           this.fail("invalid_input", "Response without ID");
           return;
@@ -565,6 +566,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
         });
         this.suppressAudio = false;
         break;
+      }
       case "response.output_item.added":
         if (m.item?.type === "message" && typeof m.item.id === "string") {
           if (typeof m.response_id !== "string" || !this.responses.has(m.response_id) || this.outputItems.size >= 128) {
