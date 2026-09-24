@@ -10,11 +10,35 @@ permissions:
   contents: read
 
 jobs:
+  reuse-check:
+    name: Find successful develop dry run at tag commit
+    if: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run_id: ${{ steps.lookup.outputs.run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - id: lookup
+        name: Look up verified assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run_id=$(bun scripts/find-release-dry-run.ts)
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          if [[ -z "$run_id" ]]; then echo 'No verified develop dry run; full release gates will run.'; fi
+
   mac-helper:
     name: Native macOS arm64 helper (no devices)
     runs-on: macos-15
     timeout-minutes: 10
-    if: ${{ github.ref == 'refs/heads/develop' || !contains(github.ref_name, '-') }}
+    needs: reuse-check
+    if: ${{ always() && (github.ref == 'refs/heads/develop' || (github.event_name == 'push' && !contains(github.ref_name, '-'))) && (needs.reuse-check.result == 'skipped' || (needs.reuse-check.result == 'success' && needs.reuse-check.outputs.run_id == '')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Sanitized, device-free native ring tests
@@ -46,8 +70,8 @@ jobs:
           retention-days: 2
   release:
     # Develop runs the same gates without publishing; prerelease tags stay excluded.
-    if: ${{ github.ref == 'refs/heads/develop' || !contains(github.ref_name, '-') }}
-    needs: mac-helper
+    needs: [reuse-check, mac-helper]
+    if: ${{ always() && (github.ref == 'refs/heads/develop' || (github.event_name == 'push' && !contains(github.ref_name, '-'))) && needs.mac-helper.result == 'success' }}
     name: Linux, macOS, and Android release
     runs-on: ubuntu-24.04
     timeout-minutes: 40
@@ -102,7 +126,7 @@ jobs:
         run: bun test ./tests 2>&1 | tee artifacts/release/tests.log
       - name: Standalone smoke test
         shell: bash
-        run: bun run smoke 2>&1 | tee artifacts/release/smoke.log
+        run: bun run smoke -- --reuse-build 2>&1 | tee artifacts/release/smoke.log
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: release-mac-arm64-helper
@@ -172,6 +196,10 @@ jobs:
           t3_revision=$(bun -e 'console.log(require("../../web/t3-source.json").revision)')
           patch_sha256=$(sha256sum ../../web/t3.patch | awk '{print $1}')
           source_ref="$GITHUB_REF_NAME"
+          # A develop pretag dry run stages exactly the metadata the tag will publish.
+          if [[ "$GITHUB_REF" == refs/heads/develop ]]; then
+            source_ref="v$(bun -p 'require("../../package.json").version')"
+          fi
           printf 'Source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\nTargets:\n- bun-linux-x64-baseline -> die-linux-x64\n- bun-linux-arm64 -> die-linux-arm64\n- bun-darwin-arm64 -> die-darwin-arm64\n- bun-android-arm64 -> die-android-arm64\n\nEmbedded T3 Code source: https://github.com/pingdotgg/t3code/tree/%s\nRevision: %s\nPatch: web/t3.patch\nPatch-SHA256: %s\n' \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_SHA" "$source_ref" \
             "$t3_revision" "$t3_revision" "$patch_sha256" > SOURCE.txt
@@ -195,9 +223,50 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  reuse-assets:
+    name: Stage assets from verified develop dry run
+    if: ${{ needs.reuse-check.outputs.run_id != '' }}
+    needs: reuse-check
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: stable-release-assets
+          run-id: ${{ needs.reuse-check.outputs.run_id }}
+          github-token: ${{ github.token }}
+          path: dist/release
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
+      - name: Validate tag matches package version
+        run: bun scripts/validate-release-tag.ts "$GITHUB_REF_NAME"
+      - name: Verify downloaded staged files
+        shell: bash
+        run: |
+          cd dist/release
+          grep -Fx "Commit: $GITHUB_SHA" SOURCE.txt
+          grep -Fx "Tag: $GITHUB_REF_NAME" SOURCE.txt
+          for binary in die-linux-x64 die-linux-arm64 die-darwin-arm64 die-android-arm64; do
+            test -s "$binary"
+            test -s "$binary.sha256"
+            sha256sum --check --strict "$binary.sha256"
+          done
+          for file in LICENSE THIRD_PARTY_NOTICES.md THIRD_PARTY_LICENSES.txt SOURCE.txt; do test -s "$file"; done
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: stable-release-assets
+          path: dist/release/
+          if-no-files-found: error
+          retention-days: 7
+
   mac-release-smoke:
     name: Actual Mac release binary and old updater (no devices)
-    needs: release
+    needs: [release, reuse-assets]
+    if: ${{ always() && (needs.release.result == 'success' || needs.reuse-assets.result == 'success') }}
     runs-on: macos-15
     timeout-minutes: 10
     steps:
@@ -222,9 +291,9 @@ jobs:
           env -i HOME="$home" PATH=/usr/bin:/bin "$GITHUB_WORKSPACE/dist/release/die-darwin-arm64" --live-lab-self-test
 
   publish:
-    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
     name: Publish stable release after native and updater gates
-    needs: [release, mac-release-smoke]
+    needs: [release, reuse-assets, mac-release-smoke]
+    if: ${{ always() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.mac-release-smoke.result == 'success' && (needs.release.result == 'success' || needs.reuse-assets.result == 'success') }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write

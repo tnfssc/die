@@ -1,7 +1,21 @@
 #!/usr/bin/env sh
 set -eu
 
-bun run build
+if [ "$#" -gt 1 ]; then
+  echo "usage: scripts/smoke.sh [--reuse-build]" >&2
+  exit 2
+fi
+
+case "${1-}" in
+  "") bun run build ;;
+  --reuse-build)
+    if [ ! -f ./dist/die ] || [ ! -x ./dist/die ]; then
+      echo "smoke: --reuse-build requires executable dist/die" >&2
+      exit 1
+    fi
+    ;;
+  *) echo "usage: scripts/smoke.sh [--reuse-build]" >&2; exit 2 ;;
+esac
 
 expected_version="$(bun -e 'console.log(require("./package.json").version)')"
 

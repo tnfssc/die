@@ -77,7 +77,7 @@ jobs:
         run: bun test ./tests 2>&1 | tee artifacts/ci/tests.log
       - name: Standalone smoke test
         shell: bash
-        run: bun run smoke 2>&1 | tee artifacts/ci/smoke.log
+        run: bun run smoke -- --reuse-build 2>&1 | tee artifacts/ci/smoke.log
       - name: Upload failure logs
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
