@@ -258,10 +258,22 @@ export class LiveLabAudio {
       return;
     }
     if (m.type === "error") {
-      const setup = typeof m.domain === "string" && /^[A-Za-z0-9._-]{1,80}$/.test(m.domain) &&
-        typeof m.number === "number" && Number.isSafeInteger(m.number) &&
-        m.number >= -2147483648 && m.number <= 2147483647
-          ? { domain: m.domain, number: m.number } : undefined;
+      const setup =
+        typeof m.domain === "string" &&
+        [
+          "NSOSStatusErrorDomain",
+          "AVFoundationErrorDomain",
+          "NSCocoaErrorDomain",
+          "NSPOSIXErrorDomain",
+          "input-format",
+          "output-format",
+        ].includes(m.domain) &&
+        typeof m.number === "number" &&
+        Number.isSafeInteger(m.number) &&
+        m.number >= -2147483648 &&
+        m.number <= 2147483647
+          ? { domain: m.domain, number: m.number }
+          : undefined;
       this.fail(new Error("Audio helper reported an error"), safeCode(m.code), setup);
       return;
     }

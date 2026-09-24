@@ -363,7 +363,11 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           if (!controller.signal.aborted)
             ctx.ui.notify(
               "Mic check: " +
-                (code ? audioDiagnostic(code, setup) : audio ? audioDiagnostic("helper_failure") : audioLaunchDiagnostic()),
+                (code
+                  ? audioDiagnostic(code, setup)
+                  : audio
+                    ? audioDiagnostic("helper_failure")
+                    : audioLaunchDiagnostic()),
               "warning",
             );
         } finally {

@@ -1,17 +1,42 @@
 import type { AudioSetupError } from "./audio";
 /** Only known protocol codes cross into UI. Helper messages and process errors are untrusted. */
 export function audioDiagnostic(code: string, setup?: AudioSetupError): string {
-  const detail = setup && /^[A-Za-z0-9._-]{1,80}$/.test(setup.domain) && Number.isSafeInteger(setup.number) && setup.number >= -2147483648 && setup.number <= 2147483647
-    ? ` (NSError ${setup.domain} ${setup.number})` : "";
+  const detail =
+    setup &&
+    [
+      "NSOSStatusErrorDomain",
+      "AVFoundationErrorDomain",
+      "NSCocoaErrorDomain",
+      "NSPOSIXErrorDomain",
+      "input-format",
+      "output-format",
+    ].includes(setup.domain) &&
+    Number.isSafeInteger(setup.number) &&
+    setup.number >= -2147483648 &&
+    setup.number <= 2147483647
+      ? ` (NSError ${setup.domain} ${setup.number})`
+      : "";
   switch (code) {
     case "permission":
       return "Microphone access denied [permission]. Check System Settings → Privacy & Security → Microphone for your terminal/die, then retry. On unsigned builds macOS may attribute access differently.";
     case "input_format":
-      return "Default microphone format unsupported [input_format]" + detail + ". Choose another default input in System Settings → Sound and retry.";
+      return (
+        "Default microphone format unsupported [input_format]" +
+        detail +
+        ". Choose another default input in System Settings → Sound and retry."
+      );
     case "output_format":
-      return "Default speaker format unsupported [output_format]" + detail + ". Choose another default output in System Settings → Sound and retry.";
+      return (
+        "Default speaker format unsupported [output_format]" +
+        detail +
+        ". Choose another default output in System Settings → Sound and retry."
+      );
     case "voice_processing":
-      return "Voice processing could not initialize [voice_processing]" + detail + ". Check the default input/output route; try another device.";
+      return (
+        "Voice processing could not initialize [voice_processing]" +
+        detail +
+        ". Check the default input/output route; try another device."
+      );
     case "output_connect":
       return "Audio setup failed at output_connect [output_connect]" + detail + ".";
     case "source_attach":

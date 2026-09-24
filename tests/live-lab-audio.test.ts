@@ -122,15 +122,38 @@ test("stop timeout kills even if worker never acknowledges; malformed stdout is 
 
 test("structured setup error preserves only bounded domain and numeric code", async () => {
   const seen: unknown[] = [];
-  const { audio, worker } = await open({ callbacks: { error: (code: string, message: string, setup?: { domain: string; number: number }) => seen.push([code, message, setup]) } });
+  const { audio, worker } = await open({
+    callbacks: {
+      error: (code: string, message: string, setup?: { domain: string; number: number }) =>
+        seen.push([code, message, setup]),
+    },
+  });
   const start = audio.start();
-  worker.emitMessage({ type: "error", code: "engine_start", domain: "NSOSStatusErrorDomain", number: -10875, message: "private device" });
+  worker.emitMessage({
+    type: "error",
+    code: "engine_start",
+    domain: "NSOSStatusErrorDomain",
+    number: -10875,
+    message: "private device",
+  });
   await expect(start).rejects.toThrow();
-  expect(seen).toEqual([["engine_start", "Audio helper reported an error", { domain: "NSOSStatusErrorDomain", number: -10875 }]]);
+  expect(seen).toEqual([
+    ["engine_start", "Audio helper reported an error", { domain: "NSOSStatusErrorDomain", number: -10875 }],
+  ]);
   const other: unknown[] = [];
-  const next = await open({ callbacks: { error: (_code: string, _message: string, setup?: { domain: string; number: number }) => other.push(setup) } });
+  const next = await open({
+    callbacks: {
+      error: (_code: string, _message: string, setup?: { domain: string; number: number }) => other.push(setup),
+    },
+  });
   const pending = next.audio.start();
-  next.worker.emitMessage({ type: "error", code: "tap_install", domain: "device name/secret", number: 42, message: "private" });
+  next.worker.emitMessage({
+    type: "error",
+    code: "tap_install",
+    domain: "SECRET_TOKEN_123",
+    number: 42,
+    message: "private",
+  });
   await expect(pending).rejects.toThrow();
   expect(other).toEqual([undefined]);
 });

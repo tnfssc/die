@@ -148,7 +148,7 @@ final class Lab {
         let domain = ns.domain
         var payload: [String: Any] = ["type":"error", "code":phase,
             "message":"Could not start default audio route with voice processing"]
-        if domain.count <= 80 && domain.range(of: "^[A-Za-z0-9._-]+$", options: .regularExpression) != nil {
+        if ["NSOSStatusErrorDomain","AVFoundationErrorDomain","NSCocoaErrorDomain","NSPOSIXErrorDomain","input-format","output-format"].contains(domain) && ns.code >= -2147483648 && ns.code <= 2147483647 {
             payload["domain"] = domain
             payload["number"] = ns.code
         }
