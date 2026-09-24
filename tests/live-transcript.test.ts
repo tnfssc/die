@@ -55,3 +55,15 @@ test("nonfinal input is persisted in bounded chunks without truncation", () => {
   log.finish("You", "partial");
   expect(saved.map((e) => e.text).join("")).toBe(text);
 });
+
+test("exactly full final chunks retain their final boundary", () => {
+  const saved: TranscriptEntry[] = [];
+  const log = new TranscriptLog((e) => saved.push(e));
+  log.receive("You", { text: "a".repeat(4096), finished: true });
+  log.receive("Voice", { text: "b".repeat(8192), finished: true });
+  expect(saved.map((e) => [e.speaker, e.text.length, e.status])).toEqual([
+    ["You", 4096, "final"],
+    ["Voice", 4096, "partial"],
+    ["Voice", 4096, "final"],
+  ]);
+});

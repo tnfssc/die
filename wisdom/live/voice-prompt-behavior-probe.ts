@@ -16,10 +16,10 @@ if (process.argv[2] !== "--paid" || !["manual", "automatic"].includes(process.ar
   throw new Error("Explicit --paid manual|automatic required");
 const mode = process.argv[3];
 const scenario = process.argv[4];
-const phrases: Record<string,string> = {
- weather: "Can you check weather in Bengaluru today?",
- correction: "You said you only help with coding. Can you research something noncoding for me instead?",
- save: "Please save this conversation for me."
+const phrases: Record<string, string> = {
+  weather: "Can you check weather in Bengaluru today?",
+  correction: "You said you only help with coding. Can you research something noncoding for me instead?",
+  save: "Please save this conversation for me.",
 };
 if (!Object.hasOwn(phrases, scenario)) throw new Error("scenario weather|correction|save required");
 const phrase = phrases[scenario];
@@ -66,12 +66,20 @@ try {
     async send(requestId: string, text: string) {
       hostCalls++;
       log("host_send", { requestId, text });
-      return { status: "captured_only", noJobCreated: true, message: "Probe captured request; no export or research was performed." };
+      return {
+        status: "captured_only",
+        noJobCreated: true,
+        message: "Probe captured request; no export or research was performed.",
+      };
     },
     async steer(requestId: string, text: string) {
       hostCalls++;
       log("host_steer", { requestId, text });
-      return { status: "captured_only", noJobCreated: true, message: "Probe captured request; no export or research was performed." };
+      return {
+        status: "captured_only",
+        noJobCreated: true,
+        message: "Probe captured request; no export or research was performed.",
+      };
     },
     async list() {
       log("host_list");
@@ -85,9 +93,16 @@ try {
     },
     context() {
       return {
-        configuredAgent: { name: "die", status: "connected", role: "general-purpose agent for research, files, and tools", permissions: "current user and host permissions" },
+        configuredAgent: {
+          name: "die",
+          status: "connected",
+          role: "general-purpose agent for research, files, and tools",
+          permissions: "current user and host permissions",
+        },
         jobs: [],
-        ...(scenario === "save" ? { conversationRecord: "User: Please remember my planning notes. Assistant: I can help plan." } : {}),
+        ...(scenario === "save"
+          ? { conversationRecord: "User: Please remember my planning notes. Assistant: I can help plan." }
+          : {}),
       };
     },
     subscribe() {
@@ -101,7 +116,11 @@ try {
     live: {
       connect: async (params) => {
         const config = params.config!;
-        log("setup", { instructionSha256: createHash("sha256").update(String(config.systemInstruction)).digest("hex"), sourceInstructionSha256: createHash("sha256").update(liveSystemInstruction).digest("hex"), toolNames: config.tools?.flatMap((t: any) => t.functionDeclarations?.map((d: any) => d.name) ?? []) });
+        log("setup", {
+          instructionSha256: createHash("sha256").update(String(config.systemInstruction)).digest("hex"),
+          sourceInstructionSha256: createHash("sha256").update(liveSystemInstruction).digest("hex"),
+          toolNames: config.tools?.flatMap((t: any) => t.functionDeclarations?.map((d: any) => d.name) ?? []),
+        });
         const sdk = new GoogleGenAI({ apiKey });
         const original = params.callbacks.onmessage;
         if (mode === "manual") params.config!.realtimeInputConfig = { automaticActivityDetection: { disabled: true } };

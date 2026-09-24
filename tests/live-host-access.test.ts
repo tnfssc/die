@@ -75,7 +75,13 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   const [message, options] = sent[0] as [string, unknown];
   expect(options).toEqual({ deliverAs: "followUp", expandPromptTemplates: false });
   expect(message).toContain("Latest captured user request (authoritative): please work");
-  expect(JSON.parse(message.split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!.split("\n\nIf omittedEarlierEntries")[0]!)).toMatchObject({ entries: [], omittedEarlierEntries: 0 });
+  expect(
+    JSON.parse(
+      message
+        .split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!
+        .split("\n\nIf omittedEarlierEntries")[0]!,
+    ),
+  ).toMatchObject({ entries: [], omittedEarlierEntries: 0 });
   expect(host.context().requests).toEqual([{ id: "request-1", operation: "followUp", state: "dispatched" }]);
   const updates: string[] = [];
   host.subscribe((update) => updates.push(update.type));
@@ -146,7 +152,13 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   const [steered, steerOptions] = sent.at(-1) as [string, unknown];
   expect(steerOptions).toEqual({ deliverAs: "steer", expandPromptTemplates: false });
   expect(steered).toContain("Latest captured user request (authoritative): please adjust");
-  expect(JSON.parse(steered.split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!.split("\n\nIf omittedEarlierEntries")[0]!)).toMatchObject({ entries: [], omittedEarlierEntries: 0 });
+  expect(
+    JSON.parse(
+      steered
+        .split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!
+        .split("\n\nIf omittedEarlierEntries")[0]!,
+    ),
+  ).toMatchObject({ entries: [], omittedEarlierEntries: 0 });
   expect(responses).toContainEqual({
     functionResponses: {
       id: "sdk-call",
@@ -163,9 +175,7 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   await voiceCommand("stop", ctx);
   expect(getLiveHost(voicePi, ctx)).toBe(host);
   await voiceCommand("start", ctx);
-  await expect(
-    tools!.execute({ name: "agent_steer", args: { requestId: "request-2" } }),
-  ).rejects.toThrow("transcript");
+  await expect(tools!.execute({ name: "agent_steer", args: { requestId: "request-2" } })).rejects.toThrow("transcript");
   expect(sent).toHaveLength(2);
   await voiceCommand("stop", ctx);
   await fire("session_shutdown");

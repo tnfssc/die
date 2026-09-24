@@ -22,7 +22,8 @@ export class TranscriptLog {
       const take = Math.min(4096 - this.pending[speaker].length, part.text.length - offset);
       this.pending[speaker] += part.text.slice(offset, offset + take);
       offset += take;
-      if (this.pending[speaker].length === 4096) this.finish(speaker, "partial");
+      if (this.pending[speaker].length === 4096 && !(part.finished && offset === part.text.length))
+        this.finish(speaker, "partial");
     }
     if (part.finished) this.finish(speaker, "final");
   }
