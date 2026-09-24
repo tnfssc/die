@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { TaskManager } from "../src/tasks/task-manager";
 import { JobService } from "../src/tasks/job-service";
-import { LiveHostBridge } from "../src/live/host-bridge";
+import { LiveHostBridge, SNAPSHOT_DIR, SNAPSHOT_TTL_MS, SNAPSHOT_MAX_BYTES } from "../src/live/host-bridge";
+import { mkdir, readdir, rm, stat, utimes } from "node:fs/promises";
+import { join } from "node:path";
 import type { HostAuthority } from "../src/live/host-bridge";
 
 function fixture(failSend = false, ephemeral = false) {
   let session = "s1";
+  let leaf = "leaf1";
   const sessionFile: string | undefined = ephemeral ? undefined : "/tmp/s1";
   let confirm = false;
   let listener: (event: any) => void = () => {};
@@ -25,9 +28,11 @@ function fixture(failSend = false, ephemeral = false) {
     },
   };
   const transcriptEntries: any[] = [];
+  const siblingEntries: any[] = [];
   const context = {
     sessionManager: {
       getSessionId: () => session,
+      getLeafId: () => leaf,
       getSessionFile: () => sessionFile,
       getBranch: () => [
         ...transcriptEntries,
@@ -80,7 +85,9 @@ function fixture(failSend = false, ephemeral = false) {
     calls,
     messages,
     transcriptEntries,
+    siblingEntries,
     emit: (type: string) => listener({ type, task: job }),
+    setLeaf: (value: string) => { leaf = value; },
     setSession: (value: string) => {
       session = value;
     },
@@ -188,6 +195,7 @@ describe("Live host authority", () => {
     expect(snapshot.entries[31].text).toBe("29" + "z".repeat(1000));
     expect(snapshot.entries.every((e: any) => !e.text.includes("hello"))).toBe(true);
     expect(context.fullBranchSnapshot.durableSession).toBe(true);
+    expect(context.fullBranchSnapshot.expiresAfter).toContain("24 hours");
     f.bridge.close();
   });
   test("single oversize entry is not silently skipped; ephemeral branch can be exported", async () => {
@@ -203,6 +211,73 @@ describe("Live host authority", () => {
     expect(context.fullBranchSnapshot.durableSession).toBe(false);
     expect((await Bun.file(context.fullBranchSnapshot.path).json()).entries[0].text).toBe(huge);
     f.bridge.close();
+  });
+  test("snapshot is immutable, reused across reconnects, and excludes sibling entries", async () => {
+    const f = fixture();
+    const token = crypto.randomUUID();
+    const entry = (text: string) => ({ type: "custom", customType: "die-live-transcript", data: { speaker: "You", text, status: "final" } });
+    f.transcriptEntries.push(entry(token + "a".repeat(25000)));
+    f.siblingEntries.push(entry("sibling-SECRET")); // Not in getBranch ancestry.
+    await f.bridge.send("immutable1", "export");
+    const snapshot = JSON.parse(((f.messages[0] as any)[0] as string).split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!.split("\n\nIf omittedEarlierEntries")[0]!).fullBranchSnapshot;
+    const original = await Bun.file(snapshot.path).text();
+    expect(original).not.toContain("sibling-SECRET");
+    f.bridge.close();
+    const g = fixture();
+    g.transcriptEntries.push(entry(token + "a".repeat(25000)));
+    await g.bridge.send("immutable2", "export");
+    const reused = JSON.parse(((g.messages[0] as any)[0] as string).split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!.split("\n\nIf omittedEarlierEntries")[0]!).fullBranchSnapshot;
+    expect(reused.path).toBe(snapshot.path);
+    g.transcriptEntries[0].data.text = "mutated";
+    expect(await Bun.file(snapshot.path).text()).toBe(original);
+    g.bridge.close();
+  });
+  test("branch switch while snapshot I/O waits aborts delivery without orphan", async () => {
+    const f = fixture();
+    const token = crypto.randomUUID();
+    f.transcriptEntries.push({ type: "custom", customType: "die-live-transcript", data: { speaker: "You", text: token + "x".repeat(25000), status: "final" } });
+    await mkdir(SNAPSHOT_DIR, { recursive: true, mode: 0o700 });
+    const lock = join(SNAPSHOT_DIR, ".lock");
+    await mkdir(lock);
+    try {
+      const send = f.bridge.send("switched", "export");
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      f.setLeaf("sibling-leaf");
+      await rm(lock, { recursive: true });
+      await expect(send).rejects.toThrow("branch changed");
+      expect(f.messages).toHaveLength(0);
+      for (const name of await readdir(SNAPSHOT_DIR)) {
+        if (name.endsWith(".json")) expect(await Bun.file(join(SNAPSHOT_DIR, name)).text()).not.toContain(token);
+      }
+    } finally { await rm(lock, { recursive: true, force: true }); f.bridge.close(); }
+  });
+  test("delivery error deletes its own new snapshot", async () => {
+    const f = fixture(true);
+    const token = crypto.randomUUID();
+    f.transcriptEntries.push({ type: "custom", customType: "die-live-transcript", data: { speaker: "You", text: token + "q".repeat(25000), status: "final" } });
+    await expect(f.bridge.send("failure-cleanup", "export")).rejects.toThrow("delivery failed");
+    for (const name of await readdir(SNAPSHOT_DIR)) {
+      if (name.endsWith(".json")) expect(await Bun.file(join(SNAPSHOT_DIR, name)).text()).not.toContain(token);
+    }
+    f.bridge.close();
+  });
+  test("expired snapshots are reclaimed but unexpired budget is not evicted", async () => {
+    const f = fixture();
+    const token = crypto.randomUUID();
+    const entry = (text: string) => ({ type: "custom", customType: "die-live-transcript", data: { speaker: "You", text, status: "final" } });
+    f.transcriptEntries.push(entry(token + "a".repeat(25000)));
+    await f.bridge.send("ttl-1", "export");
+    const path = JSON.parse(((f.messages[0] as any)[0] as string).split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!.split("\n\nIf omittedEarlierEntries")[0]!).fullBranchSnapshot.path;
+    await utimes(path, new Date(Date.now() - SNAPSHOT_TTL_MS - 1000), new Date(Date.now() - SNAPSHOT_TTL_MS - 1000));
+    f.transcriptEntries.push(entry("new" + "b".repeat(25000)));
+    await f.bridge.send("ttl-2", "export");
+    expect(await Bun.file(path).exists()).toBe(false);
+    const g = fixture();
+    g.transcriptEntries.push(entry(crypto.randomUUID() + "c".repeat(SNAPSHOT_MAX_BYTES - 10000)));
+    await expect(g.bridge.send("budget", "export")).rejects.toThrow("budget exhausted");
+    expect(g.messages).toHaveLength(0);
+    expect(await Bun.file(JSON.parse(((f.messages[1] as any)[0] as string).split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!.split("\n\nIf omittedEarlierEntries")[0]!).fullBranchSnapshot.path).exists()).toBe(true);
+    f.bridge.close(); g.bridge.close();
   });
   test("failed steer retained; no accidental retry", async () => {
     const f = fixture();
