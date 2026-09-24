@@ -35,12 +35,49 @@ async function writeNoticeFixture(
 }
 
 describe("release automation", () => {
+  test("all workflow actions use audited immutable commits and tool versions stay aligned", async () => {
+    const pins = new Map([
+      ["actions/checkout", "3d3c42e5aac5ba805825da76410c181273ba90b1"],
+      ["actions/setup-node", "820762786026740c76f36085b0efc47a31fe5020"],
+      ["actions/upload-artifact", "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a"],
+      ["actions/download-artifact", "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c"],
+      ["pnpm/action-setup", "ea17c68df8912ef543352723c149a84f56e3d413"],
+      ["oven-sh/setup-bun", "0c5077e51419868618aeaa5fe8019c62421857d6"],
+    ]);
+    for (const path of ["ci", "live-lab", "release"]) {
+      const workflow = Bun.YAML.parse(await read(`.github/workflows/${path}.yml`)) as {
+        permissions?: Record<string, string>;
+        jobs: Record<
+          string,
+          { permissions?: Record<string, string>; steps: { uses?: string; with?: Record<string, unknown> }[] }
+        >;
+      };
+      expect(workflow.permissions).toEqual({ contents: "read" });
+      for (const [jobName, job] of Object.entries(workflow.jobs)) {
+        if (jobName === "publish") expect(job.permissions).toEqual({ contents: "write" });
+        else expect(job.permissions?.contents).not.toBe("write");
+        for (const step of job.steps) {
+          if (!step.uses) continue;
+          const [repo, sha] = step.uses.split("@");
+          expect(sha).toBe(pins.get(repo!));
+          if (repo === "actions/setup-node") expect(step.with?.["node-version"]).toBe("24.21.0");
+          if (repo === "pnpm/action-setup") expect(step.with?.version).toBe("11.27.1");
+          if (repo === "oven-sh/setup-bun") expect(step.with?.["bun-version"]).toBe("1.4.2");
+        }
+      }
+    }
+    expect(await read("mise.toml")).toContain('bun = "1.4.2"');
+    const notices = await read("scripts/generate-third-party-notices.ts");
+    expect(notices).toContain("Bun 1.4.2 runtime");
+    expect(notices).toContain("oven-sh/bun/tree/bun-v1.4.2");
+  });
+
   test("CI is deterministic, locked, credential-free, and retains failure logs", async () => {
     const workflow = await read(".github/workflows/ci.yml");
     expect(() => Bun.YAML.parse(workflow)).not.toThrow();
-    expect(workflow).toContain("bun-version: 1.4.1");
-    expect(workflow).toContain("pnpm/action-setup@v4");
-    expect(workflow).toContain("version: 11.10.0");
+    expect(workflow).toContain("bun-version: 1.4.2");
+    expect(workflow).toContain("pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413");
+    expect(workflow).toContain("version: 11.27.1");
     expect(workflow).toContain("apt-get install -y tmux");
     expect(workflow).toContain("bun install --frozen-lockfile");
     expect(workflow).toContain("bun run lint");
@@ -50,7 +87,7 @@ describe("release automation", () => {
     expect(workflow).toContain("bun test ./tests");
     expect(workflow).toContain("bun run smoke");
     expect(workflow).toContain("if: failure()");
-    expect(workflow).toContain("actions/upload-artifact@v4");
+    expect(workflow).toContain("actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a");
     expect(workflow).not.toContain('DIE_RUN_LLM_TESTS: "1"');
     expect(workflow).not.toMatch(/API_KEY|AUTH_TOKEN/);
   });
@@ -80,7 +117,7 @@ describe("release automation", () => {
     expect(workflow).toContain("scripts/build-live-lab-helper.sh");
     expect(workflow).toContain("Mach-O 64-bit (executable arm64|arm64 executable)");
     expect(workflow).toContain("-fsanitize=address,undefined");
-    expect(workflow).toContain("actions/download-artifact@v4");
+    expect(workflow).toContain("actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c");
     expect(workflow).toContain("--live-lab-helper=./artifacts/release/mac-helper/live-lab-audio");
     expect(workflow).toContain("stable-release-assets");
     expect(workflow).toContain("needs: [release, mac-release-smoke]");
