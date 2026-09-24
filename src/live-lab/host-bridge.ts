@@ -185,16 +185,18 @@ export class LiveHostBridge {
         .list()
         .slice(0, 20)
         .map(({ id, status, kind }) => ({ id, status, kind })),
-      nativeUpdates: "Native status is refreshed via bounded scoped jobs.list/inspect while subscribed; only observed transitions are reported.",
+      nativeUpdates:
+        "Native status polls every 5s: first 20 jobs plus known active jobs. Only observed transitions are reported; short-lived or unlisted jobs may be missed.",
     };
   }
   /** Scoped bounded watcher; JobService owns native authorization. */
   async refreshJobs(): Promise<void> {
     if (this.polling || !this.active() || !this.listeners.size) return;
     this.polling = true;
+    const signal = AbortSignal.timeout(5000);
     try {
-      const page = await this.list({ count: 20 }) as { jobs?: { id: string; status: string }[] };
-      if (!this.active()) return;
+      const page = (await this.list({ count: 20 }, signal)) as { jobs?: { id: string; status: string }[] };
+      if (!this.active() || !this.listeners.size) return;
       const local = new Set(this.host.manager.list().map((job) => job.id));
       for (const job of (page.jobs ?? []).slice(0, 20)) {
         if (!job || typeof job.id !== "string" || typeof job.status !== "string" || local.has(job.id)) continue;
@@ -209,15 +211,19 @@ export class LiveHostBridge {
       // Inspect only known active jobs hidden by the first page.
       for (const id of [...this.nativeActive.keys()]) {
         if ((page.jobs ?? []).some((job) => job.id === id)) continue;
-        const job = await this.inspect(id) as { status?: string };
-        if (!this.active()) return;
+        const job = (await this.inspect(id, undefined, signal)) as { status?: string };
+        if (!this.active() || !this.listeners.size) return;
         if (job.status && job.status !== "running" && job.status !== "pending") {
           this.nativeActive.delete(id);
           this.observe({ type: "completed", id, status: job.status });
         }
       }
     } catch {
-      // Backend failure is not completion.
+      // Backend failure is not completion; make the observation gap explicit.
+      this.observe({
+        type: "updated",
+        text: "Native job refresh failed; status may be stale. No completion inferred.",
+      });
     } finally {
       this.polling = false;
     }

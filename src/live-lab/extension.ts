@@ -256,6 +256,9 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
             onAudio: (pcm, epoch) => this.output(pcm, epoch),
             onInterrupted: (epoch) => this.interrupt(epoch),
             onTurnComplete: () => {
+              // Calls in this SDK message are admitted in a microtask first.
+              queueMicrotask(() => this.orchestration?.endUserTurn?.());
+              this.inputUtterance = "";
               if (this.alive) {
                 this.turns++;
                 this.generationFinished = true;

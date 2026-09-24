@@ -134,6 +134,7 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   await voiceCommand("start", ctx);
   expect(tools?.tools.map((t) => t.name)).toContain("agent_steer");
   sdk.callbacks.onmessage({
+    serverContent: { inputTranscription: { text: "please adjust", finished: true }, turnComplete: true },
     toolCall: {
       functionCalls: [{ id: "sdk-call", name: "agent_steer", args: { requestId: "request-2", text: "please adjust" } }],
     },
@@ -154,11 +155,14 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   await fire("message_end", {
     message: { role: "assistant", content: [{ type: "text", text: "Actual configured-agent reply" }] },
   });
+  await new Promise((resolve) => setTimeout(resolve, 120));
   expect(JSON.stringify(contexts)).toContain("Actual configured-agent reply");
   await voiceCommand("stop", ctx);
   expect(getLiveHost(voicePi, ctx)).toBe(host);
   await voiceCommand("start", ctx);
-  await tools!.execute({ name: "agent_steer", args: { requestId: "request-2", text: "please adjust" } });
+  await expect(
+    tools!.execute({ name: "agent_steer", args: { requestId: "request-2", text: "please adjust" } }),
+  ).rejects.toThrow("transcript");
   expect(sent).toHaveLength(2);
   await voiceCommand("stop", ctx);
   await fire("session_shutdown");

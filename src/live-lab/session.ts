@@ -29,7 +29,7 @@ const base64Bytes = (s: string): number => {
 const pcm24 = (mime: string): boolean => /^audio\/pcm\s*;\s*rate=24000$/i.test(mime.trim());
 type Message = Parameters<LiveParams["callbacks"]["onmessage"]>[0];
 
-/** Single-use, explicit-start voice-only session. Never retains audio/text/keys. */
+/** Single-use native-audio session. Bounded transient context/tool results; no recording or persistence. */
 export class VoiceSession {
   private stateValue: VoiceState = "idle";
   private connection?: LiveConnection;
@@ -208,7 +208,7 @@ export class VoiceSession {
     } else {
       this.contextPending.push(text);
       // Bound retained data, dropping oldest complete updates rather than presenting fragments as facts.
-      while (this.contextPending.join("\n").length > MAX_CONTEXT - (this.contextGap ? CONTEXT_GAP.length : 0)) {
+      while (this.contextPending.join("\n").length > MAX_CONTEXT - CONTEXT_GAP.length) {
         this.contextPending.shift();
         this.contextGap = true;
       }

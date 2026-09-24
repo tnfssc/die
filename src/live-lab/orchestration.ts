@@ -87,6 +87,9 @@ export function createOrchestration(host: VoiceHost): VoiceOrchestration {
         if (pending.length > 8) pending.shift();
       }
     },
+    endUserTurn() {
+      pending.length = 0;
+    },
     tools: orchestrationTools,
     async execute(call) {
       const args = call.args ?? {};
