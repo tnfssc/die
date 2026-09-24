@@ -668,3 +668,42 @@ test("closing synchronously from connecting state never creates a socket", async
   expect(f.session.state).toBe("closed");
   expect(f.url).toBe("");
 });
+
+test("explicit provider failures preserve selected model and redact untrusted messages", async () => {
+  for (const model of ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"] as const) {
+    for (const code of [
+      "insufficient_quota",
+      "rate_limit_exceeded",
+      "model_not_found",
+      "invalid_api_key",
+      "unknown-secret",
+    ]) {
+      const socket = new FakeSocket();
+      const errors: string[] = [];
+      let connections = 0;
+      const session = new OpenAIRealtimeSession(
+        { onError: (e) => errors.push(e.message) },
+        () => {
+          connections++;
+          return socket;
+        },
+        undefined,
+        model,
+      );
+      const pending = session.connect("fake-key");
+      socket.fire("open", {});
+      socket.message({ type: "error", error: { code, message: "SECRET" } });
+      await pending;
+      expect(connections).toBe(1);
+      expect(session.state).toBe("closed");
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).not.toContain("SECRET");
+      expect(errors[0]).not.toContain("unknown-secret");
+      if (code === "unknown-secret") expect(errors[0]).toBe("Voice provider rejected event");
+      else expect(errors[0]).toContain(model);
+      if (code === "insufficient_quota") expect(errors[0]).toContain("insufficient quota");
+      if (code === "rate_limit_exceeded") expect(errors[0]).toContain("rate limit");
+      if (code === "model_not_found") expect(errors[0]).toContain("unavailable or inaccessible");
+    }
+  }
+});

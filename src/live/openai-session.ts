@@ -10,6 +10,25 @@ import type { VoiceCallbacks, VoiceError, VoiceOrchestration, VoiceProvider, Voi
  */
 export const OPENAI_VOICE_MODEL = OPENAI_REALTIME_MODELS[0];
 
+/** Only classify explicit provider codes; never expose raw provider messages or infer account eligibility. */
+function providerFailure(error: unknown, model: string, fallback: string): string {
+  const code = error && typeof error === "object" ? (error as { code?: unknown }).code : undefined;
+  switch (code) {
+    case "insufficient_quota":
+      return (
+        "OpenAI reports insufficient quota for " + model + ". Check API billing and limits; no model was substituted."
+      );
+    case "rate_limit_exceeded":
+      return "OpenAI reports a rate limit for " + model + ". Retry later; no model was substituted.";
+    case "model_not_found":
+      return "OpenAI reports " + model + " unavailable or inaccessible to this API key; no model was substituted.";
+    case "invalid_api_key":
+      return "OpenAI rejected the API key for " + model + ". Use /login to configure an OpenAI API key.";
+    default:
+      return fallback;
+  }
+}
+
 const MAX_INPUT = 3200,
   MAX_PACKET = 96000,
   MAX_TURN = MAX_PACKET * 24;
@@ -221,7 +240,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
             if (message.type === "error") {
               this.fail(
                 this.stateValue === "connecting" ? "connect_failed" : "transport_error",
-                "Voice provider rejected event",
+                providerFailure(message.error, this.model, "Voice provider rejected event"),
               );
               finish();
               return;
@@ -664,7 +683,10 @@ export class OpenAIRealtimeSession implements VoiceProvider {
           this.continueResponse(id);
         } else {
           response.cancelled = true;
-          this.error("transport_error", "Voice response did not complete");
+          this.error(
+            "transport_error",
+            providerFailure(m.response.status_details?.error, this.model, "Voice response did not complete"),
+          );
         }
         break;
       }
