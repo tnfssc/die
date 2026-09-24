@@ -1,3 +1,4 @@
+import { connectionFailure } from "./openai-connect-error";
 import { providerFailure } from "./openai-errors";
 import { liveSystemInstruction } from "./prompt";
 import { OPENAI_REALTIME_MODELS } from "./providers";
@@ -222,7 +223,13 @@ export class OpenAIRealtimeSession implements VoiceProvider {
             if (message.type === "error") {
               this.fail(
                 this.stateValue === "connecting" ? "connect_failed" : "transport_error",
-                providerFailure(message.error, this.model, "Voice provider rejected event"),
+                providerFailure(
+                  message.error,
+                  this.model,
+                  this.stateValue === "connecting"
+                    ? "OpenAI rejected voice session setup (details withheld)"
+                    : "Voice provider rejected event",
+                ),
               );
               finish();
               return;
@@ -233,20 +240,28 @@ export class OpenAIRealtimeSession implements VoiceProvider {
             finish();
           }
         });
-        socket.addEventListener("error", () => {
+        socket.addEventListener("error", (event) => {
           if (serial === this.serial) {
-            this.fail("transport_error", "Voice connection error");
+            this.fail(
+              this.stateValue === "connecting" ? "connect_failed" : "transport_error",
+              connectionFailure(event),
+            );
             finish();
           }
         });
         socket.addEventListener("close", () => {
           if (serial === this.serial) {
-            this.fail("disconnected", "Voice connection closed");
+            this.fail(
+              this.stateValue === "connecting" ? "connect_failed" : "disconnected",
+              this.stateValue === "connecting"
+                ? "OpenAI WebSocket closed before session setup (HTTP status unavailable)."
+                : "Voice connection closed",
+            );
             finish();
           }
         });
-      } catch {
-        this.fail("connect_failed", "Could not open voice connection");
+      } catch (error) {
+        this.fail("connect_failed", connectionFailure(error));
         finish();
       }
     });

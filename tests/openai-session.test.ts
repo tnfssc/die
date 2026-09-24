@@ -1,3 +1,4 @@
+import { connectionFailure } from "../src/live/openai-connect-error";
 import { describe, expect, test } from "bun:test";
 import {
   OpenAIRealtimeSession,
@@ -699,11 +700,73 @@ test("explicit provider failures preserve selected model and redact untrusted me
       expect(errors).toHaveLength(1);
       expect(errors[0]).not.toContain("SECRET");
       expect(errors[0]).not.toContain("unknown-secret");
-      if (code === "unknown-secret") expect(errors[0]).toBe("Voice provider rejected event");
+      if (code === "unknown-secret") expect(errors[0]).toBe("OpenAI rejected voice session setup (details withheld)");
       else expect(errors[0]).toContain(model);
       if (code === "insufficient_quota") expect(errors[0]).toContain("insufficient quota");
       if (code === "rate_limit_exceeded") expect(errors[0]).toContain("rate limit");
       if (code === "model_not_found") expect(errors[0]).toContain("unavailable or inaccessible");
     }
   }
+});
+
+describe("Realtime handshake diagnostics (offline)", () => {
+  test("only allowlisted transport metadata reaches diagnostics", () => {
+    expect(connectionFailure({ status: 401, message: "Bearer secret-key", body: "private" })).toContain("HTTP 401");
+    expect(connectionFailure({ error: { statusCode: 403, message: "secret-key" } })).toContain("HTTP 403");
+    expect(connectionFailure({ status: 429 })).toContain("rate limited");
+    expect(connectionFailure({ status: 503 })).toContain("server error");
+    expect(connectionFailure({ status: 999, message: "Bearer secret-key" })).not.toContain("secret-key");
+    expect(connectionFailure({ message: "Expected 101 status code: Bearer secret-key" })).toContain(
+      "status unavailable",
+    );
+  });
+  test("session rejection and premature close report distinct safe connect failures", async () => {
+    const a = fixture();
+    const pending = a.session.connect("secret-key");
+    a.socket.message({ type: "error", error: { message: "secret-key", code: "unknown_code" } });
+    await pending;
+    expect(a.session.state).toBe("closed");
+    const b = fixture();
+    const closed = b.session.connect("secret-key");
+    b.socket.close();
+    await closed;
+    expect(b.session.state).toBe("closed");
+    const errors: string[] = [];
+    const socket = new FakeSocket();
+    const c = new OpenAIRealtimeSession({ onError: (e) => errors.push(e.message) }, () => socket);
+    const rejected = c.connect("secret-key");
+    socket.message({ type: "error", error: { message: "secret-key" } });
+    await rejected;
+    expect(errors).toEqual(["OpenAI rejected voice session setup (details withheld)"]);
+  });
+  test("Bun rejected local upgrades settle with bounded unknown-status message, not false account diagnosis", async () => {
+    for (const status of [401, 403, 429, 503]) {
+      let receivedAuth = false;
+      const server = Bun.serve({
+        port: 0,
+        fetch: (request) => {
+          receivedAuth = request.headers.get("authorization") === "Bearer secret-key";
+          return new Response("Bearer secret-key private body", { status, headers: { "X-Private": "secret-key" } });
+        },
+      });
+      const errors: { code: string; message: string }[] = [];
+      const session = new OpenAIRealtimeSession({ onError: (e) => errors.push(e) }, (_url, headers) =>
+        defaultSocket(`ws://127.0.0.1:${server.port}/v1/realtime?model=gpt-realtime-2.1`, headers),
+      );
+      // The production socket constructor and header path, redirected only to an offline fixture.
+      // Never try to parse Bun's error text: it includes the URL but not the rejection status.
+      try {
+        await session.connect("secret-key");
+        expect(receivedAuth).toBe(true);
+        expect(errors).toHaveLength(1);
+        expect(errors[0].code).toBe("connect_failed");
+        expect(errors[0].message).toContain("status unavailable");
+        expect(JSON.stringify(errors)).not.toContain("secret-key");
+        expect(JSON.stringify(errors)).not.toContain("private body");
+      } finally {
+        session.close();
+        server.stop(true);
+      }
+    }
+  });
 });
