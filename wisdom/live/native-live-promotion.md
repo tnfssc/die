@@ -114,3 +114,22 @@ Parent rebuilt renamed native helper locally: build/self-test passed. Installer
 tests remained green; release test first rerun failed only because one old
 assertion still required Homebrew SoX. Updated it to the native fake-provider
 suite, keeping no-device/no-credential checks. Full rerun after runtime merge.
+
+## Runtime integrated; final checks running
+
+Worker8993e89 integrated as970fa68. Native runtime/tests now live under
+src/live and tests/live-*. Old SoX/custom bridge/transport removed; unrelated
+LLM dispatch-budget helpers retained. Parent added bare toggle (including
+pending auth/setup/helper/provider cancellation), explicit idempotent start
+and stop, and prefix-filtered action autocomplete. Command factory only
+registers live. No runtime lab alias remains.
+
+Typecheck, integrated build and renamed embedded-helper self-test passed
+(task_4e7a7016). Focused test initially checked async device close too early;
+changed it to assert immediate status teardown then await cleanup, preserving
+the existing async stop behavior. No runtime change needed for that assertion.
+
+Running full suite task_5bd9e1d4 with SHELL=/bin/sh for test-owned commands,
+log /tmp/die-native-live-full-tests.log. Running compiled isolated-home TUI
+onboarding smoke task_656db4b9. No devices/provider/network auth calls intended.
+Installed user binary still pre-promotion playback candidate until checks pass.

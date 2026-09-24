@@ -7,6 +7,7 @@ import type { AudioCallbacks } from "../src/live/audio";
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 function setup(overrides: Partial<LiveDependencies> = {}) {
   let handler!: (args: string, ctx: any) => Promise<void>;
+  let complete!: (prefix: string) => { value: string; label: string }[] | null;
   let shutdown!: () => void;
   let sessionStart!: () => void;
   let voiceCallbacks!: VoiceCallbacks;
@@ -97,6 +98,7 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
       registerCommand: (name: string, cmd: any) => {
         expect(name).toBe("live");
         handler = cmd.handler;
+        complete = cmd.getArgumentCompletions;
       },
       on: (event: string, cb: any) => {
         if (event === "session_shutdown") shutdown = cb;
@@ -123,6 +125,7 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
   };
   return {
     run: (arg: string) => handler(arg, ctx),
+    complete: (prefix: string) => complete(prefix),
     contexts,
     get orchestration() {
       return orchestration;
@@ -171,6 +174,74 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
   };
 }
 describe("Live voice", () => {
+  test("autocomplete lists only Live actions and filters prefixes without side effects", () => {
+    const t = setup();
+    expect(t.complete("")?.map((item) => item.value)).toEqual([
+      "start",
+      "stop",
+      "setup",
+      "status",
+      "mic-check",
+      "speaker-check",
+    ]);
+    expect(t.complete("st")?.map((item) => item.value)).toEqual(["start", "stop", "status"]);
+    expect(t.complete("speaker")?.map((item) => item.value)).toEqual(["speaker-check"]);
+    expect(t.complete("missing")).toBeNull();
+    expect(t.complete("start extra")).toBeNull();
+    expect(t.complete("")?.every((item) => item.label === item.value)).toBe(true);
+    expect([t.keyCalls, t.launches, t.starts]).toEqual([0, 0, 0]);
+  });
+  test("bare Live toggles on and off while explicit start and stop stay idempotent", async () => {
+    const t = setup();
+    await t.run("");
+    expect(t.starts).toBe(1);
+    await t.run("start");
+    expect([t.starts, t.closes]).toEqual([1, 0]);
+    await t.run("  ");
+    expect(t.status.at(-1)).toBeUndefined(); // Toggle takes effect before asynchronous device cleanup.
+    await tick();
+    expect(t.closes).toBe(1);
+    await t.run("stop");
+    expect([t.keyCalls, t.closes]).toEqual([1, 1]);
+    await t.run("");
+    expect(t.starts).toBe(2);
+    await t.run("stop");
+  });
+  for (const stage of ["helper", "provider"]) {
+    test("bare Live cancels pending " + stage + " without late activation", async () => {
+      const t = setup();
+      t.defer();
+      const starting = t.run("");
+      await tick();
+      if (stage === "provider") {
+        t.resolveLaunch();
+        await tick();
+      }
+      await t.run("");
+      if (stage === "helper") t.resolveLaunch();
+      else t.resolveConnect();
+      await starting;
+      expect(t.starts).toBe(0);
+      expect(t.closes).toBe(1);
+      expect(t.status.at(-1)).toBeUndefined();
+    });
+  }
+  test("bare Live cancels pending auth without stale setup or audio", async () => {
+    let resolveKey!: (value: string) => void;
+    const t = setup({
+      key: async () =>
+        new Promise<string>((resolve) => {
+          resolveKey = resolve;
+        }),
+    });
+    const starting = t.run("");
+    await tick();
+    await t.run("");
+    resolveKey("test-key");
+    await starting;
+    expect([t.launches, t.starts]).toEqual([0, 0]);
+  });
+
   test("bare /live starts directly without a picker or confirmation", async () => {
     const t = setup();
     t.ctx.ui.select = async () => {

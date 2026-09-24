@@ -326,9 +326,16 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     }
   }
   pi.registerCommand("live", {
-    description: "Start voice with Google Gemini (paid; microphone and speakers)",
+    description: "Toggle voice with Google Gemini (paid; microphone and speakers)",
+    getArgumentCompletions: (prefix) => {
+      const matches = ["start", "stop", "setup", "status", "mic-check", "speaker-check"].filter((value) =>
+        value.startsWith(prefix),
+      );
+      return matches.length ? matches.map((value) => ({ value, label: value })) : null;
+    },
     handler: async (args, ctx) => {
-      const action = args.trim() || "start";
+      const active = current || entry || confirmation !== undefined || probe || speakerProbe;
+      const action = args.trim() || (active ? "stop" : "start");
       if (action === "status") {
         ctx.ui.notify(
           current
