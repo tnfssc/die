@@ -59,6 +59,8 @@ describe("release automation", () => {
         for (const step of job.steps) {
           if (!step.uses) continue;
           const [repo, sha] = step.uses.split("@");
+          expect(pins.has(repo!)).toBe(true);
+          expect(sha).toMatch(/^[a-f0-9]{40}$/);
           expect(sha).toBe(pins.get(repo!));
           if (repo === "actions/setup-node") expect(step.with?.["node-version"]).toBe("24.21.0");
           if (repo === "pnpm/action-setup") expect(step.with?.version).toBe("11.27.1");
