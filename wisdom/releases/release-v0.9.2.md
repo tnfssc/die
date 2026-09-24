@@ -22,8 +22,16 @@ Transcript/prompt/waveform review: 85 focused tests and typecheck passed. Found 
 
 Parent integration verification: 50 transcript/host/extension tests passed (309 assertions), followed by typecheck and format. The full matrix is reserved for the publication workflow.
 
-## Publication plan
+## Publication
 
-Use the existing tag-triggered Release workflow once (no duplicate full pretag matrix). Existing reuse lookup may fall back to normal complete gates because no matching successful dry run exists. Native Mac compile/C sanitizers/protocol, deterministic suite, web checks, four binaries, embedded helper, compiled version and old updater checks gate publication. After success, query release metadata/assets without downloading binaries merely to rehash them, then fast-forward develop with documentation-only skip-ci evidence. Publication not yet claimed.
+Use the existing tag-triggered Release workflow once (no duplicate full pretag matrix). Existing reuse lookup may fall back to normal complete gates because no matching successful dry run exists. Native Mac compile/C sanitizers/protocol, deterministic suite, web checks, four binaries, embedded helper, compiled version and old updater checks gate publication. After success, query release metadata/assets without downloading binaries merely to rehash them, then fast-forward develop with documentation-only skip-ci evidence. Publication completed as documented below.
 
 Values unchanged: existing platform-proof, truthful evidence, safe ownership, bounded-use and simple-design values already cover this release. This note adds release-specific evidence, not a new general rule.
+
+Published https://github.com/tnfssc/die/releases/tag/v0.9.2 at 2026-09-24T11:06:57Z. Annotated tag targets 5d1a34eb00fc52474d812e56ae6bb24712b8abe9. Single normal Release run passed: https://github.com/tnfssc/die/actions/runs/35990066864 . No duplicate pretag full matrix or tag replacement.
+
+CI: 929 deterministic tests passed, 15 skipped, 0 failed. Format/lint/typecheck, compiled CLI build and standalone smoke, native Mac C ASan/UBSan and Swift helper compile/self-test/protocol, four binary builds, web backend/cache/terminal gates and license/source/checksum generation all passed. Actual Linux and Mac release binaries passed checksum-failure preservation and successful replacement/version checks using pinned v0.7.1 updater source compiled with the current toolchain (not the historical full executable). Both reported --version 0.9.2. The actual Mac release payload also passed embedded-helper self-test and protocol v1 from isolated HOME/PATH, without devices.
+
+Latest release API confirmed v0.9.2, draft=false, prerelease=false, with all 12 expected assets uploaded and nonempty: die-linux-x64 (200922592 bytes), die-linux-arm64 (200919336), die-darwin-arm64 (182896626), die-android-arm64 (208140032), their four SHA256 sidecars, LICENSE, SOURCE.txt, THIRD_PARTY_NOTICES.md and THIRD_PARTY_LICENSES.txt. Relied on CI hashes/actual-payload tests; did not download published binaries just to rehash or install them.
+
+Before develop integration, freshly fetched remote still pointed to e86c52a, an ancestor of the released source. Publication evidence uses a documentation-only [skip ci] commit, then an ordinary fast-forward push, preserving user commits and keeping unfinished OpenAI provider work excluded.
