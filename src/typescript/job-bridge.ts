@@ -170,6 +170,7 @@ export interface ExecuteJobGlobals {
     update(input: GoalUpdateInput): Promise<unknown>;
     clear(): Promise<unknown>;
   };
+  live: { stop(): Promise<unknown> };
   jobs: {
     list(options?: Options): Promise<unknown>;
     inspect(id: string, options?: Options): Promise<unknown>;
@@ -192,6 +193,7 @@ declare global {
   }
   var goal: ExecuteJobGlobals["goal"];
   var jobs: ExecuteJobGlobals["jobs"];
+  var live: ExecuteJobGlobals["live"];
 }
 
 /** Signal a confirmed cooperative handoff to the execute runner. */
@@ -388,6 +390,7 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
       update: async (input) => request("goal.update", input),
       clear: async () => request("goal.clear", {}),
     },
+    live: { stop: async () => request("live.stop", {}) },
     jobs: {
       list: async (options) => request("jobs.list", options ?? {}),
       inspect: async (id, options) => request("jobs.inspect", combine(options, { id })),

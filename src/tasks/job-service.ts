@@ -780,7 +780,13 @@ export class JobService {
         // The manager belongs to this session. The native adapter's authenticated
         // list is likewise scoped by the backend; never enumerate global tasks.
         z.parse(z.strictObject({}), input);
-        const results: Array<{ id: string; kind: "local" | "native"; outcome: "acknowledged" | "pending" | "finished" | "error"; status?: string; error?: string }> = [];
+        const results: Array<{
+          id: string;
+          kind: "local" | "native";
+          outcome: "acknowledged" | "pending" | "finished" | "error";
+          status?: string;
+          error?: string;
+        }> = [];
         const local = this.manager.list().filter((task) => task.status === "running");
         const bridge = t3BridgeEnvironment(this.environment);
         let discoveryError: string | undefined;
@@ -809,21 +815,58 @@ export class JobService {
         for (const task of local) {
           try {
             const stopped = this.manager.kill(task.id);
-            results.push({ id: task.id, kind: "local", outcome: stopped.status === "running" ? "pending" : stopped.status === "killed" ? "acknowledged" : "finished", status: stopped.status });
+            results.push({
+              id: task.id,
+              kind: "local",
+              outcome:
+                stopped.status === "running" ? "pending" : stopped.status === "killed" ? "acknowledged" : "finished",
+              status: stopped.status,
+            });
           } catch (error) {
-            results.push({ id: task.id, kind: "local", outcome: "error", error: error instanceof Error ? error.message : String(error) });
+            results.push({
+              id: task.id,
+              kind: "local",
+              outcome: "error",
+              error: error instanceof Error ? error.message : String(error),
+            });
           }
         }
-        if (bridge.kind === "remote") for (const id of new Set(nativeIds)) {
-          try {
-            const stopped = await this.#withNative(bridge, (adapter) => adapter.cancel(id, signal));
-            results.push({ id, kind: "native", outcome: stopped.status === "running" ? "pending" : stopped.status === "cancelled" ? "acknowledged" : "finished", status: stopped.status });
-          } catch (error) {
-            results.push({ id, kind: "native", outcome: "error", error: error instanceof Error ? error.message : String(error) });
+        if (bridge.kind === "remote")
+          for (const id of new Set(nativeIds)) {
+            try {
+              const stopped = await this.#withNative(bridge, (adapter) => adapter.cancel(id, signal));
+              results.push({
+                id,
+                kind: "native",
+                outcome:
+                  stopped.status === "running"
+                    ? "pending"
+                    : stopped.status === "cancelled"
+                      ? "acknowledged"
+                      : "finished",
+                status: stopped.status,
+              });
+            } catch (error) {
+              results.push({
+                id,
+                kind: "native",
+                outcome: "error",
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
           }
-        }
         this.#refresh();
-        return { jobs: results, complete: discoveryError === undefined, ...(discoveryError ? { discoveryError } : {}) };
+        return {
+          jobs: results,
+          discoveryComplete: discoveryError === undefined,
+          outcome:
+            discoveryError || results.some((job) => job.outcome === "error")
+              ? "partial"
+              : results.some((job) => job.outcome === "pending")
+                ? "pending"
+                : "acknowledged",
+          ...(discoveryError ? { discoveryError } : {}),
+        };
       }
       case "jobs.stop": {
         const params = z.parse(Id, input);

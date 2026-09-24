@@ -232,6 +232,8 @@ describe("Live voice", () => {
     expect(
       (await t.stop({ sessionManager: { getSessionId: () => "other", getSessionFile: () => "voice-file" } })).stopped,
     ).toBe(false);
+    // Ordinary conversation advances the leaf; it does not change voice ownership.
+    t.ctx.sessionManager.getLeafId = () => "new-message-leaf";
     const pending = t.stop();
     await tick();
     expect(providerClosed).toBe(true);

@@ -294,18 +294,19 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             if (!audio) return;
             try {
               await audio.stop();
+              if ("stopError" in audio && typeof audio.stopError === "string") errors.push(audio.stopError);
             } catch {
               errors.push("Audio stop failed");
             }
             try {
-              audio.close();
+              await audio.close();
             } catch {
               errors.push("Audio close failed");
             }
           })(),
           (async () => {
             try {
-              voice?.close();
+              await voice?.close();
               if (voice && "closeError" in voice && typeof voice.closeError === "string") errors.push(voice.closeError);
             } catch {
               errors.push("Provider socket close failed");
@@ -583,7 +584,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       !run ||
       !sessionId ||
       run.sessionId !== sessionId ||
-      run.leafId !== request.sessionManager?.getLeafId?.() ||
+      run.ctx.sessionManager !== request.sessionManager ||
       run.ctx.sessionManager?.getSessionFile?.() !== request.sessionManager?.getSessionFile?.()
     )
       return { stopped: false, errors: ["No Live voice session belongs to this agent session"], jobsUnchanged: true };

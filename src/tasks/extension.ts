@@ -1,3 +1,4 @@
+import { requestForegroundStop } from "./foreground-stop";
 import { LiveHostBridge } from "../live/host-bridge";
 import { registerLiveHost } from "../live/host-access";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -484,17 +485,50 @@ export default function asynchronousTasksExtension(
   projectWisdom = registerProjectWisdom(pi, {
     isRoot: () => subagentDepth === 0,
   });
-  registerExecuteTool(
+  const executeControl = registerExecuteTool(
     pi,
-    (ctx, method, params, signal) => {
+    async (ctx, method, params, signal) => {
       if (method.startsWith("history.")) return history.handle(method, params, ctx);
       if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
-      if ((method === "jobs.stop" || method === "jobs.stopWork") && liveHost) {
-        return liveHost
-          .confirmDelegatedAgentStop(method === "jobs.stopWork" ? "current-session work" : params && typeof params === "object" ? (params as { id?: unknown }).id : undefined)
-          .then(() => getService(ctx).handle(method, params, ctx, signal));
-      }
-      return getService(ctx).handle(method, params, ctx, signal);
+      if ((method === "jobs.stop" || method === "jobs.stopWork") && liveHost)
+        await liveHost.confirmDelegatedAgentStop(
+          method === "jobs.stopWork"
+            ? "current-session work"
+            : params && typeof params === "object"
+              ? (params as { id?: unknown }).id
+              : undefined,
+        );
+      const result = await getService(ctx).handle(method, params, ctx, signal);
+      if (method !== "jobs.stopWork") return result;
+      // The helper result must reach execute before aborting that foreground.
+      // Async jobs are already requested through the same scoped JobService.
+      const foreground = requestForegroundStop(
+        {
+          sessionManager: ctx.sessionManager,
+          isIdle: () => ctx.isIdle(),
+          abort: () => {
+            executeControl.stopForeground(ctx);
+            ctx.abort();
+          },
+        },
+        signal,
+        (observed) =>
+          liveHost?.observe({ type: "stopping", text: "Foreground stop observation: " + JSON.stringify(observed) }),
+      );
+      liveHost?.observe({
+        type: "stopping",
+        text: "Current-session stop-work result (not proof pending jobs exited): " + JSON.stringify(result),
+      });
+      return {
+        ...(result as object),
+        foreground,
+        outcome:
+          foreground.outcome === "error" || (result as { outcome: string }).outcome === "partial"
+            ? "partial"
+            : foreground.outcome === "pending"
+              ? "pending"
+              : (result as { outcome: string }).outcome,
+      };
     },
     options.executablePath,
   );

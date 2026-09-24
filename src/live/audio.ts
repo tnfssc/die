@@ -435,7 +435,8 @@ export class LiveAudio {
       this.fail(new Error("Audio helper input failed"));
     }
   }
-  /** Normal stop resolves after stopped; timeout closes the helper without reporting failure. */
+  /** Timeout still closes ownership, but is not an observed microphone stop. */
+  stopError?: string;
   stop(): Promise<void> {
     if (this.stoppedPromise) return this.stoppedPromise;
     if (this.state === "closed") return Promise.resolve();
@@ -448,6 +449,7 @@ export class LiveAudio {
     const stopped = this.waitFor("stopped", this.options.stopTimeoutMs ?? 2000);
     void this.send({ type: "stop" }).catch(() => this.close());
     this.stoppedPromise = stopped.catch(() => {
+      this.stopError = "Audio stop acknowledgement was not observed";
       this.close();
     });
     return this.stoppedPromise;

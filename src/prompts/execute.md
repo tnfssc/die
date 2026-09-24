@@ -40,3 +40,5 @@
   - `limit`: default 20 matches, allowed 1–50.
   - `excerptChars`: default 240 characters, allowed 40–600.
   - `maxChars`: default 8,000 characters, allowed 1–16,000.
+
+- Live voice: `await live.stop()` awaits this session’s mic/playback/provider teardown and preserves jobs. Read the result; errors are not a completed stop. For an explicit stop-work request use `await jobs.stopWork()`; it requests current-session async descendant cancellation, then foreground cancellation after its response is delivered. Pending/partial results are not stopped. If the user explicitly asks for both, call live.stop first. Neither runs on ordinary speech interruption.

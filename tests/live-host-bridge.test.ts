@@ -411,7 +411,7 @@ describe("GPT-Live host entry point", () => {
     expect(text).toContain("Transcript fragments are provisional");
     expect(text).toContain("trusted confirmation");
     expect(text).not.toContain("Latest captured user request (authoritative)");
-    expect(options).toEqual({ deliverAs: "followUp", expandPromptTemplates: false });
+    expect(options).toEqual({ deliverAs: "steer", expandPromptTemplates: false });
     expect(f.calls).toEqual([]);
     expect(() => f.bridge.delegate("live:d1", "changed snapshot")).toThrow("different content");
     f.bridge.close();
