@@ -137,7 +137,7 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   sdk.callbacks.onmessage({
     serverContent: { inputTranscription: { text: "please adjust", finished: true }, turnComplete: true },
     toolCall: {
-      functionCalls: [{ id: "sdk-call", name: "agent_steer", args: { requestId: "request-2", text: "please adjust" } }],
+      functionCalls: [{ id: "sdk-call", name: "agent_steer", args: { requestId: "request-2" } }],
     },
   } as any);
   for (let i = 0; i < 12; i++) await Promise.resolve();
@@ -162,7 +162,7 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   expect(getLiveHost(voicePi, ctx)).toBe(host);
   await voiceCommand("start", ctx);
   await expect(
-    tools!.execute({ name: "agent_steer", args: { requestId: "request-2", text: "please adjust" } }),
+    tools!.execute({ name: "agent_steer", args: { requestId: "request-2" } }),
   ).rejects.toThrow("transcript");
   expect(sent).toHaveLength(2);
   await voiceCommand("stop", ctx);
