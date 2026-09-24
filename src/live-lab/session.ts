@@ -20,6 +20,7 @@ const MAX_TOOL_BYTES = 16384;
 const MAX_TOOL_CALLS = 256;
 const MAX_PENDING_TOOLS = 16;
 const MAX_CONTEXT = 4096;
+const CONTEXT_GAP = "[Some earlier host updates omitted; ask session_context for current state.]\n";
 const jsonSize = (value: unknown): number => Buffer.byteLength(JSON.stringify(value));
 const base64Bytes = (s: string): number => {
   if (!s || s.length > 128000 || s.length % 4 || !/^[A-Za-z0-9+/]+={0,2}$/.test(s)) return -1;
@@ -39,9 +40,11 @@ export class VoiceSession {
   private inputChars = 0;
   private outputChars = 0;
   private ended = false;
-  private contextChars = 0;
+  private contextPending: string[] = [];
+  private contextTimer?: ReturnType<typeof setTimeout>;
+  private contextGap = false;
   private cancelConnect?: () => void;
-  private readonly seenCalls = new Set<string>();
+  private readonly seenCalls = new Map<string, { name: string; response?: Record<string, unknown> }>();
   private pendingTools = 0;
   constructor(
     private readonly callbacks: VoiceCallbacks,
@@ -197,16 +200,32 @@ export class VoiceSession {
       this.fail("transport_error", "Could not end audio stream");
     }
   }
-  /** Grounded host update, NOT a response to a model tool call. Buffered in conversation order;
-   * turnComplete:false avoids requesting an unsolicited spoken turn during live audio. */
+  /** Grounded host updates are coalesced and rate-limited; omitted updates are marked, not invented. */
   sendContext(text: string): void {
-    if (this.stateValue !== "ready" || !this.connection) return;
-    if (!text || text.length > MAX_CONTEXT || this.contextChars + text.length > 65536) {
-      this.fail("invalid_input", "Host context budget exceeded; reconnect voice for a fresh bounded snapshot");
-      return;
+    if (this.stateValue !== "ready" || !this.connection || !text) return;
+    if (text.length > MAX_CONTEXT) {
+      this.contextGap = true;
+    } else {
+      this.contextPending.push(text);
+      // Bound retained data, dropping oldest complete updates rather than presenting fragments as facts.
+      while (this.contextPending.join("\n").length > MAX_CONTEXT - (this.contextGap ? CONTEXT_GAP.length : 0)) {
+        this.contextPending.shift();
+        this.contextGap = true;
+      }
     }
+    if (!this.contextTimer) {
+      this.contextTimer = setTimeout(() => this.flushContext(), 100);
+      this.contextTimer.unref?.();
+    }
+  }
+  private flushContext(): void {
+    this.contextTimer = undefined;
+    if (this.stateValue !== "ready" || !this.connection) return;
+    const text = (this.contextGap ? CONTEXT_GAP : "") + this.contextPending.join("\n");
+    this.contextPending = [];
+    this.contextGap = false;
+    if (!text) return;
     try {
-      this.contextChars += text.length;
       this.connection.sendClientContent({ turns: [{ role: "user", parts: [{ text }] }], turnComplete: false });
     } catch {
       this.fail("transport_error", "Could not send context");
@@ -215,6 +234,9 @@ export class VoiceSession {
   close(): void {
     if (this.stateValue === "closed") return;
     ++this.epoch;
+    if (this.contextTimer) clearTimeout(this.contextTimer);
+    this.contextTimer = undefined;
+    this.contextPending = [];
     this.cancelConnect?.();
     const connection = this.connection;
     this.connection = undefined;
@@ -245,13 +267,28 @@ export class VoiceSession {
       ...(value.speakerLabel ? { speakerLabel: value.speakerLabel } : {}),
     };
   }
+  private sendToolReply(id: string, name: string, response: Record<string, unknown>): void {
+    if (this.stateValue !== "ready" || !this.connection) return;
+    try {
+      this.connection.sendToolResponse({
+        functionResponses: { id, name, response, scheduling: FunctionResponseScheduling.WHEN_IDLE },
+      });
+    } catch {
+      this.fail("transport_error", "Could not send tool response");
+    }
+  }
   private handleToolCalls(calls: NonNullable<Message["toolCall"]>["functionCalls"]): void {
     if (!this.orchestration) return;
     for (const call of calls ?? []) {
       if (this.stateValue !== "ready") return;
       // Only identified, declared calls are executable. Keep IDs for the lifetime of the
       // connection so retransmissions cannot run a side-effect twice.
-      if (!call.id || this.seenCalls.has(call.id)) continue;
+      if (!call.id) continue;
+      const previous = this.seenCalls.get(call.id);
+      if (previous) {
+        if (previous.response) this.sendToolReply(call.id, previous.name, previous.response);
+        continue;
+      }
       if (call.id.length > 256 || !call.name || call.name.length > 128) {
         this.fail("invalid_input", "Invalid tool call identifier");
         return;
@@ -260,17 +297,12 @@ export class VoiceSession {
         this.fail("invalid_input", "Tool call limit exceeded");
         return;
       }
-      this.seenCalls.add(call.id);
       const name = call.name;
+      const entry: { name: string; response?: Record<string, unknown> } = { name };
+      this.seenCalls.set(call.id, entry);
       const reply = (response: Record<string, unknown>) => {
-        if (this.stateValue !== "ready" || !this.connection) return;
-        try {
-          this.connection.sendToolResponse({
-            functionResponses: { id: call.id, name, response, scheduling: FunctionResponseScheduling.WHEN_IDLE },
-          });
-        } catch {
-          this.fail("transport_error", "Could not send tool response");
-        }
+        entry.response = response;
+        this.sendToolReply(call.id!, name, response);
       };
       let valid = false;
       try {

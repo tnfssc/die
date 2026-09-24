@@ -74,6 +74,7 @@ describe("SDK orchestration seam", () => {
       { functionResponses: { scheduling: "WHEN_IDLE", id: "1", name: "work", response: { output: { done: true } } } },
     ]);
     h.session.sendContext("Job 1 completed");
+    await Bun.sleep(130);
     expect(h.contexts).toEqual([
       { turns: [{ role: "user", parts: [{ text: "Job 1 completed" }] }], turnComplete: false },
     ]);
@@ -144,16 +145,27 @@ describe("SDK orchestration seam", () => {
   });
 });
 
-test("host context has per-message and session budgets; overflow closes only voice", async () => {
+test("host context coalesces bounded updates, reports gaps, and keeps audio live after 65k cumulative", async () => {
   let calls = 0;
   const h = fixture(async () => {
     calls++;
   });
   await h.session.connect("fake");
-  for (let i = 0; i < 16; i++) h.session.sendContext("x".repeat(4096));
-  expect(h.contexts).toHaveLength(16);
-  h.session.sendContext("overflow");
-  expect(h.session.state).toBe("closed");
+  for (let i = 0; i < 18; i++) {
+    h.session.sendContext(`update ${i} ` + "x".repeat(4000));
+    await Bun.sleep(120);
+  }
+  h.session.sendContext("dropped " + "x".repeat(4096));
+  h.session.sendContext("latest verified status");
+  await Bun.sleep(130);
+  expect(h.contexts).toHaveLength(19);
+  const lastText = (h.contexts.at(-1) as { turns: { parts: { text: string }[] }[] }).turns[0]!.parts[0]!.text;
+  expect(lastText).toContain("[Some earlier host updates omitted;");
+  expect(lastText).toContain("latest verified status");
+  expect(lastText).not.toContain("dropped ");
+  h.session.sendAudio("AAAAAA==");
+  expect(h.audio).toHaveLength(1);
+  expect(h.session.state).toBe("ready");
   expect(calls).toBe(0);
 });
 
@@ -193,4 +205,37 @@ test("an admitted tool request survives voice disconnect, but new messages after
   await flush();
   expect(calls).toBe(1);
   expect(h.responses).toHaveLength(0);
+});
+
+test("duplicate SDK IDs replay completed bounded response without re-execution", async () => {
+  let calls = 0;
+  let finish!: (v: unknown) => void;
+  const h = fixture(() => {
+    calls++;
+    return new Promise((resolve) => { finish = resolve; });
+  });
+  await h.session.connect("fake");
+  h.send({ toolCall: { functionCalls: [{ id: "same", name: "work" }, { id: "same", name: "work" }] } });
+  await flush();
+  expect(calls).toBe(1);
+  finish("ok");
+  await flush();
+  h.send({ toolCall: { functionCalls: [{ id: "same", name: "work", args: { different: true } }] } });
+  expect(calls).toBe(1);
+  expect(h.responses).toEqual(Array(2).fill({ functionResponses: {
+    id: "same", name: "work", response: { output: "ok" }, scheduling: "WHEN_IDLE",
+  } }));
+});
+
+test("context bursts share one bounded packet and a pending close sends nothing", async () => {
+  const h = fixture(async () => null);
+  await h.session.connect("fake");
+  h.session.sendContext("first update");
+  h.session.sendContext("second update");
+  await Bun.sleep(130);
+  expect(h.contexts).toEqual([{ turns: [{ role: "user", parts: [{ text: "first update\nsecond update" }] }], turnComplete: false }]);
+  h.session.sendContext("not sent after close");
+  h.session.close();
+  await Bun.sleep(130);
+  expect(h.contexts).toHaveLength(1);
 });
