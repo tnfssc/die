@@ -93,3 +93,30 @@ as replacement: they may hold sibling branches. Tests exercise 32 entries over
 
 Values unchanged: truthful representation (#8), safe scope (#6), and bounded
 context with recoverable originals (#5) already state the relevant lessons.
+
+Full retrieval merged as 6185646. Snapshot uses private temp directory, current
+branch only, and survives voice close for accepted agent work. Review task
+task_82572839 at /Users/sharath/.die/worktrees/die-f528e86af6b5-task_82572839,
+branch die/review-live-transcript-and-prompt-integr-82572839, owns read-only
+privacy/lifecycle/resource review. Snapshot retention/duplicate disk usage still
+needs review before calling feature done.
+Combined tests task_370e3a29; build/helper/onboarding task_b5664712. Provider
+helpfulness task_6bd9f91c still running. Installed binary unchanged.
+
+Review found received segments could be reordered by speaker completion and
+pending text lacked its own bound. Parent now flushes the other speaker's
+pending segment when new text arrives and persists long segments in 4096-char
+chunks. Nothing is dropped; partial chunks do not grant handoff authority.
+Tests cover interleaving and 50k nonfinal text. Updated extension expected
+chunk shape; rerun task_029fc7cb.
+
+Snapshot privacy/branch fixes: task_f33596b4, branch
+die/bound-transcript-snapshot-retention-and--f33596b4, worktree
+/Users/sharath/.die/worktrees/die-f528e86af6b5-task_f33596b4.
+Provider refusal correction: task_2ef62bd2, branch
+die/resolve-tested-live-delegation-refusal-2ef62bd2, worktree
+/Users/sharath/.die/worktrees/die-f528e86af6b5-task_2ef62bd2.
+Initial paid probe refused weather and save; do not call prompt validated.
+Control must separate capture-only fixture context from actual capability.
+Build prior to these follow-ups passed, but must rebuild after fixes.
+No new install.

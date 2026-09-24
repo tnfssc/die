@@ -30,3 +30,28 @@ test("model-contract final segments are distinct; turn boundaries and interrupti
   log.reset();
   expect(log.view((s) => s)).toEqual([]);
 });
+
+test("interleaved speakers persist in received order without dropping either speaker", () => {
+  const saved: TranscriptEntry[] = [];
+  const log = new TranscriptLog((e) => saved.push(e));
+  log.receive("You", { text: "first " });
+  log.receive("Voice", { text: "reply", finished: true });
+  log.receive("You", { text: "last", finished: true });
+  expect(saved.map((e) => [e.speaker, e.text])).toEqual([
+    ["You", "first "],
+    ["Voice", "reply"],
+    ["You", "last"],
+  ]);
+  expect(saved[0].status).toBe("partial");
+});
+
+test("nonfinal input is persisted in bounded chunks without truncation", () => {
+  const saved: TranscriptEntry[] = [];
+  const log = new TranscriptLog((e) => saved.push(e));
+  const text = "long ".repeat(10000);
+  log.receive("You", { text });
+  expect(saved.length).toBeGreaterThan(10);
+  expect(saved.every((e) => e.text.length <= 4096 && e.status === "partial")).toBe(true);
+  log.finish("You", "partial");
+  expect(saved.map((e) => e.text).join("")).toBe(text);
+});

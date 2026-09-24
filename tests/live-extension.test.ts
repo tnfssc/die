@@ -188,7 +188,8 @@ describe("Live voice", () => {
     t.voice.onOutputTranscript?.({ text: "second half." }, 0);
     t.voice.onTurnComplete?.(0);
     expect(t.transcriptEntries.map((e) => e.data)).toEqual([
-      { speaker: "You", text: long, status: "final" },
+      { speaker: "You", text: long.slice(0, 4096), status: "partial" },
+      { speaker: "You", text: long.slice(4096), status: "final" },
       { speaker: "Voice", text: "First half, second half.", status: "turn-boundary" },
     ]);
     expect(t.transcriptEntries.every((e) => e.type === "die-live-transcript")).toBe(true);
@@ -196,7 +197,7 @@ describe("Live voice", () => {
     await t.run("stop");
     expect(t.transcriptEntries.at(-1)?.data).toEqual({ speaker: "Voice", text: "Unfinished reply", status: "partial" });
     t.voice.onOutputTranscript?.({ text: "stale" }, 0);
-    expect(t.transcriptEntries).toHaveLength(3);
+    expect(t.transcriptEntries).toHaveLength(4);
   });
 
   test("autocomplete lists only Live actions and filters prefixes without side effects", () => {

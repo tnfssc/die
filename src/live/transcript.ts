@@ -13,7 +13,17 @@ export class TranscriptLog {
   constructor(private readonly save: (entry: TranscriptEntry) => void) {}
   receive(speaker: "You" | "Voice", part: VoiceTranscript): void {
     if (speaker === "You" && part.finalitySource === "model_contract") this.finish("You", "partial");
-    this.pending[speaker] += part.text;
+    // Preserve received order when speakers interleave. A partial segment is
+    // display/history data only; flushing it never authorizes a handoff.
+    if (part.text) this.finish(speaker === "You" ? "Voice" : "You", "partial");
+    // Persist bounded chunks rather than trimming or holding an endless utterance.
+    let offset = 0;
+    while (offset < part.text.length) {
+      const take = Math.min(4096 - this.pending[speaker].length, part.text.length - offset);
+      this.pending[speaker] += part.text.slice(offset, offset + take);
+      offset += take;
+      if (this.pending[speaker].length === 4096) this.finish(speaker, "partial");
+    }
     if (part.finished) this.finish(speaker, "final");
   }
   finish(speaker: "You" | "Voice", status: TranscriptEntry["status"]): void {
