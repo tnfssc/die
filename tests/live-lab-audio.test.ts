@@ -163,11 +163,21 @@ test("bounded native ready metadata and full-duplex capture during queued playba
   const { audio, worker } = await open({ callbacks: { capture: (b: Buffer) => frames.push(b) } });
   const started = audio.start();
   await tick();
-  worker.emitMessage({ type: "ready", voiceProcessingEnabled: true, voiceProcessingBypassed: false,
-    captureRate: 48000, renderRate: 48000, secret: "discard" });
+  worker.emitMessage({
+    type: "ready",
+    voiceProcessingEnabled: true,
+    voiceProcessingBypassed: false,
+    captureRate: 48000,
+    renderRate: 48000,
+    secret: "discard",
+  });
   await started;
-  expect(audio.diagnostics.ready).toEqual({ voiceProcessingEnabled: true, voiceProcessingBypassed: false,
-    captureRate: 48000, renderRate: 48000 });
+  expect(audio.diagnostics.ready).toEqual({
+    voiceProcessingEnabled: true,
+    voiceProcessingBypassed: false,
+    captureRate: 48000,
+    renderRate: 48000,
+  });
   await audio.play(Buffer.alloc(960), 0);
   worker.emitMessage({ type: "played", queuedMs: 200 });
   worker.emitMessage({ type: "capture", data: Buffer.alloc(640).toString("base64") });
@@ -177,8 +187,13 @@ test("bounded native ready metadata and full-duplex capture during queued playba
   const invalid = await open();
   const waiting = invalid.audio.start();
   await tick();
-  invalid.worker.emitMessage({ type: "ready", voiceProcessingEnabled: "true", voiceProcessingBypassed: false,
-    captureRate: Infinity, renderRate: 48000 });
+  invalid.worker.emitMessage({
+    type: "ready",
+    voiceProcessingEnabled: "true",
+    voiceProcessingBypassed: false,
+    captureRate: Infinity,
+    renderRate: 48000,
+  });
   await waiting;
   expect(invalid.audio.diagnostics.ready).toBeUndefined();
   invalid.audio.close();

@@ -8,9 +8,16 @@ import { fileURLToPath } from "node:url";
 type Worker = Pick<ChildProcessWithoutNullStreams, "stdin" | "stdout" | "stderr" | "on" | "off" | "kill">;
 export type AudioSetupError = { domain: string; number: number };
 export type AudioDiagnostics = {
-  queuedMs: number; captureFrames: number; capturedBytes: number;
+  queuedMs: number;
+  captureFrames: number;
+  capturedBytes: number;
   /** Native configuration only; not evidence of acoustic echo cancellation. Absent on older helpers. */
-  ready?: { voiceProcessingEnabled: boolean; voiceProcessingBypassed: boolean; captureRate: number; renderRate: number };
+  ready?: {
+    voiceProcessingEnabled: boolean;
+    voiceProcessingBypassed: boolean;
+    captureRate: number;
+    renderRate: number;
+  };
 };
 /** Error is terminal (static code/message), closed fires exactly once on either failure or normal shutdown.
  * Observers must not throw; observer exceptions are isolated. */
@@ -256,14 +263,21 @@ export class LiveLabAudio {
       if (
         typeof m.voiceProcessingEnabled === "boolean" &&
         typeof m.voiceProcessingBypassed === "boolean" &&
-        typeof m.captureRate === "number" && Number.isFinite(m.captureRate) && m.captureRate > 0 && m.captureRate <= 384_000 &&
-        typeof m.renderRate === "number" && Number.isFinite(m.renderRate) && m.renderRate > 0 && m.renderRate <= 384_000
-      ) this.diagnostics.ready = {
-        voiceProcessingEnabled: m.voiceProcessingEnabled,
-        voiceProcessingBypassed: m.voiceProcessingBypassed,
-        captureRate: m.captureRate,
-        renderRate: m.renderRate,
-      };
+        typeof m.captureRate === "number" &&
+        Number.isFinite(m.captureRate) &&
+        m.captureRate > 0 &&
+        m.captureRate <= 384_000 &&
+        typeof m.renderRate === "number" &&
+        Number.isFinite(m.renderRate) &&
+        m.renderRate > 0 &&
+        m.renderRate <= 384_000
+      )
+        this.diagnostics.ready = {
+          voiceProcessingEnabled: m.voiceProcessingEnabled,
+          voiceProcessingBypassed: m.voiceProcessingBypassed,
+          captureRate: m.captureRate,
+          renderRate: m.renderRate,
+        };
       this.state = "running";
       this.signal("ready");
       return;

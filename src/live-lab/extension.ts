@@ -25,7 +25,7 @@ export interface LabDependencies {
     callbacks: VoiceCallbacks,
     orchestration?: VoiceOrchestration,
   ): Pick<VoiceSession, "connect" | "sendAudio" | "close" | "state" | "generation"> &
-    Partial<Pick<VoiceSession, "sendContext">>;
+    Partial<Pick<VoiceSession, "sendContext" | "diagnostics">>;
   host(pi: ExtensionAPI, ctx: ExtensionContext): VoiceHost | undefined;
   audio(
     callbacks: AudioCallbacks,
@@ -362,6 +362,15 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
                 Math.round(current.queuedMs) +
                 "ms · turns " +
                 current.turns +
+                " · provider interruptions " +
+                (current.voice?.diagnostics?.serverInterruptions ?? "unknown") +
+                " · native VP " +
+                (current.audio?.diagnostics.ready
+                  ? (current.audio.diagnostics.ready.voiceProcessingEnabled ? "enabled" : "disabled") +
+                    "/" +
+                    (current.audio.diagnostics.ready.voiceProcessingBypassed ? "bypassed" : "unbypassed") +
+                    " (configuration only, AEC unmeasured)"
+                  : "unknown") +
                 ". Agent work is independent of voice."
             : "Voice lab off. No key, network, microphone or helper opened. Agent work is unchanged.",
           "info",

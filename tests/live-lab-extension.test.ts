@@ -195,6 +195,9 @@ describe("opt-in voice-only lab", () => {
     await tick();
     expect(t.played.at(-1)?.generation).toBe(1);
     expect(t.status.at(-1)).toContain("gemini-3.8-live");
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("provider interruptions unknown");
+    expect(t.notices.at(-1)).toContain("native VP unknown");
     await t.run("stop");
     expect(t.status.at(-1)).toBeUndefined();
     expect(t.widgets.at(-1)).toBeUndefined();
