@@ -7,6 +7,7 @@ Response is capped at 4096 bytes and 1 second, then destroyed. Only numeric HTTP
 Offline checks (fake key, loopback only):
 - `mise exec -- bun test tests/openai-session.test.ts`: 32 pass; 401/403/404/429/503, codes, malformed/oversized responses and session rejection.
 - `mise exec -- bun build --compile scripts/live-openai-offline-smoke.ts --outfile /tmp/die-openai-smoke && /tmp/die-openai-smoke`: compiled success/audio/header and 401/403/404/429 failures.
+- `mise exec -- bun run build` and `mise exec -- bun run check`: compiled full CLI at `dist/die`; TypeScript passed.
 - `mise exec -- bun run generate:notices`: 126 production packages; ws license in generated release notice.
 
 No real OpenAI call made. User next test determines actual provider rejection, if any; local success does not prove remote model access.
