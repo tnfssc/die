@@ -4,4 +4,12 @@ Continues [v0.10.0 preparation](release-v0.10.0.md), same branch/worktree and re
 
 Fix verification: 28 Realtime tests passed (141 assertions), typecheck, error-level lint, full format, diff check and v0.10.1 tag/version validation passed. Paid acceptance remained skipped. New normal patch version avoids overwriting/deleting the failed tag; no bypass of publication gates. Release notes retain exact models, persisted choice/Gemini default, canonical API-key setup and honest GPT-Live RMS/stale-tail/device/API limitations. Values unchanged: preserve immutable release evidence and fix the actual blocker, not disable the gate.
 
-Publication evidence to follow.
+## Publication and final evidence
+
+Published https://github.com/tnfssc/die/releases/tag/v0.10.1 at 2026-09-24T12:39:27Z. Immutable annotated tag targets 21ac9b3e2145878e64ed338e215ec0bcc3c93dda. Release https://github.com/tnfssc/die/actions/runs/35999297487 completed successfully. All applicable gates green; reuse-assets correctly skipped because normal full release gates ran.
+
+CI: 1004 deterministic tests passed, 17 skipped, zero failed. Format/lint/typecheck, compiled standalone smoke, all four target builds, Mac C ASan/UBSan and Swift helper, attribution/license/source/checksum generation, web backend (67), web cache (135), terminal client (38) checks passed. Actual Linux and Mac payloads passed checksum-failure preservation and replacement/version 0.10.1 using pinned v0.7.1 updater source compiled with the current toolchain (not the historical full executable). Mac payload embedded-helper self-test and protocol v1 passed in isolated HOME/PATH, no devices. Exact model/selection paths were independently source-audited; selector, OpenAI protocol and GPT-Live recovery tests passed in release CI.
+
+Latest release API verified v0.10.1, draft=false, prerelease=false and all 12 expected assets uploaded/nonempty. Binary sizes: Linux x64 200959456, Linux arm64 200919336, Mac arm64 182946162, Android arm64 208140032 bytes, plus four checksum sidecars, LICENSE, SOURCE.txt, THIRD_PARTY_NOTICES.md, THIRD_PARTY_LICENSES.txt. No redundant published binary download or local install.
+
+Fresh develop fetch remained 44ff46f, ancestor of released source. Publication evidence is documentation-only [skip ci], then ordinary fast-forward push to develop preserving user Mac commits and v0.9.2. No force push, tag overwrite or bypass. Values reviewed again and unchanged: this incident reinforces existing evidence/gates and immutable-history principles, not a new general value.
