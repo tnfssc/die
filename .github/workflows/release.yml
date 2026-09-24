@@ -44,17 +44,17 @@ jobs:
       - name: Sanitized, device-free native ring tests
         shell: bash
         run: |
-          xcrun clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined native/live-lab/AudioCore.c native/live-lab/test-core.c -o /tmp/live-lab-core-test
-          /tmp/live-lab-core-test
+          xcrun clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined native/live/AudioCore.c native/live/test-core.c -o /tmp/live-core-test
+          /tmp/live-core-test
       - name: Compile helper and check device-free protocol
         shell: bash
         run: |
-          scripts/build-live-lab-helper.sh
-          file dist/live-lab-audio | grep -E 'Mach-O 64-bit (executable arm64|arm64 executable)'
-          dist/live-lab-audio --self-test
+          scripts/build-live-helper.sh
+          file dist/live-audio | grep -E 'Mach-O 64-bit (executable arm64|arm64 executable)'
+          dist/live-audio --self-test
           python3 - <<'PY'
           import json, select, subprocess
-          p = subprocess.Popen(['dist/live-lab-audio'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+          p = subprocess.Popen(['dist/live-audio'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
           try:
               assert select.select([p.stdout], [], [], 5)[0], 'helper hello timed out'
               assert json.loads(p.stdout.readline()) == {'type': 'hello', 'protocol': 1}
@@ -65,7 +65,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-mac-arm64-helper
-          path: dist/live-lab-audio
+          path: dist/live-audio
           if-no-files-found: error
           retention-days: 2
   release:
@@ -134,15 +134,15 @@ jobs:
       - name: Verify native helper from Mac runner
         shell: bash
         run: |
-          test -s artifacts/release/mac-helper/live-lab-audio
-          file artifacts/release/mac-helper/live-lab-audio | grep -E 'Mach-O 64-bit (executable arm64|arm64 executable)'
+          test -s artifacts/release/mac-helper/live-audio
+          file artifacts/release/mac-helper/live-audio | grep -E 'Mach-O 64-bit (executable arm64|arm64 executable)'
       - name: Build release binaries with embedded web application
         shell: bash
         run: |
           bun run build -- --reuse-web --target=bun-linux-x64-baseline --outfile=./dist/release/die-linux-x64 2>&1 | tee artifacts/release/build-linux-x64.log
           test "$(./dist/release/die-linux-x64 --version)" = "$(bun -p 'require("./package.json").version')"
           bun run build -- --reuse-web --target=bun-linux-arm64 --outfile=./dist/release/die-linux-arm64 2>&1 | tee artifacts/release/build-linux-arm64.log
-          bun run build -- --reuse-web --live-lab-helper=./artifacts/release/mac-helper/live-lab-audio --target=bun-darwin-arm64 --outfile=./dist/release/die-darwin-arm64 2>&1 | tee artifacts/release/build-darwin-arm64.log
+          bun run build -- --reuse-web --live-helper=./artifacts/release/mac-helper/live-audio --target=bun-darwin-arm64 --outfile=./dist/release/die-darwin-arm64 2>&1 | tee artifacts/release/build-darwin-arm64.log
           bun run build -- --reuse-web --target=bun-android-arm64 --outfile=./dist/release/die-android-arm64 2>&1 | tee artifacts/release/build-android-arm64.log
           chmod 0755 ./dist/release/die-linux-x64 ./dist/release/die-linux-arm64 ./dist/release/die-darwin-arm64 ./dist/release/die-android-arm64
       - name: Generate production dependency notices
@@ -164,7 +164,7 @@ jobs:
       - name: Document native audio licensing
         shell: bash
         run: |
-          printf '\n\nNATIVE LIVE LAB AUDIO HELPER\n============================\n' >> dist/release/THIRD_PARTY_LICENSES.txt
+          printf '\n\nNATIVE LIVE AUDIO HELPER\n============================\n' >> dist/release/THIRD_PARTY_LICENSES.txt
           printf 'The native helper is project source under the repository MIT LICENSE; it links Apple system AVFoundation/CoreFoundation frameworks, not bundled third-party native libraries.\n' >> dist/release/THIRD_PARTY_LICENSES.txt
       - name: Validate web backend
         shell: bash
@@ -203,8 +203,8 @@ jobs:
           printf 'Source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\nTargets:\n- bun-linux-x64-baseline -> die-linux-x64\n- bun-linux-arm64 -> die-linux-arm64\n- bun-darwin-arm64 -> die-darwin-arm64\n- bun-android-arm64 -> die-android-arm64\n\nEmbedded T3 Code source: https://github.com/pingdotgg/t3code/tree/%s\nRevision: %s\nPatch: web/t3.patch\nPatch-SHA256: %s\n' \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_SHA" "$source_ref" \
             "$t3_revision" "$t3_revision" "$patch_sha256" > SOURCE.txt
-          printf '\nEmbedded macOS arm64 native helper (Apple frameworks; experimental voice-only /live-lab):\n' >> SOURCE.txt
-          sha256sum ../../artifacts/release/mac-helper/live-lab-audio >> SOURCE.txt
+          printf '\nEmbedded macOS arm64 native helper (Apple frameworks; experimental voice-only /live):\n' >> SOURCE.txt
+          sha256sum ../../artifacts/release/mac-helper/live-audio >> SOURCE.txt
       - name: Verify old updater with actual Linux release binary
         run: bun scripts/verify-v071-update.ts dist/release/die-linux-x64 "$(bun -p 'require("./package.json").version')"
       - name: Stage verified release assets
@@ -288,7 +288,7 @@ jobs:
           home=$(mktemp -d)
           trap 'rm -rf "$home"' EXIT
           cd "$home"
-          env -i HOME="$home" PATH=/usr/bin:/bin "$GITHUB_WORKSPACE/dist/release/die-darwin-arm64" --live-lab-self-test
+          env -i HOME="$home" PATH=/usr/bin:/bin "$GITHUB_WORKSPACE/dist/release/die-darwin-arm64" --live-self-test
 
   publish:
     name: Publish stable release after native and updater gates

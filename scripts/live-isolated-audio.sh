@@ -54,5 +54,5 @@ timeout 2 pactl info >/dev/null
 timeout 2 pw-dump | python3 -c 'import json,sys; nodes=[o.get("info",{}).get("props",{}) for o in json.load(sys.stdin) if o.get("type","").endswith(":Node")]; bad=[n for n in nodes if n.get("node.name") not in ("Dummy-Driver","Freewheel-Driver")]; print("Pre-test graph nodes:",[(n.get("node.name"),n.get("media.class")) for n in nodes]); sys.exit(bool(bad))'
 [[ $(timeout 2 pactl -f json list sinks) == '[]' ]] || { echo 'Unexpected sink in private graph' >&2; exit 1; }
 [[ $(timeout 2 pactl -f json list sources) == '[]' ]] || { echo 'Unexpected source in private graph' >&2; exit 1; }
-DIE_LIVE_LAB_ISOLATED=1 bun scripts/live-lab-acceptance.ts "$@" & test_pid=$!
+DIE_LIVE_ISOLATED=1 bun scripts/live-acceptance.ts "$@" & test_pid=$!
 wait "$test_pid"

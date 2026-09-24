@@ -1,4 +1,4 @@
-import { nativeHelperPlugin } from "./live-lab-helper-bundle";
+import { nativeHelperPlugin } from "./live-helper-bundle";
 import { access, cp } from "node:fs/promises";
 import { resolve } from "node:path";
 import { packWebArchive } from "../src/web/archive";
@@ -13,13 +13,13 @@ for (const argument of process.argv.slice(2)) {
   if (argument === "--") continue;
   if (argument === "--reuse-web") reuseWeb = true;
   else if (argument.startsWith("--outfile=")) output = argument.slice("--outfile=".length);
-  else if (argument.startsWith("--live-lab-helper=")) helper = argument.slice("--live-lab-helper=".length);
+  else if (argument.startsWith("--live-helper=")) helper = argument.slice("--live-helper=".length);
   else if (argument.startsWith("--target=")) target = argument.slice("--target=".length);
   else throw new Error("Unknown build option: " + argument);
 }
 if (!output) throw new Error("--outfile requires a path");
 if (target === "") throw new Error("--target requires a value");
-if (helper === "") throw new Error("--live-lab-helper requires a path");
+if (helper === "") throw new Error("--live-helper requires a path");
 const plugins = helper ? [await nativeHelperPlugin(helper, target ?? `bun-${process.platform}-${process.arch}`)] : [];
 const outfile = resolve(root, output);
 const webDirectory = resolve(root, "dist/die-web");

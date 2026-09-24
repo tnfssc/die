@@ -1,9 +1,9 @@
 import { test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
-import { audioDiagnostic } from "../src/live-lab/diagnostics";
+import { audioDiagnostic } from "../src/live/diagnostics";
 
 test("startup graph ordering and catch-stage coverage", () => {
-  const swift = readFileSync(new URL("../native/live-lab/main.swift", import.meta.url), "utf8");
+  const swift = readFileSync(new URL("../native/live/main.swift", import.meta.url), "utf8");
   const ordered = [
     "setVoiceProcessingEnabled(true)",
     "outputNode.inputFormat(forBus: 0)",

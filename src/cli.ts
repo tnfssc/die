@@ -19,9 +19,9 @@ import { INTERNAL_TYPESCRIPT_RUNNER_ARG, runTypeScriptFromStdin } from "./typesc
 import { updateDie } from "./update";
 
 const cliArgs = process.argv.slice(2);
-if (cliArgs[0] === "--live-lab-self-test") {
-  if (cliArgs.length !== 1) throw new Error("Usage: die --live-lab-self-test");
-  const { testEmbeddedNativeHelper } = await import("./live-lab/self-test");
+if (cliArgs[0] === "--live-self-test") {
+  if (cliArgs.length !== 1) throw new Error("Usage: die --live-self-test");
+  const { testEmbeddedNativeHelper } = await import("./live/self-test");
   await testEmbeddedNativeHelper();
   process.exit(0);
 }
@@ -138,17 +138,8 @@ const { installDiskBackedSessionManager } = await import("./history/session-mana
 installDiskBackedSessionManager();
 // The UI extension imports Pi's CustomEditor, so it must also load only after
 // die's runtime paths and product metadata are configured.
-const [
-  { default: asynchronousTasksExtension },
-  { default: herdrAgentStateExtension },
-  { default: liveExtension },
-  { default: liveLabExtension },
-] = await Promise.all([
-  import("./tasks/extension"),
-  import("./herdr-agent-state"),
-  import("./live/extension"),
-  import("./live-lab/extension"),
-]);
+const [{ default: asynchronousTasksExtension }, { default: herdrAgentStateExtension }, { default: liveExtension }] =
+  await Promise.all([import("./tasks/extension"), import("./herdr-agent-state"), import("./live/extension")]);
 const [{ installQuietStartup }, { installConversationDensity }] = await Promise.all([
   import("./ui/startup"),
   import("./ui/conversation-density"),
@@ -199,7 +190,6 @@ try {
       { name: "die-tools", factory: asynchronousTasksExtension, hidden: true },
       { name: "die-herdr-agent-state", factory: herdrAgentStateExtension, hidden: true },
       { name: "die-live", factory: liveExtension, hidden: true },
-      { name: "die-live-lab", factory: liveLabExtension, hidden: true },
     ],
   });
 } finally {

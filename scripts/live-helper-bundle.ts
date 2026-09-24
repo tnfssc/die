@@ -18,9 +18,9 @@ export async function nativeHelperPlugin(input: string, target: string): Promise
     throw new Error("Native helper must be a Mach-O arm64 executable");
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   return {
-    name: "live-lab-helper",
+    name: "live-helper",
     setup(build) {
-      build.onLoad({ filter: /[\/]src[\/]live-lab[\/]embedded\.ts$/ }, () => ({
+      build.onLoad({ filter: /[\/]src[\/]live[\/]embedded\.ts$/ }, () => ({
         contents:
           "import path from " +
           JSON.stringify(path) +

@@ -14,11 +14,26 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 cd "$root_dir"
+mac_arm64=0
+if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
+  mac_arm64=1
+fi
 if [ "${DIE_SKIP_BUILD:-0}" != "1" ]; then
-  bun run build
+  if [ "$mac_arm64" = "1" ]; then
+    sh scripts/build-live-helper.sh
+    bun run build --live-helper=dist/live-audio
+  else
+    bun run build
+  fi
 fi
 mkdir -p "$install_dir"
 install -m 755 ./dist/die "$temporary"
+# Verify the staged artifact before replacing a working executable. These probes
+# do not open audio devices or contact a provider, including for trusted prebuilts.
+"$temporary" --version >/dev/null
+if [ "$mac_arm64" = "1" ]; then
+  "$temporary" --live-self-test
+fi
 mv -f "$temporary" "$target"
 trap - EXIT INT TERM
 

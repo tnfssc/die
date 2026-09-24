@@ -1,4 +1,4 @@
-name: Native Live Lab
+name: Native Live
 on:
   workflow_dispatch:
     inputs:
@@ -9,9 +9,9 @@ on:
   push:
     branches: [develop]
     paths:
-      - "native/live-lab/**"
-      - "scripts/build-live-lab-helper.sh"
-      - ".github/workflows/live-lab.yml"
+      - "native/live/**"
+      - "scripts/build-live-helper.sh"
+      - ".github/workflows/live.yml"
 permissions:
   contents: read
 jobs:
@@ -23,18 +23,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Test bounded audio rings
         run: |
-          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined native/live-lab/AudioCore.c native/live-lab/test-core.c -o /tmp/live-lab-core-test
-          /tmp/live-lab-core-test
+          clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined native/live/AudioCore.c native/live/test-core.c -o /tmp/live-core-test
+          /tmp/live-core-test
       - name: Compile Apple voice-processing helper and self-test
-        run: sh scripts/build-live-lab-helper.sh
+        run: sh scripts/build-live-helper.sh
       - name: Device-free protocol smoke
         run: |
-          dist/live-lab-audio --help
-          printf '{"type":"stop"}\n' | dist/live-lab-audio
+          dist/live-audio --help
+          printf '{"type":"stop"}\n' | dist/live-audio
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: live-lab-audio-macos-arm64-experimental
-          path: dist/live-lab-audio
+          name: live-audio-macos-arm64-experimental
+          path: dist/live-audio
           if-no-files-found: error
           retention-days: 7
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -54,23 +54,23 @@ jobs:
         shell: bash
         run: |
           bun install --frozen-lockfile
-          bun run build
-          mkdir -p dist/live-lab-candidate
-          cp dist/die dist/live-lab-audio LICENSE THIRD_PARTY_NOTICES.md dist/live-lab-candidate/
-          cp support/live-lab-candidate.md dist/live-lab-candidate/README.md
-          bun scripts/generate-third-party-notices.ts dist/live-lab-candidate/THIRD_PARTY_LICENSES.txt
-          cat dist/die-web/LICENSE-T3CODE >> dist/live-lab-candidate/THIRD_PARTY_LICENSES.txt
-          while IFS= read -r -d '' license; do cat "$license" >> dist/live-lab-candidate/THIRD_PARTY_LICENSES.txt; done < <(find dist/die-web/node_modules/.pnpm -type f \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'NOTICE*' \) -print0)
-          git rev-parse HEAD > dist/live-lab-candidate/SOURCE.txt
+          bun run build -- --live-helper=dist/live-audio
+          mkdir -p dist/live-candidate
+          cp dist/die dist/live-audio LICENSE THIRD_PARTY_NOTICES.md dist/live-candidate/
+          cp support/live-candidate.md dist/live-candidate/README.md
+          bun scripts/generate-third-party-notices.ts dist/live-candidate/THIRD_PARTY_LICENSES.txt
+          cat dist/die-web/LICENSE-T3CODE >> dist/live-candidate/THIRD_PARTY_LICENSES.txt
+          while IFS= read -r -d '' license; do cat "$license" >> dist/live-candidate/THIRD_PARTY_LICENSES.txt; done < <(find dist/die-web/node_modules/.pnpm -type f \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'NOTICE*' \) -print0)
+          git rev-parse HEAD > dist/live-candidate/SOURCE.txt
           home=$(mktemp -d)
           trap 'rm -rf "$home"' EXIT
-          env -i HOME="$home" PATH=/usr/bin:/bin dist/live-lab-candidate/die --help > /dev/null
-          env -i HOME="$home" PATH=/usr/bin:/bin dist/live-lab-candidate/live-lab-audio --self-test
-          tar -czf dist/live-lab-macos-arm64-experimental.tar.gz -C dist/live-lab-candidate .
+          env -i HOME="$home" PATH=/usr/bin:/bin dist/live-candidate/die --help > /dev/null
+          env -i HOME="$home" PATH=/usr/bin:/bin dist/live-candidate/die --live-self-test
+          tar -czf dist/live-macos-arm64-experimental.tar.gz -C dist/live-candidate .
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: github.event_name == 'workflow_dispatch' && inputs.bundle
         with:
-          name: live-lab-macos-arm64-experimental
-          path: dist/live-lab-macos-arm64-experimental.tar.gz
+          name: live-macos-arm64-experimental
+          path: dist/live-macos-arm64-experimental.tar.gz
           if-no-files-found: error
           retention-days: 7

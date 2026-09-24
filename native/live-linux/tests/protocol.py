@@ -38,7 +38,7 @@ try:
         lib.pa_simple_free.argtypes = [ctypes.c_void_p]
         error = ctypes.c_int()
         mic_sink = sys.argv[sys.argv.index('--source') + 1].removesuffix('.monitor').encode()
-        stream = lib.pa_simple_new(None, b'die-live-lab-test', 1, mic_sink, b'synthetic near end', ctypes.byref(Spec(3, 16000, 1)), None, None, ctypes.byref(error))
+        stream = lib.pa_simple_new(None, b'die-live-test', 1, mic_sink, b'synthetic near end', ctypes.byref(Spec(3, 16000, 1)), None, None, ctypes.byref(error))
         assert stream, error.value
         frame = bytes().join(int(8000*math.sin(2*math.pi*440*i/16000)).to_bytes(2, 'little', signed=True) for i in range(160))
         def inject():

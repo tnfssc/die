@@ -69,7 +69,7 @@ import CoreFoundation
 if CommandLine.arguments.count > 1 {
     switch CommandLine.arguments[1] {
     case "--help":
-        print("live-lab-helper: JSON lines on stdin/stdout. Commands: start, play(data, generation), flush(generation), stop. Run --self-test without devices.")
+        print("live-audio: JSON lines on stdin/stdout. Commands: start, play(data, generation), flush(generation), stop. Run --self-test without devices.")
         exit(0)
     case "--self-test":
         let resampler = CaptureResampler()
@@ -93,9 +93,9 @@ if CommandLine.arguments.count > 1 {
     }
 }
 
-final class Lab {
+final class Live {
     let core = ll_create()!
-    let output = DispatchQueue(label: "live-lab.json-output")
+    let output = DispatchQueue(label: "live.json-output")
     let resampler = CaptureResampler()
     var engine: AVAudioEngine?
     var timer: DispatchSourceTimer?
@@ -313,18 +313,18 @@ final class Lab {
 }
 let flags = fcntl(STDOUT_FILENO, F_GETFL)
 if flags < 0 || fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK) < 0 { _exit(74) }
-let lab = Lab()
-lab.event(["type":"hello", "protocol":1])
+let live = Live()
+live.event(["type":"hello", "protocol":1])
 DispatchQueue.global(qos: .userInitiated).async {
     while let line = readLine() {
-        lab.inputSlots.wait()
+        live.inputSlots.wait()
         let parsed = parse(line)
         DispatchQueue.main.async {
-            if let parsed { lab.command(parsed) }
-            else { lab.error("protocol", "Invalid JSON command") }
-            lab.inputSlots.signal()
+            if let parsed { live.command(parsed) }
+            else { live.error("protocol", "Invalid JSON command") }
+            live.inputSlots.signal()
         }
     }
-    DispatchQueue.main.async { lab.stop(); exit(0) }
+    DispatchQueue.main.async { live.stop(); exit(0) }
 }
 dispatchMain()

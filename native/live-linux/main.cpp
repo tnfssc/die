@@ -58,7 +58,7 @@ bool get(json_object* o, const char* key, json_type type, json_object** value) {
   return json_object_object_get_ex(o, key, value) && json_object_get_type(*value) == type;
 }
 
-struct Lab {
+struct Live {
   const char *source, *sink;
   pa_mainloop* loop = nullptr;
   pa_context* context = nullptr;
@@ -78,12 +78,12 @@ struct Lab {
   chrono::steady_clock::time_point startTime{};
   chrono::steady_clock::time_point audioUntil{};
 
-  Lab(const char* a, const char* b) : source(a), sink(b) {}
-  ~Lab() { stop(); }
+  Live(const char* a, const char* b) : source(a), sink(b) {}
+  ~Live() { stop(); }
   static void contextState(pa_context*, void*) {}
   static void streamState(pa_stream*, void*) {}
   static void onRead(pa_stream* stream, size_t, void* userdata) {
-    auto& self = *static_cast<Lab*>(userdata);
+    auto& self = *static_cast<Live*>(userdata);
     while (pa_stream_readable_size(stream) > 0) {
       const void* data = nullptr; size_t n = 0;
       if (pa_stream_peek(stream, &data, &n) < 0) { self.fail("audio_input"); return; }
@@ -131,7 +131,7 @@ struct Lab {
     apm->ApplyConfig(config);
     if (apm->Initialize() != 0) { error("audio_start", "Could not initialize echo processing"); stop(); return; }
     loop = pa_mainloop_new();
-    if (loop) context = pa_context_new(pa_mainloop_get_api(loop), "die-live-lab");
+    if (loop) context = pa_context_new(pa_mainloop_get_api(loop), "die-live");
     if (!context || pa_context_connect(context, nullptr, PA_CONTEXT_NOFLAGS, nullptr) < 0) {
       error("audio_start", "Could not connect to audio server"); stop(); return;
     }
@@ -359,10 +359,10 @@ struct Lab {
 
 int main(int argc, char** argv) {
   signal(SIGPIPE, SIG_IGN);
-  const char *source = getenv("LIVE_LAB_SOURCE"), *sink = getenv("LIVE_LAB_SINK");
+  const char *source = getenv("LIVE_SOURCE"), *sink = getenv("LIVE_SINK");
   for (int i = 1; i < argc; ++i) {
-    if (!strcmp(argv[i], "--help")) { puts("live-lab-audio-linux [--source NAME] [--sink NAME] [--self-test]\nNo devices opened until start."); return 0; }
-    if (!strcmp(argv[i], "--self-test")) { puts("live-lab-audio-linux: build OK"); return 0; }
+    if (!strcmp(argv[i], "--help")) { puts("live-audio-linux [--source NAME] [--sink NAME] [--self-test]\nNo devices opened until start."); return 0; }
+    if (!strcmp(argv[i], "--self-test")) { puts("live-audio-linux: build OK"); return 0; }
     bool s = !strcmp(argv[i], "--source"), o = !strcmp(argv[i], "--sink");
     if (!(s || o) || ++i == argc || !*argv[i] || strlen(argv[i]) > 255) {
       fputs("Invalid argument (see --help)\n", stderr); return 2;
@@ -371,7 +371,7 @@ int main(int argc, char** argv) {
   }
   int flags = fcntl(STDOUT_FILENO, F_GETFL);
   if (flags >= 0) fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK);
-  Lab lab(source, sink);
+  Live live(source, sink);
   event("{\"type\":\"hello\",\"protocol\":1}");
   char line[100002];
   while (fgets(line, sizeof(line), stdin)) {
@@ -384,9 +384,9 @@ int main(int argc, char** argv) {
     json_object* cmd = json_tokener_parse_ex(tok, line, n);
     if (json_tokener_get_error(tok) != json_tokener_success || !cmd || json_object_get_type(cmd) != json_type_object)
       error("protocol", "Invalid JSON command");
-    else lab.command(cmd);
+    else live.command(cmd);
     if (cmd) json_object_put(cmd);
     json_tokener_free(tok);
   }
-  lab.stop();
+  live.stop();
 }

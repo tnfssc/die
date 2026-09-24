@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>dev.die.live-lab-audio</string>
-<key>CFBundleName</key><string>live-lab-audio</string>
-<key>NSMicrophoneUsageDescription</key><string>Live Lab uses the microphone for local full-duplex voice conversation.</string>
-</dict></plist>

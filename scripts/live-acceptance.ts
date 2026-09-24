@@ -3,21 +3,21 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { access } from "node:fs/promises";
 import { resolve } from "node:path";
-import { LiveLabAudio, audioEnvironment } from "../src/live-lab/audio";
-import { VoiceSession } from "../src/live-lab/session";
+import { LiveAudio, audioEnvironment } from "../src/live/audio";
+import { VoiceSession } from "../src/live/session";
 import { createDefaultLiveCredentialService } from "../src/live/credentials";
-import { PlaybackScheduler } from "../src/live-lab/playback";
+import { PlaybackScheduler } from "../src/live/playback";
 
 const paid = process.argv.includes("--provider");
 const args = process.argv.slice(2);
 if (
   process.platform !== "linux" ||
-  process.env.DIE_LIVE_LAB_ISOLATED !== "1" ||
+  process.env.DIE_LIVE_ISOLATED !== "1" ||
   args.some((a) => a !== "--provider") ||
-  (paid && process.env.DIE_RUN_LIVE_LAB_ACCEPTANCE !== "1")
+  (paid && process.env.DIE_RUN_LIVE_ACCEPTANCE !== "1")
 ) {
   console.error(
-    "Linux isolated wrapper required; paid mode additionally requires --provider and DIE_RUN_LIVE_LAB_ACCEPTANCE=1",
+    "Linux isolated wrapper required; paid mode additionally requires --provider and DIE_RUN_LIVE_ACCEPTANCE=1",
   );
   process.exit(2);
 }
@@ -173,14 +173,14 @@ async function checkRoutes(pid: number, mic: string, output: string) {
 async function main() {
   // No default route changes and no daemon auto-start: fail if daemon/tools are absent.
   await run("pactl", ["info"]);
-  const helper = resolve(process.env.DIE_LIVE_LAB_HELPER ?? "dist/live-lab-audio-linux");
+  const helper = resolve(process.env.DIE_LIVE_HELPER ?? "dist/live-audio-linux");
   await access(helper);
   const tag = "die_accept_" + process.pid + "_" + randomBytes(5).toString("hex");
   const mic = tag + "_input",
     output = tag + "_output";
   const modules: string[] = [];
   const children: ChildProcessWithoutNullStreams[] = [];
-  let audio: LiveLabAudio | undefined;
+  let audio: LiveAudio | undefined;
   let voice: VoiceSession | undefined;
   let playback: PlaybackScheduler | undefined;
   try {
@@ -206,8 +206,8 @@ async function main() {
       else outputParts.push(b);
     });
     // Always inject the REAL helper process; only this harness bypasses the controller's TTY guard.
-    env.LIVE_LAB_SOURCE = mic + ".monitor";
-    env.LIVE_LAB_SINK = output;
+    env.LIVE_SOURCE = mic + ".monitor";
+    env.LIVE_SINK = output;
     env.PULSE_SOURCE = mic + ".monitor";
     env.PULSE_SINK = output;
     const worker = listen(helper, ["--source", mic + ".monitor", "--sink", output]);
@@ -224,7 +224,7 @@ async function main() {
       completeAt = -1;
     const providerParts: Buffer[] = [];
     audio = await within(
-      LiveLabAudio.launch({
+      LiveAudio.launch({
         worker,
         callbacks: {
           capture: (b) => {

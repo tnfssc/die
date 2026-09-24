@@ -1,5 +1,5 @@
-#ifndef LIVE_LAB_AUDIO_CORE_H
-#define LIVE_LAB_AUDIO_CORE_H
+#ifndef LIVE_AUDIO_CORE_H
+#define LIVE_AUDIO_CORE_H
 #include <stdint.h>
 #define LL_PLAY_BLOCKS 50
 #define LL_CAPTURE_BLOCKS 16

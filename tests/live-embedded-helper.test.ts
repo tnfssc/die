@@ -1,16 +1,16 @@
-import { nativeHelperPlugin } from "../scripts/live-lab-helper-bundle";
+import { nativeHelperPlugin } from "../scripts/live-helper-bundle";
 import { spawnSync } from "node:child_process";
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, lstat, mkdir, symlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { extractNativeHelper, resolveEmbeddedNativeHelper } from "../src/live-lab/helper";
+import { extractNativeHelper, resolveEmbeddedNativeHelper } from "../src/live/helper";
 
 const bytes = Buffer.from("inert fake helper fixture"); // Never executed; no device or credentials.
 const hash = createHash("sha256").update(bytes).digest("hex");
 test("private per-launch extraction is verified and independently cleaned up", async () => {
-  const root = await mkdtemp(join(tmpdir(), "lab-helper-test-"));
+  const root = await mkdtemp(join(tmpdir(), "live-helper-test-"));
   try {
     const [first, second] = await Promise.all([
       extractNativeHelper(bytes, hash, root),
@@ -30,27 +30,27 @@ test("private per-launch extraction is verified and independently cleaned up", a
   }
 });
 test("reject corrupt content before writing and never follow a hostile shared cache symlink", async () => {
-  const root = await mkdtemp(join(tmpdir(), "lab-helper-test-"));
+  const root = await mkdtemp(join(tmpdir(), "live-helper-test-"));
   const victim = join(root, "victim");
   try {
     await mkdir(victim);
-    await writeFile(join(victim, "live-lab-audio"), "preserve");
-    await symlink(victim, join(root, "die-live-lab-cache"));
+    await writeFile(join(victim, "live-audio"), "preserve");
+    await symlink(victim, join(root, "die-live-cache"));
     await expect(extractNativeHelper(Buffer.from("corrupt"), hash, root)).rejects.toThrow("integrity");
     const fresh = await extractNativeHelper(bytes, hash, root);
     expect(fresh.path).not.toContain("cache/");
-    expect(await readFile(join(victim, "live-lab-audio"), "utf8")).toBe("preserve");
+    expect(await readFile(join(victim, "live-audio"), "utf8")).toBe("preserve");
     await fresh.cleanup();
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 test("platform gating leaves stable targets untouched and missing or tampered assets fail closed", async () => {
-  const missing = { path: join(tmpdir(), "nonexistent-die-live-lab"), sha256: hash };
+  const missing = { path: join(tmpdir(), "nonexistent-die-live"), sha256: hash };
   expect(await resolveEmbeddedNativeHelper("linux", "arm64", missing)).toBeUndefined();
   expect(await resolveEmbeddedNativeHelper("darwin", "x64", missing)).toBeUndefined();
   await expect(resolveEmbeddedNativeHelper("darwin", "arm64", missing)).rejects.toThrow();
-  const root = await mkdtemp(join(tmpdir(), "lab-helper-test-"));
+  const root = await mkdtemp(join(tmpdir(), "live-helper-test-"));
   try {
     const source = join(root, "payload");
     await writeFile(source, "corrupt");
@@ -63,7 +63,7 @@ test("platform gating leaves stable targets untouched and missing or tampered as
 });
 
 test("real compiled bundle extracts embedded bytes after original payload disappears", async () => {
-  const root = await mkdtemp(join(tmpdir(), "lab-helper-compiled-"));
+  const root = await mkdtemp(join(tmpdir(), "live-helper-compiled-"));
   try {
     // Only header-shaped inert bytes: never execute this synthetic Mach-O fixture.
     const payload = Buffer.alloc(64);
@@ -83,7 +83,7 @@ test("real compiled bundle extracts embedded bytes after original payload disapp
     await writeFile(
       entry,
       "import { resolveEmbeddedNativeHelper } from " +
-        JSON.stringify(join(import.meta.dir, "../src/live-lab/helper.ts")) +
+        JSON.stringify(join(import.meta.dir, "../src/live/helper.ts")) +
         ";\n" +
         'const h = await resolveEmbeddedNativeHelper("darwin", "arm64"); if (!h) throw new Error("missing"); try { console.log(Buffer.from(await Bun.file(h.path).bytes()).toString("hex")); } finally { await h.cleanup(); }',
     );
