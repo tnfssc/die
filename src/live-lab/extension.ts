@@ -20,6 +20,8 @@ const clean = (value: string) =>
 
 export interface LabDependencies {
   local(mode: string): boolean;
+  /** Local-only bounded test; result is a sanitized human-readable summary, never PCM. */
+  speakerCheck(args: { audio: LabDependencies["audio"]; signal: AbortSignal }): Promise<string>;
   key(signal: AbortSignal): Promise<string>;
   voice(
     callbacks: VoiceCallbacks,
@@ -33,6 +35,10 @@ export interface LabDependencies {
   ): Promise<Pick<LiveLabAudio, "start" | "play" | "flush" | "stop" | "close" | "diagnostics">>;
 }
 const defaults: LabDependencies = {
+  speakerCheck: async (args) => {
+    const { runSpeakerCheck } = await import("./speaker-check");
+    return runSpeakerCheck(args);
+  },
   local: (mode) =>
     (process.platform === "darwin" || process.platform === "linux") &&
     liveLocalOnly(mode, process.env, Boolean(process.stdin.isTTY && process.stdout.isTTY)),
@@ -52,6 +58,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
   let sequence = 0;
   let confirmation: number | undefined;
   let probe: AbortController | undefined;
+  let speakerProbe: AbortController | undefined;
   class Run {
     readonly id = ++sequence;
     readonly controller = new AbortController();
@@ -335,6 +342,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           "Start paid Google voice + microphone",
           "Stop voice lab",
           "Check mic/speakers (no provider; explicit consent)",
+          "Speaker check (plays test sound; no provider)",
         ]);
         action =
           choice === "Status"
@@ -345,6 +353,8 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
                 ? "stop"
                 : choice === "Check mic/speakers (no provider; explicit consent)"
                   ? "mic-check"
+                  : choice === "Speaker check (plays test sound; no provider)"
+                    ? "speaker-check"
                   : "";
       }
       if (action === "status") {
@@ -372,7 +382,11 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
                     " (configuration only, AEC unmeasured)"
                   : "unknown") +
                 ". Agent work is independent of voice."
-            : "Voice lab off. No key, network, microphone or helper opened. Agent work is unchanged.",
+            : speakerProbe
+              ? "Local speaker check running; provider not connected. /live-lab stop cancels the check; agent work is unchanged."
+              : probe
+                ? "Local mic check running; provider not connected. Agent work is unchanged."
+                : "Voice lab off. No key, network, microphone or helper opened. Agent work is unchanged.",
           "info",
         );
       } else if (action === "mic-check") {
@@ -380,7 +394,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           ctx.ui.notify("Mic check requires a local interactive terminal.", "warning");
           return;
         }
-        if (current || confirmation !== undefined || probe) {
+        if (current || confirmation !== undefined || probe || speakerProbe) {
           ctx.ui.notify("Voice lab is busy; stop it first.", "info");
           return;
         }
@@ -440,8 +454,48 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           }
           if (probe === controller) probe = undefined;
         }
+      } else if (action === "speaker-check") {
+        if (!deps.local(ctx.mode)) {
+          ctx.ui.notify("Speaker check requires a local interactive terminal.", "warning");
+          return;
+        }
+        if (current || confirmation !== undefined || probe || speakerProbe) {
+          ctx.ui.notify("Voice lab is busy; stop it first.", "info");
+          return;
+        }
+        const owner = ++sequence;
+        confirmation = owner;
+        let consent = false;
+        try {
+          consent = await ctx.ui.confirm(
+            "Local speaker and microphone measurement",
+            "Play a brief, low-level test sound through your selected/default output and listen briefly on the microphone? Stay quiet during the test. Lower speaker volume first. This is local-only: no Google key, network, provider, agent tools, recordings, files, waveforms or transcripts. PCM is kept only in memory and cleared after the test. The automatic result cannot prove barge-in or AEC quality.",
+          );
+        } catch {
+          /* dialog closed */
+        }
+        if (confirmation !== owner || owner !== sequence) return;
+        confirmation = undefined;
+        if (!consent) return;
+        const controller = new AbortController();
+        speakerProbe = controller;
+        try {
+          const summary = await deps.speakerCheck({ audio: deps.audio, signal: controller.signal });
+          if (!controller.signal.aborted && speakerProbe === controller)
+            ctx.ui.notify(
+              "Speaker check (local; provider not connected): " + clean(summary).slice(0, 800) +
+                " Native voice-processing configuration is not proof of cancellation. An automatic test cannot prove barge-in or AEC quality; verify echo-only and double-talk by ear on this route.",
+              "info",
+            );
+        } catch {
+          if (!controller.signal.aborted && speakerProbe === controller)
+            ctx.ui.notify("Speaker check failed locally. Check microphone permission and selected input/output, try /live-lab mic-check, then retry. Provider not connected; no agent work changed.", "warning");
+        } finally {
+          if (speakerProbe === controller) speakerProbe = undefined;
+        }
       } else if (action === "stop") {
         probe?.abort();
+        speakerProbe?.abort();
         sequence++;
         confirmation = undefined;
         current?.stop();
@@ -451,7 +505,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           ctx.ui.notify("Voice lab requires local interactive macOS or Linux CLI.", "warning");
           return;
         }
-        if (current || confirmation !== undefined || probe) {
+        if (current || confirmation !== undefined || probe || speakerProbe) {
           ctx.ui.notify("Voice lab already starting or running.", "info");
           return;
         }
@@ -474,19 +528,21 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
         current = run;
         run.render(true);
         await run.start();
-      } else if (action) ctx.ui.notify("Usage: /live-lab [start|stop|status|mic-check]", "info");
+      } else if (action) ctx.ui.notify("Usage: /live-lab [start|stop|status|mic-check|speaker-check]", "info");
     },
   });
   pi.on("session_shutdown", () => {
     sequence++;
     confirmation = undefined;
     probe?.abort();
+    speakerProbe?.abort();
     current?.stop();
   });
   pi.on("session_start", () => {
     sequence++;
     confirmation = undefined;
     probe?.abort();
+    speakerProbe?.abort();
     current?.stop();
   });
 }

@@ -46,6 +46,7 @@ function setup(overrides: Partial<LabDependencies> = {}) {
   };
   const deps: LabDependencies = {
     local: () => true,
+    speakerCheck: async () => "Test signal detected; compare mic/speaker route manually.",
     host: () => undefined,
     key: async () => {
       keyCalls++;
@@ -398,4 +399,73 @@ test("live orchestration keeps capture/playback active, forwards actual completi
   t.voice.onError?.({ code: "disconnected", message: "socket gone" });
   expect(detached).toBe(2);
   expect(stopped).toBe(0);
+});
+
+
+describe("local speaker-check wiring", () => {
+  test("consent and local gate precede runner; never calls key, provider, host or audio on decline", async () => {
+    let runs = 0;
+    const t = setup({ speakerCheck: async () => { runs++; return "quiet"; } });
+    t.decline();
+    await t.run("speaker-check");
+    expect([runs, t.launches, t.keyCalls]).toEqual([0, 0, 0]);
+    (t.ctx as any).mode = "rpc";
+    await t.run("speaker-check");
+    expect(runs).toBe(0);
+  });
+  test("summary is bounded and provider disconnected; no agent job or auth path", async () => {
+    let runs = 0;
+    const t = setup({ speakerCheck: async ({ signal }) => {
+      expect(signal.aborted).toBe(false);
+      runs++;
+      return "Residual high; check selected output and microphone";
+    } });
+    await t.run("speaker-check");
+    expect(runs).toBe(1);
+    expect([t.launches, t.keyCalls]).toEqual([0, 0]);
+    expect(t.notices.at(-1)).toContain("Residual high");
+    expect(t.notices.at(-1)).toContain("provider not connected");
+    expect(t.notices.at(-1)).toContain("cannot prove barge-in or AEC");
+  });
+  test("stop aborts active measurement; prevents stale result and start/mic overlap", async () => {
+    let release!: (value: string) => void;
+    let signal!: AbortSignal;
+    const t = setup({ speakerCheck: ({ signal: s }) => {
+      signal = s;
+      return new Promise<string>((resolve) => { release = resolve; });
+    } });
+    const pending = t.run("speaker-check");
+    await tick();
+    await t.run("start");
+    await t.run("mic-check");
+    await t.run("speaker-check");
+    expect([t.launches, t.keyCalls]).toEqual([0, 0]);
+    await t.run("stop");
+    expect(signal.aborted).toBe(true);
+    release("stale result");
+    await pending;
+    expect(t.notices.join(" ")).not.toContain("stale result");
+  });
+  test("shutdown invalidates pending consent and session change aborts active runner", async () => {
+    const t = setup();
+    let accept!: (v: boolean) => void;
+    t.ctx.ui.confirm = () => new Promise<boolean>((resolve) => { accept = resolve; });
+    const pending = t.run("speaker-check");
+    await tick();
+    t.shutdown();
+    accept(true);
+    await pending;
+    expect(t.launches).toBe(0);
+    let seen!: AbortSignal;
+    const x = setup({ speakerCheck: async ({ signal }) => { seen = signal; x.sessionStart(); return "late"; } });
+    await x.run("speaker-check");
+    expect(seen.aborted).toBe(true);
+    expect(x.notices.join(" ")).not.toContain("late");
+  });
+  test("runner exceptions are not leaked to UI", async () => {
+    const t = setup({ speakerCheck: async () => { throw new Error("secret waveform"); } });
+    await t.run("speaker-check");
+    expect(t.notices.at(-1)).toContain("failed locally");
+    expect(t.notices.join(" ")).not.toContain("secret waveform");
+  });
 });

@@ -78,3 +78,9 @@ bun run install:local
 ## Resource limits
 
 Die limits stored job output, execute capture, and persistent session-body caching. It does not delete original session history. See [resource limits](./wisdom/resources/resource-limits.md) for defaults, truncation semantics, storage ownership, and web shutdown behavior.
+
+## Local speaker check (experimental CLI)
+
+In a local interactive macOS/Linux terminal, run `/live-lab speaker-check`. This is separate from `/live-lab start` (paid provider voice) and `/live-lab mic-check` (route/permission probe). It asks for **explicit consent before opening audio devices**, plays a brief low-level test signal through the selected/default output, and listens briefly on the microphone. Lower your speaker volume and **stay quiet** while it runs. `/live-lab stop` cancels the check; it does not cancel native agent work or background jobs. Checks cannot overlap voice start or the mic probe.
+
+The check is local only: no provider connection, Google key, network, agent tools, or session calls. It keeps PCM only in memory and clears it afterward; no files, audio logs, waveforms or transcripts are produced. The summary reports bounded acoustic observations and native voice-processing configuration, with provider diagnostics marked **not connected**. An automatic test cannot prove AEC quality or real-world barge-in. Verify echo-only rejection and double-talk on your actual speaker/microphone route before interpreting an interruption as a provider or cancellation defect. For permission/route errors first run `/live-lab mic-check`; for helper launch errors try `die --live-lab-self-test` (opens no devices).
