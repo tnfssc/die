@@ -12,6 +12,12 @@ Parent integration worktree: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_e
 
 - Replacement focused reference audit: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_ed4e88a2-a86675007a5e-task_7680d571; branch die/focused-upstream-source-comparison-7680d571.
 
+## Strongest graph-specific hypothesis (not yet a correction)
+
+[Focused WebRTC engine audit](macos-speaker-reference-audit.md) pins webrtc-sdk/webrtc ba469aa2093ba950066258ca0a59a6fbd1295582. audio_engine_device.mm L2553-L2555 explicitly shows Mac input as 9-channel; L2591-L2597 says VoiceProcessingIO channels must be reduced to <=2 and constructs mono. L2700-L2729 connects inputNode → mono mixer → sink. Die instead negotiates its tap with the entire advertised inputNode output format, then discards all except channel 0. Selecting channel 0 after capture is not equivalent to configuring a mono engine capture bus. This is the strongest concrete differential, but the actual user route channel count is unknown and the upstream comment is not a proof of Apple tap semantics.
+
+Next narrow experiment: add bounded native ready metadata for negotiated input/output channel counts/layout tags, both I/O processing flags, and route IDs; obtain native Mac compile before use. If built-in input exposes >2 channels, compare an explicitly mono-negotiated input capture branch against current tap while retaining the same render graph and uninterrupted capture. Copying LiveKit’s entire engine/manual rendering machinery is unnecessary. Treat a mono branch as an A/B hypothesis until it preserves startup/headphones and demonstrates echo-only rejection plus double-talk. Do not claim an AEC fix solely from mono/flag state. This candidate intentionally makes no unvalidated Swift graph change.
+
 ## Concrete production-native comparison
 
 See [native Telegram source chain](macos-speaker-telegram-source.md): pinned app → tgcalls → tg_owt. Unlike a flag-only comparison, this traces actual mixed far-end 10 ms frames into ProcessReverseAudioFrame, capture processing with stream delay, and Mac device timing passed via SetVQEData. This is a software APM alternative, not proof that Apple same-engine processing is wired incorrectly.
