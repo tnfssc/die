@@ -1,3 +1,5 @@
+Current integrated route, tests and worktree paths: [scoped execute controls](scoped-execute-controls.md). Worker IPC now exposes live.stop; stopWork is available separately for an explicit work-stop request.
+
 # Live self-stop (execute host lifecycle)
 
 The configured agent can call `live.stop()` from `execute` to end its own active voice session. This is a host action over the same private execute IPC bridge and extension event bus used for other current-session host work. It is not a provider tool or a Realtime protocol event. It needs no new permission prompt: the current configured agent can already stop Live from the terminal. The host checks the captured session ID, file and branch leaf against the active Live run, so an old tool call cannot close another session's voice.

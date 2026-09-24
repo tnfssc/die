@@ -857,15 +857,15 @@ export class JobService {
           }
         this.#refresh();
         return {
-          jobs: results,
-          discoveryComplete: discoveryError === undefined,
           outcome:
             discoveryError || results.some((job) => job.outcome === "error")
               ? "partial"
               : results.some((job) => job.outcome === "pending")
                 ? "pending"
                 : "acknowledged",
+          discoveryComplete: discoveryError === undefined,
           ...(discoveryError ? { discoveryError } : {}),
+          jobs: results,
         };
       }
       case "jobs.stop": {

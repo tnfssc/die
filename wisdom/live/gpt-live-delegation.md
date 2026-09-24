@@ -1,3 +1,5 @@
+Current controls: [scoped execute controls](scoped-execute-controls.md). Historical cancellation restrictions below are superseded by contextual steering to the same configured agent, using existing execute helpers and the existing trusted job confirmation. No provisional fragment directly authorizes cancellation.
+
 # GPT-Live delegation bridge (context-aware host contract)
 
 Integration status: wired in extension; see [implementation and parent-review blocker](gpt-live-implementation.md). The original isolated-worker evidence below is historical.
