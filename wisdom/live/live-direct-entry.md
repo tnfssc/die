@@ -6,7 +6,7 @@ Runtime slice; parent integrates packaging and reviews the whole terminal experi
 
 ## User contract
 
-The user says bare /live should enter voice. The explicit command authorizes that session; a second Start confirmation and an action picker add no authority. /live and /live start now start directly with configured Google API-key auth. No persistent consent flag exists.
+The user says bare /live should enter voice. The explicit command authorizes that session; a second Start confirmation and an action picker add no authority. The parent follow-up makes bare /live toggle: start when idle, stop when active, cancel while starting or in setup. /live start is start-only; /live stop is stop-only. Configured Google API-key auth starts directly. No persistent consent flag exists.
 
 /live setup is configuration only. Existing auth offers Start voice / Done; choosing Start voice is the explicit start action. Missing auth gives secure-file instructions, Import ~/.die/live.env only when the file exists, Recheck, and Cancel. Import itself is the explicit migration action; it never starts voice. Cancel/dismiss stays offline. OAuth is preserved and cannot be imported over. No ordinary input or transcript receives secrets. The existing credentials.ts and its conditional locked CredentialStore.modify migration are unchanged.
 
@@ -36,3 +36,5 @@ Provider acceptance is still opt-in via DIE_RUN_GEMINI_LIVE_ACCEPTANCE=1. It now
 Related evidence: live-lab-orchestration.md, live-lab-mac-startup-diagnostics.md, live-lab-playback.md, cli-live-onboarding.md. This note supersedes their old entry names and extra confirmation/menu UX, not their runtime safety lessons.
 
 Values unchanged: finish the real flow, explicit authority, one lifecycle owner, preserve credentials/work, and honest proof already cover this change. Do not add a consent preference to solve a redundant-dialog problem.
+
+Parent added action autocomplete and toggle race tests after this worker finished. See [promotion integration](native-live-promotion.md) for whole-tree proof and current state.

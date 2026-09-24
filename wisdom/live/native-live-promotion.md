@@ -133,3 +133,55 @@ Running full suite task_5bd9e1d4 with SHELL=/bin/sh for test-owned commands,
 log /tmp/die-native-live-full-tests.log. Running compiled isolated-home TUI
 onboarding smoke task_656db4b9. No devices/provider/network auth calls intended.
 Installed user binary still pre-promotion playback candidate until checks pass.
+
+## Final review and validation
+
+Read-only review task_55e2666c completed from worktree
+/Users/sharath/.die/worktrees/die-f528e86af6b5-task_55e2666c,
+branch die/review-promoted-live-ux-and-lifecycle-55e2666c.
+Two findings addressed:
+- Pending-setup shutdown/session-change tests previously toggled off before
+  exercising the named event. They now attempt explicit concurrent start and
+  independently test toggle, stop, shutdown and session change.
+- Linux releases do not bundle live-audio-linux. README and PRODUCT now
+  explicitly scope bundled voice to macOS Apple Silicon. Old Linux SoX path
+  is removed; native Linux remains source/developer-only. Delivering a normal
+  Linux helper remains open. Do not claim Linux Live release readiness.
+  No Linux acoustic investigation was resumed.
+
+Final focused run task_f7097a86:163 pass,1 paid-provider skip,0 fail across22
+files (21005 assertions). Includes Live runtime/auth/tools/packaging, installer,
+release workflows and independent cancellation tests. Typecheck passed.
+Compiled isolated-home onboarding AND argument-completion smoke passed.
+Parent inspected actual tmux-rendered import/ready/completion screens: only
+needed choices, no old subtitles or paid-test menu, no key rendered. Offline
+fixture startup warnings about absent tools/models are not Live UI content.
+No real keys, devices or provider calls were used. Native build and embedded
+self-test passed; format and git diff --check passed.
+
+Broad Mac run first had866 pass/18 skip/25 fail. Rerun used a canonical
+TMPDIR (/private/var rather than symlink /var), child-only umask022 and
+SHELL=/bin/sh:883 pass/18 skip/8 fail across909 tests. This corrects fixture
+environment without changing host settings or weakening product guards.
+Remaining8 failures are compiled self-update, one execute fixture using
+/bin/true absent on macOS, and6 Linux-only lifecycle/ownership recorder cases.
+Full result is NOT green. To distinguish regressions, parent built baseline
+ffbccf3 in stopped worker worktree
+/Users/sharath/.die/worktrees/die-f528e86af6b5-task_d51c2ba5, using a local
+node_modules symlink and reused web assets. The SAME8 tests failed on baseline
+(65 pass/8 fail across4 affected files). First baseline attempt lacked dist/die
+and had extra failures; only the built-baseline rerun is comparable.
+Logs: /tmp/die-native-live-full-tests.log,
+/tmp/die-native-live-full-canonical.log,
+/tmp/die-live-baseline-build.log, /tmp/die-live-baseline-mac-built.log.
+These are temporary local logs; counts and limits above are the durable proof.
+
+Installation task_a578cbc7 uses existing staged verifier and atomic installer
+with DIE_SKIP_BUILD=1, then installed --version/--live-self-test and hashes.
+Check completion before reporting final installed checksum. Local version
+remains0.9.1. No normal release/tag/push has happened; release remains separate.
+
+Wisdom updated for new UX, helper paths, packaging, proof and Linux limit.
+Values unchanged: existing minimal design, platform proof, clear limits and
+safe ownership lessons already cover this work. Physical /live toggle and
+speaker behavior after rename still need the user's next run.

@@ -81,6 +81,8 @@ Die limits stored job output, execute capture, and persistent session-body cachi
 
 ## Live voice
 
+The native helper is included in macOS Apple Silicon builds. Linux Live currently requires a separately built helper; Linux releases do not bundle it.
+
 Type `/live` in the local terminal to start talking; type it again to stop. Live uses Google Gemini for voice and your configured die agent for work. Native full-duplex audio lets you interrupt naturally. Starting Live sends audio to Google and may incur API charges.
 
 If a Google API key is missing, Live helps you set it up. Use `/live setup` to revisit setup. Keys stay out of chat. `/live stop` ends voice, not your agent’s jobs.

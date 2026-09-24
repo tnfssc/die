@@ -95,6 +95,15 @@ try {
   assert.ok(!frame.includes("Test paid connection"));
   assert.ok(!frame.includes(fakeKey));
 
+  // Dismiss setup, then inspect argument suggestions without executing voice.
+  key("Escape");
+  await Bun.sleep(100);
+  run(["send-keys", "-t", target, "-l", "/live s"]);
+  frame = await waitFor("speaker-check");
+  for (const action of ["start", "stop", "setup", "status", "speaker-check"])
+    assert.match(frame, new RegExp("(?:→ |    )" + action + "(?:\\n|$)"));
+  assert.ok(!frame.includes("live-lab"));
+
   const authPath = join(home, ".die", "agent", "auth.json");
   const auth = JSON.parse(await readFile(authPath, "utf8"));
   assert.deepEqual(auth, { google: { type: "api_key", key: fakeKey } });

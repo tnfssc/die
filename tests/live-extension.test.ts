@@ -683,7 +683,7 @@ describe("direct entry and focused setup", () => {
     await t.run("stop");
   });
 
-  for (const cancel of ["stop", "shutdown", "sessionStart"] as const) {
+  for (const cancel of ["toggle", "stop", "shutdown", "sessionStart"] as const) {
     test(cancel + " invalidates a pending setup start choice", async () => {
       const t = setup();
       let choose!: (value: string) => void;
@@ -693,9 +693,10 @@ describe("direct entry and focused setup", () => {
         });
       const opening = t.run("setup");
       await tick();
-      await t.run(""); // Concurrent entry must not acquire authority.
+      await t.run("start"); // Explicit concurrent start must not acquire authority.
       expect(t.launches).toBe(0);
-      if (cancel === "stop") await t.run("stop");
+      if (cancel === "toggle") await t.run("");
+      else if (cancel === "stop") await t.run("stop");
       else t[cancel]();
       choose("Start voice");
       await opening;

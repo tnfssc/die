@@ -2,11 +2,14 @@
 
 > This document records the product direction and decisions stated by the user in this project conversation. Those statements are the source of truth. Implementation details may support them, but must not silently become product requirements.
 
-## Live voice (2026-09-24, promotion in progress)
+## Live voice (2026-09-24, local build)
 
 Live uses the native full-duplex implementation proven useful by the user's
 Mac speaker trial. It replaces the old SoX path and the separate /live-lab
 command. The user asked for one experience, not two names for the same work.
+The bundled voice path is currently macOS Apple Silicon. Linux's old SoX
+path is removed too, but its native helper is not bundled in releases yet;
+Linux packaging remains open, not claimed as delivered by this promotion.
 
 Bare /live toggles voice: start when idle, stop when active, cancel when
 connecting. /live start and /live stop are explicit alternatives. Missing auth opens a focused
