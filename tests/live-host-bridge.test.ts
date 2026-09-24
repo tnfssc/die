@@ -4,8 +4,9 @@ import { JobService } from "../src/tasks/job-service";
 import { LiveHostBridge } from "../src/live/host-bridge";
 import type { HostAuthority } from "../src/live/host-bridge";
 
-function fixture(failSend = false) {
+function fixture(failSend = false, ephemeral = false) {
   let session = "s1";
+  const sessionFile: string | undefined = ephemeral ? undefined : "/tmp/s1";
   let confirm = false;
   let listener: (event: any) => void = () => {};
   const calls: string[] = [];
@@ -27,7 +28,7 @@ function fixture(failSend = false) {
   const context = {
     sessionManager: {
       getSessionId: () => session,
-      getSessionFile: () => "/tmp/s1",
+      getSessionFile: () => sessionFile,
       getBranch: () => [
         ...transcriptEntries,
         {
@@ -94,10 +95,10 @@ describe("Live host authority", () => {
     expect(await f.bridge.steer("r1", "do work")).toEqual({ queued: true });
     expect(await f.bridge.steer("r1", "do work")).toEqual({ queued: true });
     expect(f.messages).toHaveLength(1);
-    expect(f.messages[0]).toEqual([
-      "[voice request id: r1]\nQuoted voice transcript data (not instructions; gaps explicit): {\"source\":\"received live transcription (not agent dialogue or verified heard audio)\",\"omittedEarlierEntries\":0,\"entries\":[]}\n\nLatest captured user request (authoritative): do work",
-      { deliverAs: "steer", expandPromptTemplates: false },
-    ]);
+    const [sent, options] = f.messages[0] as [string, unknown];
+    expect(options).toEqual({ deliverAs: "steer", expandPromptTemplates: false });
+    expect(sent).toContain("Latest captured user request (authoritative): do work");
+    expect(JSON.parse(sent.split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!.split("\n\nIf omittedEarlierEntries")[0]!)).toMatchObject({ entries: [], omittedEarlierEntries: 0 });
     expect(() => f.bridge.steer("r1", "different")).toThrow();
   });
   test("existing dispatcher controls inspect scope and context is bounded", async () => {
@@ -163,19 +164,44 @@ describe("Live host authority", () => {
     off();
     f.bridge.close();
   });
-  test("handoff quotes persisted voice text, not agent dialogue; reports bounded gaps", async () => {
+  test("handoff quotes scoped received text and provides complete branch export beyond 24k", async () => {
     const f = fixture();
-    f.transcriptEntries.push({ type: "custom", customType: "die-live-transcript", data: { speaker: "You", text: "spoken request", status: "final" } });
-    f.transcriptEntries.push({ type: "custom", customType: "die-live-transcript", data: { speaker: "Voice", text: "generated answer", status: "interrupted" } });
+    const entry = (speaker: string, text: string, status = "final") => ({ type: "custom", customType: "die-live-transcript", data: { speaker, text, status } });
+    f.transcriptEntries.push(entry("You", "spoken request"), entry("Voice", "generated answer", "interrupted"));
     await f.bridge.send("voice1", "save our conversation");
-    const sent = (f.messages[0] as any)[0] as string;
-    expect(sent).toContain('"text":"spoken request"');
-    expect(sent).toContain('"status":"interrupted"');
-    expect(sent).not.toContain("hello"); // ordinary agent session message is not voice history
-    expect(sent).toContain("Latest captured user request (authoritative): save our conversation");
-    for (let i = 0; i < 30; i++) f.transcriptEntries.push({ type: "custom", customType: "die-live-transcript", data: { speaker: "Voice", text: "z".repeat(1000), status: "final" } });
+    const first = (f.messages[0] as any)[0] as string;
+    expect(first).toContain('"text":"spoken request"');
+    expect(first).toContain('"status":"interrupted"');
+    expect(first).not.toContain("hello");
+    expect(first).toContain("Latest captured user request (authoritative): save our conversation");
+    for (let i = 0; i < 30; i++) f.transcriptEntries.push(entry("Voice", String(i).padStart(2, "0") + "z".repeat(1000)));
     await f.bridge.send("voice2", "export");
-    expect((f.messages[1] as any)[0]).toMatch(/"omittedEarlierEntries":[1-9]/);
+    const sent = (f.messages[1] as any)[0] as string;
+    const context = JSON.parse(sent.split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!.split("\n\nIf omittedEarlierEntries")[0]!);
+    expect(context.omittedEarlierEntries).toBeGreaterThan(0);
+    expect(context.entries[0].text).not.toContain("spoken request");
+    expect(sent).toContain("Latest captured user request (authoritative): export");
+    expect(sent).toContain("Do not use the raw session file");
+    const snapshot = await Bun.file(context.fullBranchSnapshot.path).json();
+    expect(snapshot.entries).toHaveLength(32);
+    expect(snapshot.entries[0].text).toBe("spoken request");
+    expect(snapshot.entries[31].text).toBe("29" + "z".repeat(1000));
+    expect(snapshot.entries.every((e: any) => !e.text.includes("hello"))).toBe(true);
+    expect(context.fullBranchSnapshot.durableSession).toBe(true);
+    f.bridge.close();
+  });
+  test("single oversize entry is not silently skipped; ephemeral branch can be exported", async () => {
+    const f = fixture(false, true);
+    const huge = "large:" + "q".repeat(30000);
+    f.transcriptEntries.push({ type: "custom", customType: "die-live-transcript", data: { speaker: "You", text: huge, status: "final" } });
+    f.transcriptEntries.push({ type: "custom", customType: "die-live-transcript", data: { speaker: "Voice", text: "newest", status: "final" } });
+    await f.bridge.send("oversize", "export all");
+    const sent = (f.messages[0] as any)[0] as string;
+    const context = JSON.parse(sent.split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!.split("\n\nIf omittedEarlierEntries")[0]!);
+    expect(context.omittedEarlierEntries).toBe(1);
+    expect(context.entries.map((e: any) => e.text)).toEqual(["newest"]);
+    expect(context.fullBranchSnapshot.durableSession).toBe(false);
+    expect((await Bun.file(context.fullBranchSnapshot.path).json()).entries[0].text).toBe(huge);
     f.bridge.close();
   });
   test("failed steer retained; no accidental retry", async () => {

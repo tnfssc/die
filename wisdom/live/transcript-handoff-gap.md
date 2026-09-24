@@ -72,3 +72,24 @@ Both still running. Parent must integrate, align prompt with transcript access,
 run full Live suite and terminal review, build/install only after validation.
 No new build installed. Values unchanged: truthful history and usable UI
 already cover this work.
+
+## Scoped full-text retrieval (2026-09-24 review)
+
+A 24k-character handoff tail is not a complete export. Host bridge now walks only
+sessionManager.getBranch() (current ancestry, not the raw session JSONL with
+possible sibling branches), extracts validated received-text custom entries, and
+when the tail omits any entries writes a private (0700 directory, 0600 file)
+JSON branch snapshot under the OS temp directory. The handoff names that path
+and gives the configured agent exact Bun.file(path).json() retrieval instructions.
+The snapshot is a point-in-time copy, not audio or verified heard speech; partial,
+turn-boundary and interrupted statuses remain visible. Oversize valid entries are
+in the snapshot, never silently skipped. Malformed entries are counted as
+unreadable; no completeness claim when count is nonzero. The snapshot works for
+an ephemeral session without a session file, but that does not make the session
+itself durable. Temp snapshots remain after Live closes so already queued agent
+requests can read them; OS temp retention applies. Do not open raw session files
+as replacement: they may hold sibling branches. Tests exercise 32 entries over
+24k and a single oversize entry, plus host-access handoff envelope.
+
+Values unchanged: truthful representation (#8), safe scope (#6), and bounded
+context with recoverable originals (#5) already state the relevant lessons.
