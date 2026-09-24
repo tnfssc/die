@@ -22,7 +22,7 @@ export function qualifies(run: DryRun, repo: string, sha: string, workflowId: nu
     run.workflow_id === workflowId &&
     (run.path === ".github/workflows/release.yml" ||
       run.path === `${repo}/.github/workflows/release.yml@refs/heads/develop`) &&
-    run.event === "workflow_dispatch" &&
+    run.event === "push" &&
     run.head_branch === "develop" &&
     run.head_sha === sha &&
     run.status === "completed" &&
@@ -62,7 +62,7 @@ export async function findDryRun(
     const workflow = await get<{ id: number; path: string }>(`${base}/workflows/release.yml`);
     if (!Number.isSafeInteger(workflow.id) || workflow.path !== ".github/workflows/release.yml") return;
     const list = await get<{ workflow_runs: DryRun[] }>(
-      `${base}/workflows/${workflow.id}/runs?event=workflow_dispatch&branch=develop&head_sha=${sha}&per_page=100`,
+      `${base}/workflows/${workflow.id}/runs?event=push&branch=develop&head_sha=${sha}&per_page=100`,
     );
     for (const run of list.workflow_runs ?? []) {
       if (!qualifies(run, repo, sha, workflow.id) || !Number.isSafeInteger(run.id)) continue;

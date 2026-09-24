@@ -8,7 +8,7 @@ const run = {
   id: 123,
   workflow_id: 55,
   path: repo + "/.github/workflows/release.yml@refs/heads/develop",
-  event: "workflow_dispatch",
+  event: "push",
   head_branch: "develop",
   head_sha: sha,
   status: "completed",
@@ -30,14 +30,14 @@ const api =
   };
 
 describe("release dry run reuse", () => {
-  test("accepts completed same-repository dispatch at exact SHA with one live artifact", async () => {
+  test("accepts completed same-repository develop push at exact SHA with one live artifact", async () => {
     expect(qualifies(run, repo, sha, 55)).toBe(true);
     expect(await findDryRun(repo, sha, "token", api())).toBe(123);
   });
-  test("rejects PR, push, fork, wrong SHA/branch/workflow, pending and failed run", async () => {
+  test("rejects PR, dispatch, fork, wrong SHA/branch/workflow, pending and failed run", async () => {
     for (const change of [
       { event: "pull_request" },
-      { event: "push" },
+      { event: "workflow_dispatch" },
       { head_repository: { full_name: "attacker/die" } },
       { repository: { full_name: "attacker/die" } },
       { head_sha: "b".repeat(40) },

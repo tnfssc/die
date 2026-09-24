@@ -76,14 +76,14 @@ describe("release automation", () => {
     expect(workflow).toContain('- "v*"');
     expect(workflow).not.toContain("workflow_dispatch:");
     expect(workflow).toContain("!contains(github.ref_name, '-')");
-    expect(workflow).toContain("needs: mac-helper");
+    expect(workflow).toContain("needs: [reuse-check, mac-helper]");
     expect(workflow).toContain("scripts/build-live-lab-helper.sh");
     expect(workflow).toContain("Mach-O 64-bit (executable arm64|arm64 executable)");
     expect(workflow).toContain("-fsanitize=address,undefined");
     expect(workflow).toContain("actions/download-artifact@v4");
     expect(workflow).toContain("--live-lab-helper=./artifacts/release/mac-helper/live-lab-audio");
     expect(workflow).toContain("stable-release-assets");
-    expect(workflow).toContain("needs: [release, mac-release-smoke]");
+    expect(workflow).toContain("needs: [release, reuse-assets, mac-release-smoke]");
     expect(workflow).toContain("bun scripts/verify-v071-update.ts dist/release/die-darwin-arm64");
     expect(workflow).toContain("--live-lab-self-test");
     expect(workflow).toContain("permissions:\n  contents: read");
@@ -138,9 +138,14 @@ describe("release automation", () => {
     };
     expect(Object.keys(workflow.on)).toEqual(["push"]);
     expect(workflow.on.push).toEqual({ branches: ["develop"], tags: ["v*"] });
-    expect(workflow.jobs.publish!.if).toBe("${{ startsWith(github.ref, 'refs/tags/v') }}");
-    expect(workflow.jobs.publish!.needs).toEqual(["release", "mac-release-smoke"]);
-    expect(workflow.jobs["mac-release-smoke"]!.needs).toBe("release");
+    expect(workflow.jobs.publish!.if).toBe(
+      "${{ always() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.mac-release-smoke.result == 'success' && (needs.release.result == 'success' || needs.reuse-assets.result == 'success') }}",
+    );
+    expect(workflow.jobs.publish!.needs).toEqual(["release", "reuse-assets", "mac-release-smoke"]);
+    expect(workflow.jobs["mac-release-smoke"]!.needs).toEqual(["release", "reuse-assets"]);
+    expect(workflow.jobs["mac-release-smoke"]!.if).toContain(
+      "needs.release.result == 'success' || needs.reuse-assets.result == 'success'",
+    );
     expect(workflow.jobs.release!.permissions?.contents).not.toBe("write");
     expect(workflow.jobs.publish!.permissions?.contents).toBe("write");
     const macCommands = workflow.jobs["mac-release-smoke"]!.steps.map((step) => step.run ?? "").join("\n");

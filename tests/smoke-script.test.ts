@@ -25,9 +25,9 @@ async function fixture() {
     { mode: 0o755 },
   );
   const run = (args: string[] = []) =>
-    Bun.spawnSync(["sh", script, ...args], {
+    Bun.spawnSync(["/bin/sh", script, ...args], {
       cwd: root,
-      env: { ...process.env, PATH: join(root, "bin") + ":" + process.env.PATH },
+      env: { ...process.env, PATH: join(root, "bin") + ":/usr/bin:/bin" },
       stdout: "pipe",
       stderr: "pipe",
     });
