@@ -31,6 +31,9 @@ export class LiveHostBridge {
   private readonly sessionId: string | undefined;
   private readonly sessionFile: string | undefined;
   private closed = false;
+  private watcher?: ReturnType<typeof setInterval>;
+  private polling = false;
+  private readonly nativeActive = new Map<string, string>();
   constructor(private readonly host: HostAuthority) {
     this.owner = host.context.sessionManager;
     this.sessionId = host.context.sessionManager.getSessionId();
@@ -182,18 +185,64 @@ export class LiveHostBridge {
         .list()
         .slice(0, 20)
         .map(({ id, status, kind }) => ({ id, status, kind })),
-      nativeUpdates: "Native job events are not available in the local TUI; use list/inspect to refresh.",
+      nativeUpdates: "Native status is refreshed via bounded scoped jobs.list/inspect while subscribed; only observed transitions are reported.",
     };
+  }
+  /** Scoped bounded watcher; JobService owns native authorization. */
+  async refreshJobs(): Promise<void> {
+    if (this.polling || !this.active() || !this.listeners.size) return;
+    this.polling = true;
+    try {
+      const page = await this.list({ count: 20 }) as { jobs?: { id: string; status: string }[] };
+      if (!this.active()) return;
+      const local = new Set(this.host.manager.list().map((job) => job.id));
+      for (const job of (page.jobs ?? []).slice(0, 20)) {
+        if (!job || typeof job.id !== "string" || typeof job.status !== "string" || local.has(job.id)) continue;
+        const previous = this.nativeActive.get(job.id);
+        if (job.status === "running" || job.status === "pending") {
+          if (this.nativeActive.size < 20 || previous !== undefined) this.nativeActive.set(job.id, job.status);
+        } else if (previous !== undefined) {
+          this.nativeActive.delete(job.id);
+          this.observe({ type: "completed", id: job.id, status: job.status });
+        }
+      }
+      // Inspect only known active jobs hidden by the first page.
+      for (const id of [...this.nativeActive.keys()]) {
+        if ((page.jobs ?? []).some((job) => job.id === id)) continue;
+        const job = await this.inspect(id) as { status?: string };
+        if (!this.active()) return;
+        if (job.status && job.status !== "running" && job.status !== "pending") {
+          this.nativeActive.delete(id);
+          this.observe({ type: "completed", id, status: job.status });
+        }
+      }
+    } catch {
+      // Backend failure is not completion.
+    } finally {
+      this.polling = false;
+    }
   }
   subscribe(listener: (update: HostUpdate) => void): () => void {
     this.assertActive();
     this.listeners.add(listener);
+    if (!this.watcher) {
+      this.watcher = setInterval(() => void this.refreshJobs(), 5000);
+      this.watcher.unref?.();
+    }
     return () => {
       this.listeners.delete(listener);
+      if (!this.listeners.size && this.watcher) {
+        clearInterval(this.watcher);
+        this.watcher = undefined;
+        this.nativeActive.clear();
+      }
     };
   }
   close(): void {
     this.closed = true;
+    if (this.watcher) clearInterval(this.watcher);
+    this.watcher = undefined;
+    this.nativeActive.clear();
     this.unsubscribe();
     this.listeners.clear();
     this.requests.clear();

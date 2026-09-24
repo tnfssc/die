@@ -370,6 +370,7 @@ test("live orchestration keeps capture/playback active, forwards actual completi
   await t.run("start");
   expect(t.status.at(-1)).toContain("Agent configured/coding-model");
   expect(t.contexts[0]).toContain("existing session");
+  t.voice.onInputTranscript?.({ text: "work", finished: true });
   const pending = t.orchestration!.execute({ name: "agent_send", args: { requestId: "same", text: "work" } });
   t.capture.capture?.(Buffer.alloc(640));
   t.voice.onAudio?.(Buffer.alloc(960).toString("base64"), 0);
@@ -388,6 +389,7 @@ test("live orchestration keeps capture/playback active, forwards actual completi
   await t.run("start");
   expect(subscribed).toBe(2);
   expect(t.contexts.at(-1)).toContain("same");
+  t.voice.onInputTranscript?.({ text: "work", finished: true });
   await t.orchestration!.execute({ name: "agent_send", args: { requestId: "same", text: "work" } });
   expect(sent).toBe(1);
   t.voice.onError?.({ code: "disconnected", message: "socket gone" });

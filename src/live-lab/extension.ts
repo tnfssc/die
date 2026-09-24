@@ -56,6 +56,8 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
     readonly id = ++sequence;
     readonly controller = new AbortController();
     voice?: LabVoice;
+    orchestration?: VoiceOrchestration;
+    private inputUtterance = "";
     host?: VoiceHost;
     unsubscribeHost?: () => void;
     audio?: LabAudio;
@@ -248,6 +250,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
         const key = await deps.key(this.controller.signal);
         if (!this.alive) return;
         this.host = deps.host(pi, this.ctx);
+        this.orchestration = this.host ? createOrchestration(this.host) : undefined;
         this.voice = deps.voice(
           {
             onAudio: (pcm, epoch) => this.output(pcm, epoch),
@@ -261,11 +264,19 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
                 this.render();
               }
             },
-            onInputTranscript: (t) => this.transcript("You", t.text, t.finished),
+            onInputTranscript: (t) => {
+              if (!this.alive) return;
+              this.inputUtterance = (this.inputUtterance + t.text).slice(0, 4001);
+              if (t.finished) {
+                this.orchestration?.userTranscript(this.inputUtterance);
+                this.inputUtterance = "";
+              }
+              this.transcript("You", t.text, t.finished);
+            },
             onOutputTranscript: (t) => this.transcript("Voice", t.text, t.finished),
             onError: (e) => this.fail("Provider " + e.code),
           },
-          this.host ? createOrchestration(this.host) : undefined,
+          this.orchestration,
         );
         await this.voice.connect(key);
         if (!this.alive) return;

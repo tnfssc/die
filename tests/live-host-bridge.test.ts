@@ -10,6 +10,7 @@ function fixture(failSend = false) {
   let listener: (event: any) => void = () => {};
   const calls: string[] = [];
   const messages: unknown[] = [];
+  let native: { id: string; status: string } | undefined;
   const job = { id: "owned", status: "running", kind: "command", command: "secret command" };
   const manager = {
     list: () => [job],
@@ -41,7 +42,7 @@ function fixture(failSend = false) {
   const service = {
     handle: async (method: string, input: any) => {
       calls.push(method + ":" + input.id);
-      if (method === "jobs.list") return { jobs: [job], total: 1 };
+      if (method === "jobs.list") return { jobs: [job, ...(native ? [native] : [])], total: native ? 2 : 1 };
       if (input.id === "foreign") throw new Error("outside");
       if (method === "jobs.inspect") return { id: input.id, output: "ok", limit: input.limit };
       if (method === "jobs.stop") return { id: input.id, status: "killed" };
@@ -60,6 +61,7 @@ function fixture(failSend = false) {
   } as unknown as HostAuthority;
   return {
     bridge: new LiveHostBridge(host),
+    native: (status: string) => { native = { id: "native-scoped", status }; },
     calls,
     messages,
     emit: (type: string) => listener({ type, task: job }),
@@ -120,6 +122,22 @@ describe("Live host authority", () => {
     f.bridge.close();
     f.emit("completed");
     expect(seen).toEqual(["completed", "completed"]);
+  });
+  test("native completion is observed only after a scoped active snapshot; no synthetic completion on errors", async () => {
+    const f = fixture();
+    const events: unknown[] = [];
+    const off = f.bridge.subscribe((event) => events.push(event));
+    f.native("completed");
+    await f.bridge.refreshJobs();
+    expect(events).toEqual([]);
+    f.native("running");
+    await f.bridge.refreshJobs();
+    f.native("completed");
+    await f.bridge.refreshJobs();
+    await f.bridge.refreshJobs();
+    expect(events).toEqual([{ type: "completed", id: "native-scoped", status: "completed" }]);
+    off();
+    f.bridge.close();
   });
   test("failed steer retained; no accidental retry", async () => {
     const f = fixture();

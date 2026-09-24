@@ -27,6 +27,7 @@ function fixture(execute: (call: { id?: string; name?: string; args?: Record<str
   });
   const session = new VoiceSession({ onAudio: (data) => played.push(data) }, adapter, {
     tools: [{ name: "work", description: "do work" }],
+    userTranscript: () => {},
     execute,
   });
   const send = (v: object) => params.callbacks.onmessage(v as Parameters<LiveParams["callbacks"]["onmessage"]>[0]);

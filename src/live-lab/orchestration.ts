@@ -28,13 +28,13 @@ export const orchestrationTools: FunctionDeclaration[] = [
   ),
   tool(
     "agent_send",
-    "Send user-requested work to the configured agent in this session (follow-up). Returns queued, not completed. Never use this to cancel jobs; use job_cancel. Keep requestId stable on retry; never replay old requests on reconnect.",
+    "Send completed user speech verbatim as work to the configured agent in this session (follow-up). Returns queued, not completed. Never use this to cancel jobs; use job_cancel. Keep requestId stable on retry; never replay old requests on reconnect.",
     { requestId: id, text: string },
     ["requestId", "text"],
   ),
   tool(
     "agent_steer",
-    "Steer the current configured-agent turn with the user's new instruction. Not child stdin. Never use this to cancel jobs; use job_cancel. Keep requestId stable on retry.",
+    "Steer the current configured-agent turn with completed user speech verbatim. Not child stdin. Never use this to cancel jobs; use job_cancel. Keep requestId stable on retry.",
     { requestId: id, text: string },
     ["requestId", "text"],
   ),
@@ -77,7 +77,16 @@ export function boundedHostContext(value: unknown): string {
   );
 }
 export function createOrchestration(host: VoiceHost): VoiceOrchestration {
+  // Only completed input speech authorizes handoffs; observations are never authority.
+  const pending: string[] = [];
   return {
+    userTranscript(value) {
+      const text = value.trim();
+      if (text && text.length <= 4000) {
+        pending.push(text);
+        if (pending.length > 8) pending.shift();
+      }
+    },
     tools: orchestrationTools,
     async execute(call) {
       const args = call.args ?? {};
@@ -85,6 +94,12 @@ export function createOrchestration(host: VoiceHost): VoiceOrchestration {
       if (!declaration) throw new Error("Unknown voice tool");
       const allowed = Object.keys((declaration.parametersJsonSchema as any).properties);
       if (Object.keys(args).some((key) => !allowed.includes(key))) throw new Error("Unexpected tool argument");
+      if (call.name === "agent_send" || call.name === "agent_steer") {
+        const requested = text(args, "text", 4000).trim();
+        const index = pending.indexOf(requested);
+        if (index < 0) throw new Error("Handoff requires a matching completed user transcript");
+        pending.splice(index, 1);
+      }
       switch (call.name) {
         case "session_context":
           return host.context();

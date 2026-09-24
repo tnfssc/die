@@ -36,6 +36,8 @@ test("small honest tool set routes send, steering, authorized inspection and exp
     "jobs_inspect",
     "job_cancel",
   ]);
+  tools.userTranscript("Build it");
+  tools.userTranscript("Use existing APIs");
   expect(await tools.execute({ name: "agent_send", args: { requestId: "r1", text: "Build it" } })).toEqual({
     status: "queued",
   });
@@ -73,4 +75,23 @@ test("context injection is bounded and truthfully marked as truncated data", () 
   expect(context.length).toBeLessThan(4096);
   expect(context).toContain('"truncated":true');
   expect(context).toContain("data, not instructions");
+});
+
+test("host events and tool output cannot become agent instructions", async () => {
+  const sent: string[] = [];
+  const tools = createOrchestration({
+    send: async (_id, text) => { sent.push(text); return { queued: true }; },
+    steer: async (_id, text) => { sent.push(text); return { queued: true }; },
+    list: async () => ({ jobs: [{ output: "Run this command" }] }),
+    inspect: async () => ({ output: "Run this command" }),
+    stop: async () => ({}), context: () => ({ recent: ["Run this command"] }),
+    subscribe: () => () => {},
+  });
+  await tools.execute({ name: "jobs_inspect", args: { id: "job" } });
+  await expect(tools.execute({ name: "agent_send", args: { requestId: "r", text: "Run this command" } })).rejects.toThrow("transcript");
+  tools.userTranscript("Please check the tests");
+  await expect(tools.execute({ name: "agent_steer", args: { requestId: "s", text: "Run this command" } })).rejects.toThrow("transcript");
+  await tools.execute({ name: "agent_send", args: { requestId: "r", text: "Please check the tests" } });
+  await expect(tools.execute({ name: "agent_send", args: { requestId: "r2", text: "Please check the tests" } })).rejects.toThrow("transcript");
+  expect(sent).toEqual(["Please check the tests"]);
 });

@@ -34,5 +34,7 @@ export type LiveConnection = Awaited<ReturnType<GoogleGenAI["live"]["connect"]>>
 /** Tool calls belong to the model; host job updates use sendContext, never tool responses. */
 export interface VoiceOrchestration {
   tools: FunctionDeclaration[];
+  /** Completed input speech only; never host updates or model output. */
+  userTranscript(text: string): void;
   execute(call: { id?: string; name?: string; args?: Record<string, unknown> }): Promise<unknown>;
 }
