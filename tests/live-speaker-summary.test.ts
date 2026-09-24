@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { speakerCheckSummary } from "../src/live-lab/speaker-summary";
+import { speakerCheckSummary } from "../src/live/speaker-summary";
 
 test("summary keeps evidence actionable and unknown honest", () => {
   const text = speakerCheckSummary({ status: "no_signal" });

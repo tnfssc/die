@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
-import { type AudioCallbacks, LiveLabAudio } from "../src/live-lab/audio";
+import { type AudioCallbacks, LiveAudio } from "../src/live/audio";
 
 class Input extends EventEmitter {
   writes: string[] = [];
@@ -31,7 +31,7 @@ class Worker extends EventEmitter {
 }
 async function rig(callbacks: AudioCallbacks = {}) {
   const worker = new Worker();
-  const launched = LiveLabAudio.launch({ worker: worker as never, callbacks });
+  const launched = LiveAudio.launch({ worker: worker as never, callbacks });
   worker.event({ type: "hello", protocol: 1 });
   const audio = await launched;
   const started = audio.start();
@@ -40,11 +40,11 @@ async function rig(callbacks: AudioCallbacks = {}) {
   await started;
   return { worker, audio };
 }
-describe("live lab audio protocol boundary", () => {
+describe("Live audio protocol boundary", () => {
   test("hello does not start audio; normal stop closes once without error", async () => {
     const worker = new Worker();
     const events: string[] = [];
-    const p = LiveLabAudio.launch({
+    const p = LiveAudio.launch({
       worker: worker as never,
       callbacks: { error: () => events.push("error"), closed: () => events.push("closed") },
     });
@@ -104,12 +104,12 @@ describe("live lab audio protocol boundary", () => {
   test("pre-aborted launch does not own a worker; aborted start closes", async () => {
     const abort = new AbortController();
     abort.abort();
-    await expect(LiveLabAudio.launch({ worker: new Worker() as never, signal: abort.signal })).rejects.toThrow(
+    await expect(LiveAudio.launch({ worker: new Worker() as never, signal: abort.signal })).rejects.toThrow(
       "cancelled",
     );
     const worker = new Worker();
     const controller = new AbortController();
-    const launch = LiveLabAudio.launch({ worker: worker as never, signal: controller.signal });
+    const launch = LiveAudio.launch({ worker: worker as never, signal: controller.signal });
     worker.event({ type: "hello", protocol: 1 });
     const audio = await launch;
     const start = audio.start();

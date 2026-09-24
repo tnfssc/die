@@ -1,252 +1,705 @@
-import { expect, test } from "bun:test";
-import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { describe, expect, test } from "bun:test";
 import liveExtension from "../src/live/extension";
-import type { LiveCallbacks } from "../src/live/transport";
+import type { LiveDependencies } from "../src/live/extension";
+import type { VoiceCallbacks, VoiceOrchestration } from "../src/live/types";
+import type { AudioCallbacks } from "../src/live/audio";
 
-const flush = () => new Promise<void>((done) => setTimeout(done, 0));
-function fixture(local = true) {
-  const choices: (string | undefined)[] = [];
-  let credentialChecks = 0,
-    imports = 0;
-  const handlers = new Map<string, Set<(event: any) => unknown>>();
-  let command: any;
-  const sent: { text: string; options: unknown }[] = [];
-  let keyReads = 0,
-    connects = 0,
-    audioStarts = 0,
-    audioCloses = 0,
-    socketCloses = 0,
-    aborts = 0,
-    interrupts = 0;
-  const responses: unknown[][] = [];
-  const played: string[] = [],
-    captured: string[] = [];
-  let callbacks!: LiveCallbacks;
-  let capture!: (data: string) => void;
-  const statuses = new Map<string, string | undefined>();
+const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+function setup(overrides: Partial<LiveDependencies> = {}) {
+  let handler!: (args: string, ctx: any) => Promise<void>;
+  let shutdown!: () => void;
+  let sessionStart!: () => void;
+  let voiceCallbacks!: VoiceCallbacks;
+  let orchestration: VoiceOrchestration | undefined;
+  const contexts: string[] = [];
+  let audioCallbacks!: AudioCallbacks;
+  let keyCalls = 0,
+    launches = 0,
+    starts = 0,
+    closes = 0,
+    sends = 0;
+  const played: { length: number; generation: number }[] = [];
+  const flushes: number[] = [];
+  const status: (string | undefined)[] = [];
+  const widgets: (string[] | undefined)[] = [];
   const notices: string[] = [];
-  const api = {
-    on: (name: string, handler: (event: any) => unknown) => {
-      let set = handlers.get(name);
-      if (!set) {
-        set = new Set();
-        handlers.set(name, set);
-      }
-      set.add(handler);
-      return () => set!.delete(handler);
+  let consent = true;
+  let accepted = true;
+  let deferred = false;
+  let resolveConnect!: () => void;
+  let resolveLaunch!: (value: any) => void;
+  const audio = {
+    diagnostics: { queuedMs: 0, captureFrames: 0, capturedBytes: 0 },
+    start: async () => {
+      starts++;
     },
-    registerCommand: (_name: string, value: unknown) => {
-      command = value;
+    play: async (pcm: Buffer, generation: number) => {
+      played.push({ length: pcm.length, generation });
     },
-    sendUserMessage: (text: string, options: unknown) => {
-      sent.push({ text, options });
-      return new Promise<void>(() => {}); // configured coding agent is still working
+    flush: async (generation: number) => {
+      flushes.push(generation);
     },
-  } as unknown as ExtensionAPI;
-  liveExtension(api, {
-    local: () => local,
-    capabilities: async () => ({ supported: true, requirements: "fake devices" }),
-    credentialStatus: async () => {
-      credentialChecks++;
-      return { configured: true, canImport: false, message: "Google key configured" };
+    stop: async () => {},
+    close: () => {
+      closes++;
     },
-    importKey: async () => {
-      imports++;
-    },
-    key: async () => {
-      keyReads++;
-      return "FAKE-never-used-key";
-    },
-    audio: () => ({
-      start: async (onAudio) => {
-        audioStarts++;
-        capture = onAudio;
-      },
-      play: (data) => {
-        played.push(data);
-      },
-      interrupt: () => {
-        interrupts++;
-      },
-      close: () => {
-        audioCloses++;
+  };
+  const deps: LiveDependencies = {
+    local: () => true,
+    speakerCheck: async () => "Test signal detected; compare mic/speaker route manually.",
+    host: () => undefined,
+    credentials: async () => ({
+      status: async () => ({ state: "stored_api_key", canImport: false }),
+      loadKey: async () => "fake-test-only",
+      importLiveEnv: async () => {
+        throw new Error("unexpected import");
       },
     }),
-    transport: (cb) => {
-      callbacks = cb;
+    key: async () => {
+      keyCalls++;
+      return "fake-test-only";
+    },
+    voice: (callbacks, tools) => {
+      orchestration = tools;
+      voiceCallbacks = callbacks;
       return {
-        connect: () => {
-          connects++;
+        state: "ready",
+        sendContext: (text: string) => {
+          contexts.push(text);
         },
-        sendAudio: (data) => {
-          captured.push(data);
+        generation: 0,
+        sendAudio: (_: string) => {
+          sends++;
         },
-        respond: (...args) => {
-          responses.push(args);
-        },
-        close: () => {
-          socketCloses++;
+        close: () => {},
+        connect: async () => {
+          if (deferred)
+            await new Promise<void>((resolve) => {
+              resolveConnect = resolve;
+            });
+          if (!accepted) throw new Error("SECRET");
         },
       };
     },
-  });
+    audio: async (callbacks) => {
+      launches++;
+      audioCallbacks = callbacks;
+      if (deferred)
+        return new Promise((resolve) => {
+          resolveLaunch = resolve;
+        });
+      return audio;
+    },
+    ...overrides,
+  };
+  liveExtension(
+    {
+      registerCommand: (name: string, cmd: any) => {
+        expect(name).toBe("live");
+        handler = cmd.handler;
+      },
+      on: (event: string, cb: any) => {
+        if (event === "session_shutdown") shutdown = cb;
+        if (event === "session_start") sessionStart = cb;
+      },
+    } as any,
+    deps,
+  );
   const ctx = {
     mode: "tui",
-    abort: () => {
-      aborts++;
-    },
     ui: {
-      notify: (text: string) => notices.push(text),
-      setStatus: (key: string, value: string | undefined) => statuses.set(key, value),
-      confirm: async () => true,
-      select: async () => choices.shift(),
+      confirm: async () => consent,
+      select: async (_title?: string, _options?: string[]): Promise<string | undefined> => "Done",
+      notify: (value: string) => {
+        notices.push(value);
+      },
+      setStatus: (_: string, value?: string) => {
+        status.push(value);
+      },
+      setWidget: (_: string, value?: string[]) => {
+        widgets.push(value);
+      },
     },
-  } as unknown as ExtensionCommandContext;
+  };
   return {
-    choices,
-    credentialState: () => ({ credentialChecks, imports }),
-    action: (name: string) => command.handler(name, ctx),
-    emit: (name: string, event: unknown = {}) => {
-      for (const handler of [...(handlers.get(name) ?? [])]) handler(event);
+    run: (arg: string) => handler(arg, ctx),
+    contexts,
+    get orchestration() {
+      return orchestration;
     },
-    ready: () => callbacks.ready(),
-    call: (id: string, request: string) => callbacks.call({ id, name: "handoff", args: { request } }),
-    interrupted: () => callbacks.interrupted(),
-    cancelled: (ids: string[]) => callbacks.cancelled(ids),
-    incoming: (pcm: string) => callbacks.audio(pcm),
-    capture: (pcm: string) => capture(pcm),
-    state: () => ({ keyReads, connects, audioStarts, audioCloses, socketCloses, aborts, interrupts }),
-    sent,
-    responses,
-    played,
-    captured,
-    statuses,
+    ctx,
+    audio,
+    get voice() {
+      return voiceCallbacks;
+    },
+    get capture() {
+      return audioCallbacks;
+    },
+    get keyCalls() {
+      return keyCalls;
+    },
+    get launches() {
+      return launches;
+    },
+    get starts() {
+      return starts;
+    },
+    get closes() {
+      return closes;
+    },
+    get sends() {
+      return sends;
+    },
+    status,
+    widgets,
     notices,
+    played,
+    flushes,
+    shutdown,
+    sessionStart,
+    decline: () => {
+      consent = false;
+    },
+    reject: () => {
+      accepted = false;
+    },
+    defer: () => {
+      deferred = true;
+    },
+    resolveLaunch: () => resolveLaunch(audio),
+    resolveConnect: () => resolveConnect(),
   };
 }
-
-test("explicit-start gate and two loops: audio continues while configured agent promise is pending", async () => {
-  const f = fixture();
-  await f.action("setup");
-  expect(f.state()).toMatchObject({ keyReads: 0, connects: 0, audioStarts: 0 });
-  await f.action("start");
-  expect(f.state()).toMatchObject({ keyReads: 1, connects: 1, audioStarts: 0 });
-  f.ready();
-  await flush();
-  expect(f.state().audioStarts).toBe(1);
-  f.call("google-1", "inspect the failing tests");
-  expect(f.sent).toEqual([
-    {
-      text: "[Live request live-1]\ninspect the failing tests",
-      options: { deliverAs: "followUp", expandPromptTemplates: false },
-    },
-  ]);
-  f.emit("input", { source: "extension", text: "[Live request live-1]\ninspect the failing tests" });
-  f.emit("message_end", { message: { role: "user", content: [{ type: "text", text: "inspect the failing tests" }] } });
-  f.emit("turn_start");
-  f.emit("tool_execution_start", { toolName: "execute", toolCallId: "t1", args: { secret: "do not relay" } });
-  await flush();
-  f.capture("AAAA");
-  f.incoming("AAAA");
-  expect(f.captured).toEqual(["AAAA"]);
-  expect(f.played).toEqual(["AAAA"]);
-  expect(JSON.stringify(f.responses)).toContain("tool_started");
-  expect(JSON.stringify(f.responses)).not.toContain("do not relay");
-  f.interrupted();
-  expect(f.state()).toMatchObject({ interrupts: 1, aborts: 0 });
-  await f.action("stop");
-  expect(f.state()).toMatchObject({ audioCloses: 1, socketCloses: 1, aborts: 0 });
-  expect(f.statuses.get("die-live")).toBeUndefined();
-});
-
-test("Live tool cancellation and session replacement close reporting, not work; explicit cancel is separate", async () => {
-  const f = fixture();
-  await f.action("start");
-  f.ready();
-  await flush();
-  f.call("google-1", "implement");
-  f.cancelled(["google-1"]);
-  expect(f.state().aborts).toBe(0);
-  await f.action("cancel-work");
-  expect(f.state().aborts).toBe(1);
-  f.emit("session_start");
-  expect(f.state()).toMatchObject({ audioCloses: 1, socketCloses: 1 });
-  const before = f.responses.length;
-  f.emit("tool_execution_start", { toolName: "execute", toolCallId: "later" });
-  await flush();
-  expect(f.responses.length).toBe(before);
-});
-
-test("nonlocal contexts cannot load keys, connect, or record", async () => {
-  const f = fixture(false);
-  await f.action("start");
-  expect(f.state()).toMatchObject({ keyReads: 0, connects: 0, audioStarts: 0 });
-});
-
-test("confirmed background resumption reaches the live channel and completed associations do not fill handoff capacity", async () => {
-  const f = fixture();
-  await f.action("start");
-  f.ready();
-  await flush();
-  for (let i = 0; i < 12; i++) {
-    f.call("google-" + i, "work " + i);
-    const text = f.sent.at(-1)!.text;
-    f.emit("message_end", { message: { role: "user", content: [{ type: "text", text }] } });
-    f.emit("message_end", {
-      message: { role: "assistant", content: [{ type: "text", text: "Started a background job; not done yet." }] },
-    });
-    f.emit("agent_end");
-    await flush();
-  }
-  expect(f.sent).toHaveLength(12);
-  expect(JSON.stringify(f.responses)).not.toContain("tracking is full");
-  const before = f.responses.length;
-  f.emit("message_end", {
-    message: { role: "assistant", content: [{ type: "text", text: "Confirmed background result." }] },
+describe("Live voice", () => {
+  test("bare /live starts directly without a picker or confirmation", async () => {
+    const t = setup();
+    t.ctx.ui.select = async () => {
+      throw new Error("unexpected picker");
+    };
+    t.ctx.ui.confirm = async () => {
+      throw new Error("unexpected confirmation");
+    };
+    await t.run("");
+    expect([t.launches, t.keyCalls, t.starts]).toEqual([1, 1, 1]);
+    expect(t.status.at(-1)).toBe("Live listening");
+    await t.run("stop");
   });
-  await flush();
-  const result = f.responses.slice(before);
-  expect(JSON.stringify(result)).toContain("Confirmed background result.");
-  expect(JSON.stringify(result)).toContain("current_session");
-  expect(result[0]![0]).toBe("google-11");
-  expect(result[0]![2]).toBe(true);
-  await f.action("stop");
+  test("status does not inspect auth or open audio", async () => {
+    const t = setup();
+    await t.run("status");
+    expect([t.launches, t.keyCalls, t.starts]).toEqual([0, 0, 0]);
+    expect(t.notices).toEqual(["Live off."]);
+  });
+  test("full duplex, bounded frames, interruption flushes but turnComplete does not", async () => {
+    const t = setup();
+    await t.run("start");
+    expect([t.launches, t.keyCalls, t.starts]).toEqual([1, 1, 1]);
+    t.voice.onInputTranscript?.({ text: "hello\x1b[2J\nworld" });
+    t.voice.onOutputTranscript?.({ text: "reply\u202eok" }, 0);
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(t.widgets.at(-1)?.join(" ")).toContain("You: hello world");
+    expect(t.widgets.at(-1)?.join(" ")).not.toContain("\x1b");
+    t.voice.onAudio?.(Buffer.alloc(2000).toString("base64"), 0);
+    t.voice.onTurnComplete?.(0);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(t.played.map((p) => p.length)).toEqual([960, 960, 80]);
+    t.capture.capture?.(Buffer.alloc(640));
+    expect(t.sends).toBe(1);
+    t.voice.onTurnComplete?.(0);
+    expect(t.flushes).toEqual([]);
+    t.voice.onInterrupted?.(1);
+    expect(t.flushes).toEqual([1]);
+    t.voice.onAudio?.(Buffer.alloc(960).toString("base64"), 0);
+    t.voice.onAudio?.(Buffer.alloc(960).toString("base64"), 1);
+    await tick();
+    expect(t.played.at(-1)?.generation).toBe(1);
+    expect(t.status.at(-1)).toContain("Live");
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("provider interruptions unknown");
+    expect(t.notices.at(-1)).toContain("native VP unknown");
+    await t.run("stop");
+    expect(t.status.at(-1)).toBeUndefined();
+    expect(t.widgets.at(-1)).toBeUndefined();
+  });
+  test("stop while helper hello is pending disposes late helper without opening devices", async () => {
+    const t = setup();
+    t.defer();
+    const starting = t.run("start");
+    await tick();
+    await t.run("stop");
+    t.resolveLaunch();
+    await starting;
+    expect([t.keyCalls, t.starts, t.closes]).toEqual([1, 0, 1]);
+  });
+  test("provider rejection and helper error tear down without exposing error text", async () => {
+    const t = setup();
+    t.reject();
+    await t.run("start");
+    expect(t.starts).toBe(0);
+    expect(t.closes).toBe(1);
+    expect(t.notices.join(" ")).not.toContain("SECRET");
+    const running = setup();
+    await running.run("start");
+    running.capture.error?.("permission", "SECRET");
+    expect(running.notices.join(" ")).toContain("Microphone access denied [permission]");
+    expect(t.notices.join(" ")).not.toContain("SECRET");
+    expect(t.status.at(-1)).toBeUndefined();
+  });
+  test("mic-check requires consent, never uses key/provider and discards capture", async () => {
+    const declined = setup();
+    declined.decline();
+    await declined.run("mic-check");
+    expect([declined.launches, declined.keyCalls, declined.starts]).toEqual([0, 0, 0]);
+    const t = setup();
+    await t.run("mic-check");
+    expect([t.launches, t.keyCalls, t.starts, t.closes]).toEqual([1, 0, 1, 1]);
+    expect(t.notices.join(" ")).toContain("Audio route ready [ready]");
+    const denied = setup({
+      audio: async () => {
+        throw new Error("SECRET");
+      },
+    });
+    await denied.run("mic-check");
+    expect(denied.notices.join(" ")).toContain("[launch]");
+    expect(denied.notices.join(" ")).not.toContain("SECRET");
+  });
+  test("mic-check reports safe native stage and NSError number without helper text", async () => {
+    const t = setup();
+    t.audio.start = async () => {
+      t.capture.error?.("engine_start", "secret device name", { domain: "NSOSStatusErrorDomain", number: -10875 });
+      throw new Error("secret device name");
+    };
+    await t.run("mic-check");
+    expect(t.notices.join(" ")).toContain("[engine_start] (NSError NSOSStatusErrorDomain -10875)");
+    expect(t.notices.join(" ")).not.toContain("secret");
+  });
+  test("session change aborts pending mic-check before devices open", async () => {
+    const t = setup();
+    t.defer();
+    const checking = t.run("mic-check");
+    await tick();
+    t.sessionStart();
+    t.resolveLaunch();
+    await checking;
+    expect([t.launches, t.starts, t.keyCalls, t.closes]).toEqual([1, 0, 0, 1]);
+  });
+  test("unknown helper code never reaches UI", async () => {
+    const t = setup();
+    await t.run("start");
+    t.capture.error?.("SECRET", "SECRET");
+    expect(t.notices.join(" ")).toContain("[unclassified]");
+    expect(t.notices.join(" ")).not.toContain("SECRET");
+  });
+  test("provider output during setup is held until audio ready; overflow fails visibly", async () => {
+    const t = setup();
+    const originalStart = t.audio.start;
+    t.audio.start = async () => {
+      t.voice.onAudio?.(Buffer.alloc(9600).toString("base64"), 0);
+      expect(t.played).toHaveLength(0); // No writes before native readiness.
+      await originalStart();
+    };
+    await t.run("start");
+    await tick();
+    expect(t.played.map((p) => p.length)).toEqual([960, 960, 960, 960]); // Bounded 80ms reserve.
+    t.voice.onAudio?.(Buffer.alloc(2_880_002).toString("base64"), 0);
+    expect(t.status.at(-1)).toBeUndefined();
+    expect(t.notices.join(" ")).toContain("bounded audio budget");
+  });
+  test("platform gate precedes consent, and session shutdown stops without touching agent", async () => {
+    const t = setup({ local: () => false });
+    await t.run("start");
+    expect(t.launches).toBe(0);
+    const x = setup();
+    await x.run("start");
+    x.shutdown();
+    expect(x.status.at(-1)).toBeUndefined();
+  });
+  test("transcript deltas join without invented spaces and capture keeps running while speaking", async () => {
+    const t = setup();
+    await t.run("start");
+    t.voice.onInputTranscript?.({ text: "Hel" });
+    t.voice.onInputTranscript?.({ text: "lo world", finished: true });
+    t.voice.onAudio?.(Buffer.alloc(1920).toString("base64"), 0);
+    t.capture.played?.(40);
+    for (let i = 0; i < 20; i++) t.capture.capture?.(Buffer.alloc(640));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(t.widgets.at(-1)?.join(" ")).toContain("You: Hello world");
+    expect(t.sends).toBe(20);
+    expect(t.status.at(-1)).toContain("speaking");
+    t.voice.onTurnComplete?.(0);
+    t.capture.played?.(0);
+    expect(t.status.at(-1)).toContain("listening");
+    await t.run("stop");
+  });
+  test("stop invalidates pending auth and concurrent starts have one owner", async () => {
+    let accept!: (value: string) => void;
+    const t = setup({
+      key: () =>
+        new Promise((resolve) => {
+          accept = resolve;
+        }),
+    });
+    const first = t.run("start");
+    await tick();
+    await t.run("start");
+    expect(t.launches).toBe(0);
+    await t.run("stop");
+    accept("fake-test-only");
+    await first;
+    expect(t.launches).toBe(0);
+  });
 });
 
-test("setup refuses nonlocal contexts and active Live without inspecting credentials", async () => {
-  const remote = fixture(false);
-  await remote.action("setup");
-  expect(remote.credentialState().credentialChecks).toBe(0);
-  expect(remote.state().connects).toBe(0);
-  const local = fixture();
-  await local.action("start");
-  await local.action("setup");
-  expect(local.credentialState().credentialChecks).toBe(0);
-  await local.action("stop");
+test("live orchestration keeps capture/playback active, forwards actual completion, and disconnect only detaches voice", async () => {
+  let finish!: () => void;
+  let listener: ((event: unknown) => void) | undefined;
+  let stopped = 0;
+  let sent = 0;
+  let subscribed = 0;
+  let detached = 0;
+  const request = new Map<string, Promise<unknown>>();
+  const t = setup({
+    host: () => ({
+      send: (id) => {
+        if (!request.has(id)) {
+          sent++;
+          request.set(
+            id,
+            new Promise((resolve) => {
+              finish = () => resolve({ status: "queued" });
+            }),
+          );
+        }
+        return request.get(id)!;
+      },
+      steer: async () => ({ status: "queued" }),
+      list: async () => ({ jobs: [] }),
+      inspect: async () => ({ status: "completed", output: "actual output" }),
+      stop: async () => {
+        stopped++;
+        return { status: "denied" };
+      },
+      context: () => ({ recentRequests: [...request.keys()], text: "existing session" }),
+      subscribe: (cb) => {
+        subscribed++;
+        listener = cb;
+        return () => {
+          detached++;
+          listener = undefined;
+        };
+      },
+    }),
+  });
+  (t.ctx as any).model = { provider: "configured", id: "coding-model" };
+  await t.run("start");
+  expect(t.status.at(-1)).toBe("Live listening");
+  expect(t.contexts[0]).toContain("existing session");
+  t.voice.onInputTranscript?.({ text: "work", finished: true });
+  const pending = t.orchestration!.execute({ name: "agent_send", args: { requestId: "same", text: "work" } });
+  t.capture.capture?.(Buffer.alloc(640));
+  t.voice.onAudio?.(Buffer.alloc(960).toString("base64"), 0);
+  await tick();
+  expect(t.sends).toBe(1);
+  expect(t.played.length).toBe(1);
+  t.voice.onInterrupted?.(1);
+  expect(stopped).toBe(0);
+  listener?.({ type: "completed", id: "owned", status: "completed" });
+  expect(t.contexts.at(-1)).toContain('"type":"completed"');
+  await t.run("stop");
+  expect(detached).toBe(1);
+  finish();
+  expect(await pending).toEqual({ status: "queued" });
+  expect(stopped).toBe(0);
+  await t.run("start");
+  expect(subscribed).toBe(2);
+  expect(t.contexts.at(-1)).toContain("same");
+  t.voice.onInputTranscript?.({ text: "work", finished: true });
+  await t.orchestration!.execute({ name: "agent_send", args: { requestId: "same", text: "work" } });
+  expect(sent).toBe(1);
+  t.voice.onError?.({ code: "disconnected", message: "socket gone" });
+  expect(detached).toBe(2);
+  expect(stopped).toBe(0);
 });
 
-test("wizard paid test never creates audio/bridge and closes on session shutdown", async () => {
-  const f = fixture();
-  f.choices.push("Test paid connection (no microphone or speakers)");
-  const pending = f.action("setup");
-  await flush();
-  expect(f.state()).toMatchObject({ connects: 1, audioStarts: 0 });
-  expect(f.sent).toHaveLength(0);
-  f.emit("session_shutdown");
-  await pending;
-  expect(f.state()).toMatchObject({ socketCloses: 1, audioStarts: 0, aborts: 0 });
-  await f.action("setup");
-  expect(f.credentialState().credentialChecks).toBe(2);
+describe("local speaker-check wiring", () => {
+  test("consent and local gate precede runner; never calls key, provider, host or audio on decline", async () => {
+    let runs = 0;
+    const t = setup({
+      speakerCheck: async () => {
+        runs++;
+        return "quiet";
+      },
+    });
+    t.decline();
+    await t.run("speaker-check");
+    expect([runs, t.launches, t.keyCalls]).toEqual([0, 0, 0]);
+    (t.ctx as any).mode = "rpc";
+    await t.run("speaker-check");
+    expect(runs).toBe(0);
+  });
+  test("summary is bounded and provider disconnected; no agent job or auth path", async () => {
+    let runs = 0;
+    const t = setup({
+      speakerCheck: async ({ signal }) => {
+        expect(signal.aborted).toBe(false);
+        runs++;
+        return "Residual high; check selected output and microphone";
+      },
+    });
+    await t.run("speaker-check");
+    expect(runs).toBe(1);
+    expect([t.launches, t.keyCalls]).toEqual([0, 0]);
+    expect(t.notices.at(-1)).toContain("Residual high");
+    expect(t.notices.at(-1)).toContain("provider not connected");
+    expect(t.notices.at(-1)).toContain("cannot prove barge-in or AEC");
+  });
+  test("stop aborts active measurement; prevents stale result and start/mic overlap", async () => {
+    let release!: (value: string) => void;
+    let signal!: AbortSignal;
+    const t = setup({
+      speakerCheck: ({ signal: s }) => {
+        signal = s;
+        return new Promise<string>((resolve) => {
+          release = resolve;
+        });
+      },
+    });
+    const pending = t.run("speaker-check");
+    await tick();
+    await t.run("start");
+    await t.run("mic-check");
+    await t.run("speaker-check");
+    expect([t.launches, t.keyCalls]).toEqual([0, 0]);
+    await t.run("stop");
+    expect(signal.aborted).toBe(true);
+    release("stale result");
+    await pending;
+    expect(t.notices.join(" ")).not.toContain("stale result");
+  });
+  test("shutdown invalidates pending consent and session change aborts active runner", async () => {
+    const t = setup();
+    let accept!: (v: boolean) => void;
+    t.ctx.ui.confirm = () =>
+      new Promise<boolean>((resolve) => {
+        accept = resolve;
+      });
+    const pending = t.run("speaker-check");
+    await tick();
+    t.shutdown();
+    accept(true);
+    await pending;
+    expect(t.launches).toBe(0);
+    let seen!: AbortSignal;
+    const x = setup({
+      speakerCheck: async ({ signal }) => {
+        seen = signal;
+        x.sessionStart();
+        return "late";
+      },
+    });
+    await x.run("speaker-check");
+    expect(seen.aborted).toBe(true);
+    expect(x.notices.join(" ")).not.toContain("late");
+  });
+  test("runner exceptions are not leaked to UI", async () => {
+    const t = setup({
+      speakerCheck: async () => {
+        throw new Error("secret waveform");
+      },
+    });
+    await t.run("speaker-check");
+    expect(t.notices.at(-1)).toContain("Speaker check failed");
+    expect(t.notices.join(" ")).not.toContain("secret waveform");
+  });
 });
-test("wizard explicit start keeps the existing configured agent wiring", async () => {
-  const f = fixture();
-  f.choices.push("Start Live");
-  await f.action("setup");
-  expect(f.state()).toMatchObject({ connects: 1, audioStarts: 0 });
-  f.ready();
-  await flush();
-  expect(f.state().audioStarts).toBe(1);
-  f.call("wizard-handoff", "inspect a failure");
-  expect(f.sent).toHaveLength(1);
-  await f.action("stop");
+
+test("real local speaker runner uses only injected native audio, never auth/provider/host", async () => {
+  let handler!: (args: string, ctx: any) => Promise<void>;
+  let keyCalls = 0,
+    providerCalls = 0,
+    hostCalls = 0,
+    plays = 0,
+    closes = 0;
+  const notices: string[] = [];
+  liveExtension(
+    {
+      registerCommand: (_: string, command: any) => {
+        handler = command.handler;
+      },
+      on: () => {},
+    } as any,
+    {
+      local: () => true,
+      key: async () => {
+        keyCalls++;
+        throw Error("no auth");
+      },
+      voice: () => {
+        providerCalls++;
+        throw Error("no provider");
+      },
+      host: () => {
+        hostCalls++;
+        throw Error("no host");
+      },
+      audio: async () => ({
+        diagnostics: { queuedMs: 0, captureFrames: 0, capturedBytes: 0 },
+        start: async () => {},
+        play: async () => {
+          plays++;
+        },
+        flush: async () => {},
+        stop: async () => {},
+        close: () => {
+          closes++;
+        },
+      }),
+    },
+  );
+  await handler("speaker-check", {
+    mode: "interactive",
+    ui: { confirm: async () => true, notify: (message: string) => notices.push(message) },
+  });
+  expect([keyCalls, providerCalls, hostCalls]).toEqual([0, 0, 0]);
+  expect(plays).toBeGreaterThan(0);
+  expect(closes).toBe(1);
+  expect(notices.at(-1)).toContain("Inconclusive");
+  expect(notices.at(-1)).toContain("provider not connected");
+  expect(notices.at(-1)).toContain("native processing=unknown");
+});
+
+describe("direct entry and focused setup", () => {
+  test("missing-key bare /live opens setup and cancelling never opens audio", async () => {
+    const t = setup({
+      key: async () => {
+        throw new Error("SECRET");
+      },
+      credentials: async () => ({
+        status: async () => ({ state: "missing", canImport: true }),
+        loadKey: async () => {
+          throw new Error("must not read key");
+        },
+        importLiveEnv: async () => {
+          throw new Error("must not import");
+        },
+      }),
+    });
+    const titles: string[] = [];
+    t.ctx.ui.select = async (title) => {
+      titles.push(title!);
+      return "Cancel";
+    };
+    t.ctx.ui.confirm = async () => {
+      throw new Error("unexpected confirmation");
+    };
+    await t.run("");
+    expect(titles).toEqual(["Google API key required"]);
+    expect([t.launches, t.starts]).toEqual([0, 0]);
+    expect(t.notices.join(" ")).not.toContain("SECRET");
+    expect(t.notices.join(" ")).not.toContain("Could not read");
+  });
+
+  test("setup alone stays offline; only Start voice opens the session", async () => {
+    const t = setup();
+    await t.run("setup");
+    expect([t.launches, t.keyCalls, t.starts]).toEqual([0, 0, 0]);
+    t.ctx.ui.select = async () => "Start voice";
+    t.ctx.ui.confirm = async () => {
+      throw new Error("redundant confirmation");
+    };
+    await t.run("setup");
+    expect([t.launches, t.starts]).toEqual([1, 1]);
+    await t.run("stop");
+  });
+
+  for (const cancel of ["stop", "shutdown", "sessionStart"] as const) {
+    test(cancel + " invalidates a pending setup start choice", async () => {
+      const t = setup();
+      let choose!: (value: string) => void;
+      t.ctx.ui.select = () =>
+        new Promise((resolve) => {
+          choose = resolve;
+        });
+      const opening = t.run("setup");
+      await tick();
+      await t.run(""); // Concurrent entry must not acquire authority.
+      expect(t.launches).toBe(0);
+      if (cancel === "stop") await t.run("stop");
+      else t[cancel]();
+      choose("Start voice");
+      await opening;
+      expect([t.launches, t.starts]).toEqual([0, 0]);
+      // Cancellation releases the owner; a fresh explicit command can start.
+      await t.run("");
+      expect([t.launches, t.starts]).toEqual([1, 1]);
+      await t.run("stop");
+    });
+  }
+
+  test("shutdown during credential inspection prevents stale setup UI", async () => {
+    let finish!: (value: any) => void;
+    const t = setup({
+      credentials: () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
+    t.ctx.ui.select = async () => {
+      throw new Error("stale dialog");
+    };
+    const opening = t.run("setup");
+    await tick();
+    t.shutdown();
+    finish({
+      status: async () => {
+        throw new Error("stale inspection");
+      },
+    });
+    await opening;
+    expect(t.notices).toEqual([]);
+    expect(t.launches).toBe(0);
+  });
+
+  test("local restriction precedes direct auth and setup", async () => {
+    const t = setup({
+      local: () => false,
+      credentials: async () => {
+        throw new Error("must not inspect");
+      },
+    });
+    await t.run("");
+    await t.run("setup");
+    expect([t.launches, t.keyCalls, t.starts]).toEqual([0, 0, 0]);
+  });
+});
+
+test("missing auth can be configured then explicitly started from setup", async () => {
+  let checks = 0;
+  let keyLoads = 0;
+  const t = setup({
+    key: async () => {
+      throw new Error("missing");
+    },
+    credentials: async () => ({
+      status: async () =>
+        ++checks === 1 ? { state: "missing", canImport: true } : { state: "configured_api_key", canImport: false },
+      loadKey: async () => {
+        keyLoads++;
+        return "fake-test-only";
+      },
+      importLiveEnv: async () => {
+        throw new Error("must not import automatically");
+      },
+    }),
+  });
+  const titles: string[] = [];
+  t.ctx.ui.select = async (title) => {
+    titles.push(title!);
+    expect([t.launches, t.starts, keyLoads]).toEqual([0, 0, 0]);
+    return title === "Live" ? "Start voice" : "Recheck";
+  };
+  await t.run("");
+  expect(titles).toEqual(["Google API key required", "Live"]);
+  expect([t.launches, t.starts, keyLoads]).toEqual([1, 1, 1]);
+  await t.run("stop");
 });

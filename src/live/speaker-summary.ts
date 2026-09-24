@@ -7,7 +7,7 @@ export function speakerCheckSummary(result: SpeakerCheckResult): string {
     correlated_return:
       "Render-correlated residual detected. Repeat quietly at the same route/volume; compare headphones. Repeated speaker-only residual supports investigating the Apple capture graph or a separate WebRTC APM prototype, not a VAD/gating fix.",
     no_correlated_return:
-      "No strong correlated return detected. This probe does not rule out speech echo or provider false interruption. Keep this result with /live-lab status from the affected voice session.",
+      "No strong correlated return detected. This probe does not rule out speech echo or provider false interruption. Keep this result with /live status from the affected voice session.",
     no_signal:
       "No usable captured signal. Confirm you heard the sound and selected the intended microphone/output; silence can mean effective suppression, muted input, or a disconnected route. Do not treat it as an AEC pass.",
     clipping:

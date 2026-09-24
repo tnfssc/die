@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { VoiceSession } from "../src/live-lab/session.js";
-import type { LiveAdapter, LiveConnection, LiveParams } from "../src/live-lab/types.js";
+import { VoiceSession } from "../src/live/session.js";
+import type { LiveAdapter, LiveConnection, LiveParams } from "../src/live/types.js";
 
 const flush = async () => {
   for (let i = 0; i < 8; i++) await Promise.resolve();

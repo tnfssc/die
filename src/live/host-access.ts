@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { LiveHostBridge } from "./host-bridge";
 
-const HOST_ACCESS = "die:live-lab:host-access";
+const HOST_ACCESS = "die:live:host-access";
 interface AccessRequest {
   context: ExtensionContext;
   accept(host: LiveHostBridge | undefined): void;

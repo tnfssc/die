@@ -1,365 +1,511 @@
-import { Buffer } from "node:buffer";
-import { spawn as nodeSpawn } from "node:child_process";
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
-import { delimiter, isAbsolute, join } from "node:path";
+import { resolveEmbeddedNativeHelper, type ExtractedHelper } from "./helper";
+/** Process boundary for the native full-duplex helpers (protocol v1). */
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { stat } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-export const LOCAL_AUDIO_REQUIREMENTS =
-  "Local Linux or macOS session with SoX 'rec' and 'play' on PATH and working default input and output devices";
-const PLATFORM_AUDIO_REQUIREMENTS: Partial<Record<NodeJS.Platform, string>> = {
-  linux:
-    "Linux local session with SoX 'rec' and 'play' on PATH and a working default ALSA/PulseAudio input and output device",
-  darwin:
-    "macOS local session with Homebrew SoX 'rec' and 'play' on PATH and working default CoreAudio input and output devices",
+type Worker = Pick<ChildProcessWithoutNullStreams, "stdin" | "stdout" | "stderr" | "on" | "off" | "kill">;
+export type AudioSetupError = { domain: string; number: number };
+export type AudioDiagnostics = {
+  queuedMs: number;
+  captureFrames: number;
+  capturedBytes: number;
+  /** Native configuration only; not evidence of acoustic echo cancellation. Absent on older helpers. */
+  ready?: {
+    voiceProcessingEnabled: boolean;
+    voiceProcessingBypassed: boolean;
+    captureRate: number;
+    renderRate: number;
+    /** Post-start negotiated input-node output channels; tap forwards channel 0 only. */
+    captureChannels?: number;
+    /** Post-start negotiated output-node input channels (not source node channels). */
+    renderChannels?: number;
+  };
 };
-
-/** Human-readable local prerequisite for setup UI and capability failures. */
-export function localAudioRequirements(platform: NodeJS.Platform = process.platform) {
-  return PLATFORM_AUDIO_REQUIREMENTS[platform] ?? LOCAL_AUDIO_REQUIREMENTS;
-}
-export interface AudioCapabilities {
-  supported: boolean;
-  reason?: string;
-  recorderPath?: string;
-  playerPath?: string;
-  requirements: string;
-}
-export interface LiveAudioAdapter {
-  start(
-    onAudio: (pcm: string) => void,
-    onLevel: (level: number) => void,
-    onError: (error: Error) => void,
-  ): Promise<void>;
-  play(base64Pcm16: string): void;
-  interrupt(): void;
-  close(): void;
-}
-type Listener = (...args: unknown[]) => void;
-interface Emitter {
-  on(event: string, listener: Listener): unknown;
-  removeListener(event: string, listener: Listener): unknown;
-}
-export interface AudioWritable extends Emitter {
-  write(chunk: Uint8Array): boolean;
-  destroy?(): void;
-}
-export interface AudioProcess extends Emitter {
-  stdin: AudioWritable | null;
-  stdout: Emitter | null;
-  kill(signal?: NodeJS.Signals): boolean;
-}
-export type AudioSpawn = (
-  command: readonly string[],
-  stdio: readonly ["ignore" | "pipe", "ignore" | "pipe", "ignore"],
-) => AudioProcess;
-export interface CapabilityCheckOptions {
-  platform?: NodeJS.Platform;
-  env?: NodeJS.ProcessEnv;
-  access?: (path: string, mode: number) => Promise<void>;
-  commands?: { recorder: string; player: string };
-}
-async function findExecutable(
-  command: string,
-  path: string | undefined,
-  check: (path: string, mode: number) => Promise<void>,
-) {
-  const choices =
-    isAbsolute(command) || command.includes("/")
-      ? [command]
-      : (path ?? "")
-          .split(delimiter)
-          .filter(Boolean)
-          .map((dir) => join(dir, command));
-  for (const choice of choices) {
-    try {
-      await check(choice, constants.X_OK);
-      return choice;
-    } catch {}
-  }
-}
-/** Side-effect-free preflight intended to run before opening a Live network session. */
-export async function checkAudioCapabilities(options: CapabilityCheckOptions = {}): Promise<AudioCapabilities> {
-  const platform = options.platform ?? process.platform;
-  const env = options.env ?? process.env;
-  const requirements = localAudioRequirements(platform);
-  if (platform !== "linux" && platform !== "darwin")
-    return {
-      supported: false,
-      reason: "Local audio is currently supported only on Linux and macOS",
-      requirements,
-    };
-  if (env.SSH_CONNECTION || env.SSH_CLIENT || env.SSH_TTY)
-    return {
-      supported: false,
-      reason: "Local audio is unavailable in SSH sessions",
-      requirements,
-    };
-  const commands = options.commands ?? { recorder: "rec", player: "play" };
-  const [recorderPath, playerPath] = await Promise.all([
-    findExecutable(commands.recorder, env.PATH, options.access ?? access),
-    findExecutable(commands.player, env.PATH, options.access ?? access),
-  ]);
-  if (!recorderPath || !playerPath) {
-    const missing = [!recorderPath && commands.recorder, !playerPath && commands.player].filter(Boolean).join(" and ");
-    return {
-      supported: false,
-      reason: "Missing executable on PATH: " + missing,
-      recorderPath,
-      playerPath,
-      requirements,
-    };
-  }
-  return { supported: true, recorderPath, playerPath, requirements };
-}
-export interface SoxAudioAdapterOptions {
-  maxPlaybackBytes?: number;
-  checkCapabilities?: () => Promise<AudioCapabilities>;
-  spawn?: AudioSpawn;
-}
-// The rec/play entry points already select SoX's default input/output device.
-// In particular, Homebrew builds those aliases with CoreAudio support; adding an
-// explicit -t coreaudio would change which adjacent stream the format applies to.
-const recArgs = [
-  "--no-show-progress",
-  "--buffer",
-  "256",
-  "-q",
-  "-c",
-  "1",
-  "-r",
-  "16000",
-  "-b",
-  "16",
-  "-e",
-  "signed-integer",
-  "-L",
-  "-t",
-  "raw",
-  "-",
-];
-const playArgs = [
-  "--no-show-progress",
-  "--buffer",
-  "256",
-  "-q",
-  "-c",
-  "1",
-  "-r",
-  "24000",
-  "-b",
-  "16",
-  "-e",
-  "signed-integer",
-  "-L",
-  "-t",
-  "raw",
-  "-",
-];
-const realSpawn: AudioSpawn = (command, stdio) => {
-  const executable = command[0];
-  if (!executable) throw new Error("Audio process command is empty");
-  return nodeSpawn(executable, command.slice(1), { shell: false, stdio: [...stdio] }) as unknown as AudioProcess;
+/** Error is terminal (static code/message), closed fires exactly once on either failure or normal shutdown.
+ * Observers must not throw; observer exceptions are isolated. */
+export type AudioCallbacks = {
+  capture?: (pcm16: Buffer) => void;
+  played?: (queuedMs: number) => void;
+  error?: (code: string, message: string, setup?: AudioSetupError) => void;
+  closed?: () => void;
 };
-type Watched = AudioProcess & { __audio?: { error: Listener; exit: Listener; data?: Listener } };
-
-export class SoxAudioAdapter implements LiveAudioAdapter {
-  private readonly limit: number;
-  private readonly check: () => Promise<AudioCapabilities>;
-  private readonly spawn: AudioSpawn;
-  private recorder?: AudioProcess;
-  private player?: AudioProcess;
-  private active = false;
-  private starting = false;
-  private generation = 0;
-  private pendingDrain?: { input: AudioWritable; listener: Listener };
-  private waiting = false;
-  private queue: Uint8Array[] = [];
-  private queueBytes = 0;
-  private remainder?: number;
-  private callbacks?: { audio: (pcm: string) => void; level: (level: number) => void; error: (error: Error) => void };
-  private recCommand?: string;
-  private playCommand?: string;
-  constructor(options: SoxAudioAdapterOptions = {}) {
-    this.limit = options.maxPlaybackBytes ?? 96_000;
-    if (!Number.isSafeInteger(this.limit) || this.limit <= 0)
-      throw new RangeError("maxPlaybackBytes must be a positive integer");
-    this.check = options.checkCapabilities ?? (() => checkAudioCapabilities());
-    this.spawn = options.spawn ?? realSpawn;
+export type AudioOptions = {
+  /** Only trusted developer paths; never downloaded or discovered on PATH. */
+  helperPath?: string;
+  /** Test-only process injection; bypasses platform/device checks. Owned after launch begins. */
+  worker?: Worker;
+  callbacks?: AudioCallbacks;
+  helloTimeoutMs?: number;
+  startTimeoutMs?: number;
+  stopTimeoutMs?: number;
+  /** Aborts launch (including before stat/spawn) and start. Does not abort after ready. */
+  signal?: AbortSignal;
+};
+const MAX_LINE = 64 * 1024;
+const MAX_CAPTURE = 640; // 20ms PCM16 mono 16k
+const MAX_PLAY = 9_600; // at most 200ms PCM16 mono 24k per message
+const MAX_PENDING = 64 * 1024; // ~1.3 seconds of encoded PCM at 24k
+const MAX_STDERR = 4096;
+/** Fallback for builds without an embedded helper; source runs use repository dist. */
+export function defaultHelperPath(
+  platform: NodeJS.Platform = process.platform,
+  moduleUrl = import.meta.url,
+  executable = process.execPath,
+): string {
+  const name = platform === "linux" ? "live-audio-linux" : "live-audio";
+  return moduleUrl.includes("/$bunfs/")
+    ? join(dirname(executable), name)
+    : fileURLToPath(new URL("../../dist/" + name, moduleUrl));
+}
+/** Audio server discovery only. Never pass model credentials to the native process. */
+export function audioEnvironment(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const result: NodeJS.ProcessEnv = { PATH: env.PATH ?? "/usr/bin:/bin" };
+  for (const name of [
+    "HOME",
+    "TMPDIR",
+    "XDG_RUNTIME_DIR",
+    "PULSE_SERVER",
+    "PULSE_COOKIE",
+    "PULSE_SOURCE",
+    "PULSE_SINK",
+    "LIVE_SOURCE",
+    "LIVE_SINK",
+  ]) {
+    if (env[name] !== undefined) result[name] = env[name];
   }
-  async start(audio: (pcm: string) => void, level: (level: number) => void, error: (error: Error) => void) {
-    if (this.active || this.starting) throw new Error("Audio adapter is already started");
-    this.starting = true;
-    const generation = ++this.generation;
-    this.callbacks = { audio, level, error };
-    try {
-      const capability = await this.check();
-      if (generation !== this.generation) throw new Error("Audio start cancelled");
-      if (!capability.supported || !capability.recorderPath || !capability.playerPath)
-        throw new Error(capability.reason ?? LOCAL_AUDIO_REQUIREMENTS);
-      this.recCommand = capability.recorderPath;
-      this.playCommand = capability.playerPath;
-      this.active = true;
-      this.player = this.spawnPlayer();
-      this.recorder = this.spawnRecorder();
-    } catch (cause) {
-      this.stop();
-      this.callbacks = undefined;
-      throw cause instanceof Error ? cause : new Error(String(cause));
-    } finally {
-      this.starting = false;
-    }
+  return result;
+}
+const safeCode = (value: unknown) =>
+  typeof value === "string" && /^[a-zA-Z0-9_-]{1,48}$/.test(value) ? value : "helper_error";
+const safeMessage = (_value: unknown) => "Audio helper reported an error"; // never forward untrusted helper text/logs
+function decode(data: unknown, max: number): Buffer {
+  if (
+    typeof data !== "string" ||
+    data.length === 0 ||
+    data.length > Math.ceil(max / 3) * 4 + 4 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)
+  )
+    throw new Error("Invalid audio frame");
+  const result = Buffer.from(data, "base64");
+  if (result.length === 0 || result.length > max || result.length % 2 !== 0 || result.toString("base64") !== data)
+    throw new Error("Invalid audio frame");
+  return result;
+}
+function generation(value: number) {
+  if (!Number.isSafeInteger(value) || value < 0 || value > 2147483647) throw new Error("Invalid audio generation");
+}
+export class LiveAudio {
+  private isClosed(): boolean {
+    return this.state === "closed";
   }
-  play(base64: string) {
-    if (!this.active) throw new Error("Audio adapter is not started");
-    const pcm = Buffer.from(base64, "base64");
-    if (!pcm.length) return;
-    if (pcm.length % 2) return this.fail(new Error("Playback PCM16 payload has an odd byte length"));
-    if (this.queueBytes + pcm.length > this.limit)
-      return this.fail(new Error("Playback queue exceeded " + this.limit + " bytes"));
-    this.queue.push(pcm);
-    this.queueBytes += pcm.length;
-    this.flush();
+  private state: "hello" | "idle" | "starting" | "running" | "stopping" | "closed" = "hello";
+  private line = Buffer.alloc(0);
+  private pendingBytes = 0;
+  private queue: {
+    payload: string;
+    bytes: number;
+    type: string;
+    resolve: () => void;
+    reject: (error: Error) => void;
+  }[] = [];
+  private drainListener?: () => void;
+  private reapTimer?: ReturnType<typeof setTimeout>;
+  private stoppedPromise?: Promise<void>;
+  private writing = false;
+  private waiting:
+    | {
+        kind: "hello" | "ready" | "stopped";
+        resolve: () => void;
+        reject: (error: Error) => void;
+        timer: ReturnType<typeof setTimeout>;
+      }
+    | undefined;
+  private stderrBytes = 0;
+  private currentGeneration = 0;
+  readonly diagnostics: AudioDiagnostics = { queuedMs: 0, captureFrames: 0, capturedBytes: 0 };
+  private readonly onData = (chunk: Buffer) => this.read(chunk);
+  private readonly onStderr = (chunk: Buffer) => {
+    this.stderrBytes = Math.min(MAX_STDERR, this.stderrBytes + chunk.length);
+  };
+  private readonly onError = () => this.fail(new Error("Audio helper process failed"));
+  private readonly onExit = () => this.fail(new Error("Audio helper exited"));
+  private readonly onInputError = () => this.fail(new Error("Audio helper input failed"));
+  private readonly onReaped = () => {
+    if (!this.isClosed()) this.fail(new Error("Audio helper exited"));
+    if (this.reapTimer) clearTimeout(this.reapTimer);
+    this.reapTimer = undefined;
+    this.worker.off("error", this.onError);
+    this.worker.stdin.off("error", this.onInputError);
+    this.worker.off("close", this.onReaped);
+    if (this.extractedHelper) void this.extractedHelper.cleanup().catch(() => {});
+  };
+  private constructor(
+    private readonly worker: Worker,
+    private readonly options: AudioOptions,
+    private readonly extractedHelper?: ExtractedHelper,
+  ) {
+    worker.stdout.on("data", this.onData);
+    worker.stderr.on("data", this.onStderr);
+    worker.on("error", this.onError);
+    worker.on("exit", this.onExit);
+    worker.stdin.on("error", this.onInputError);
+    worker.on("close", this.onReaped);
   }
-  interrupt() {
-    if (!this.active) return;
-    this.clearQueue();
-    const old = this.player;
-    this.player = undefined;
-    if (old) this.kill(old);
-    try {
-      this.player = this.spawnPlayer();
-    } catch (cause) {
-      this.fail(cause instanceof Error ? cause : new Error(String(cause)));
-    }
-  }
-  close() {
-    this.stop();
-    this.callbacks = undefined;
-  }
-  private spawnPlayer() {
-    if (!this.playCommand) throw new Error("SoX player command is unavailable");
-    const child = this.spawn([this.playCommand, ...playArgs], ["pipe", "ignore", "ignore"]);
-    if (!child.stdin) {
-      child.kill("SIGKILL");
-      throw new Error("SoX player did not provide stdin");
-    }
-    this.watch(child, "player");
-    return child;
-  }
-  private spawnRecorder() {
-    if (!this.recCommand) throw new Error("SoX recorder command is unavailable");
-    const child = this.spawn([this.recCommand, ...recArgs], ["ignore", "pipe", "ignore"]);
-    if (!child.stdout) {
-      child.kill("SIGKILL");
-      throw new Error("SoX recorder did not provide stdout");
-    }
-    const data: Listener = (value) => this.receive(value);
-    child.stdout.on("data", data);
-    this.watch(child, "recorder", data);
-    return child;
-  }
-  private watch(child: AudioProcess, role: string, data?: Listener) {
-    const error: Listener = (value) => {
-      if (this.owns(child)) this.fail(value instanceof Error ? value : new Error("SoX " + role + " failed"));
+  /** Launches without opening a device; waits for protocol-v1 hello. Caller must start() explicitly. */
+  static async launch(options: AudioOptions = {}): Promise<LiveAudio> {
+    const aborted = () => {
+      if (options.signal?.aborted) throw new Error("Audio helper launch cancelled");
     };
-    const exit: Listener = (code, signal) => {
-      if (this.owns(child))
-        this.fail(
-          new Error("SoX " + role + " exited unexpectedly (code " + String(code) + ", signal " + String(signal) + ")"),
-        );
-    };
-    child.on("error", error);
-    child.stdin?.on("error", error);
-    child.on("exit", exit);
-    (child as Watched).__audio = { error, exit, data };
-  }
-  private owns(child: AudioProcess) {
-    return this.active && (child === this.player || child === this.recorder);
-  }
-  private receive(value: unknown) {
-    if (!this.active) return;
-    const input = Buffer.isBuffer(value) ? value : Buffer.from(value as Uint8Array);
-    let pcm = this.remainder === undefined ? input : Buffer.concat([Buffer.from([this.remainder]), input]);
-    this.remainder = undefined;
-    if (pcm.length % 2) {
-      this.remainder = pcm.at(-1);
-      pcm = pcm.subarray(0, -1);
-    }
-    if (!pcm.length) return;
-    let squares = 0;
-    for (let i = 0; i < pcm.length; i += 2) {
-      const sample = pcm.readInt16LE(i) / 32768;
-      squares += sample * sample;
-    }
-    try {
-      this.callbacks?.audio(pcm.toString("base64"));
-      this.callbacks?.level(Math.sqrt(squares / (pcm.length / 2)));
-    } catch (cause) {
-      this.fail(cause instanceof Error ? cause : new Error(String(cause)));
-    }
-  }
-  private flush() {
-    const input = this.player?.stdin;
-    if (!this.active || !input || this.waiting) return;
-    while (this.queue.length) {
-      const chunk = this.queue.shift();
-      if (!chunk) break;
-      this.queueBytes -= chunk.byteLength;
-      if (!input.write(chunk)) {
-        this.waiting = true;
-        const drain: Listener = () => {
-          input.removeListener("drain", drain);
-          this.pendingDrain = undefined;
-          this.waiting = false;
-          this.flush();
-        };
-        this.pendingDrain = { input, listener: drain };
-        input.on("drain", drain);
-        break;
+    aborted();
+    let worker = options.worker;
+    let extracted: ExtractedHelper | undefined;
+    if (!worker) {
+      if (process.platform !== "darwin" && process.platform !== "linux")
+        throw new Error("Audio helper requires macOS or Linux");
+      if (!process.stdin.isTTY || process.env.SSH_CONNECTION || process.env.SSH_CLIENT || process.env.SSH_TTY)
+        throw new Error("Audio helper requires a local interactive terminal");
+      try {
+        if (!options.helperPath) extracted = await resolveEmbeddedNativeHelper();
+        aborted();
+        const path = extracted?.path ?? resolve(options.helperPath ?? defaultHelperPath());
+        const info = await stat(path).catch(() => undefined);
+        aborted();
+        if (!info?.isFile() || !(info.mode & 0o111))
+          throw new Error("Audio helper is missing or not executable; build the local helper first");
+        worker = spawn(path, [], { stdio: ["pipe", "pipe", "pipe"], env: audioEnvironment() });
+      } catch (error) {
+        if (extracted) await extracted.cleanup();
+        throw error;
       }
     }
-  }
-  private fail(error: Error) {
-    if (!this.active) return;
-    const report = this.callbacks?.error;
-    this.stop();
+    const audio = new LiveAudio(worker, options, extracted);
     try {
-      report?.(error);
-    } catch {}
+      await audio.withAbort(audio.waitFor("hello", options.helloTimeoutMs ?? 3000), "launch");
+      return audio;
+    } catch (error) {
+      audio.close();
+      throw error;
+    }
   }
-  private clearQueue() {
-    if (this.pendingDrain) this.pendingDrain.input.removeListener("drain", this.pendingDrain.listener);
-    this.pendingDrain = undefined;
+  private async withAbort<T>(promise: Promise<T>, phase: string): Promise<T> {
+    const signal = this.options.signal;
+    if (!signal) return promise;
+    if (signal.aborted) {
+      void promise.catch(() => {});
+      this.close();
+      throw new Error("Audio helper " + phase + " cancelled");
+    }
+    let abort!: () => void;
+    const cancelled = new Promise<never>((_, reject) => {
+      abort = () => {
+        reject(new Error("Audio helper " + phase + " cancelled"));
+        this.close();
+      };
+      signal.addEventListener("abort", abort, { once: true });
+    });
+    try {
+      return await Promise.race([promise, cancelled]);
+    } finally {
+      signal.removeEventListener("abort", abort);
+    }
+  }
+  private waitFor(kind: "hello" | "ready" | "stopped", ms: number): Promise<void> {
+    if (!Number.isFinite(ms) || ms <= 0 || ms > 60_000) {
+      const error = new Error("Invalid audio timeout");
+      this.fail(error);
+      return Promise.reject(error);
+    }
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => (kind === "stopped" ? this.close() : this.fail(new Error(`Audio helper ${kind} timed out`))),
+        ms,
+      );
+      this.waiting = { kind, resolve, reject, timer };
+    });
+  }
+  private signal(kind: "hello" | "ready" | "stopped") {
+    if (this.waiting?.kind !== kind) throw new Error("Unexpected audio helper response");
+    const wait = this.waiting;
+    this.waiting = undefined;
+    clearTimeout(wait.timer);
+    wait.resolve();
+  }
+  private read(chunk: Buffer) {
+    if (this.state === "closed") return;
+    try {
+      if (!Buffer.isBuffer(chunk) || chunk.length > MAX_LINE * 4) throw new Error("Oversized chunk");
+      let start = 0;
+      while (start < chunk.length && !this.isClosed()) {
+        const end = chunk.indexOf(10, start);
+        const part = chunk.subarray(start, end < 0 ? undefined : end);
+        if (this.line.length + part.length > MAX_LINE) throw new Error("Oversized line");
+        this.line = Buffer.concat([this.line, part]);
+        if (end < 0) break;
+        const raw = this.line;
+        this.line = Buffer.alloc(0);
+        this.handle(raw.subarray(0, raw.at(-1) === 13 ? -1 : undefined).toString("utf8"));
+        start = end + 1;
+      }
+    } catch {
+      this.fail(new Error("Invalid audio helper protocol"));
+    }
+  }
+  private handle(line: string) {
+    const msg: unknown = JSON.parse(Buffer.from(line, "latin1").toString("utf8"));
+    if (!msg || typeof msg !== "object" || Array.isArray(msg)) throw new Error("Invalid message");
+    const m = msg as Record<string, unknown>;
+    if (this.state === "hello") {
+      if (m.type !== "hello" || m.protocol !== 1) throw new Error("Incompatible helper");
+      this.state = "idle";
+      this.signal("hello");
+      return;
+    }
+    if (m.type === "ready" && this.state === "starting") {
+      // Only accept bounded configuration metadata; never retain the untrusted event.
+      if (
+        typeof m.voiceProcessingEnabled === "boolean" &&
+        typeof m.voiceProcessingBypassed === "boolean" &&
+        typeof m.captureRate === "number" &&
+        Number.isFinite(m.captureRate) &&
+        m.captureRate > 0 &&
+        m.captureRate <= 384_000 &&
+        typeof m.renderRate === "number" &&
+        Number.isFinite(m.renderRate) &&
+        m.renderRate > 0 &&
+        m.renderRate <= 384_000
+      )
+        this.diagnostics.ready = {
+          voiceProcessingEnabled: m.voiceProcessingEnabled,
+          voiceProcessingBypassed: m.voiceProcessingBypassed,
+          captureRate: m.captureRate,
+          renderRate: m.renderRate,
+          ...(typeof m.captureChannels === "number" &&
+          Number.isInteger(m.captureChannels) &&
+          m.captureChannels > 0 &&
+          m.captureChannels <= 256
+            ? { captureChannels: m.captureChannels }
+            : {}),
+          ...(typeof m.renderChannels === "number" &&
+          Number.isInteger(m.renderChannels) &&
+          m.renderChannels > 0 &&
+          m.renderChannels <= 256
+            ? { renderChannels: m.renderChannels }
+            : {}),
+        };
+      this.state = "running";
+      this.signal("ready");
+      return;
+    }
+    if (m.type === "stopped" && this.state === "stopping") {
+      this.signal("stopped");
+      this.close();
+      return;
+    }
+    if (m.type === "error") {
+      const setup =
+        typeof m.domain === "string" &&
+        [
+          "NSOSStatusErrorDomain",
+          "AVFoundationErrorDomain",
+          "NSCocoaErrorDomain",
+          "NSPOSIXErrorDomain",
+          "input-format",
+          "output-format",
+        ].includes(m.domain) &&
+        typeof m.number === "number" &&
+        Number.isSafeInteger(m.number) &&
+        m.number >= -2147483648 &&
+        m.number <= 2147483647
+          ? { domain: m.domain, number: m.number }
+          : undefined;
+      this.fail(new Error("Audio helper reported an error"), safeCode(m.code), setup);
+      return;
+    }
+    if (this.state !== "running") throw new Error("Unexpected audio helper event");
+    if (m.type === "capture") {
+      const pcm = decode(m.data, MAX_CAPTURE);
+      if (pcm.length !== MAX_CAPTURE) throw new Error("Invalid capture duration");
+      this.diagnostics.captureFrames++;
+      this.diagnostics.capturedBytes += pcm.length;
+      this.options.callbacks?.capture?.(pcm);
+      return;
+    }
+    if (
+      m.type === "played" &&
+      typeof m.queuedMs === "number" &&
+      Number.isFinite(m.queuedMs) &&
+      m.queuedMs >= 0 &&
+      m.queuedMs <= 60_000
+    ) {
+      this.diagnostics.queuedMs = m.queuedMs;
+      this.options.callbacks?.played?.(m.queuedMs);
+      return;
+    }
+    throw new Error("Unexpected audio helper event");
+  }
+  /** Opens the default audio device only after explicit start; resolves on ready. */
+  async start(): Promise<void> {
+    if (this.state !== "idle") throw new Error("Audio helper not idle");
+    this.state = "starting";
+    const ready = this.waitFor("ready", this.options.startTimeoutMs ?? 30_000);
+    void this.send({ type: "start" }).catch(() => this.fail(new Error("Audio helper input failed")));
+    return this.withAbort(ready, "start");
+  }
+  /** 24kHz mono little-endian PCM16, at most 200ms. Resolves when stdin accepts the write, NOT when played. */
+  play(pcm16: Buffer, gen: number): Promise<void> {
+    if (this.state !== "running") return Promise.reject(new Error("Audio helper not running"));
+    generation(gen);
+    if (gen !== this.currentGeneration)
+      return Promise.reject(new Error("Stale audio generation; flush before changing generation"));
+    if (!Buffer.isBuffer(pcm16) || !pcm16.length || pcm16.length > MAX_PLAY || pcm16.length % 2)
+      return Promise.reject(new Error("Invalid playback frame"));
+    this.currentGeneration = gen;
+    return this.send({ type: "play", data: pcm16.toString("base64"), generation: gen });
+  }
+  /** Interrupt with a strictly increasing int32 generation. Drops unsent play writes (their promises reject).
+   * A pending write may already have entered the pipe; neither flush nor close can retract it. */
+  flush(gen: number): Promise<void> {
+    if (this.state !== "running") return Promise.reject(new Error("Audio helper not running"));
+    generation(gen);
+    if (gen <= this.currentGeneration) return Promise.reject(new Error("Flush generation must increase"));
+    this.currentGeneration = gen;
+    this.dropQueuedPlay();
+    return this.send({ type: "flush", generation: gen });
+  }
+  private dropQueuedPlay() {
+    this.queue = this.queue.filter((item, index) => {
+      if (item.type !== "play" || (index === 0 && this.writing)) return true;
+      this.pendingBytes -= item.bytes;
+      item.reject(new Error("Audio playback interrupted"));
+      return false;
+    });
+  }
+  private send(msg: { type: string; [key: string]: unknown }): Promise<void> {
+    if (this.state === "closed") return Promise.reject(new Error("Audio helper closed"));
+    const payload = JSON.stringify(msg) + "\n";
+    const bytes = Buffer.byteLength(payload);
+    if (this.pendingBytes + bytes > MAX_PENDING - (msg.type === "play" ? 256 : 0))
+      return Promise.reject(new Error("Audio helper input queue full"));
+    return new Promise((resolve, reject) => {
+      this.pendingBytes += bytes;
+      this.queue.push({ payload, bytes, type: msg.type, resolve, reject });
+      this.pump();
+    });
+  }
+  private pump() {
+    if (this.writing || this.state === "closed") return;
+    const item = this.queue[0];
+    if (!item) return;
+    this.writing = true;
+    let callbackDone = false;
+    let drained = false;
+    const finish = () => {
+      if (!callbackDone || !drained || this.state === "closed") return;
+      if (this.drainListener) {
+        this.worker.stdin.off("drain", this.drainListener);
+        this.drainListener = undefined;
+      }
+      this.queue.shift();
+      this.pendingBytes -= item.bytes;
+      this.writing = false;
+      item.resolve();
+      this.pump();
+    };
+    try {
+      drained = this.worker.stdin.write(item.payload, (err?: Error | null) => {
+        if (err) {
+          this.fail(new Error("Audio helper input failed"));
+          return;
+        }
+        callbackDone = true;
+        finish();
+      });
+      if (!drained && !this.isClosed()) {
+        this.drainListener = () => {
+          drained = true;
+          this.drainListener = undefined;
+          finish();
+        };
+        this.worker.stdin.once("drain", this.drainListener);
+      }
+      finish();
+    } catch {
+      this.fail(new Error("Audio helper input failed"));
+    }
+  }
+  /** Normal stop resolves after stopped; timeout closes the helper without reporting failure. */
+  stop(): Promise<void> {
+    if (this.stoppedPromise) return this.stoppedPromise;
+    if (this.state === "closed") return Promise.resolve();
+    if (this.state === "hello" || this.state === "starting" || this.state === "idle") {
+      this.close();
+      return Promise.resolve();
+    }
+    this.state = "stopping";
+    this.dropQueuedPlay();
+    const stopped = this.waitFor("stopped", this.options.stopTimeoutMs ?? 2000);
+    void this.send({ type: "stop" }).catch(() => this.close());
+    this.stoppedPromise = stopped.catch(() => {
+      this.close();
+    });
+    return this.stoppedPromise;
+  }
+  /** End ownership; no error callback. Already-written audio cannot be retracted. */
+  close() {
+    this.shutdown();
+  }
+  private fail(error: Error, code = "helper_failure", setup?: AudioSetupError) {
+    this.shutdown(error, code, setup);
+  }
+  private shutdown(error?: Error, code = "helper_failure", setup?: AudioSetupError) {
+    if (this.state === "closed") return;
+    this.state = "closed";
+    this.line = Buffer.alloc(0);
+    this.worker.stdout.off("data", this.onData);
+    this.worker.stderr.off("data", this.onStderr);
+    this.worker.off("exit", this.onExit);
+    if (this.drainListener) {
+      this.worker.stdin.off("drain", this.drainListener);
+      this.drainListener = undefined;
+    }
+    const reason = error ?? new Error("Audio helper closed");
+    if (this.waiting) {
+      clearTimeout(this.waiting.timer);
+      this.waiting.reject(reason);
+      this.waiting = undefined;
+    }
+    for (const item of this.queue) item.reject(reason);
     this.queue = [];
-    this.queueBytes = 0;
-    this.waiting = false;
-  }
-  private stop() {
-    this.generation++;
-    this.active = false;
-    this.clearQueue();
-    this.remainder = undefined;
-    const children = [this.recorder, this.player];
-    this.recorder = undefined;
-    this.player = undefined;
-    for (const child of children) if (child) this.kill(child);
-  }
-  private kill(child: AudioProcess) {
-    const watched = (child as Watched).__audio;
-    if (watched) {
-      // Keep the inert error handlers through process exit: spawn/EPIPE errors
-      // may arrive after close, and EventEmitter errors must remain handled.
-      child.removeListener("exit", watched.exit);
-      if (watched.data && child.stdout) child.stdout.removeListener("data", watched.data);
+    this.pendingBytes = 0;
+    this.writing = false;
+    // Retain error guards until child close or bounded reaping: kill can emit late errors.
+    try {
+      this.worker.kill("SIGTERM");
+    } catch {
+      /* exited */
+    }
+    this.reapTimer = setTimeout(() => {
+      try {
+        this.worker.kill("SIGKILL");
+      } catch {
+        /* exited */
+      }
+      this.onReaped();
+    }, 1000);
+    this.reapTimer.unref?.();
+    if (error) {
+      try {
+        this.options.callbacks?.error?.(code, safeMessage(undefined), setup);
+      } catch {
+        /* observer */
+      }
     }
     try {
-      child.stdin?.destroy?.();
-    } catch {}
-    try {
-      child.kill("SIGKILL");
-    } catch {}
+      this.options.callbacks?.closed?.();
+    } catch {
+      /* observer */
+    }
   }
-}
-export function createLocalAudioAdapter(options: SoxAudioAdapterOptions = {}): LiveAudioAdapter {
-  return new SoxAudioAdapter(options);
 }

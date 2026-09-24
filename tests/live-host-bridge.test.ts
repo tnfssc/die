@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { TaskManager } from "../src/tasks/task-manager";
 import { JobService } from "../src/tasks/job-service";
-import { LiveHostBridge } from "../src/live-lab/host-bridge";
-import type { HostAuthority } from "../src/live-lab/host-bridge";
+import { LiveHostBridge } from "../src/live/host-bridge";
+import type { HostAuthority } from "../src/live/host-bridge";
 
 function fixture(failSend = false) {
   let session = "s1";

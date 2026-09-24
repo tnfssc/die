@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { FRAME_BYTES, MAX_PENDING_BYTES, type PlaybackClock, PlaybackScheduler } from "../src/live-lab/playback";
+import { FRAME_BYTES, MAX_PENDING_BYTES, type PlaybackClock, PlaybackScheduler } from "../src/live/playback";
 
 class Clock implements PlaybackClock {
   time = 0;
@@ -62,7 +62,7 @@ function harness(
   });
   return { clock, sent, flushed, errors, scheduler };
 }
-describe("live-lab playback scheduler", () => {
+describe("live playback scheduler", () => {
   test("burst of seconds drains at wall time; turnComplete retains every sample including fractional tail", async () => {
     const h = harness();
     const pcm = Buffer.alloc(48_000 * 4 + 222);

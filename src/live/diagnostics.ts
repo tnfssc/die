@@ -56,11 +56,11 @@ export function audioDiagnostic(code: string, setup?: AudioSetupError): string {
     case "playback_full":
       return "Speaker playback queue filled [playback_full]. Retry.";
     case "helper_failure":
-      return "Audio helper process failed [helper_failure]. Run die --live-lab-self-test (no devices); if it passes, try /live-lab mic-check (requires consent, no provider).";
+      return "Audio helper process failed [helper_failure]. Run die --live-self-test (no devices); if it passes, try /live mic-check (requires consent, no provider).";
     default:
-      return "Audio helper failed [unclassified]. Run die --live-lab-self-test (no devices); then /live-lab mic-check with consent. Report the step and code, not secrets.";
+      return "Audio helper failed [unclassified]. Run die --live-self-test (no devices); then /live mic-check with consent. Report the step and code, not secrets.";
   }
 }
 export function audioLaunchDiagnostic(): string {
-  return "Audio helper could not launch or respond [launch]. Run die --live-lab-self-test (no devices). Check local terminal and executable permissions; report which step failed.";
+  return "Audio helper could not launch or respond [launch]. Run die --live-self-test (no devices). Check local terminal and executable permissions; report which step failed.";
 }

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import type { AudioCallbacks } from "../src/live-lab/audio";
-import { analyzeSpeakerCheck, runSpeakerCheck, speakerCheckReference } from "../src/live-lab/speaker-check";
+import type { AudioCallbacks } from "../src/live/audio";
+import { analyzeSpeakerCheck, runSpeakerCheck, speakerCheckReference } from "../src/live/speaker-check";
 
 const RATE = 16000;
 const reference = speakerCheckReference();

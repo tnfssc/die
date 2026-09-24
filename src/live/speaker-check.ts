@@ -1,10 +1,10 @@
 /** Opt-in local speaker diagnostic; no PCM persists, no provider or network. Not an AEC/double-talk verdict. */
-import type { AudioCallbacks, LiveLabAudio } from "./audio";
+import type { AudioCallbacks, LiveAudio } from "./audio";
 
 export type SpeakerCheckAudioFactory = (
   callbacks: AudioCallbacks,
   signal: AbortSignal,
-) => Promise<Pick<LiveLabAudio, "start" | "play" | "flush" | "stop" | "close" | "diagnostics">>;
+) => Promise<Pick<LiveAudio, "start" | "play" | "flush" | "stop" | "close" | "diagnostics">>;
 export type SpeakerCheckResult = {
   status: "correlated_return" | "no_correlated_return" | "no_signal" | "clipping" | "inconclusive";
   correlation?: number;
@@ -134,7 +134,7 @@ export function analyzeSpeakerCheck(
   };
 }
 
-/** Only call after explicit consent. Factory is exactly LabDependencies.audio's signature.
+/** Only call after explicit consent. Factory is exactly LiveDependencies.audio's signature.
  * 6s deadline, bounded capture and stop, zero PCM finally; no recordings or raw samples returned.
  */
 export async function runSpeakerCheck(

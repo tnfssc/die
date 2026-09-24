@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { boundedHostContext, createOrchestration, type VoiceHost } from "../src/live-lab/orchestration";
+import { boundedHostContext, createOrchestration, type VoiceHost } from "../src/live/orchestration";
 
 test("small honest tool set routes send, steering, authorized inspection and explicit cancellation", async () => {
   const calls: unknown[] = [];

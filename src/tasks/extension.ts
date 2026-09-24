@@ -1,5 +1,5 @@
-import { LiveHostBridge } from "../live-lab/host-bridge";
-import { registerLiveHost } from "../live-lab/host-access";
+import { LiveHostBridge } from "../live/host-bridge";
+import { registerLiveHost } from "../live/host-access";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { attachDiagnosticSink, diagnosticRecorder, recordDiagnostic } from "../diagnostics";
 import { registerOperationDiagnostics } from "../diagnostics-extension";

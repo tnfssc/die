@@ -1,10 +1,10 @@
 import { EventEmitter } from "node:events";
 import { expect, test } from "bun:test";
-import liveLabExtension from "../src/live-lab/extension";
-import { VoiceSession } from "../src/live-lab/session";
-import type { LiveParams, LiveConnection, VoiceOrchestration } from "../src/live-lab/types";
+import liveExtension from "../src/live/extension";
+import { VoiceSession } from "../src/live/session";
+import type { LiveParams, LiveConnection, VoiceOrchestration } from "../src/live/types";
 import tasksExtension from "../src/tasks/extension";
-import { getLiveHost } from "../src/live-lab/host-access";
+import { getLiveHost } from "../src/live/host-access";
 
 test("tasks extension exposes its real shared JobService/TaskManager and retains bridge until shutdown", async () => {
   const handlers = new Map<string, Function[]>();
@@ -99,7 +99,7 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   const contexts: unknown[] = [];
   const responses: unknown[] = [];
   let tools: VoiceOrchestration | undefined;
-  liveLabExtension(voicePi, {
+  liveExtension(voicePi, {
     local: () => true,
     key: async () => "fake-no-network",
     voice: (callbacks, orchestration) => {

@@ -1,12 +1,5 @@
 import { expect, test } from "bun:test";
-import { liveStatus, liveLocalOnly } from "../src/live/status";
-test("reactive line has stable width and clamps invalid audio levels", () => {
-  expect(liveStatus(0)).toBe("live ────────");
-  expect(liveStatus(1)).toBe("live ━━━━━━━━");
-  expect(liveStatus(NaN)).toBe(liveStatus(0));
-  expect(liveStatus(-1)).toBe(liveStatus(0));
-  expect(liveStatus(2)).toBe(liveStatus(1));
-});
+import { liveLocalOnly } from "../src/live/status";
 test("live is interactive local root CLI only", () => {
   expect(liveLocalOnly("tui", {}, true)).toBe(true);
   for (const mode of ["rpc", "print", "json"]) expect(liveLocalOnly(mode, {}, true)).toBe(false);

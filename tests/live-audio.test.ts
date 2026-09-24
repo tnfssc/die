@@ -1,7 +1,7 @@
 import { test, expect } from "bun:test";
 import { EventEmitter } from "node:events";
 import { PassThrough } from "node:stream";
-import { LiveLabAudio } from "../src/live-lab/audio";
+import { LiveAudio } from "../src/live/audio";
 class Fake extends EventEmitter {
   stdin = new PassThrough();
   stdout = new PassThrough();
@@ -23,7 +23,7 @@ class Fake extends EventEmitter {
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 async function open(options: Record<string, unknown> = {}) {
   const worker = new Fake();
-  const promise = LiveLabAudio.launch({ worker: worker as never, ...options });
+  const promise = LiveAudio.launch({ worker: worker as never, ...options });
   worker.emitMessage({ type: "hello", protocol: 1 });
   return { audio: await promise, worker };
 }
@@ -62,12 +62,12 @@ test("hello does not start mic; start waits ready, capture fixed 20ms and playba
 });
 test("handshake mismatch, timeout, exit, and late events close process", async () => {
   const worker = new Fake();
-  const launch = LiveLabAudio.launch({ worker: worker as never, helloTimeoutMs: 20 });
+  const launch = LiveAudio.launch({ worker: worker as never, helloTimeoutMs: 20 });
   worker.emitMessage({ type: "hello", protocol: 2 });
   await expect(launch).rejects.toThrow();
   expect(worker.killed).toBe(true);
   const second = new Fake();
-  await expect(LiveLabAudio.launch({ worker: second as never, helloTimeoutMs: 10 })).rejects.toThrow("timed out");
+  await expect(LiveAudio.launch({ worker: second as never, helloTimeoutMs: 10 })).rejects.toThrow("timed out");
   expect(second.killed).toBe(true);
   const { audio, worker: third } = await open({ startTimeoutMs: 10 });
   await expect(audio.start()).rejects.toThrow("timed out");

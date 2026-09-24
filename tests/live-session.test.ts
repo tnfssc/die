@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { VoiceSession } from "../src/live-lab/session.js";
-import type { LiveAdapter, LiveParams, LiveConnection } from "../src/live-lab/types.js";
+import { VoiceSession } from "../src/live/session.js";
+import type { LiveAdapter, LiveParams, LiveConnection } from "../src/live/types.js";
 
 function harness() {
   let params!: LiveParams;
