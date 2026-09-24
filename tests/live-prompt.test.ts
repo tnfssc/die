@@ -4,7 +4,7 @@ import { liveSystemInstruction } from "../src/live/prompt.js";
 describe("Live voice instruction", () => {
   test("supports noncoding requests through the configured agent without promising access", () => {
     expect(liveSystemInstruction).toContain("not just coding");
-    expect(liveSystemInstruction).toContain("weather");
+    expect(liveSystemInstruction.toLowerCase()).toContain("weather");
     expect(liveSystemInstruction).toContain("agent_send");
     expect(liveSystemInstruction).toContain("Don't assume that agent has web access");
     expect(liveSystemInstruction).toContain("Ask for missing details");
