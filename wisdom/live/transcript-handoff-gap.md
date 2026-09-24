@@ -133,3 +133,11 @@ Final tests task_455a4b3d and build/helper/onboarding task_cd958ca9 running.
 Install only after both pass; current installed build still predates this work.
 Values unchanged: existing truthful UI/history, bounded resources, and go-look
 principles cover the findings.
+
+Installed candidate successfully via task_24eacd24. Installed and dist SHA256:
+`deb78740acb81dac4b82388925c2570f70ea6a54549cf5806c5cd0d62b1de275`.
+169 Live tests/typecheck, build/helper self-test and onboarding smoke passed.
+User must fully restart. Trial: ask weather, then ask to save this new Live
+conversation. Old unrecorded voice dialogue cannot be recovered retroactively.
+No public release published. Real installed-host export/UI and physical audio
+regression still need user validation; provider tests used fake hosts.
