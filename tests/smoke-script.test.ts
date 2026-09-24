@@ -14,14 +14,23 @@ async function fixture() {
   roots.push(root);
   await mkdir(join(root, "bin"));
   await mkdir(join(root, "dist"));
-  await writeFile(join(root, "bin/bun"), "#!/bin/sh\nif [ \"$1\" = run ] && [ \"$2\" = build ]; then\n  echo build >> builds\n  cp fixture-die dist/die\n  exit\nfi\nif [ \"$1\" = -e ]; then\n  echo 1.2.3\n  exit\nfi\nexit 1\n", { mode: 0o755 });
-  await writeFile(join(root, "fixture-die"), "#!/bin/sh\n/bin/mkdir -p \"$HOME/.die\"\ncase \"$1\" in\n  --version) echo 1.2.3 ;;\n  --help) echo \"die - AI coding assistant\" ;;\nesac\n", { mode: 0o755 });
-  const run = (args: string[] = []) => Bun.spawnSync(["sh", script, ...args], {
-    cwd: root,
-    env: { ...process.env, PATH: join(root, "bin") + ":" + process.env.PATH },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  await writeFile(
+    join(root, "bin/bun"),
+    '#!/bin/sh\nif [ "$1" = run ] && [ "$2" = build ]; then\n  echo build >> builds\n  cp fixture-die dist/die\n  exit\nfi\nif [ "$1" = -e ]; then\n  echo 1.2.3\n  exit\nfi\nexit 1\n',
+    { mode: 0o755 },
+  );
+  await writeFile(
+    join(root, "fixture-die"),
+    '#!/bin/sh\n/bin/mkdir -p "$HOME/.die"\ncase "$1" in\n  --version) echo 1.2.3 ;;\n  --help) echo "die - AI coding assistant" ;;\nesac\n',
+    { mode: 0o755 },
+  );
+  const run = (args: string[] = []) =>
+    Bun.spawnSync(["sh", script, ...args], {
+      cwd: root,
+      env: { ...process.env, PATH: join(root, "bin") + ":" + process.env.PATH },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
   const builds = async () => (await readFile(join(root, "builds"), "utf8")).trim().split("\n").length;
   return { root, run, builds };
 }
