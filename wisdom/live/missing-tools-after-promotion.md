@@ -37,3 +37,42 @@ actual regression test, integration, built binary validation and user trial.
 
 Values unchanged: existing truthful-state and real-path evidence rules cover
 this failure. Source declarations alone are not end-to-end tool proof.
+
+## Host review result
+
+Worker a48941b integrated (see git log for cherry-pick hash): no host-discovery
+bug reproduced. Regression now uses real Pi0.87.1 createEventBus, not a raw
+EventEmitter mock. Its async safe listener invokes the callback synchronously
+before the first await, so synchronous host handshake still works. SDK contexts
+expose the same underlying session manager; CLI registers tasks before Live.
+Session ownership/id/file gates and six-tool bridge dispatch pass. No production
+host patch justified. Parent52 tests across4 host/tool/extension files and
+TypeScript check passed. Audio-only fallback warning remains; status now makes
+missing binding and zero configured tools explicit. This is diagnosis, not a fix.
+
+A second real-provider synthetic capabilities question (no mic/real jobs) was
+launched as task_0fd419bf; inspect result. Parent build/self-test task_43929f01
+is preparing status-only diagnostic installation. User was asked whether they
+fully restarted die after installation: a running process retains old extension
+code, and all local builds still print0.9.1. This is a hypothesis, not observed
+proof of the user's cause. Next useful evidence: fresh process /live status,
+then a spoken read-only jobs request and exact response. No more speculative
+host rewrites or system-prompt changes from source declarations alone.
+
+Second Google probe completed: state ready, errors=[], no calls (capabilities
+question only). Reply: “I can definitely delegate coding work and check on
+job statuses for you. I have tools like agent send and steer to pass on your
+requests, and jobs list and inspect to follow project progress.” With supplied
+tools and current system instruction, broad denial was not reproduced. No
+system-prompt tweak justified. Real user process/session remains unmeasured.
+
+Diagnostic build and helper self-test passed. Installer task_5fa4fc5e reports
+installed and installed embedded-helper self-test passed; see final hash below.
+Ask user to fully restart die, start /live and paste /live status before stop.
+Expected local binding: agent connected · tools configured6. If that holds,
+ask “List my current jobs” and capture exact response/tool behavior; then test
+coding handoff separately (speech/transcription authorization may be distinct).
+Do not claim the tool issue is fixed. No native audio behavior changed.
+Probe source files removed after saving these results; no recordings made.
+
+Installed CLI SHA256: 68f8f9747659a84eadcdfe88e1091d4ca324ed8ff6a4c7e24bd6185f8b73285f.
