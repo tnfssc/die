@@ -299,7 +299,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
                       transcription: { model: "gpt-4o-mini-transcribe" },
                       turn_detection: { type: "server_vad", create_response: true, interrupt_response: true },
                     },
-                    output: { format: { type: "audio/pcm" }, voice: "marin" },
+                    output: { format: { type: "audio/pcm", rate: 24000 }, voice: "marin" },
                   },
                   output_modalities: ["audio"],
                   tools: (this.orchestration?.tools ?? []).map((tool) => ({

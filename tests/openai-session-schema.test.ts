@@ -7,8 +7,8 @@ import { liveSystemInstruction } from "../src/live/prompt";
 // Deliberately strict contract for the subset die sends, not a claim to implement
 // the entire GA API. Source: openai-node/src/resources/realtime/realtime.ts,
 // RealtimeSessionCreateRequest / RealtimeAudioFormats (checked 2026-09-24).
-// AudioPCM.rate is OPTIONAL in that SDK; the official conversations guide also
-// omits output rate. Do not invent a required-field rejection for that omission.
+// The SDK types mark rate optional, but the live mini endpoint rejected an omitted
+// session.audio.output.format.rate with missing_required_parameter (2026-09-24).
 const pcm = z.strictObject({ type: z.literal("audio/pcm"), rate: z.literal(24000).optional() });
 const property: z.ZodType = z.lazy(() =>
   z.union([
@@ -32,7 +32,10 @@ const setup = z.strictObject({
           interrupt_response: z.boolean(),
         }),
       }),
-      output: z.strictObject({ format: pcm, voice: z.literal("marin") }),
+      output: z.strictObject({
+        format: z.strictObject({ type: z.literal("audio/pcm"), rate: z.literal(24000) }),
+        voice: z.literal("marin"),
+      }),
     }),
     output_modalities: z.tuple([z.literal("audio")]),
     tools: z.array(
@@ -137,17 +140,19 @@ describe("OpenAI GA setup schema contract (offline)", () => {
       f.session.close();
     });
   }
-  test("the published optional output PCM rate is accepted omitted or explicitly 24000", async () => {
-    for (const rate of [undefined, 24000]) {
-      const f = connect((value) => {
-        value.session.audio.output.format.rate = rate;
-      });
-      await f.pending;
-      expect(f.session.state).toBe("ready");
-      f.session.close();
-    }
+  test("output PCM rate is present on the real setup payload", async () => {
+    const f = connect();
+    await f.pending;
+    expect(f.socket.events[0].session.audio.output.format.rate).toBe(24000);
+    f.session.close();
   });
   for (const [name, mutate] of [
+    [
+      "missing output PCM rate",
+      (v: any) => {
+        delete v.session.audio.output.format.rate;
+      },
+    ],
     [
       "wrong PCM rate",
       (v: any) => {
