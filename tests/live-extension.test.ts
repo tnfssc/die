@@ -261,6 +261,33 @@ describe("Live voice", () => {
     expect([t.launches, t.keyCalls, t.starts]).toEqual([0, 0, 0]);
     expect(t.notices).toEqual(["Live off."]);
   });
+  test("status distinguishes the connected agent and six configured declarations", async () => {
+    const unused = async () => {
+      throw new Error("No tool execution in this status test");
+    };
+    const t = setup({
+      host: () => ({
+        context: () => ({ diagnosticFixture: true }),
+        subscribe: () => () => {},
+        send: unused,
+        steer: unused,
+        list: unused,
+        inspect: unused,
+        stop: unused,
+      }),
+    });
+    await t.run("start");
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("agent connected · tools configured 6");
+    await t.run("stop");
+  });
+  test("status exposes missing agent tools instead of presenting voice as fully connected", async () => {
+    const t = setup(); // No host supplied by this fixture.
+    await t.run("start");
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("agent unavailable · tools configured 0");
+    await t.run("stop");
+  });
   test("full duplex, bounded frames, interruption flushes but turnComplete does not", async () => {
     const t = setup();
     await t.run("start");

@@ -353,6 +353,10 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 current.turns +
                 " · provider interruptions " +
                 (current.voice?.diagnostics?.serverInterruptions ?? "unknown") +
+                " · agent " +
+                (current.host ? "connected" : "unavailable") +
+                " · tools configured " +
+                (current.orchestration?.tools.length ?? 0) +
                 " · native VP " +
                 (current.audio?.diagnostics.ready
                   ? (current.audio.diagnostics.ready.voiceProcessingEnabled ? "enabled" : "disabled") +
