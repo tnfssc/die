@@ -1,0 +1,33 @@
+{"ms":1118,"event":"fixture","scenario":"weather","mode":"manual","model":"gemini-3.8-live","phrase":"Can you check weather in Bengaluru today?","pcmBytes":70208,"sampleRate":16000}
+{"ms":5315,"event":"wire_input","envelope":3,"text":"Can you check weather in Bengaluru today?","rawFinished":"absent"}
+{"ms":5315,"event":"normalized_input","text":"Can you check weather in Bengaluru today?","finished":true,"finalitySource":"model_contract","rawFinished":"absent"}
+{"ms":5315,"event":"capture_committed","text":"Can you check weather in Bengaluru today?"}
+{"ms":6364,"event":"wire_output","envelope":7,"text":"I'm sorry, I cannot "}
+{"ms":6614,"event":"wire_output","envelope":13,"text":"check the weather right"}
+{"ms":6848,"event":"wire_output","envelope":17,"text":" now."}
+{"ms":9236,"event":"wire_boundary","envelope":23,"turnComplete":true}
+{"ms":31143,"event":"summary","hostCalls":0,"diagnostics":{"serverInterruptions":0,"turnCompletions":1}}
+{"ms":31143,"event":"temporary_audio_removed"}
+{"ms":1137,"event":"fixture","scenario":"correction","mode":"manual","model":"gemini-3.8-live","phrase":"You said you only help with coding. Can you research something noncoding for me instead?","pcmBytes":152456,"sampleRate":16000}
+{"ms":8374,"event":"wire_input","envelope":3,"text":"You said you only help with coding. Can you research something non-coding for me instead?","rawFinished":"absent"}
+{"ms":8374,"event":"normalized_input","text":"You said you only help with coding. Can you research something non-coding for me instead?","finished":true,"finalitySource":"model_contract","rawFinished":"absent"}
+{"ms":8374,"event":"capture_committed","text":"You said you only help with coding. Can you research something non-coding for me instead?"}
+{"ms":9105,"event":"wire_output","envelope":7,"text":"I can definitely help "}
+{"ms":9413,"event":"wire_output","envelope":19,"text":"with things beyond"}
+{"ms":9698,"event":"wire_output","envelope":25,"text":" coding. What do you"}
+{"ms":9881,"event":"wire_output","envelope":29,"text":" need me to research for you?"}
+{"ms":13900,"event":"wire_boundary","envelope":39,"turnComplete":true}
+{"ms":31141,"event":"summary","hostCalls":0,"diagnostics":{"serverInterruptions":0,"turnCompletions":1}}
+{"ms":31142,"event":"temporary_audio_removed"}
+{"ms":1123,"event":"fixture","scenario":"save","mode":"manual","model":"gemini-3.8-live","phrase":"Please save this conversation for me.","pcmBytes":65326,"sampleRate":16000}
+{"ms":4993,"event":"wire_input","envelope":3,"text":"Please save this conversation for me.","rawFinished":"absent"}
+{"ms":4993,"event":"normalized_input","text":"Please save this conversation for me.","finished":true,"finalitySource":"model_contract","rawFinished":"absent"}
+{"ms":4993,"event":"capture_committed","text":"Please save this conversation for me."}
+{"ms":5585,"event":"wire_output","envelope":7,"text":"I'm sorry, I can't "}
+{"ms":5827,"event":"wire_output","envelope":17,"text":"save our conversation."}
+{"ms":5985,"event":"wire_output","envelope":23,"text":" I don't have"}
+{"ms":6283,"event":"wire_output","envelope":29,"text":" the ability to store"}
+{"ms":6534,"event":"wire_output","envelope":35,"text":" transcripts."}
+{"ms":11435,"event":"wire_boundary","envelope":47,"turnComplete":true}
+{"ms":31128,"event":"summary","hostCalls":0,"diagnostics":{"serverInterruptions":0,"turnCompletions":1}}
+{"ms":31129,"event":"temporary_audio_removed"}
