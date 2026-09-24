@@ -35,6 +35,14 @@ async function writeNoticeFixture(
 }
 
 describe("release automation", () => {
+  test("native Live CI has no legacy SoX or candidate bundle path", async () => {
+    const ci = await read(".github/workflows/ci.yml");
+    const native = await read(".github/workflows/live.yml");
+    expect(ci).not.toContain("brew install sox");
+    expect(ci).toContain("bun test tests/live-*.test.ts");
+    expect(native).not.toContain("inputs.bundle");
+    expect(native).not.toContain("live-candidate");
+  });
   test("all workflow actions use audited immutable commits and tool versions stay aligned", async () => {
     const pins = new Map([
       ["actions/checkout", "3d3c42e5aac5ba805825da76410c181273ba90b1"],
@@ -44,7 +52,7 @@ describe("release automation", () => {
       ["pnpm/action-setup", "ea17c68df8912ef543352723c149a84f56e3d413"],
       ["oven-sh/setup-bun", "0c5077e51419868618aeaa5fe8019c62421857d6"],
     ]);
-    for (const path of ["ci", "live-lab", "release"]) {
+    for (const path of ["ci", "live", "release"]) {
       const workflow = Bun.YAML.parse(await read(`.github/workflows/${path}.yml`)) as {
         permissions?: Record<string, string>;
         jobs: Record<
@@ -116,15 +124,15 @@ describe("release automation", () => {
     expect(workflow).not.toContain("workflow_dispatch:");
     expect(workflow).toContain("!contains(github.ref_name, '-')");
     expect(workflow).toContain("needs: [reuse-check, mac-helper]");
-    expect(workflow).toContain("scripts/build-live-lab-helper.sh");
+    expect(workflow).toContain("scripts/build-live-helper.sh");
     expect(workflow).toContain("Mach-O 64-bit (executable arm64|arm64 executable)");
     expect(workflow).toContain("-fsanitize=address,undefined");
     expect(workflow).toContain("actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c");
-    expect(workflow).toContain("--live-lab-helper=./artifacts/release/mac-helper/live-lab-audio");
+    expect(workflow).toContain("--live-helper=./artifacts/release/mac-helper/live-audio");
     expect(workflow).toContain("stable-release-assets");
     expect(workflow).toContain("needs: [release, reuse-assets, mac-release-smoke]");
     expect(workflow).toContain("bun scripts/verify-v071-update.ts dist/release/die-darwin-arm64");
-    expect(workflow).toContain("--live-lab-self-test");
+    expect(workflow).toContain("--live-self-test");
     expect(workflow).toContain("permissions:\n  contents: read");
     expect(workflow).toContain("contents: write");
     expect(workflow).toContain('validate-release-tag.ts "$tag"');
@@ -157,7 +165,7 @@ describe("release automation", () => {
       "bun run build -- --reuse-web --target=bun-linux-arm64 --outfile=./dist/release/die-linux-arm64",
     );
     expect(workflow).toContain(
-      "bun run build -- --reuse-web --live-lab-helper=./artifacts/release/mac-helper/live-lab-audio --target=bun-darwin-arm64 --outfile=./dist/release/die-darwin-arm64",
+      "bun run build -- --reuse-web --live-helper=./artifacts/release/mac-helper/live-audio --target=bun-darwin-arm64 --outfile=./dist/release/die-darwin-arm64",
     );
     expect(workflow).toContain(
       "bun run build -- --reuse-web --target=bun-android-arm64 --outfile=./dist/release/die-android-arm64",
@@ -189,7 +197,7 @@ describe("release automation", () => {
     expect(workflow.jobs.publish!.permissions?.contents).toBe("write");
     const macCommands = workflow.jobs["mac-release-smoke"]!.steps.map((step) => step.run ?? "").join("\n");
     expect(macCommands).toContain("verify-v071-update.ts");
-    expect(macCommands).toContain("--live-lab-self-test");
+    expect(macCommands).toContain("--live-self-test");
     expect(macCommands).not.toContain('"type":"start"');
   });
 

@@ -97,11 +97,6 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
-      - name: Install and inspect CoreAudio-capable SoX (does not open devices)
-        shell: bash
-        run: |
-          brew install sox
-          sox --help | grep -w coreaudio
-          bun -e 'import { checkAudioCapabilities } from "./src/live/audio.ts"; const c = await checkAudioCapabilities(); if (!c.supported || !c.recorderPath || !c.playerPath) throw new Error(JSON.stringify(c));'
-      - name: Deterministic Live tests (fake audio and transport)
-        run: bun test tests/audio.test.ts tests/live-setup.test.ts tests/live-extension.test.ts tests/live-connection-test.test.ts tests/live-transport.test.ts tests/live-bridge.test.ts
+      - run: bun run prepare:assets
+      - name: Deterministic Live tests (fake audio and provider)
+        run: bun test tests/live-*.test.ts

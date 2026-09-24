@@ -2,6 +2,29 @@
 
 > This document records the product direction and decisions stated by the user in this project conversation. Those statements are the source of truth. Implementation details may support them, but must not silently become product requirements.
 
+## Live voice (2026-09-24, promotion in progress)
+
+Live uses the native full-duplex implementation proven useful by the user's
+Mac speaker trial. It replaces the old SoX path and the separate /live-lab
+command. The user asked for one experience, not two names for the same work.
+
+Bare /live toggles voice: start when idle, stop when active, cancel when
+connecting. /live start and /live stop are explicit alternatives. Missing auth opens a focused
+setup flow. Setup has only the next useful actions, no repeated subtitles or
+technical banners. /live setup remains available. Keys stay out of chat and
+existing provider credentials are preserved. Setup alone opens no devices and
+makes no paid connection. Starting voice sends microphone audio to Google and
+may incur API charges.
+
+Voice can hand work to the configured die agent and inspect jobs. Stopping or
+interrupting voice does not cancel agent work. /live stop ends voice;
+/live status and opt-in mic/speaker checks are for troubleshooting, not the
+normal entry screen. Native startup, reply tails, interruption handling and
+the bounded playback cushion remain in place. No mic muting during playback.
+
+See [promotion work](wisdom/live/native-live-promotion.md) for integration and
+proof. The physical user report is positive, not a guarantee across all routes.
+
 ## Current contract and hardening status (2026-09-05)
 
 This section describes the current product. The phase/milestone sections below keep historical decisions and evidence, not competing current interfaces.

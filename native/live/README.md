@@ -1,8 +1,8 @@
 # Experimental native macOS Live Lab audio helper
 
-Build locally with Xcode Command Line Tools / Xcode: `scripts/build-live-lab-helper.sh`.
-The script builds `dist/live-lab-audio` and runs `--self-test` (no devices). Linux C ring tests:
-`clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined native/live-lab/AudioCore.c native/live-lab/test-core.c -o /tmp/live-lab-test && /tmp/live-lab-test`.
+Build locally with Xcode Command Line Tools / Xcode: `scripts/build-live-helper.sh`.
+The script builds `dist/live-audio` and runs `--self-test` (no devices). Linux C ring tests:
+`clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined native/live/AudioCore.c native/live/test-core.c -o /tmp/live-test && /tmp/live-test`.
 
 Run from a **local interactive terminal** only. The helper emits protocol-v1 `hello` on launch without requesting microphone access or opening a device. Send newline JSON `{"type":"start"}` to request default-device voice processing and permission. Then send `play` with base64 little-endian signed PCM16 mono 24kHz (max 200ms) and matching integer `generation`, or `flush` with a strictly increasing generation. `stop` closes the route. Output: `ready` (includes `voiceProcessingEnabled`, `voiceProcessingBypassed`, `captureRate`, `renderRate` for configuration diagnostics; not acoustic proof), `capture` (PCM16 mono 16kHz, 20ms), `played` (queuedMs, including drain to zero), `stopped`, or sanitized `error`. A `play` command is accepted in its entirety or rejected with `playback_full`; do not assume the rejected audio was queued. The ring is limited to 50 blocks (approximately one second); producers must pace input or stop on this error, not skip the missing tail. Stdin/stdout carry only JSON; audio bytes never go to stderr.
 

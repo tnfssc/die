@@ -79,8 +79,10 @@ bun run install:local
 
 Die limits stored job output, execute capture, and persistent session-body caching. It does not delete original session history. See [resource limits](./wisdom/resources/resource-limits.md) for defaults, truncation semantics, storage ownership, and web shutdown behavior.
 
-## Local speaker check (experimental CLI)
+## Live voice
 
-In a local interactive macOS/Linux terminal, run `/live-lab speaker-check`. This is separate from `/live-lab start` (paid provider voice) and `/live-lab mic-check` (route/permission probe). It asks for **explicit consent before opening audio devices**, plays a brief low-level test signal through the selected/default output, and listens briefly on the microphone. Lower your speaker volume and **stay quiet** while it runs. `/live-lab stop` cancels the check; it does not cancel native agent work or background jobs. Checks cannot overlap voice start or the mic probe.
+Type `/live` in the local terminal to start talking; type it again to stop. Live uses Google Gemini for voice and your configured die agent for work. Native full-duplex audio lets you interrupt naturally. Starting Live sends audio to Google and may incur API charges.
 
-The check is local only: no provider connection, Google key, network, agent tools, or session calls. It keeps PCM only in memory and clears it afterward; no files, audio logs, waveforms or transcripts are produced. The summary reports bounded acoustic observations and native voice-processing configuration, with provider diagnostics marked **not connected**. An automatic test cannot prove AEC quality or real-world barge-in. Verify echo-only rejection and double-talk on your actual speaker/microphone route before interpreting an interruption as a provider or cancellation defect. For permission/route errors first run `/live-lab mic-check`; for helper launch errors try `die --live-lab-self-test` (opens no devices).
+If a Google API key is missing, Live helps you set it up. Use `/live setup` to revisit setup. Keys stay out of chat. `/live stop` ends voice, not your agent’s jobs.
+
+For troubleshooting, use `/live status`, `/live mic-check`, or `/live speaker-check`. The checks ask before opening devices and do not connect to Google. The speaker check plays a short test sound; it is not proof that speech echo or interruptions work on every route. `die --live-self-test` checks the embedded helper without opening devices.

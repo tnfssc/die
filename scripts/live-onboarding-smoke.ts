@@ -62,7 +62,7 @@ try {
   await writeFile(join(home, ".die", "live.env"), `GEMINI_API_KEY=${fakeKey}\n`, { mode: 0o600 });
 
   // Discovery may find these names, but setup must never execute either device command.
-  for (const name of ["rec", "play"]) {
+  for (const name of ["live-audio", "live-audio-linux", "rec", "play"]) {
     const tool = join(fakeBin, name);
     await writeFile(tool, `#!/bin/sh\nprintf '%s\\n' ${name} >> ${quote(invocationLog)}\nexit 97\n`, {
       mode: 0o700,
@@ -82,19 +82,18 @@ try {
   run(["new-session", "-d", "-s", "smoke", "-x", "120", "-y", "40", command]);
   await waitFor("No models available");
 
-  run(["send-keys", "-t", target, "-l", "/live setup"]);
+  run(["send-keys", "-t", target, "-l", "/live"]);
   key("Enter");
-  let frame = await waitFor("Import key from ~/.die/live.env");
-  assert.match(frame, /Key: not configured/);
-  assert.ok(frame.includes("Audio tools: ready (devices untested)"));
+  let frame = await waitFor("Import ~/.die/live.env");
+  assert.ok(frame.includes("Google API key required"));
+  assert.ok(!frame.includes("Audio tools:"));
+  assert.ok(!frame.includes(fakeKey));
 
-  // Import is the initial selection. Confirm is also deliberately the initial selection.
+  // Selecting Import is the explicit action. Do not select Start voice.
   key("Enter");
-  await waitFor("Import the Live key?");
-  key("Enter");
-  frame = await waitFor("Key: configured");
-  assert.ok(frame.includes("Test paid connection (no microphone or speakers)"));
-  assert.match(frame, /Start Live/);
+  frame = await waitFor("Start voice");
+  assert.ok(!frame.includes("Test paid connection"));
+  assert.ok(!frame.includes(fakeKey));
 
   const authPath = join(home, ".die", "agent", "auth.json");
   const auth = JSON.parse(await readFile(authPath, "utf8"));
@@ -105,7 +104,7 @@ try {
   assert.equal(await readFile(sourcePath, "utf8"), `GEMINI_API_KEY=${fakeKey}\n`);
   assert.equal(await Bun.file(invocationLog).exists(), false, "setup unexpectedly executed an audio command");
 
-  // Never select Start or Test: both are intentionally left unexercised by this offline smoke.
+  // Never select Start voice: devices and provider stay outside this offline smoke.
   console.log("compiled Live onboarding smoke passed (offline fake credential import; no paid test or audio command)");
 } finally {
   run(["kill-server"], true);
