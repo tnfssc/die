@@ -120,3 +120,16 @@ Initial paid probe refused weather and save; do not call prompt validated.
 Control must separate capture-only fixture context from actual capability.
 Build prior to these follow-ups passed, but must rebuild after fixes.
 No new install.
+
+Final integrated candidate: snapshot fixes 889166c/db2ec7d, prompt correction
+merged from da25dfe. Privacy: private bounded immutable snapshots, 24-hour
+read window refreshed by reuse; cleanup lazy on later creation. Session text
+remains in normal session history. No audio recording added.
+Known limit: synthetic fake-host no-work response still elicited optimistic
+waiting wording; exact result truthfulness is not fully solved by prompting.
+Final prompt weather invoked agent_send once, save invoked once in worker proof.
+No actual job/weather/export performed in those probes.
+Final tests task_455a4b3d and build/helper/onboarding task_cd958ca9 running.
+Install only after both pass; current installed build still predates this work.
+Values unchanged: existing truthful UI/history, bounded resources, and go-look
+principles cover the findings.
