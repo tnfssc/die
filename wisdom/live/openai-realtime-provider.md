@@ -1,6 +1,6 @@
 # OpenAI Realtime session seam (offline candidate, 2026-09-24)
 
-Owns src/live/openai-session.ts and openai-resample.ts, not Gemini, UI, credentials, or native playback. Provider is wired into the current Live extension; Gemini remains default. 
+Owns src/live/openai-session.ts and openai-resample.ts, not Gemini, UI, credentials, or native playback. Provider is wired into the current Live extension; Gemini remains default.
 
 GA WebSocket reference: https://developers.openai.com/api/docs/guides/realtime-websocket (Node example uses wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1 with Authorization bearer header); https://developers.openai.com/api/docs/guides/realtime-conversations (session.update, audio/pcm input at 24k, output audio, server VAD, item truncate). Checked 2026-09-24. Latest name is evidence from the published example, **not** a guess that every account has access. No live provider/key test performed. The docs also describe a distinct /v1/live/sessions API: do not mix that protocol with GA Realtime events.
 
