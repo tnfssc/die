@@ -60,8 +60,8 @@ describe("release automation", () => {
           if (!step.uses) continue;
           const [repo, sha] = step.uses.split("@");
           expect(pins.has(repo!)).toBe(true);
-          expect(sha).toMatch(/^[a-f0-9]{40}$/);
-          expect(sha).toBe(pins.get(repo!));
+          expect(sha!).toMatch(/^[a-f0-9]{40}$/);
+          expect(sha!).toBe(pins.get(repo!)!);
           if (repo === "actions/setup-node") expect(step.with?.["node-version"]).toBe("24.21.0");
           if (repo === "pnpm/action-setup") expect(step.with?.version).toBe("11.27.1");
           if (repo === "oven-sh/setup-bun") expect(step.with?.["bun-version"]).toBe("1.4.2");
