@@ -28,7 +28,7 @@ export const orchestrationTools: FunctionDeclaration[] = [
   ),
   tool(
     "agent_send",
-    "Send the latest completed captured user speech (host supplies the text) as work to the configured agent in this session (follow-up). Returns queued, not completed. Never use this to cancel jobs; use job_cancel. Keep requestId stable on retry; never replay old requests on reconnect.",
+    "Ask the configured general-purpose agent to handle the latest completed user request, including research, weather, files or saving the conversation. Host supplies captured speech and attaches received conversation context; no transcript or summary argument is needed. Returns queued, not completed. Never use this to cancel jobs; use job_cancel. Keep requestId stable on retry; never replay old requests on reconnect.",
     { requestId: id },
     ["requestId"],
   ),

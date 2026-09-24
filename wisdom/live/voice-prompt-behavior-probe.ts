@@ -6,6 +6,8 @@ import { GoogleGenAI } from "@google/genai";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createHash } from "node:crypto";
+import { liveSystemInstruction } from "../../src/live/prompt";
 import { VoiceSession } from "../../src/live/session";
 import { createOrchestration, boundedHostContext } from "../../src/live/orchestration";
 import { createDefaultLiveCredentialService } from "../../src/live/credentials";
@@ -83,9 +85,8 @@ try {
     },
     context() {
       return {
-        configuredAgent: "capture-only-test-host",
+        configuredAgent: { name: "die", status: "connected", role: "general-purpose agent for research, files, and tools", permissions: "current user and host permissions" },
         jobs: [],
-        note: "Tool dispatch captured only; no real jobs or export.",
         ...(scenario === "save" ? { conversationRecord: "User: Please remember my planning notes. Assistant: I can help plan." } : {}),
       };
     },
@@ -99,6 +100,8 @@ try {
   const adapter: LiveAdapter = (apiKey) => ({
     live: {
       connect: async (params) => {
+        const config = params.config!;
+        log("setup", { instructionSha256: createHash("sha256").update(String(config.systemInstruction)).digest("hex"), sourceInstructionSha256: createHash("sha256").update(liveSystemInstruction).digest("hex"), toolNames: config.tools?.flatMap((t: any) => t.functionDeclarations?.map((d: any) => d.name) ?? []) });
         const sdk = new GoogleGenAI({ apiKey });
         const original = params.callbacks.onmessage;
         if (mode === "manual") params.config!.realtimeInputConfig = { automaticActivityDetection: { disabled: true } };
