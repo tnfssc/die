@@ -12,3 +12,18 @@ and other noncoding help; correction should lead to repair, not invented rules.
 11 prompt/session tests and typecheck passed in parent. This is prompt/config
 proof, not real-model behavior proof. Transcript integration still running.
 No installation yet. Existing values apply; no values change.
+
+Provider control and correction merged from da25dfe. Connected metadata alone
+fixed weather delegation in control; save required concrete host-context handoff
+guidance. Final prompt save called agent_send once but acknowledged only not
+completed, rather than clearly no work started in fake-host result. See
+voice-prompt-connected-validation.md; no actual export/weather result claimed.
+Parent final-prompt weather check task_91094d23 writes selected trace to
+/tmp/die-live-final-weather.jsonl. 29 focused tests/typecheck passed after merge.
+Snapshot privacy task_f33596b4 still pending; do not install prior build.
+
+Final weather check completed: exact final instruction hash 28531e32...,
+real manual synthetic speech -> agent_send once with exact captured request.
+No actual job/weather result. Model said it was waiting for details despite
+fake host saying no job; status narration remains imperfect. Do not call that
+result truthful completion. See voice-prompt-final-weather.jsonl.

@@ -1,0 +1,8 @@
+{"ms":746,"event":"setup","instructionSha256":"28531e3243b98c69cc8dcd1e39dfb1ce22ef6f1fb096fd50c4e6d70e9e42a742","sourceInstructionSha256":"28531e3243b98c69cc8dcd1e39dfb1ce22ef6f1fb096fd50c4e6d70e9e42a742","toolNames":["session_context","agent_send","agent_steer","jobs_list","jobs_inspect","job_cancel"]}
+{"ms":4945,"event":"wire_input","envelope":3,"text":"Can you check weather in Bengaluru today?","rawFinished":"absent"}
+{"ms":5305,"event":"host_send","requestId":"weather123","text":"Can you check weather in Bengaluru today?"}
+{"ms":6075,"event":"wire_output","envelope":13,"text":"I've sent that request "}
+{"ms":6430,"event":"wire_output","envelope":23,"text":"over and I'm waiting"}
+{"ms":6606,"event":"wire_output","envelope":29,"text":" on the details for you"}
+{"ms":6880,"event":"wire_output","envelope":33,"text":" now."}
+{"ms":30747,"event":"summary","hostCalls":1,"diagnostics":{"serverInterruptions":0,"turnCompletions":2}}
