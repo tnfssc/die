@@ -26,6 +26,8 @@ export type VoiceTranscript = {
 };
 export interface VoiceCallbacks {
   onReady?: () => void;
+  /** Cumulative PCM milliseconds actually played in the current playback epoch. */
+  getPlayedAudioMs?: () => number;
   /** Base64 PCM16 mono 24 kHz. playbackEpoch changes ONLY on interruption; flush queued playback on onInterrupted. */
   onAudio?: (base64: string, playbackEpoch: number) => void;
   /** Known incoming activity/interim text revokes older input; never proves finality. */
@@ -51,4 +53,16 @@ export interface VoiceOrchestration {
   /** Revoke pending authority on fresh input or interruption, not model turn completion. */
   beginUserTurn?(): void;
   execute(call: { id?: string; name?: string; args?: Record<string, unknown> }): Promise<unknown>;
+}
+
+/** Shared single-use provider contract; callbacks retain the same playback epoch semantics. */
+export interface VoiceProvider {
+  readonly state: VoiceState;
+  readonly generation: number;
+  readonly turn: number;
+  connect(apiKey: string): Promise<void>;
+  sendAudio(base64: string): void;
+  endAudio(): void;
+  sendContext(text: string): void;
+  close(): void;
 }
