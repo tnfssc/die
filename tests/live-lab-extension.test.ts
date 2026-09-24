@@ -401,11 +401,15 @@ test("live orchestration keeps capture/playback active, forwards actual completi
   expect(stopped).toBe(0);
 });
 
-
 describe("local speaker-check wiring", () => {
   test("consent and local gate precede runner; never calls key, provider, host or audio on decline", async () => {
     let runs = 0;
-    const t = setup({ speakerCheck: async () => { runs++; return "quiet"; } });
+    const t = setup({
+      speakerCheck: async () => {
+        runs++;
+        return "quiet";
+      },
+    });
     t.decline();
     await t.run("speaker-check");
     expect([runs, t.launches, t.keyCalls]).toEqual([0, 0, 0]);
@@ -415,11 +419,13 @@ describe("local speaker-check wiring", () => {
   });
   test("summary is bounded and provider disconnected; no agent job or auth path", async () => {
     let runs = 0;
-    const t = setup({ speakerCheck: async ({ signal }) => {
-      expect(signal.aborted).toBe(false);
-      runs++;
-      return "Residual high; check selected output and microphone";
-    } });
+    const t = setup({
+      speakerCheck: async ({ signal }) => {
+        expect(signal.aborted).toBe(false);
+        runs++;
+        return "Residual high; check selected output and microphone";
+      },
+    });
     await t.run("speaker-check");
     expect(runs).toBe(1);
     expect([t.launches, t.keyCalls]).toEqual([0, 0]);
@@ -430,10 +436,14 @@ describe("local speaker-check wiring", () => {
   test("stop aborts active measurement; prevents stale result and start/mic overlap", async () => {
     let release!: (value: string) => void;
     let signal!: AbortSignal;
-    const t = setup({ speakerCheck: ({ signal: s }) => {
-      signal = s;
-      return new Promise<string>((resolve) => { release = resolve; });
-    } });
+    const t = setup({
+      speakerCheck: ({ signal: s }) => {
+        signal = s;
+        return new Promise<string>((resolve) => {
+          release = resolve;
+        });
+      },
+    });
     const pending = t.run("speaker-check");
     await tick();
     await t.run("start");
@@ -449,7 +459,10 @@ describe("local speaker-check wiring", () => {
   test("shutdown invalidates pending consent and session change aborts active runner", async () => {
     const t = setup();
     let accept!: (v: boolean) => void;
-    t.ctx.ui.confirm = () => new Promise<boolean>((resolve) => { accept = resolve; });
+    t.ctx.ui.confirm = () =>
+      new Promise<boolean>((resolve) => {
+        accept = resolve;
+      });
     const pending = t.run("speaker-check");
     await tick();
     t.shutdown();
@@ -457,15 +470,80 @@ describe("local speaker-check wiring", () => {
     await pending;
     expect(t.launches).toBe(0);
     let seen!: AbortSignal;
-    const x = setup({ speakerCheck: async ({ signal }) => { seen = signal; x.sessionStart(); return "late"; } });
+    const x = setup({
+      speakerCheck: async ({ signal }) => {
+        seen = signal;
+        x.sessionStart();
+        return "late";
+      },
+    });
     await x.run("speaker-check");
     expect(seen.aborted).toBe(true);
     expect(x.notices.join(" ")).not.toContain("late");
   });
   test("runner exceptions are not leaked to UI", async () => {
-    const t = setup({ speakerCheck: async () => { throw new Error("secret waveform"); } });
+    const t = setup({
+      speakerCheck: async () => {
+        throw new Error("secret waveform");
+      },
+    });
     await t.run("speaker-check");
     expect(t.notices.at(-1)).toContain("failed locally");
     expect(t.notices.join(" ")).not.toContain("secret waveform");
   });
+});
+
+test("real local speaker runner uses only injected native audio, never auth/provider/host", async () => {
+  let handler!: (args: string, ctx: any) => Promise<void>;
+  let keyCalls = 0,
+    providerCalls = 0,
+    hostCalls = 0,
+    plays = 0,
+    closes = 0;
+  const notices: string[] = [];
+  liveLabExtension(
+    {
+      registerCommand: (_: string, command: any) => {
+        handler = command.handler;
+      },
+      on: () => {},
+    } as any,
+    {
+      local: () => true,
+      key: async () => {
+        keyCalls++;
+        throw Error("no auth");
+      },
+      voice: () => {
+        providerCalls++;
+        throw Error("no provider");
+      },
+      host: () => {
+        hostCalls++;
+        throw Error("no host");
+      },
+      audio: async () => ({
+        diagnostics: { queuedMs: 0, captureFrames: 0, capturedBytes: 0 },
+        start: async () => {},
+        play: async () => {
+          plays++;
+        },
+        flush: async () => {},
+        stop: async () => {},
+        close: () => {
+          closes++;
+        },
+      }),
+    },
+  );
+  await handler("speaker-check", {
+    mode: "interactive",
+    ui: { confirm: async () => true, notify: (message: string) => notices.push(message) },
+  });
+  expect([keyCalls, providerCalls, hostCalls]).toEqual([0, 0, 0]);
+  expect(plays).toBeGreaterThan(0);
+  expect(closes).toBe(1);
+  expect(notices.at(-1)).toContain("Inconclusive");
+  expect(notices.at(-1)).toContain("provider not connected");
+  expect(notices.at(-1)).toContain("native processing=unknown");
 });

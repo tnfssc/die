@@ -37,7 +37,8 @@ export interface LabDependencies {
 const defaults: LabDependencies = {
   speakerCheck: async (args) => {
     const { runSpeakerCheck } = await import("./speaker-check");
-    return runSpeakerCheck(args);
+    const { speakerCheckSummary } = await import("./speaker-summary");
+    return speakerCheckSummary(await runSpeakerCheck(args.audio, args.signal));
   },
   local: (mode) =>
     (process.platform === "darwin" || process.platform === "linux") &&
@@ -355,7 +356,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
                   ? "mic-check"
                   : choice === "Speaker check (plays test sound; no provider)"
                     ? "speaker-check"
-                  : "";
+                    : "";
       }
       if (action === "status") {
         ctx.ui.notify(
@@ -469,7 +470,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
         try {
           consent = await ctx.ui.confirm(
             "Local speaker and microphone measurement",
-            "Play a brief, low-level test sound through your selected/default output and listen briefly on the microphone? Stay quiet during the test. Lower speaker volume first. This is local-only: no Google key, network, provider, agent tools, recordings, files, waveforms or transcripts. PCM is kept only in memory and cleared after the test. The automatic result cannot prove barge-in or AEC quality.",
+            "Play a brief, low-level test sound through your selected/default output and listen briefly on the microphone? Stay quiet during the test. Lower speaker volume first. This is local-only: no Google key, network, provider, agent tools, recording files, waveform logs or transcripts. PCM is kept only in memory and cleared after the test. The automatic result cannot prove barge-in or AEC quality.",
           );
         } catch {
           /* dialog closed */
@@ -483,13 +484,17 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           const summary = await deps.speakerCheck({ audio: deps.audio, signal: controller.signal });
           if (!controller.signal.aborted && speakerProbe === controller)
             ctx.ui.notify(
-              "Speaker check (local; provider not connected): " + clean(summary).slice(0, 800) +
-                " Native voice-processing configuration is not proof of cancellation. An automatic test cannot prove barge-in or AEC quality; verify echo-only and double-talk by ear on this route.",
+              "Speaker check (local; provider not connected): " +
+                clean(summary).slice(0, 1800) +
+                " Native voice-processing configuration is not proof of cancellation. An automatic test cannot prove barge-in or AEC quality; speech double-talk requires a separate real interaction on this route.",
               "info",
             );
         } catch {
           if (!controller.signal.aborted && speakerProbe === controller)
-            ctx.ui.notify("Speaker check failed locally. Check microphone permission and selected input/output, try /live-lab mic-check, then retry. Provider not connected; no agent work changed.", "warning");
+            ctx.ui.notify(
+              "Speaker check failed locally. Check microphone permission and selected input/output, try /live-lab mic-check, then retry. Provider not connected; no agent work changed.",
+              "warning",
+            );
         } finally {
           if (speakerProbe === controller) speakerProbe = undefined;
         }

@@ -10,6 +10,8 @@ export type SpeakerCheckResult = {
   correlation?: number;
   /** Lag relative to first submitted playback frame, not measured speaker output latency. */
   lagMs?: number;
+  /** Linear projection of capture onto reference at best lag; not ERLE or absolute AEC quality. */
+  correlatedDbfs?: number;
   /** Sign of the matched waveform; present only for a correlated return. */
   polarity?: "normal" | "inverted";
   baselineDbfs?: number;
@@ -22,6 +24,8 @@ export type SpeakerCheckResult = {
     voiceProcessingBypassed: boolean;
     captureRate: number;
     renderRate: number;
+    captureChannels?: number;
+    renderChannels?: number;
   };
 };
 const RATE = 16000,
@@ -57,7 +61,8 @@ export function speakerCheckReference(): Int16Array {
     seed ^= seed << 5;
     smooth = 0.68 * smooth + 0.32 * (((seed >>> 0) / 0xffffffff) * 2 - 1);
     const envelope = 0.32 + 0.68 * Math.sin((Math.PI * i) / 2400) ** 2;
-    out[i] = Math.round(smooth * envelope * 1400);
+    const fade = Math.min(1, i / 160, (out.length - 1 - i) / 160);
+    out[i] = Math.round(smooth * envelope * fade * 1400);
   }
   return out;
 }
@@ -95,7 +100,8 @@ export function analyzeSpeakerCheck(
   for (let i = 0; i < reference.length; i++) referenceEnergy += reference[i]! ** 2;
   let best = 0,
     bestLag = 0,
-    bestSign = 1;
+    bestSign = 1,
+    bestEnergy = 0;
   const maxLag = Math.min(RATE * 0.45, playbackAndTail.length - reference.length);
   // Search every sample: stepping the reference or lag by four misses some phases
   // altogether (and can mistake a decimation alias for a matching waveform).
@@ -112,6 +118,7 @@ export function analyzeSpeakerCheck(
       best = Math.abs(correlation);
       bestSign = Math.sign(correlation);
       bestLag = lag;
+      bestEnergy = energy;
     }
   }
   const correlation = Math.round(best * 1000) / 1000;
@@ -120,7 +127,9 @@ export function analyzeSpeakerCheck(
     status: matched ? "correlated_return" : "no_correlated_return",
     correlation,
     lagMs: Math.round((bestLag / RATE) * 1000),
-    ...(matched ? { polarity: bestSign < 0 ? "inverted" as const : "normal" as const } : {}),
+    correlatedDbfs:
+      Math.round(Math.max(-120, 20 * Math.log10((best * Math.sqrt(bestEnergy / reference.length)) / 32768)) * 10) / 10,
+    ...(matched ? { polarity: bestSign < 0 ? ("inverted" as const) : ("normal" as const) } : {}),
     ...levels,
   };
 }
@@ -245,6 +254,12 @@ export async function runSpeakerCheck(
               voiceProcessingBypassed: ready.voiceProcessingBypassed,
               captureRate: ready.captureRate,
               renderRate: ready.renderRate,
+              ...(Number.isInteger(ready.captureChannels) && ready.captureChannels! > 0 && ready.captureChannels! <= 256
+                ? { captureChannels: ready.captureChannels }
+                : {}),
+              ...(Number.isInteger(ready.renderChannels) && ready.renderChannels! > 0 && ready.renderChannels! <= 256
+                ? { renderChannels: ready.renderChannels }
+                : {}),
             },
           }
         : {}),

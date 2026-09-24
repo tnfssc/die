@@ -15,6 +15,9 @@ test("known delayed residual has normalized correlation and lag", () => {
   expect(result.status).toBe("correlated_return");
   expect(result.correlation).toBeGreaterThan(0.95);
   expect(result.lagMs).toBe(100);
+  let power = 0;
+  for (const sample of reference) power += sample * sample;
+  expect(result.correlatedDbfs).toBeCloseTo(20 * Math.log10(Math.sqrt(power / reference.length) / 32768), 0);
 });
 test("off-grid delays and inverted phase are detected without decimation aliases", () => {
   const lag = 1603;
@@ -31,7 +34,7 @@ test("off-grid delays and inverted phase are detected without decimation aliases
     seed ^= seed << 13;
     seed ^= seed >>> 17;
     seed ^= seed << 5;
-    sparse[i] = (seed & 1) ? 1000 : -1000;
+    sparse[i] = seed & 1 ? 1000 : -1000;
   }
   const captured = new Int16Array(RATE * 1.7);
   captured.set(sparse, 1603);
@@ -158,6 +161,8 @@ test("processing metadata is included only when validated", async () => {
           voiceProcessingBypassed: false,
           captureRate: 16000,
           renderRate: 24000,
+          captureChannels: 9,
+          renderChannels: 2,
         },
       },
     };
@@ -167,6 +172,8 @@ test("processing metadata is included only when validated", async () => {
     voiceProcessingBypassed: false,
     captureRate: 16000,
     renderRate: 24000,
+    captureChannels: 9,
+    renderChannels: 2,
   });
 });
 test("late factory completion is closed after abort", async () => {
@@ -215,15 +222,45 @@ test("abort interrupts an uncooperative playback write and closes owned audio", 
     started = resolve;
   });
   const fake = fakeAudio({});
-  const result = runSpeakerCheck(async () => ({
-    ...fake.audio,
-    play: async () => {
-      started();
-      await new Promise<void>(() => {});
-    },
-  }), abort.signal);
+  const result = runSpeakerCheck(
+    async () => ({
+      ...fake.audio,
+      play: async () => {
+        started();
+        await new Promise<void>(() => {});
+      },
+    }),
+    abort.signal,
+  );
   await playing;
   abort.abort();
   await expect(result).rejects.toThrow(/aborted/);
   expect(fake.stats()).toEqual({ stopped: 1, closed: 1, plays: 0 });
+});
+
+test("six-second deadline closes a hung start without external abort", async () => {
+  const fake = fakeAudio({}, { hang: true });
+  await expect(runSpeakerCheck(async () => fake.audio, new AbortController().signal)).rejects.toThrow(/timed out/);
+  expect(fake.stats()).toEqual({ stopped: 1, closed: 1, plays: 0 });
+}, 9000);
+
+test("submitted PCM buffer is cleared after abort", async () => {
+  const controller = new AbortController();
+  let held: Buffer | undefined;
+  const fake = fakeAudio({});
+  await expect(
+    runSpeakerCheck(
+      async () => ({
+        ...fake.audio,
+        play: async (frame) => {
+          held = frame;
+          expect(frame.some((byte) => byte !== 0)).toBe(true);
+          controller.abort();
+        },
+      }),
+      controller.signal,
+    ),
+  ).rejects.toThrow(/aborted/);
+  expect(held?.every((byte) => byte === 0)).toBe(true);
+  expect(fake.stats().closed).toBe(1);
 });
