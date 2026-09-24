@@ -19,6 +19,16 @@ import { INTERNAL_TYPESCRIPT_RUNNER_ARG, runTypeScriptFromStdin } from "./typesc
 import { updateDie } from "./update";
 
 const cliArgs = process.argv.slice(2);
+// Hidden offline transport diagnostic. No normal CLI path reaches this branch.
+if (cliArgs[0] === "--offline-openai-transport-probe") {
+  if (cliArgs.length !== 1 || process.env.DIE_OFFLINE_OPENAI_TRANSPORT_PROBE !== "loopback-fake-key") {
+    console.error("Offline OpenAI transport probe requires its explicit loopback test gate.");
+    process.exit(1);
+  }
+  const { probeOpenAITransport } = await import("./live/offline-transport-probe");
+  await probeOpenAITransport();
+  process.exit(0);
+}
 if (cliArgs[0] === "--live-self-test") {
   if (cliArgs.length !== 1) throw new Error("Usage: die --live-self-test");
   const { testEmbeddedNativeHelper } = await import("./live/self-test");
