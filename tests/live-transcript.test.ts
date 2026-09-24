@@ -108,3 +108,12 @@ test("GPT-Live groups bound duration and size, and idle pause saves final provis
   groups.flush();
   expect(saved.length).toBe(3);
 });
+
+test("late GPT-Live corrections keep arrival order without joining a newer time span", () => {
+  const saved: string[] = [];
+  const groups = new LiveFragmentGroups((_speaker, text) => saved.push(text));
+  groups.receive("You", { delta: "newer", startMs: 3000, endMs: 3100 });
+  groups.receive("You", { delta: "older correction", startMs: 100, endMs: 200 });
+  groups.flush();
+  expect(saved).toEqual(["newer", "older correction"]);
+});

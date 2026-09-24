@@ -95,6 +95,7 @@ export class LiveFragmentGroups {
       prior &&
       (prior.speaker !== speaker ||
         prior.status !== status ||
+        fragment.startMs < prior.start ||
         fragment.startMs - prior.end > 600 ||
         fragment.endMs - prior.start > 2500 ||
         prior.text.length + fragment.delta.length > 4096)
