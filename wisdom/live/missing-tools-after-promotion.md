@@ -269,3 +269,41 @@ and this tool-chain failure both show that one layer's completion is not the
 end of a whole multi-step request. State must clear at its owning boundary.
 This helps asynchronous pipelines; it adds no ceremony to a single completed
 local action. Other values stay unchanged.
+
+## Production speech evidence and official-source review
+
+User now supplied a fresh real /live result after installation:
+input484 frames, output3650ms, turns3, interruptions0, agent connected,
+tools configured6, completed input transcripts0, VP enabled/unbypassed.
+Spoken request: “Can you tell me what's going on in this code base?”
+Model reply: “I'm sorry, I'm having trouble connecting with the coding agent
+right now.” This establishes no completion marker was observed in that actual
+voice run. The current gate cannot authorize agent_send/steer in that state.
+It does NOT establish all tools are broken; jobs_list has no such gate and
+already passed actual-provider/compiled-host probes. Generic execution failure
+is being described as connectivity failure by the model.
+
+User explicitly requested official Google open-source examples, cloning if
+needed. Stop speculative protocol fixes; inspect source and pin evidence.
+- Official examples task_1f458085: worktree
+  /Users/sharath/.die/worktrees/die-f528e86af6b5-task_1f458085;
+  branch die/audit-official-google-live-tool-examples-1f458085.
+- Protocol/SDK/ADK research task_970a55b7: worktree
+  /Users/sharath/.die/worktrees/die-f528e86af6b5-task_970a55b7;
+  branch die/audit-google-live-protocol-turn-boundari-970a55b7.
+Public clones live under ~/.die/research/google-live/ with task-specific paths.
+Workers must report actual tool dispatch/transcription relation, SHA/line URLs,
+security limits of examples and simplest applicable design. Research only,
+no code/provider/device calls. Parent decides implementation after review.
+
+Local SDK2.24.0 types independently checked: Transcription.finished is optional;
+LiveServerContent documents input transcription independent of model turn and
+no implied ordering. It also defines interimInputTranscription separately.
+LiveServerMessage has voiceActivity and allowlisted voiceActivityDetectionSignal;
+do not assume either arrives on our Developer API connection without proof.
+ACTIVITY_START/ACTIVITY_END fields exist in types, not evidence of delivery.
+
+No new runtime change since user report. Installed8625b655 candidate still has
+finished/exact-text gate. Need a functional authorization design grounded in
+Google's actual contract, not simply treating missing finished as true or
+letting arbitrary host/model text masquerade as the user's request.
