@@ -1,3 +1,5 @@
+> Follow-up: [production transport investigation](realtime-production-transport-investigation.md) found that v0.10.2's extension discarded these safe messages and still displayed only Provider connect_failed. Adapter test success did not prove terminal diagnostics.
+
 # Realtime original-Upgrade diagnostics / v0.10.2
 
 Read [values](../values.md), [prior diagnostics](openai-realtime-connect-diagnostics.md), and [offline evidence](../../evidence/realtime-upgrade-transport.md). The remote cause of the user's connect_failed with gpt-realtime-2.1 is UNKNOWN; successful GPT-Live with the same key does not prove Realtime access. This patch provides actionable handshake diagnostics, not a proven connection fix.

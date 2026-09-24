@@ -337,6 +337,42 @@ describe("GA lifecycle and authority regressions", () => {
       server.stop(true);
     }
   });
+  test("default ws transport completes an authenticated session setup over localhost", async () => {
+    let authorization = "";
+    const events: unknown[] = [];
+    const errors: string[] = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch(request, server) {
+        authorization = request.headers.get("authorization") ?? "";
+        if (server.upgrade(request)) return;
+        return new Response("upgrade required", { status: 426 });
+      },
+      websocket: {
+        open() {},
+        message(socket, data) {
+          const event = JSON.parse(String(data));
+          events.push(event);
+          if (event.type === "session.update") socket.send(JSON.stringify({ type: "session.updated" }));
+        },
+      },
+    });
+    const session = new OpenAIRealtimeSession({ onError: (error) => errors.push(error.message) }, (url, headers) =>
+      defaultSocket(`ws://127.0.0.1:${server.port}${new URL(url).pathname}${new URL(url).search}`, headers),
+    );
+    try {
+      await session.connect("fake-key");
+      expect(session.state).toBe("ready");
+      expect(authorization).toBe("Bearer fake-key");
+      expect(events).toHaveLength(1);
+      expect((events[0] as { type: string }).type).toBe("session.update");
+      expect(JSON.stringify(events)).not.toContain("fake-key");
+      expect(errors).toEqual([]);
+    } finally {
+      session.close();
+      server.stop(true);
+    }
+  });
   test("late completed after VAD and new input cannot close the next generation", async () => {
     const turns: number[] = [];
     const f = fixture({ onTurnComplete: (turn) => turns.push(turn) });
@@ -840,4 +876,24 @@ describe("Realtime handshake diagnostics (offline)", () => {
       }
     }
   });
+});
+
+test("transport initialization failures identify the safe stage, never exception text", async () => {
+  for (const stage of ["socket-construction", "socket-listeners"]) {
+    const errors: string[] = [];
+    const session = new OpenAIRealtimeSession({ onError: (error) => errors.push(error.message) }, () => {
+      if (stage === "socket-construction") throw new TypeError("fake-secret constructor/import URL body");
+      return {
+        readyState: 0,
+        send() {},
+        close() {},
+        addEventListener() {
+          throw new Error("fake-secret export/listener body");
+        },
+      };
+    });
+    await session.connect("fake-local-only");
+    expect(session.state).toBe("closed");
+    expect(errors).toEqual(["OpenAI transport setup failed [" + stage + "]; details withheld."]);
+  }
 });

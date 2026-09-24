@@ -427,6 +427,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       );
     }
     async start(key: string) {
+      let stage = "audio-helper";
       try {
         // Hello does not open devices. Provider setup must succeed BEFORE audio.start().
         this.audioLaunchPending = true;
@@ -466,6 +467,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           this.audio.close();
           return;
         }
+        stage = "provider-construction";
         this.host = deps.host(pi, this.ctx);
         this.orchestration = this.host && this.model !== OPENAI_LIVE_MODEL ? createOrchestration(this.host) : undefined;
         if (this.model === OPENAI_LIVE_MODEL) this.createLiveVoice();
@@ -522,7 +524,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 if (t.interrupted) this.transcriptLog.finish("Voice", "interrupted");
                 this.render();
               },
-              onError: (e) => this.fail("Provider " + e.code),
+              // Realtime messages are locally classified; raw transport/provider text never crosses this boundary.
+              onError: (e) => this.fail("Provider " + e.code + (this.provider === "openai" ? ": " + e.message : "")),
             },
             this.orchestration,
             this.provider,
@@ -530,6 +533,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           );
         }
         const provider = this.liveVoice ?? this.voice!;
+        stage = "provider-connect";
         await provider.connect(key);
         if (!this.alive) return;
         if (provider.state !== "ready") {
@@ -563,6 +567,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         }
         if (!this.alive) return;
         this.state = "running"; // capture may arrive synchronously inside audio.start()
+        stage = "audio-start";
         await this.audio.start();
         if (!this.alive) return;
         this.playback.start();
@@ -573,11 +578,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       } catch {
         this.audioLaunchPending = false;
         if (this.alive)
-          this.fail(
-            this.audio
-              ? "Voice or audio startup failed [startup]; try /live mic-check without a provider and check provider auth separately"
-              : audioLaunchDiagnostic(),
-          );
+          this.fail(this.audio ? "Voice startup failed [" + stage + "]; details withheld" : audioLaunchDiagnostic());
       }
     }
   }
