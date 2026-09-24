@@ -114,6 +114,7 @@ test("process exit during active write and invalid generation", async () => {
 test("stop timeout kills even if worker never acknowledges; malformed stdout is rejected", async () => {
   const { audio, worker } = await running({ stopTimeoutMs: 10 });
   await audio.stop();
+  expect(audio.stopError).toBe("Audio stop acknowledgement was not observed");
   expect(worker.killed).toBe(true);
   const next = await running();
   next.worker.stdout.write("{not-json}\n");

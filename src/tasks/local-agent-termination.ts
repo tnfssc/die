@@ -5,7 +5,10 @@ import type { TaskManager } from "./task-manager";
  * This is deliberately only installed in local agent processes, not root/host sessions.
  */
 export function installLocalAgentTermination(
-  signals: Pick<NodeJS.Process, "on" | "off">,
+  signals: {
+    on(event: "SIGTERM", listener: () => void): unknown;
+    off(event: "SIGTERM", listener: () => void): unknown;
+  },
   manager: Pick<TaskManager, "shutdown">,
   exit: (code: number) => void,
 ): () => void {

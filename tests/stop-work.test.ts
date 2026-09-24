@@ -87,3 +87,29 @@ test("stopWork pages scoped native descendants, retains partial discovery and ca
     jobs: [{ id: "parent", outcome: "pending" }],
   });
 });
+
+test("stopWork distinguishes observed native cancellation from already-finished work", async () => {
+  const states = new Map([
+    ["cancelled", "cancelled"],
+    ["completed", "completed"],
+    ["failed", "failed"],
+  ]);
+  const adapter = {
+    list: async () => ({ tasks: [...states.keys()].map((taskId) => ({ taskId, status: "running" })) }),
+    cancel: async (id: string) => ({ status: states.get(id) }),
+    close: async () => {},
+  };
+  const service = new JobService(
+    new TaskManager(() => {}),
+    () => ({ depth: 0 }),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    { T3_MCP_URL: "http://example.invalid", T3_MCP_BEARER_TOKEN: "fake" },
+    () => adapter as any,
+  );
+  const result = (await service.handle("jobs.stopWork", {}, context, signal)) as any;
+  expect(result.jobs.map((job: any) => job.outcome)).toEqual(["acknowledged", "finished", "finished"]);
+  expect(result.discoveryComplete).toBe(true);
+});

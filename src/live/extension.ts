@@ -93,6 +93,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
   let loading: Promise<LiveConfig> | undefined;
   let saving = false;
   let current: Run | undefined;
+  let stoppingRun: Run | undefined;
   let sequence = 0;
   let confirmation: number | undefined;
   let entry: AbortController | undefined;
@@ -248,7 +249,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     fail(message: string) {
       if (!this.alive) return;
       this.stop();
-      this.ctx.ui.notify("Live stopped: " + message + ". No agent work was cancelled.", "warning");
+      this.ctx.ui.notify("Live stop requested: " + message + ". No agent work was cancelled.", "warning");
     }
     stop() {
       void this.stopObserved();
@@ -261,6 +262,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       this.transcriptLog.finish("You", "partial");
       this.transcriptLog.finish("Voice", "partial");
       current = undefined;
+      stoppingRun = this;
       this.orchestration?.beginUserTurn?.();
       this.inputUtterance = "";
       this.controller.abort();
@@ -319,8 +321,10 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             }
           })(),
         ]);
-        return { stopped: errors.length === 0, errors, jobsUnchanged: true };
-      })();
+        return { stopped: errors.length === 0, errors, jobsUnchanged: true as const };
+      })().finally(() => {
+        if (stoppingRun === this) stoppingRun = undefined;
+      });
       return this.stopping;
     }
     liveObservation(value: unknown) {
@@ -578,7 +582,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     }
   }
   registerLiveStop(pi, async (request) => {
-    const run = current;
+    const run = current ?? stoppingRun;
     const sessionId = request.sessionManager?.getSessionId?.();
     if (
       !run ||
@@ -610,7 +614,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           return;
         }
       }
-      const active = current || entry || confirmation !== undefined || probe || speakerProbe || saving;
+      const active = current || stoppingRun || entry || confirmation !== undefined || probe || speakerProbe || saving;
       const action = args.trim() || (active ? "stop" : "start");
       if (action === "status") {
         ctx.ui.notify(
@@ -750,7 +754,16 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           );
           return;
         }
-        if (owner !== sequence || current || entry || confirmation !== undefined || probe || speakerProbe) return;
+        if (
+          owner !== sequence ||
+          current ||
+          stoppingRun ||
+          entry ||
+          confirmation !== undefined ||
+          probe ||
+          speakerProbe
+        )
+          return;
         const next: LiveConfig = {
           ...selected,
           model: choice as LiveModelId,
@@ -779,7 +792,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           ctx.ui.notify("Mic check requires a local interactive terminal.", "warning");
           return;
         }
-        if (current || entry || confirmation !== undefined || probe || speakerProbe) {
+        if (current || stoppingRun || entry || confirmation !== undefined || probe || speakerProbe) {
           ctx.ui.notify("Live is busy; stop it first.", "info");
           return;
         }
@@ -844,7 +857,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           ctx.ui.notify("Speaker check requires a local interactive terminal.", "warning");
           return;
         }
-        if (current || entry || confirmation !== undefined || probe || speakerProbe) {
+        if (current || stoppingRun || entry || confirmation !== undefined || probe || speakerProbe) {
           ctx.ui.notify("Live is busy; stop it first.", "info");
           return;
         }
@@ -889,14 +902,17 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         entry?.abort();
         entry = undefined;
         confirmation = undefined;
-        current?.stop();
-        ctx.ui.notify("Live off.", "info");
+        const result = await (current ?? stoppingRun)?.stopObserved();
+        ctx.ui.notify(
+          result && !result.stopped ? "Live stop incomplete: " + result.errors.join("; ") : "Live off.",
+          result && !result.stopped ? "warning" : "info",
+        );
       } else if (action === "start" || action === "setup") {
         if (!deps.local(ctx.mode)) {
           ctx.ui.notify("Live requires a local interactive macOS or Linux terminal.", "warning");
           return;
         }
-        if (current || entry || confirmation !== undefined || probe || speakerProbe || saving) {
+        if (current || stoppingRun || entry || confirmation !== undefined || probe || speakerProbe || saving) {
           ctx.ui.notify("Live is already active. Use /live stop first.", "info");
           return;
         }

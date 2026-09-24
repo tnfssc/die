@@ -55,7 +55,9 @@ describe("local agent termination bridge", () => {
     await tick();
     expect(agent.shutdowns).toBe(0);
     let finish!: () => void;
-    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     const signals = new EventEmitter();
     const exits: number[] = [];
     const detach = installLocalAgentTermination(signals, { shutdown: () => pending }, (code) => exits.push(code));

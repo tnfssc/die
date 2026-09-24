@@ -787,7 +787,6 @@ export class JobService {
           status?: string;
           error?: string;
         }> = [];
-        const local = this.manager.list().filter((task) => task.status === "running");
         const bridge = t3BridgeEnvironment(this.environment);
         let discoveryError: string | undefined;
         const nativeIds: string[] = [];
@@ -812,7 +811,8 @@ export class JobService {
             discoveryError = error instanceof Error ? error.message : String(error);
           }
         }
-        for (const task of local) {
+        // Include local launches that arrived while native discovery was pending.
+        for (const task of this.manager.list().filter((task) => task.status === "running")) {
           try {
             const stopped = this.manager.kill(task.id);
             results.push({
