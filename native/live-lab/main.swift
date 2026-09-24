@@ -148,7 +148,7 @@ final class Lab {
         let domain = ns.domain
         var payload: [String: Any] = ["type":"error", "code":phase,
             "message":"Could not start default audio route with voice processing"]
-        if ["NSOSStatusErrorDomain","AVFoundationErrorDomain","NSCocoaErrorDomain","NSPOSIXErrorDomain","input-format","output-format"].contains(domain) && ns.code >= -2147483648 && ns.code <= 2147483647 {
+        if ["NSOSStatusErrorDomain","AVFoundationErrorDomain","NSCocoaErrorDomain","NSPOSIXErrorDomain","input-format","output-format","voice-processing"].contains(domain) && ns.code >= -2147483648 && ns.code <= 2147483647 {
             payload["domain"] = domain
             payload["number"] = ns.code
         }
@@ -161,7 +161,10 @@ final class Lab {
         var tapInstalled = false
         do {
             try audio.inputNode.setVoiceProcessingEnabled(true)
-            guard audio.inputNode.isVoiceProcessingEnabled else { throw NSError(domain: "voice-processing", code: 1) }
+            // AVEchoTouch uses this input I/O node property to bypass processing.
+            // Our full-duplex tap must receive processed capture.
+            audio.inputNode.isVoiceProcessingBypassed = false
+            guard audio.inputNode.isVoiceProcessingEnabled && !audio.inputNode.isVoiceProcessingBypassed else { throw NSError(domain: "voice-processing", code: 1) }
             phase = "input_format"
             let inputFormat = audio.inputNode.outputFormat(forBus: 0)
             guard inputFormat.channelCount > 0, inputFormat.commonFormat == .pcmFormatFloat32,
@@ -208,12 +211,18 @@ final class Lab {
             }
             phase = "engine_start"
             try audio.start()
+            guard audio.inputNode.isVoiceProcessingEnabled && !audio.inputNode.isVoiceProcessingBypassed else {
+                throw NSError(domain: "voice-processing", code: 2)
+            }
             engine = audio
             starting = false
             let t = DispatchSource.makeTimerSource(queue: output)
             t.schedule(deadline: .now() + .milliseconds(10), repeating: .milliseconds(10))
             output.sync { self.resampler.reset(); self.running = true; self.reportedQueuedMs = 0; self.zeroSince = nil }
-            event(["type":"ready"])
+            // Non-acoustic diagnostics; no samples or device identity in protocol events.
+            event(["type":"ready", "voiceProcessingEnabled":audio.inputNode.isVoiceProcessingEnabled,
+                "voiceProcessingBypassed":audio.inputNode.isVoiceProcessingBypassed,
+                "captureRate":inputFormat.sampleRate, "renderRate":outputFormat.sampleRate])
             t.setEventHandler { [weak self] in
                 guard let self, self.running else { return }
                 self.drainCapture()
