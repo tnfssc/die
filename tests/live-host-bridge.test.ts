@@ -4,7 +4,7 @@ import { JobService } from "../src/tasks/job-service";
 import { LiveHostBridge } from "../src/live-lab/host-bridge";
 import type { HostAuthority } from "../src/live-lab/host-bridge";
 
-function fixture() {
+function fixture(failSend = false) {
   let session = "s1";
   let confirm = false;
   let listener: (event: any) => void = () => {};
@@ -20,7 +20,24 @@ function fixture() {
       };
     },
   };
-  const context = { sessionManager: { getSessionId: () => session, getSessionFile: () => "/tmp/s1", getBranch: () => [{ type: "message", message: { role: "user", content: [{ type: "text", text: "hello" }, { type: "image", data: "secret" }] } }] } };
+  const context = {
+    sessionManager: {
+      getSessionId: () => session,
+      getSessionFile: () => "/tmp/s1",
+      getBranch: () => [
+        {
+          type: "message",
+          message: {
+            role: "user",
+            content: [
+              { type: "text", text: "hello" },
+              { type: "image", data: "secret" },
+            ],
+          },
+        },
+      ],
+    },
+  };
   const service = {
     handle: async (method: string, input: any) => {
       calls.push(method + ":" + input.id);
@@ -37,6 +54,7 @@ function fixture() {
     service,
     sendUserMessage: (...args: unknown[]) => {
       messages.push(args);
+      if (failSend) throw new Error("delivery failed");
     },
     confirmStop: async () => confirm,
   } as unknown as HostAuthority;
@@ -65,9 +83,9 @@ describe("Live host authority", () => {
     ]);
     expect(() => f.bridge.steer("r1", "different")).toThrow();
   });
-  test("real dispatcher inspect, bounded context, no foreign or native IDs", async () => {
+  test("existing dispatcher controls inspect scope and context is bounded", async () => {
     const f = fixture();
-    expect((await f.bridge.list() as { total: number }).total).toBe(1);
+    expect(((await f.bridge.list()) as { total: number }).total).toBe(1);
     expect(f.bridge.context().jobs).toEqual([{ id: "owned", status: "running", kind: "command" }]);
     expect(await f.bridge.inspect("owned")).toEqual({ id: "owned", output: "ok", limit: 3000 });
     await expect(f.bridge.inspect("foreign")).rejects.toThrow("outside");
@@ -106,6 +124,10 @@ describe("Live host authority", () => {
   test("failed steer retained; no accidental retry", async () => {
     const f = fixture();
     expect(() => f.bridge.steer("bad", " ")).toThrow();
+    const failed = fixture(true);
+    await expect(failed.bridge.send("failed", "work")).rejects.toThrow("delivery failed");
+    await expect(failed.bridge.send("failed", "work")).rejects.toThrow("delivery failed");
+    expect(failed.messages).toHaveLength(1);
   });
 });
 
@@ -118,7 +140,9 @@ test("actual TaskManager + JobService dispatch stays within owner", async () => 
     cwd: process.cwd(),
     args: ["-e", "console.log('bridge-test')"],
   });
-  const context = { sessionManager: { getSessionId: () => "one", getSessionFile: () => "/tmp/one", getBranch: () => [] } };
+  const context = {
+    sessionManager: { getSessionId: () => "one", getSessionFile: () => "/tmp/one", getBranch: () => [] },
+  };
   const bridge = new LiveHostBridge({
     manager,
     service: new JobService(manager, () => ({ depth: 0 })),
@@ -131,6 +155,12 @@ test("actual TaskManager + JobService dispatch stays within owner", async () => 
   expect(inspected.id).toBe(task.id);
   await expect(bridge.inspect("not-owned")).rejects.toThrow("Unknown task");
   await expect(bridge.stop("stop-1", task.id)).rejects.toThrow("confirm");
+  const updates: unknown[] = [];
+  bridge.subscribe((update) => updates.push(update));
   await manager.wait(task.id);
+  expect(updates).toContainEqual({ type: "completed", id: task.id, status: "completed" });
+  const result = (await bridge.inspect(task.id)) as { status: string; output: string };
+  expect(result.status).toBe("completed");
+  expect(result.output).toContain("bridge-test");
   bridge.close();
 });

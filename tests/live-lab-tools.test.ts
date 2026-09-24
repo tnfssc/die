@@ -71,7 +71,7 @@ describe("SDK orchestration seam", () => {
     finish({ done: true });
     await flush();
     expect(h.responses).toEqual([
-      { functionResponses: { id: "1", name: "work", response: { output: { done: true } } } },
+      { functionResponses: { scheduling: "WHEN_IDLE", id: "1", name: "work", response: { output: { done: true } } } },
     ]);
     h.session.sendContext("Job 1 completed");
     expect(h.contexts).toEqual([
@@ -102,15 +102,30 @@ describe("SDK orchestration seam", () => {
     await flush();
     expect(count).toBe(2);
     expect(h.responses).toContainEqual({
-      functionResponses: { id: "bad", name: "work", response: { error: "Tool execution failed" } },
+      functionResponses: {
+        scheduling: "WHEN_IDLE",
+        id: "bad",
+        name: "work",
+        response: { error: "Tool execution failed" },
+      },
     });
     expect(h.responses).toContainEqual({
-      functionResponses: { id: "large", name: "work", response: { error: "Tool request rejected" } },
+      functionResponses: {
+        scheduling: "WHEN_IDLE",
+        id: "large",
+        name: "work",
+        response: { error: "Tool request rejected" },
+      },
     });
     finish("x".repeat(20000));
     await flush();
     expect(h.responses).toContainEqual({
-      functionResponses: { id: "ok", name: "work", response: { error: "Tool result too large" } },
+      functionResponses: {
+        scheduling: "WHEN_IDLE",
+        id: "ok",
+        name: "work",
+        response: { error: "Tool result too large" },
+      },
     });
     let resolve!: (v: unknown) => void;
     const later = fixture(
@@ -127,4 +142,55 @@ describe("SDK orchestration seam", () => {
     await flush();
     expect(later.responses).toEqual([]);
   });
+});
+
+test("host context has per-message and session budgets; overflow closes only voice", async () => {
+  let calls = 0;
+  const h = fixture(async () => {
+    calls++;
+  });
+  await h.session.connect("fake");
+  for (let i = 0; i < 16; i++) h.session.sendContext("x".repeat(4096));
+  expect(h.contexts).toHaveLength(16);
+  h.session.sendContext("overflow");
+  expect(h.session.state).toBe("closed");
+  expect(calls).toBe(0);
+});
+
+test("tool concurrency is bounded without blocking microphone and cancellation does not call host stop", async () => {
+  let calls = 0;
+  const h = fixture(async () => {
+    calls++;
+    return new Promise(() => {});
+  });
+  await h.session.connect("fake");
+  h.send({ toolCall: { functionCalls: Array.from({ length: 17 }, (_, i) => ({ id: String(i), name: "work" })) } });
+  await flush();
+  h.session.sendAudio("AAAAAA==");
+  expect(calls).toBe(16);
+  expect(h.audio).toHaveLength(1);
+  expect(h.responses).toContainEqual({
+    functionResponses: {
+      id: "16",
+      name: "work",
+      response: { error: "Tool request rejected" },
+      scheduling: "WHEN_IDLE",
+    },
+  });
+  h.session.close();
+});
+
+test("an admitted tool request survives voice disconnect, but new messages after close cannot dispatch", async () => {
+  let calls = 0;
+  const h = fixture(async () => {
+    calls++;
+    return { queued: true };
+  });
+  await h.session.connect("fake");
+  h.send({ toolCall: { functionCalls: [{ id: "admitted", name: "work" }] } });
+  h.session.close();
+  h.send({ toolCall: { functionCalls: [{ id: "too-late", name: "work" }] } });
+  await flush();
+  expect(calls).toBe(1);
+  expect(h.responses).toHaveLength(0);
 });

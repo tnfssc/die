@@ -457,23 +457,30 @@ export default function asynchronousTasksExtension(
     return service;
   };
   let liveHost: LiveHostBridge | undefined;
-  const unregisterLiveHost = registerLiveHost(pi, (ctx) => {
+  registerLiveHost(pi, (ctx) => {
     if (ctx.sessionManager !== owningContext?.sessionManager) return undefined;
-    if (!liveHost) liveHost = new LiveHostBridge({
-      service: getService(ctx),
-      manager: getManager(ctx),
-      context: ctx,
-      sendUserMessage: (text, options) => pi.sendUserMessage(text, options),
-      confirmStop: (id) => ctx.ui.confirm("Stop job?", `Cancel job ${id}?`),
-    });
+    if (!liveHost)
+      liveHost = new LiveHostBridge({
+        service: getService(ctx),
+        manager: getManager(ctx),
+        context: ctx,
+        sendUserMessage: (text, options) => pi.sendUserMessage(text, options),
+        confirmStop: (id) => ctx.ui.confirm("Stop job?", `Cancel job ${id}?`),
+      });
     return liveHost;
   });
   pi.on("message_end", (event) => {
     if (event.message.role !== "assistant") return;
-    const text = event.message.content.filter((part) => part.type === "text").map((part) => part.text).join(" ").slice(0, 2000);
+    const text = event.message.content
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join(" ")
+      .slice(0, 2000);
     if (text) liveHost?.observe({ type: "assistant", text });
   });
-  pi.on("turn_end", () => { liveHost?.observe({ type: "turn_end" }); });
+  pi.on("turn_end", () => {
+    liveHost?.observe({ type: "turn_end" });
+  });
   projectWisdom = registerProjectWisdom(pi, {
     isRoot: () => subagentDepth === 0,
   });

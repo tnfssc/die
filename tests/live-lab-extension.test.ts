@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import liveLabExtension from "../src/live-lab/extension";
 import type { LabDependencies } from "../src/live-lab/extension";
-import type { VoiceCallbacks } from "../src/live-lab/types";
+import type { VoiceCallbacks, VoiceOrchestration } from "../src/live-lab/types";
 import type { AudioCallbacks } from "../src/live-lab/audio";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -10,6 +10,8 @@ function setup(overrides: Partial<LabDependencies> = {}) {
   let shutdown!: () => void;
   let sessionStart!: () => void;
   let voiceCallbacks!: VoiceCallbacks;
+  let orchestration: VoiceOrchestration | undefined;
+  const contexts: string[] = [];
   let audioCallbacks!: AudioCallbacks;
   let keyCalls = 0,
     launches = 0,
@@ -44,14 +46,19 @@ function setup(overrides: Partial<LabDependencies> = {}) {
   };
   const deps: LabDependencies = {
     local: () => true,
+    host: () => undefined,
     key: async () => {
       keyCalls++;
       return "fake-test-only";
     },
-    voice: (callbacks) => {
+    voice: (callbacks, tools) => {
+      orchestration = tools;
       voiceCallbacks = callbacks;
       return {
         state: "ready",
+        sendContext: (text: string) => {
+          contexts.push(text);
+        },
         generation: 0,
         sendAudio: (_: string) => {
           sends++;
@@ -107,6 +114,10 @@ function setup(overrides: Partial<LabDependencies> = {}) {
   };
   return {
     run: (arg: string) => handler(arg, ctx),
+    contexts,
+    get orchestration() {
+      return orchestration;
+    },
     ctx,
     audio,
     get voice() {
@@ -313,4 +324,73 @@ describe("opt-in voice-only lab", () => {
     await first;
     expect(t.launches).toBe(0);
   });
+});
+
+test("live orchestration keeps capture/playback active, forwards actual completion, and disconnect only detaches voice", async () => {
+  let finish!: () => void;
+  let listener: ((event: unknown) => void) | undefined;
+  let stopped = 0;
+  let sent = 0;
+  let subscribed = 0;
+  let detached = 0;
+  const request = new Map<string, Promise<unknown>>();
+  const t = setup({
+    host: () => ({
+      send: (id) => {
+        if (!request.has(id)) {
+          sent++;
+          request.set(
+            id,
+            new Promise((resolve) => {
+              finish = () => resolve({ status: "queued" });
+            }),
+          );
+        }
+        return request.get(id)!;
+      },
+      steer: async () => ({ status: "queued" }),
+      list: async () => ({ jobs: [] }),
+      inspect: async () => ({ status: "completed", output: "actual output" }),
+      stop: async () => {
+        stopped++;
+        return { status: "denied" };
+      },
+      context: () => ({ recentRequests: [...request.keys()], text: "existing session" }),
+      subscribe: (cb) => {
+        subscribed++;
+        listener = cb;
+        return () => {
+          detached++;
+          listener = undefined;
+        };
+      },
+    }),
+  });
+  (t.ctx as any).model = { provider: "configured", id: "coding-model" };
+  await t.run("start");
+  expect(t.status.at(-1)).toContain("Agent configured/coding-model");
+  expect(t.contexts[0]).toContain("existing session");
+  const pending = t.orchestration!.execute({ name: "agent_send", args: { requestId: "same", text: "work" } });
+  t.capture.capture?.(Buffer.alloc(640));
+  t.voice.onAudio?.(Buffer.alloc(960).toString("base64"), 0);
+  await tick();
+  expect(t.sends).toBe(1);
+  expect(t.played.length).toBe(1);
+  t.voice.onInterrupted?.(1);
+  expect(stopped).toBe(0);
+  listener?.({ type: "completed", id: "owned", status: "completed" });
+  expect(t.contexts.at(-1)).toContain('"type":"completed"');
+  await t.run("stop");
+  expect(detached).toBe(1);
+  finish();
+  expect(await pending).toEqual({ status: "queued" });
+  expect(stopped).toBe(0);
+  await t.run("start");
+  expect(subscribed).toBe(2);
+  expect(t.contexts.at(-1)).toContain("same");
+  await t.orchestration!.execute({ name: "agent_send", args: { requestId: "same", text: "work" } });
+  expect(sent).toBe(1);
+  t.voice.onError?.({ code: "disconnected", message: "socket gone" });
+  expect(detached).toBe(2);
+  expect(stopped).toBe(0);
 });

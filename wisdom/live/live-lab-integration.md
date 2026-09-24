@@ -1,5 +1,7 @@
 # Voice-only /live-lab phase-one integration
 
+> Phase-one history. Current approved orchestration extends this native path; see [live-lab-orchestration.md](live-lab-orchestration.md). Voice-only/no-tools statements below describe the original baseline, not the new feature.
+
 This is an opt-in *separate* command. /live remains unchanged. /live-lab status and opening the menu do not resolve auth, start the provider, spawn the helper, or open devices. /live-lab start asks consent for paid Google audio and microphone/speaker use before any work. No coding-agent bridge, tools, chat messages, persisted transcript or agent cancellation. /live-lab stop shuts down the voice run, not agent work. Only local interactive macOS/Linux TUI is allowed (not SSH/web/child agents). Voice uses gemini-3.8-live, not the coding model.
 
 Session connect must finish its SDK setup acceptance before helper.start opens devices. Helper.launch awaits protocol-v1 hello without opening the mic. Each run owns its AbortController and lifecycle epoch; late helper launches are closed, and late provider connections are closed by VoiceSession. Errors shown are static, not raw SDK/helper errors. Auth comes from the existing safe ModelRuntime Google API-key service; OAuth is not silently used, and live.env is not consulted except explicit legacy import elsewhere. No real key/device/network was used by extension tests.

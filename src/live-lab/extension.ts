@@ -3,10 +3,12 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { createDefaultLiveCredentialService } from "../live/credentials";
 import { liveLocalOnly } from "../live/status";
 import { LiveLabAudio, type AudioCallbacks, type AudioSetupError } from "./audio";
+import { getLiveHost } from "./host-access";
+import { boundedHostContext, createOrchestration, type VoiceHost } from "./orchestration";
 import { VoiceSession } from "./session";
 import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
 import { PlaybackScheduler } from "./playback";
-import { VOICE_MODEL, type VoiceCallbacks } from "./types";
+import { VOICE_MODEL, type VoiceCallbacks, type VoiceOrchestration } from "./types";
 
 const ID = "die-live-lab";
 const MAX_VISIBLE = 8;
@@ -19,7 +21,12 @@ const clean = (value: string) =>
 export interface LabDependencies {
   local(mode: string): boolean;
   key(signal: AbortSignal): Promise<string>;
-  voice(callbacks: VoiceCallbacks): Pick<VoiceSession, "connect" | "sendAudio" | "close" | "state" | "generation">;
+  voice(
+    callbacks: VoiceCallbacks,
+    orchestration?: VoiceOrchestration,
+  ): Pick<VoiceSession, "connect" | "sendAudio" | "close" | "state" | "generation"> &
+    Partial<Pick<VoiceSession, "sendContext">>;
+  host(pi: ExtensionAPI, ctx: ExtensionContext): VoiceHost | undefined;
   audio(
     callbacks: AudioCallbacks,
     signal: AbortSignal,
@@ -30,14 +37,15 @@ const defaults: LabDependencies = {
     (process.platform === "darwin" || process.platform === "linux") &&
     liveLocalOnly(mode, process.env, Boolean(process.stdin.isTTY && process.stdout.isTTY)),
   key: async (signal) => (await createDefaultLiveCredentialService(signal)).loadKey(signal),
-  voice: (callbacks) => new VoiceSession(callbacks),
+  voice: (callbacks, orchestration) => new VoiceSession(callbacks, undefined, orchestration),
+  host: getLiveHost,
   audio: (callbacks, signal) => LiveLabAudio.launch({ callbacks, signal }),
 };
 
 type LabAudio = Awaited<ReturnType<LabDependencies["audio"]>>;
 type LabVoice = ReturnType<LabDependencies["voice"]>;
 
-/** Separate from /live: no agent bridge, tools, messages, or agent cancellation. */
+/** Native full-duplex voice; configured agent work has an independent lifecycle. */
 export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<LabDependencies> = {}): void {
   const deps = { ...defaults, ...injected };
   let current: Run | undefined;
@@ -48,6 +56,8 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
     readonly id = ++sequence;
     readonly controller = new AbortController();
     voice?: LabVoice;
+    host?: VoiceHost;
+    unsubscribeHost?: () => void;
     audio?: LabAudio;
     state = "starting"; // lifecycle only: capture and pump run regardless of presentation
     speaking = false;
@@ -104,7 +114,13 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
       }
       this.lastRender = Date.now();
       const presentation = this.state === "running" ? (this.speaking ? "speaking" : "listening") : "connecting";
-      const status = "Voice " + VOICE_MODEL + " · " + presentation;
+      const status =
+        "Voice " +
+        VOICE_MODEL +
+        " · " +
+        presentation +
+        " · Agent " +
+        (this.ctx.model ? this.ctx.model.provider + "/" + this.ctx.model.id : "not configured");
       if (status !== this.lastStatus) {
         this.ctx.ui.setStatus(ID, status);
         this.lastStatus = status;
@@ -177,6 +193,8 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
       if (current !== this) return;
       current = undefined;
       this.controller.abort();
+      this.unsubscribeHost?.();
+      this.unsubscribeHost = undefined;
       this.state = "off";
       this.playback.close();
       this.pendingBytes = 0;
@@ -229,28 +247,50 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
         }
         const key = await deps.key(this.controller.signal);
         if (!this.alive) return;
-        this.voice = deps.voice({
-          onAudio: (pcm, epoch) => this.output(pcm, epoch),
-          onInterrupted: (epoch) => this.interrupt(epoch),
-          onTurnComplete: () => {
-            if (this.alive) {
-              this.turns++;
-              this.generationFinished = true;
-              this.playback.turnComplete(this.generation);
-              this.drain();
-              this.render();
-            }
+        this.host = deps.host(pi, this.ctx);
+        this.voice = deps.voice(
+          {
+            onAudio: (pcm, epoch) => this.output(pcm, epoch),
+            onInterrupted: (epoch) => this.interrupt(epoch),
+            onTurnComplete: () => {
+              if (this.alive) {
+                this.turns++;
+                this.generationFinished = true;
+                this.playback.turnComplete(this.generation);
+                this.drain();
+                this.render();
+              }
+            },
+            onInputTranscript: (t) => this.transcript("You", t.text, t.finished),
+            onOutputTranscript: (t) => this.transcript("Voice", t.text, t.finished),
+            onError: (e) => this.fail("Provider " + e.code),
           },
-          onInputTranscript: (t) => this.transcript("You", t.text, t.finished),
-          onOutputTranscript: (t) => this.transcript("Voice", t.text, t.finished),
-          onError: (e) => this.fail("Provider " + e.code),
-        });
+          this.host ? createOrchestration(this.host) : undefined,
+        );
         await this.voice.connect(key);
         if (!this.alive) return;
         if (this.voice.state !== "ready") {
           this.fail("Provider did not accept session");
           return;
         }
+        if (this.host) {
+          this.voice.sendContext?.(boundedHostContext(this.host.context()));
+          this.unsubscribeHost = this.host.subscribe((update) => {
+            if (!this.alive) return;
+            this.voice?.sendContext?.(boundedHostContext(update));
+            // Only actual host events. Never infer progress from time or voice turns.
+            const event = clean(JSON.stringify(update)).slice(0, 180);
+            this.lines.push("Agent event: " + event);
+            this.lines.splice(0, Math.max(0, this.lines.length - MAX_VISIBLE));
+            this.render();
+          });
+        } else {
+          this.ctx.ui.notify(
+            "Voice connected without host orchestration: current-session job authority is unavailable.",
+            "warning",
+          );
+        }
+        if (!this.alive) return;
         this.state = "running"; // capture may arrive synchronously inside audio.start()
         await this.audio.start();
         if (!this.alive) return;
@@ -268,7 +308,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
     }
   }
   pi.registerCommand("live-lab", {
-    description: "Opt-in voice-only Gemini lab (no agent tools): start, stop, status",
+    description: "Gemini voice + current-session agent orchestration: start, stop, status",
     handler: async (args, ctx) => {
       let action = args.trim();
       if (!action) {
@@ -276,7 +316,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
           ctx.ui.notify("Voice lab requires local interactive macOS or Linux CLI.", "warning");
           return;
         }
-        const choice = await ctx.ui.select("Voice-only lab (no agent tools)", [
+        const choice = await ctx.ui.select("Voice + configured agent", [
           "Status",
           "Start paid Google voice + microphone",
           "Stop voice lab",
@@ -308,8 +348,8 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
                 Math.round(current.queuedMs) +
                 "ms · turns " +
                 current.turns +
-                ". No agent bridge or tools."
-            : "Voice lab off. No key, network, microphone or helper opened. No agent bridge or tools.",
+                ". Agent work is independent of voice."
+            : "Voice lab off. No key, network, microphone or helper opened. Agent work is unchanged.",
           "info",
         );
       } else if (action === "mic-check") {
@@ -398,7 +438,7 @@ export default function liveLabExtension(pi: ExtensionAPI, injected: Partial<Lab
         try {
           consent = await ctx.ui.confirm(
             "Paid Google voice + microphone",
-            "Start a paid Google Gemini voice session and open the microphone/speakers? Voice-only: NO agent tools or bridge. Transcripts are temporary on screen, not saved to chat. /live-lab stop closes voice only.",
+            "Start paid Google Gemini voice and microphone/speakers? Voice can read bounded current-session context/results, send or steer work to your configured agent, and receive job updates. Agent requests enter chat; voice transcripts stay temporary. Cancelling a job requires a separate confirmation. /live-lab stop and voice interruptions stop voice, never jobs.",
           );
         } catch {
           if (confirmation === owner) confirmation = undefined;

@@ -1,5 +1,7 @@
 # Voice-only SDK lab (phase one)
 
+> Phase-one history. Current approved orchestration extends this native path; see [live-lab-orchestration.md](live-lab-orchestration.md). Voice-only/no-tools statements below describe the original baseline, not the new feature.
+
 Worktree: `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_f5f78fb2`; branch: `die/official-gemini-sdk-voice-only-session-l-f5f78fb2`. Only SDK lab files, lockfile and focused tests owned here; no native helper, CLI integration or tool bridge.
 
 Official npm registry `https://registry.npmjs.org/@google%2fgenai/latest` reported 2.24.0 on 2026-09-23; pinned exact. Source/type contract: installed `node_modules/@google/genai/dist/genai.d.ts` (LiveConnectConfig, LiveCallbacks, LiveServerContent, LiveSendRealtimeInputParameters). SDK uses `GoogleGenAI.live.connect`, typed messages, `sendRealtimeInput`; no ad hoc websocket schema. SDK declares FunctionResponse scheduling/willContinue; irrelevant here. SDK Node >=20, transitive ws/google-auth-library/protobufjs: **Bun single-binary bundling and native Mac runtime compatibility unproven**. No real credentials, calls, microphone or speaker used.
