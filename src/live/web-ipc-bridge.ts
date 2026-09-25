@@ -1,4 +1,5 @@
 import { Socket } from "node:net";
+import { createReadStream, createWriteStream } from "node:fs";
 import type { SessionHost, SessionHostLease } from "../session/host";
 import { createDefaultLiveCredentialService } from "./credentials";
 import { createWebProviderFactory } from "./web-providers";
@@ -271,13 +272,16 @@ export function attachWebVoiceIpc(options: {
 }
 
 /** Only the Pi spawn that explicitly received FD3 enables the root bridge. */
-export function attachSpawnWebVoiceIpc(host: () => SessionHost | undefined) {
+export function attachSpawnWebVoiceIpc(
+  host: () => SessionHost | undefined,
+  dependencies: Pick<Parameters<typeof attachWebVoiceIpc>[0], "key" | "factory"> = {},
+) {
   const enabled = process.env.DIE_WEB_VOICE_FD === "3" && process.env.DIE_WEB_VOICE_OUTPUT_FD === "4";
   delete process.env.DIE_WEB_VOICE_FD;
   delete process.env.DIE_WEB_VOICE_OUTPUT_FD;
   if (!enabled) return undefined;
-  const input = new Socket({ fd: 3, readable: true, writable: false });
-  const output = new Socket({ fd: 4, readable: false, writable: true });
+  const input = createReadStream("", { fd: 3, autoClose: true });
+  const output = createWriteStream("", { fd: 4, autoClose: true });
   const channel = {
     get writableLength() {
       return output.writableLength;
@@ -301,5 +305,5 @@ export function attachSpawnWebVoiceIpc(host: () => SessionHost | undefined) {
       return this;
     },
   };
-  return attachWebVoiceIpc({ channel: channel as PrivateVoiceChannel, host });
+  return attachWebVoiceIpc({ channel: channel as PrivateVoiceChannel, host, ...dependencies });
 }
