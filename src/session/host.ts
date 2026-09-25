@@ -1,6 +1,6 @@
 import type { SessionOperations, SessionUpdate } from "./operations";
 import { VOICE_ENTRY, type TranscriptEntry } from "./transcript";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readdir, readFile, rm, lstat as stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -112,6 +112,11 @@ async function retainSnapshot(content: string): Promise<{ path: string; created:
     }
     return { path, created: true };
   });
+}
+
+/** Voice-owner capability; revoke on disconnect, switch or end. Revocation does not close the host or stop jobs. */
+export interface SessionHostLease extends SessionOperations {
+  revoke(): void;
 }
 
 export class SessionHost implements SessionOperations {
@@ -263,13 +268,17 @@ export class SessionHost implements SessionOperations {
     if (!this.active() || manager.getLeafId() !== leaf) throw new Error("Host branch changed during handoff");
     return { text: JSON.stringify(context) };
   }
-  private queue(requestId: string, text: string, deliverAs: "steer" | "followUp"): Promise<{ queued: true }> {
+  private queue(
+    requestId: string, text: string, deliverAs: "steer" | "followUp", check: () => void = () => {},
+  ): Promise<{ queued: true }> {
     if (!text.trim() || text.length > MAX_TEXT) throw new Error("Invalid host message text");
     return this.once(requestId, deliverAs, text, async () => {
+      check();
       const leaf = this.host.context.sessionManager.getLeafId();
       const context = await this.transcriptContext();
       try {
         this.assertActive();
+        check();
         if (this.host.context.sessionManager.getLeafId() !== leaf)
           throw new Error("Host branch changed during handoff");
         this.host.sendUserMessage(
@@ -339,10 +348,12 @@ export class SessionHost implements SessionOperations {
     this.assertActive();
     return this.host.tasks.inspect(id, offset, this.host.context, signal);
   }
-  stop(requestId: string, id: string, signal: AbortSignal = new AbortController().signal): Promise<unknown> {
+  stop(requestId: string, id: string, signal: AbortSignal = new AbortController().signal, check: () => void = () => {}): Promise<unknown> {
     return this.once(requestId, "stop", id, async () => {
+      check();
       if (!(await this.host.confirmStop(id))) throw new Error("User did not confirm cancellation");
       this.assertActive();
+      check();
       return this.host.tasks.stop(id, this.host.context, signal);
     });
   }
@@ -447,6 +458,61 @@ export class SessionHost implements SessionOperations {
         this.watcher = undefined;
         this.nativeActive.clear();
       }
+    };
+  }
+  /** Each lease belongs to this host instance, not a client-supplied session ID.
+   * Request IDs stay in the host's bounded dedupe map across lease revocation. */
+  lease(): SessionHostLease {
+    const prefix = "lease-" + randomUUID() + ":";
+    let revoked = false;
+    const unsubscribers = new Set<() => void>();
+    const check = () => {
+      if (revoked) throw new Error("Voice lease revoked");
+      this.assertActive();
+    };
+    const requestId = (id: string) => {
+      check();
+      if (typeof id !== "string" || !id || id.length > 128 - prefix.length || !/^[A-Za-z0-9._:-]+$/.test(id))
+        throw new Error("Invalid request ID");
+      return prefix + id;
+    };
+    return {
+      send: async (id, text) => this.queue(requestId(id), text, "followUp", check),
+      steer: async (id, text) => this.queue(requestId(id), text, "steer", check),
+      stop: async (id, target) => this.stop(requestId(id), target, undefined, check),
+      list: async (options) => {
+        check();
+        const value = await this.list(options);
+        check();
+        return value;
+      },
+      inspect: async (id, offset) => {
+        check();
+        const value = await this.inspect(id, offset);
+        check();
+        return value;
+      },
+      context: () => {
+        check();
+        return this.context();
+      },
+      subscribe: (listener) => {
+        check();
+        const unsubscribe = this.subscribe((update) => {
+          if (!revoked) listener(update);
+        });
+        unsubscribers.add(unsubscribe);
+        return () => {
+          unsubscribers.delete(unsubscribe);
+          unsubscribe();
+        };
+      },
+      revoke: () => {
+        if (revoked) return;
+        revoked = true;
+        for (const unsubscribe of unsubscribers) unsubscribe();
+        unsubscribers.clear();
+      },
     };
   }
   close(): void {
