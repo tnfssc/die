@@ -8,18 +8,23 @@ import {
   type SessionEntry,
   sessionEntryToContextMessages,
 } from "@earendil-works/pi-coding-agent";
+import {
+  MANUAL_SHAKE_ENTRY,
+  MANUAL_SHAKE_VERSION,
+  MAX_IDS_PER_KIND,
+  MAX_RECORD_BYTES,
+  isRecord,
+  validId,
+  serializedBytes,
+  isShakeRecord,
+  InvalidShakeRecordError,
+  type ShakeRecord,
+} from "../history/shake-record";
 import { recordDiagnostic } from "../diagnostics.js";
 import { getInstructionContinuitySession } from "./instruction-continuity";
 import { withReadOnlyCompactionContext } from "./native-compaction";
 
 /** Keep a durable manual context projection per branch. Session JSONL stays append-only. */
-export const MANUAL_SHAKE_ENTRY = "die-manual-shake";
-export const MANUAL_SHAKE_VERSION = 1;
-const MAX_IDS_PER_KIND = 2048;
-const MAX_RECORD_BYTES = 256 * 1024;
-const MAX_ID_LENGTH = 512;
-const MAX_SESSION_ID_LENGTH = 512;
-
 export const SHAKE_REFUSED_ACTIVE_WORK = "request_blocked";
 export const SHAKE_REFUSED_OPAQUE_CHECKPOINT = "opaque_checkpoint";
 export const SHAKE_REFUSED_CONTEXT_FAILURE = "preparation_failed";
@@ -126,13 +131,6 @@ function shakeDiagnostic(
   }
 }
 
-export type ShakeRecord = {
-  version: 1;
-  sessionId: string;
-  assistantEntryIds: string[];
-  toolResultEntryIds: string[];
-  shakenAt: number;
-};
 export type ShakePlan = {
   record: ShakeRecord;
   removedAssistantBlocks: number;
@@ -141,49 +139,6 @@ export type ShakePlan = {
   orphanToolResultIds: string[];
   storageError?: string;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
-}
-function validId(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && value.length <= MAX_ID_LENGTH;
-}
-function serializedBytes(value: unknown): number {
-  return new TextEncoder().encode(JSON.stringify(value)).byteLength;
-}
-function uniqueStrings(value: unknown, limit: number): value is string[] {
-  return Array.isArray(value) && value.length <= limit && value.every(validId) && new Set(value).size === value.length;
-}
-export function isShakeRecord(value: unknown): value is ShakeRecord {
-  if (!isRecord(value)) return false;
-  const keys = Object.keys(value).sort();
-  if (
-    JSON.stringify(keys) !==
-    JSON.stringify(["assistantEntryIds", "sessionId", "shakenAt", "toolResultEntryIds", "version"])
-  )
-    return false;
-  return (
-    value.version === MANUAL_SHAKE_VERSION &&
-    typeof value.sessionId === "string" &&
-    value.sessionId.length > 0 &&
-    value.sessionId.length <= MAX_SESSION_ID_LENGTH &&
-    typeof value.shakenAt === "number" &&
-    Number.isFinite(value.shakenAt) &&
-    value.shakenAt >= 0 &&
-    uniqueStrings(value.assistantEntryIds, MAX_IDS_PER_KIND) &&
-    uniqueStrings(value.toolResultEntryIds, MAX_IDS_PER_KIND) &&
-    serializedBytes(value) <= MAX_RECORD_BYTES
-  );
-}
-
-export class InvalidShakeRecordError extends Error {
-  constructor() {
-    super(
-      "The latest manual-shake checkpoint is malformed or uses an unsupported version. Refusing to expose unprojected context; branch before that checkpoint or repair/remove the invalid JSONL entry.",
-    );
-    this.name = "InvalidShakeRecordError";
-  }
-}
 
 /** The newest marker wins. Forked JSONL copies inherit its projection, but the
  * effective record is rebased to the fork's session identity. */

@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 import { stripTerminalSequences, visibleWidth } from "@earendil-works/pi-tui";
-import { completionDiagnosticDetails } from "../src/tasks/extension";
+import { completionDiagnosticDetails } from "../src/agent/extension";
 import { registerExecuteTool } from "../src/typescript/extension";
 import {
   completionPreview,

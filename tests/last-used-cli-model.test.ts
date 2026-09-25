@@ -12,7 +12,7 @@ import {
   isExplicitRootCliModelSelection,
   registerLastUsedCliModel,
   type ModelDefaultSettings,
-} from "../src/tasks/last-used-cli-model";
+} from "../src/agent/last-used-cli-model";
 
 function event(source: ModelSelectEvent["source"] = "set"): ModelSelectEvent {
   return {

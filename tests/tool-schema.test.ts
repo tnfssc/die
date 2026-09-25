@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import * as z from "zod/mini";
 import { validateToolArguments, type JsonObject } from "@earendil-works/pi-ai";
 import { toolParameters } from "../src/tool-schema";
-import extension from "../src/tasks/extension";
+import extension from "../src/agent/extension";
 test("only execute is registered with a provider-friendly schema", () => {
   const tools: any[] = [];
   extension({

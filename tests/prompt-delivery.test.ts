@@ -14,7 +14,7 @@ import {
   type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 import { registerExecuteTool } from "../src/typescript/extension";
-import asynchronousTasksExtension from "../src/tasks/extension";
+import asynchronousTasksExtension from "../src/agent/extension";
 import { dieSystemPrompt, executeGuidance, executeReference, workingValues } from "../src/prompts";
 
 test("Pi session assembles the registered execute guidance into its system prompt", async () => {

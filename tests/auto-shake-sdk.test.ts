@@ -9,7 +9,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import tasks from "../src/tasks/extension";
+import tasks from "../src/agent/extension";
 
 const usage = (input: number) => ({
   input,

@@ -10,8 +10,9 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import tasks from "../src/tasks/extension";
-import { buildShakePlan, MANUAL_SHAKE_ENTRY, registerManualShake } from "../src/tasks/manual-shake";
+import tasks from "../src/agent/extension";
+import { buildShakePlan, registerManualShake } from "../src/agent/manual-shake";
+import { MANUAL_SHAKE_ENTRY } from "../src/history/shake-record";
 
 const smallUsage = {
   input: 20,

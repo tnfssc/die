@@ -9,8 +9,14 @@ test("shared session code has no provider or task implementation dependencies", 
   }
 });
 
-test("tasks composes the session host without depending on voice", async () => {
-  const source = await readFile(new URL("../src/tasks/extension.ts", import.meta.url), "utf8");
+test("agent runtime composes the shared session host without depending on voice", async () => {
+  const source = await readFile(new URL("../src/agent/extension.ts", import.meta.url), "utf8");
   expect(source).not.toContain('"../live/');
   expect(source).toContain('"../session/host"');
+});
+
+test("history reads shake records without loading the agent command", async () => {
+  const source = await readFile(new URL("../src/history/service.ts", import.meta.url), "utf8");
+  expect(source).toContain('"./shake-record"');
+  expect(source).not.toContain("agent/manual-shake");
 });

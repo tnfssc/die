@@ -15,8 +15,8 @@ import {
   requestNativeCodexCompaction,
   resolveCodexResponsesUrl,
   withReadOnlyCompactionContext,
-} from "../src/tasks/native-compaction";
-import { subscribeProviderAttempts } from "../src/tasks/provider-attempts";
+} from "../src/agent/native-compaction";
+import { subscribeProviderAttempts } from "../src/agent/provider-attempts";
 
 const model: Model<any> = {
   id: "gpt-test",

@@ -11,7 +11,7 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { CompactEditor } from "./editor";
-import type { CacheCountdown, CacheEstimate } from "../tasks/cache-countdown";
+import type { CacheCountdown, CacheEstimate } from "../agent/cache-countdown";
 
 function singleLine(text: string): string {
   return text

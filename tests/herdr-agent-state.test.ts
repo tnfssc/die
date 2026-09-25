@@ -6,7 +6,7 @@ import { join } from "node:path";
 import type { EventBus, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { inspectDiagnostics } from "../src/diagnostics";
 import { registerHerdrAgentState } from "../src/herdr-agent-state";
-import asynchronousTasksExtension from "../src/tasks/extension";
+import asynchronousTasksExtension from "../src/agent/extension";
 import * as execution from "../src/typescript/execution";
 
 type Handler = (event: Record<string, unknown>, ctx: ExtensionContext) => unknown;

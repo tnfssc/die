@@ -11,8 +11,8 @@ import {
   parseCacheSettings,
   parseCacheTtl,
   registerCacheCountdown,
-} from "../src/tasks/cache-countdown";
-import { reportProviderAttempt, subscribeProviderAttempts } from "../src/tasks/provider-attempts";
+} from "../src/agent/cache-countdown";
+import { reportProviderAttempt, subscribeProviderAttempts } from "../src/agent/provider-attempts";
 import { inspectDiagnostics } from "../src/diagnostics";
 
 function context(provider = "openai", id = "alpha", entries: any[] = []) {

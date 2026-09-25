@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { HistoryService } from "../src/history/service";
-import { MANUAL_SHAKE_ENTRY, MANUAL_SHAKE_VERSION } from "../src/tasks/manual-shake";
+import { MANUAL_SHAKE_ENTRY, MANUAL_SHAKE_VERSION } from "../src/history/shake-record";
 
 const dirs: string[] = [];
 afterEach(async () => {

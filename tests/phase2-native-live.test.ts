@@ -11,7 +11,7 @@ import {
   DefaultResourceLoader,
   createAgentSession,
 } from "@earendil-works/pi-coding-agent";
-import tasks from "../src/tasks/extension";
+import tasks from "../src/agent/extension";
 
 test.skipIf(process.env.DIE_RUN_LLM_TESTS !== "1")(
   "native Codex live checkpoint and disk-resumed recall",

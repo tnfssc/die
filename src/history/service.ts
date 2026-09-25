@@ -2,7 +2,7 @@ import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
-import { InvalidShakeRecordError, isShakeRecord, MANUAL_SHAKE_ENTRY } from "../tasks/manual-shake";
+import { InvalidShakeRecordError, isShakeRecord, MANUAL_SHAKE_ENTRY } from "./shake-record";
 import { getDiskBackedBranch } from "./session-manager";
 import type { HistoryProvenance, HistoryReadResult, HistorySearchMatch, HistorySearchResult } from "./types";
 

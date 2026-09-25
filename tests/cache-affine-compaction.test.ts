@@ -11,7 +11,7 @@ import {
   registerCacheAffineCompaction,
   scopeInstructionContinuity,
   setCurrentInstructionFrame,
-} from "../src/tasks/cache-affine-compaction";
+} from "../src/agent/cache-affine-compaction";
 
 function wireProvider(ctx: any, pi: any) {
   if (!ctx.modelRegistry) return;

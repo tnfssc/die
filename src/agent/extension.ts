@@ -1,4 +1,4 @@
-import { requestForegroundStop } from "./foreground-stop";
+import { requestForegroundStop } from "../tasks/foreground-stop";
 import { SessionHost, type SessionTaskPort } from "../session/host";
 import { registerSessionHost } from "../session/host-access";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -13,8 +13,8 @@ import { completionPreview } from "../ui/execution-previews";
 import { createCompactUI } from "../ui/footer";
 import { registerCacheAffineCompaction } from "./cache-affine-compaction";
 import { CacheCountdown, registerCacheCountdown } from "./cache-countdown";
-import { CompletionBatcher } from "./completion-batcher";
-import { formatCompletionNotification } from "./completion-notification";
+import { CompletionBatcher } from "../tasks/completion-batcher";
+import { formatCompletionNotification } from "../tasks/completion-notification";
 import { clearInstructionContinuity, scopeInstructionContinuity } from "./instruction-continuity";
 import { registerInstructionMode } from "./instruction-mode";
 import { registerLastUsedCliModel } from "./last-used-cli-model";
@@ -23,21 +23,21 @@ import {
   type AttentionOptions,
   formatAttentionNotification,
   JobAttentionScheduler,
-} from "./job-attention";
-import { JobService } from "./job-service";
-import { installLocalAgentTermination } from "./local-agent-termination";
+} from "../tasks/job-attention";
+import { JobService } from "../tasks/job-service";
+import { installLocalAgentTermination } from "../tasks/local-agent-termination";
 import { registerManualShake } from "./manual-shake";
 import { registerNativeCodexCompaction } from "./native-compaction";
 import { registerNativeFastMode } from "./native-fast-mode";
-import { registerResumeSafeguards } from "./resume-safeguards";
-import { SUBAGENT_TYPES } from "./subagent-profiles";
-import { registerSubagentSettings } from "./subagent-settings-ui";
+import { registerResumeSafeguards } from "../tasks/resume-safeguards";
+import { SUBAGENT_TYPES } from "../tasks/subagent-profiles";
+import { registerSubagentSettings } from "../tasks/subagent-settings-ui";
 import { T3LocalNotificationDelivery, T3LocalNotificationOutbox } from "../t3/tasks/local-notifications";
 import { T3_MCP_BEARER_ENV, T3_MCP_URL_ENV } from "../delegation-environment";
 import { t3BridgeEnvironment } from "../t3/tasks/mcp-client";
-import { createTaskLifecycleRecorder } from "./task-lifecycle";
-import { type TaskInspection, TaskManager } from "./task-manager";
-import { registerTaskMonitor } from "./task-monitor";
+import { createTaskLifecycleRecorder } from "../tasks/task-lifecycle";
+import { type TaskInspection, TaskManager } from "../tasks/task-manager";
+import { registerTaskMonitor } from "../tasks/task-monitor";
 import { createWebTaskEventEmitter } from "../t3/tasks/events";
 
 export function completionDiagnosticDetails(tasks: TaskInspection[], notices: AttentionNotice[]) {

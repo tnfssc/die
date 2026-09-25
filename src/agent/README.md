@@ -1,0 +1,5 @@
+# Agent runtime
+
+`extension.ts` is the single agent composition root. CLI and prompt preview load it. It registers the existing task port with the shared `session/host`, owns extension hook order (fast-mode before payload observation), and wires completion delivery. It does not own a second task scheduler: task lifecycle, jobs, attention, worktrees, and child sessions, task profiles, and cost attribution remain in `tasks/`.
+
+Agent-context hooks live here: `manual-shake.ts` plans and applies projection; `cache-affine-compaction.ts` and `native-compaction.ts` handle context compaction; `cache-countdown.ts`, `native-fast-mode.ts`, `provider-attempts.ts`, `instruction-mode.ts`, `instruction-continuity.ts`, and `last-used-cli-model.ts` scope model/turn policy. The persisted shake discriminator, version, record validator, and invalid-record error belong to `history/shake-record.ts`, so history reads do not import a command implementation. Shared `session/` is intentionally provider-independent authority; Live consumes it, not the reverse.

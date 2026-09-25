@@ -13,7 +13,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { MAX_NO_PROGRESS_CONTINUATIONS } from "../src/goals/controller";
 import { dieSystemPrompt } from "../src/prompts";
-import tasks from "../src/tasks/extension";
+import tasks from "../src/agent/extension";
 import { installLiveDispatchBudget } from "./live-dispatch-budget";
 
 const usage = {

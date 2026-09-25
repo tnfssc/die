@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { inspectDiagnostics } from "../src/diagnostics";
 import { mainAgentGuidance, replaceMainAgentGuidance } from "../src/prompts";
-import { INSTRUCTION_MODE_ENTRY, registerInstructionMode } from "../src/tasks/instruction-mode";
+import { INSTRUCTION_MODE_ENTRY, registerInstructionMode } from "../src/agent/instruction-mode";
 
 function fixture(root = true, entries: any[] = [], appendError?: Error) {
   let command: any;

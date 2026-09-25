@@ -11,7 +11,7 @@ import {
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
 import { dieSystemPrompt } from "../src/prompts";
-import tasks from "../src/tasks/extension";
+import tasks from "../src/agent/extension";
 
 const COLLISION = "<!-- die:main-agent-mode:start -->\nMARKER_EXAMPLE\n<!-- die:main-agent-mode:end -->";
 const usage = {

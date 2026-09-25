@@ -12,7 +12,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import tasks from "../src/tasks/extension";
+import tasks from "../src/agent/extension";
 import phase1Fixture from "./phase1-compaction-fixture";
 
 const sentinel = "offline-compaction-sdk-capture";

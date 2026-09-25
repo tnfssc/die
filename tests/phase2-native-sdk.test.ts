@@ -12,7 +12,7 @@ import {
   DefaultResourceLoader,
   createAgentSession,
 } from "@earendil-works/pi-coding-agent";
-import tasks from "../src/tasks/extension";
+import tasks from "../src/agent/extension";
 
 const encode = (v: unknown) => Buffer.from(JSON.stringify(v)).toString("base64url");
 const token =

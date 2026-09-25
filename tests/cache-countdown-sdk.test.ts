@@ -10,8 +10,8 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import tasks from "../src/tasks/extension";
-import { CACHE_CALL_ENTRY } from "../src/tasks/cache-countdown";
+import tasks from "../src/agent/extension";
+import { CACHE_CALL_ENTRY } from "../src/agent/cache-countdown";
 
 const usage = {
   input: 1,

@@ -10,7 +10,7 @@ import {
   ModelRuntime,
   SessionManager,
 } from "@earendil-works/pi-coding-agent";
-import tasks from "../src/tasks/extension";
+import tasks from "../src/agent/extension";
 import { TaskManager } from "../src/tasks/task-manager";
 
 const usage = {

@@ -53,3 +53,7 @@ Proof (runtime placement): `bun run check` and targeted Biome format pass. Focus
 - Candidate web builder remains a non-adopted research tool with distinct inputs/gates, not another production owner. Only its source path changed. No new shared packager was warranted.
 
 Workers integrated as `4371a9e`, `7b8859e`, `488c191`. Full gate and independent review tracked in [v0.11.2 release](../releases/release-v0.11.2.md). Existing value 3 covers these moves; no new value needed.
+
+## Agent runtime placement (2026-09-25)
+
+Moved `src/tasks/extension.ts` to `src/agent/extension.ts` with its agent-context hooks; CLI, preview, tests, and source-boundary references point at the new owner. Registration order and the single fast-mode/payload hook owner are unchanged. Task scheduler, jobs, attention, worktrees and child sessions stay in tasks. `src/history/shake-record.ts` owns the unchanged persisted shake marker/version/validation/error; the history service imports it directly instead of importing manual-shake. The provider-independent `src/session/` authority remains shared, per the session-host boundary; no Live relocation. Proof: `bun run check` and 155 focused tests across 12 files passed; a first run lacked `mkfifo` because the shell PATH omitted `/usr/bin`, then the corrected run passed. Another 27 focused SDK tests passed. Broader SDK batch was stopped after goal tests required absent `dist/die`; one attention timing test failed under that concurrent batch. No full web build.

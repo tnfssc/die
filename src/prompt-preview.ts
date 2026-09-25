@@ -19,7 +19,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { GoalStore } from "./goals/store";
 import { dieSystemPrompt, type MainAgentMode } from "./prompts";
-import asynchronousTasksExtension from "./tasks/extension";
+import asynchronousTasksExtension from "./agent/extension";
 
 export const PREVIEW_ROLES = ["root", "fast", "normal", "orchestrator"] as const;
 export type PreviewRole = (typeof PREVIEW_ROLES)[number];

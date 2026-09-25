@@ -19,8 +19,9 @@ import {
   scanDiagnosticRecords,
 } from "../src/diagnostics";
 import { registerOperationDiagnostics } from "../src/diagnostics-extension";
-import { MANUAL_SHAKE_ENTRY, latestShakeRecord } from "../src/tasks/manual-shake";
-import { NATIVE_FAST_ENTRY } from "../src/tasks/native-fast-mode";
+import { latestShakeRecord } from "../src/agent/manual-shake";
+import { MANUAL_SHAKE_ENTRY } from "../src/history/shake-record";
+import { NATIVE_FAST_ENTRY } from "../src/agent/native-fast-mode";
 
 const valid = { component: "provider", code: "provider_failed", outcome: "failed" } as const;
 const entry = (data: unknown) => ({ type: "custom", customType: "die-diagnostic", data });

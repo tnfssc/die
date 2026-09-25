@@ -4,12 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { convertToLlm, type SessionEntry, SessionManager } from "@earendil-works/pi-coding-agent";
 import { inspectDiagnostics } from "../src/diagnostics";
-import { bindInstructionContinuitySession, clearInstructionContinuity } from "../src/tasks/instruction-continuity";
+import { bindInstructionContinuitySession, clearInstructionContinuity } from "../src/agent/instruction-continuity";
 import {
   buildShakePlan,
-  isShakeRecord,
   latestShakeRecord,
-  MANUAL_SHAKE_ENTRY,
   projectShakenContext,
   registerManualShake,
   shouldShakeBeforeCompaction,
@@ -21,7 +19,8 @@ import {
   SHAKE_REFUSED_STORAGE_LIMIT,
   SHAKE_NOOP,
   SHAKE_SUCCEEDED,
-} from "../src/tasks/manual-shake";
+} from "../src/agent/manual-shake";
+import { isShakeRecord, MANUAL_SHAKE_ENTRY } from "../src/history/shake-record";
 
 const usage = {
   input: 100,

@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import liveExtension from "../src/live/extension";
 import { VoiceSession } from "../src/live/session";
 import type { LiveParams, LiveConnection, VoiceOrchestration } from "../src/live/types";
-import tasksExtension from "../src/tasks/extension";
+import tasksExtension from "../src/agent/extension";
 import { getSessionHost } from "../src/session/host-access";
 
 test("tasks extension exposes its real shared JobService/TaskManager and retains bridge until shutdown", async () => {

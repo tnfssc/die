@@ -24,7 +24,7 @@ import {
   nativeFastSupport,
   registerNativeFastMode,
   withStandardProviderTier,
-} from "../src/tasks/native-fast-mode";
+} from "../src/agent/native-fast-mode";
 
 function harness(
   model: any,

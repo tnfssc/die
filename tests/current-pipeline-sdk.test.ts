@@ -1,4 +1,4 @@
-import { isReadOnlyCompactionContext } from "../src/tasks/native-compaction";
+import { isReadOnlyCompactionContext } from "../src/agent/native-compaction";
 import { test, expect } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -14,7 +14,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { dieSystemPrompt } from "../src/prompts";
-import tasks from "../src/tasks/extension";
+import tasks from "../src/agent/extension";
 import phase1Fixture from "./phase1-compaction-fixture";
 
 const sentinel = "offline-compaction-sdk-capture";

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { taskLifecycleFile } from "../src/tasks/task-lifecycle";
 import { afterEach, expect, spyOn, test } from "bun:test";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import extension from "../src/tasks/extension";
+import extension from "../src/agent/extension";
 import * as execution from "../src/typescript/execution";
 
 const originalDepth = process.env.DIE_SUBAGENT_DEPTH,

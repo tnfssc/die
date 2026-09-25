@@ -11,7 +11,7 @@ import {
   SessionManager,
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
-import tasks from "../src/tasks/extension";
+import tasks from "../src/agent/extension";
 import { assertLiveRuntimeReady, installLiveDispatchBudget, type LiveDispatchEvidence } from "./live-dispatch-budget";
 
 // This is a paid, single-scenario smoke test, not a claim about general goal quality.

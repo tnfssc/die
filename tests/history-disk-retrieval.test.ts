@@ -14,7 +14,7 @@ test("disk history retrieval traverses metadata, preserving originals, branches,
       import { SessionManager } from "@earendil-works/pi-coding-agent";
       import { installDiskBackedSessionManager } from "./src/history/session-manager.ts";
       import { HistoryService } from "./src/history/service.ts";
-      import { MANUAL_SHAKE_ENTRY, MANUAL_SHAKE_VERSION } from "./src/tasks/manual-shake.ts";
+      import { MANUAL_SHAKE_ENTRY, MANUAL_SHAKE_VERSION } from "./src/history/shake-record.ts";
       import { strict as assert } from "node:assert";
       installDiskBackedSessionManager();
       const manager = SessionManager.create(process.env.PROBE_ROOT, process.env.PROBE_ROOT);

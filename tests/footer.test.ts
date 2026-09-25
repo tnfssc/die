@@ -18,7 +18,7 @@ import {
   renderDetailedFooter,
 } from "../src/ui/footer";
 import { renderWave } from "../src/live/waveform";
-import { CacheCountdown } from "../src/tasks/cache-countdown";
+import { CacheCountdown } from "../src/agent/cache-countdown";
 
 const theme = { fg: (color: string, text: string) => `\x1b[${color === "accent" ? 36 : 90}m${text}\x1b[0m` } as Theme;
 const plain = (lines: string[]) => lines.map((line) => Bun.stripANSI(line));

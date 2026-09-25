@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { collaborationGuidance } from "../src/prompts";
-import { registerCacheAffineCompaction } from "../src/tasks/cache-affine-compaction";
+import { registerCacheAffineCompaction } from "../src/agent/cache-affine-compaction";
 import { registerExecuteTool } from "../src/typescript/extension";
 
 // Test Phase 1 alone now that production Codex uses Phase 2. This fixture does

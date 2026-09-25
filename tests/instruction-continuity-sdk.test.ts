@@ -12,7 +12,7 @@ import {
   SettingsManager,
 } from "@earendil-works/pi-coding-agent";
 import { dieSystemPrompt } from "../src/prompts";
-import tasks from "../src/tasks/extension";
+import tasks from "../src/agent/extension";
 
 const usage = {
   input: 0,
