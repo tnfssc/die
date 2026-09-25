@@ -330,7 +330,7 @@ test("detected speech gates execute until final transcription and hook preparati
   const stopped = owner.orchestration.execute({ id: "stopped", name: "execute", args: { code: "never" } });
   owner.close();
   await owner.released;
-  await expect(stopped).rejects.toThrow("no longer active");
+  await expect(stopped).rejects.toThrow("without a final transcript");
   expect(f.hooks).not.toContain("execute:never");
 });
 

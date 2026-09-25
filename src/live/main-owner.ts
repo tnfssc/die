@@ -177,8 +177,43 @@ async function acquire(
   let counter = 0;
   let retainedToolBytes = 0;
   let turnPreparation: Promise<void> = Promise.resolve();
-  let pendingTranscript: Promise<void> | undefined;
-  let finishTranscript: (() => void) | undefined;
+  // A revoked ASR turn must not authorize a waiting execute (or poison the next turn).
+  let pendingTranscript: { result: Promise<boolean>; settle: (final: boolean) => void } | undefined;
+  const settleTranscript = (final: boolean) => {
+    pendingTranscript?.settle(final);
+    pendingTranscript = undefined;
+  };
+  // One canonical tool pair at a time. Other owner records are buffered until its
+  // result is written, keeping both the session file and agent messages identical.
+  let pairTail: Promise<void> = Promise.resolve();
+  let pairActive = false;
+  let reservedPairs = 0;
+  const deferredRecords: AgentMessage[] = [];
+  const ownerRecord = (message: AgentMessage) => {
+    if (pairActive) deferredRecords.push(message);
+    else record(session, message);
+  };
+  const pairSlot = (): (() => void) | Promise<() => void> => {
+    const previous = pairTail;
+    const immediate = reservedPairs++ === 0;
+    let unlock!: () => void;
+    pairTail = new Promise<void>((resolve) => { unlock = resolve; });
+    const release = () => {
+      pairActive = false;
+      for (const message of deferredRecords.splice(0))
+        if (sameBranch(owner, manager)) record(session, message);
+      reservedPairs--;
+      unlock();
+    };
+    if (immediate) {
+      pairActive = true;
+      return release;
+    }
+    return previous.then(() => {
+      pairActive = true;
+      return release;
+    });
+  };
   const calls = new Map<string, { signature: string; result: Promise<unknown> }>();
   const controllers = new Set<AbortController>();
   const stopWorkReports = new Map<AbortController, unknown>();
@@ -193,7 +228,7 @@ async function acquire(
   };
   const provisional = (kind: string, text: string) => {
     if (!text.trim() || !sameBranch(owner, manager)) return;
-    record(session, {
+    ownerRecord({
       role: "custom",
       customType: "live-provisional",
       content: [{ type: "text", text: kind + ": " + text }],
@@ -205,9 +240,9 @@ async function acquire(
   };
   const appendText = (role: "user" | "assistant", text: string) => {
     if (!valid() || !text.trim()) return;
-    if (role === "user") record(session, { role, content: [{ type: "text", text }], timestamp: Date.now() });
+    if (role === "user") ownerRecord({ role, content: [{ type: "text", text }], timestamp: Date.now() });
     else
-      record(session, {
+      ownerRecord({
         role,
         content: [{ type: "text", text }],
         api: "live",
@@ -261,6 +296,8 @@ async function acquire(
   const prepareUserTurn = (text: string) => {
     turnPreparation = turnPreparation
       .then(async () => {
+        // Final speech recorded during a tool pair is committed before context hooks inspect it.
+        await pairTail;
         if (!valid()) throw new Error("Live owner closed before user turn preparation");
         const selectedBefore = [...session._baseSystemPromptOptions.selectedTools];
         const next = await runner.emitBeforeAgentStart(text, undefined, session._baseSystemPromptOptions);
@@ -278,9 +315,9 @@ async function acquire(
           throw new Error(
             "Per-turn instructions changed. Continue in text: Live cannot safely update this session's instructions while audio is active.",
           );
-        if (update) record(session, update);
+        if (update) ownerRecord(update);
         for (const message of next.messages)
-          record(session, {
+          ownerRecord({
             role: "custom",
             customType: message.customType,
             content: message.content as any,
@@ -324,9 +361,9 @@ async function acquire(
     released,
     beginInput() {
       if (!valid() || pendingTranscript) return;
-      pendingTranscript = new Promise<void>((resolve) => {
-        finishTranscript = resolve;
-      });
+      let settle!: (final: boolean) => void;
+      const result = new Promise<boolean>((resolve) => { settle = resolve; });
+      pendingTranscript = { result, settle };
     },
     inputTranscript(text, final = true) {
       if (!valid()) return;
@@ -337,9 +374,7 @@ async function acquire(
         appendText("user", finalText);
         inputDraft = "";
         prepareUserTurn(finalText);
-        finishTranscript?.();
-        finishTranscript = undefined;
-        pendingTranscript = undefined;
+        settleTranscript(true);
       }
     },
     async typedInput(text) {
@@ -359,7 +394,7 @@ async function acquire(
     },
     sendContext(text, metadata) {
       if (!valid()) return;
-      record(session, {
+      ownerRecord({
         role: "custom",
         customType: metadata?.customType ?? "task-complete",
         details: metadata?.details,
@@ -371,10 +406,14 @@ async function acquire(
       callbacks.onContext?.(text);
     },
     interrupt() {
+      settleTranscript(false);
+      provisional("interrupted user transcript", inputDraft);
+      inputDraft = "";
       provisional("interrupted assistant transcript", outputDraft);
       outputDraft = "";
     },
     turnComplete() {
+      settleTranscript(false);
       provisional("unfinished user transcript at turn boundary", inputDraft);
       provisional("unfinished assistant transcript at turn boundary", outputDraft);
       inputDraft = outputDraft = "";
@@ -390,9 +429,7 @@ async function acquire(
       provisional("unfinished user transcript", inputDraft);
       provisional("unfinished assistant transcript", outputDraft);
       owner.accepting = false;
-      finishTranscript?.();
-      finishTranscript = undefined;
-      pendingTranscript = undefined;
+      settleTranscript(false);
       inputDraft = "";
       outputDraft = "";
       if (owners.get(manager) === owner) owners.delete(manager);
@@ -410,7 +447,8 @@ async function acquire(
       // Provider transcription callbacks already record each utterance exactly once.
       userTranscript() {},
       async execute(call) {
-        if (pendingTranscript) await pendingTranscript;
+        const transcript = pendingTranscript;
+        if (transcript && !(await transcript.result)) throw new Error("Live input ended without a final transcript");
         await turnPreparation;
         if (!valid()) throw new Error("Live owner is no longer active");
         const callId = call.id || "live-" + ++counter;
@@ -423,6 +461,14 @@ async function acquire(
         if (calls.size >= 256 || inFlight >= 16) throw new Error("Live tool capacity reached; stop and resume in text");
         const operation = (async () => {
           inFlight++;
+          const slot = pairSlot();
+          const releasePair = typeof slot === "function" ? slot : await slot;
+          if (!valid()) {
+            releasePair();
+            inFlight--;
+            checkRelease();
+            throw new Error("Live owner closed before tool admission");
+          }
           const controller = new AbortController();
           controllers.add(controller);
           const id = callId;
@@ -527,6 +573,7 @@ async function acquire(
             controllers.delete(controller);
             stopWorkReports.delete(controller);
             inFlight--;
+            releasePair();
             checkRelease();
           }
         })();
@@ -537,9 +584,9 @@ async function acquire(
   };
   owners.set(manager, owner);
   session._runSystemPromptOptions = prepared.systemPromptOptions;
-  if (patch) record(session, patch);
+  if (patch) ownerRecord(patch);
   for (const message of prepared.messages)
-    record(session, {
+    ownerRecord({
       role: "custom",
       customType: message.customType,
       content: message.content as any,
