@@ -1,6 +1,6 @@
 diff --git a/apps/server/src/auth/DieWebAuth.test.ts b/apps/server/src/auth/DieWebAuth.test.ts
 new file mode 100644
-index 000000000..3e8a40483
+index 00000000..3e8a4048
 --- /dev/null
 +++ b/apps/server/src/auth/DieWebAuth.test.ts
 @@ -0,0 +1,97 @@
@@ -103,7 +103,7 @@ index 000000000..3e8a40483
 +});
 diff --git a/apps/server/src/auth/DieWebAuth.ts b/apps/server/src/auth/DieWebAuth.ts
 new file mode 100644
-index 000000000..56eda5fd7
+index 00000000..56eda5fd
 --- /dev/null
 +++ b/apps/server/src/auth/DieWebAuth.ts
 @@ -0,0 +1,66 @@
@@ -174,7 +174,7 @@ index 000000000..56eda5fd7
 +  scopes: [...AuthAdministrativeScopes] as ReadonlyArray<AuthEnvironmentScope>,
 +};
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
-index bfa1b87de..79cfaaee0 100644
+index bfa1b87d..79cfaaee 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.test.ts
 @@ -78,6 +78,50 @@ const requestMetadata = {
@@ -229,7 +229,7 @@ index bfa1b87de..79cfaaee0 100644
      Effect.gen(function* () {
        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 481ffc2fa..7f8e4b712 100644
+index 481ffc2f..7f8e4b71 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
 @@ -37,6 +37,7 @@ import * as PairingGrantStore from "./PairingGrantStore.ts";
@@ -298,7 +298,7 @@ index 481ffc2fa..7f8e4b712 100644
        if (Option.isSome(requestUrl)) {
          const websocketTicket = requestUrl.value.searchParams.get(WEBSOCKET_TICKET_QUERY_PARAM);
 diff --git a/apps/server/src/bin.ts b/apps/server/src/bin.ts
-index 063093874..66c1c2c4f 100644
+index 06309387..66c1c2c4 100644
 --- a/apps/server/src/bin.ts
 +++ b/apps/server/src/bin.ts
 @@ -9,6 +9,12 @@
@@ -315,7 +315,7 @@ index 063093874..66c1c2c4f 100644
    isEntrypoint({
      moduleUrl: import.meta.url,
 diff --git a/apps/server/src/binCli.ts b/apps/server/src/binCli.ts
-index 331d68c8f..a5c8b63ae 100644
+index 331d68c8..a5c8b63a 100644
 --- a/apps/server/src/binCli.ts
 +++ b/apps/server/src/binCli.ts
 @@ -2,6 +2,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -358,7 +358,7 @@ index 331d68c8f..a5c8b63ae 100644
 +  });
  }
 diff --git a/apps/server/src/cli/config.test.ts b/apps/server/src/cli/config.test.ts
-index 61ac22adb..c5a8f2f35 100644
+index 61ac22ad..c5a8f2f3 100644
 --- a/apps/server/src/cli/config.test.ts
 +++ b/apps/server/src/cli/config.test.ts
 @@ -225,6 +225,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
@@ -418,7 +418,7 @@ index 61ac22adb..c5a8f2f35 100644
          noBrowser: true,
          startupPresentation: "headless",
 diff --git a/apps/server/src/cli/config.ts b/apps/server/src/cli/config.ts
-index 09a30aeb1..d4f9f9b0a 100644
+index 09a30aeb..d4f9f9b0 100644
 --- a/apps/server/src/cli/config.ts
 +++ b/apps/server/src/cli/config.ts
 @@ -20,6 +20,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -468,7 +468,7 @@ index 09a30aeb1..d4f9f9b0a 100644
        startupPresentation,
        desktopBootstrapToken,
 diff --git a/apps/server/src/config.ts b/apps/server/src/config.ts
-index 701aca58e..2369316e8 100644
+index 701aca58..2369316e 100644
 --- a/apps/server/src/config.ts
 +++ b/apps/server/src/config.ts
 @@ -91,6 +91,8 @@ export class ServerConfig extends Context.Service<
@@ -482,7 +482,7 @@ index 701aca58e..2369316e8 100644
      readonly desktopBootstrapToken: string | undefined;
 diff --git a/apps/server/src/mcp/DieDelegationPolicy.test.ts b/apps/server/src/mcp/DieDelegationPolicy.test.ts
 new file mode 100644
-index 000000000..c08cabf7e
+index 00000000..c08cabf7
 --- /dev/null
 +++ b/apps/server/src/mcp/DieDelegationPolicy.test.ts
 @@ -0,0 +1,107 @@
@@ -595,7 +595,7 @@ index 000000000..c08cabf7e
 +});
 diff --git a/apps/server/src/mcp/DieDelegationPolicy.ts b/apps/server/src/mcp/DieDelegationPolicy.ts
 new file mode 100644
-index 000000000..31dc2b24a
+index 00000000..31dc2b24
 --- /dev/null
 +++ b/apps/server/src/mcp/DieDelegationPolicy.ts
 @@ -0,0 +1,119 @@
@@ -720,7 +720,7 @@ index 000000000..31dc2b24a
 +}
 diff --git a/apps/server/src/mcp/DieTaskService.test.ts b/apps/server/src/mcp/DieTaskService.test.ts
 new file mode 100644
-index 000000000..80a959ff0
+index 00000000..80a959ff
 --- /dev/null
 +++ b/apps/server/src/mcp/DieTaskService.test.ts
 @@ -0,0 +1,716 @@
@@ -1442,7 +1442,7 @@ index 000000000..80a959ff0
 +);
 diff --git a/apps/server/src/mcp/DieTaskService.ts b/apps/server/src/mcp/DieTaskService.ts
 new file mode 100644
-index 000000000..a523a03e0
+index 00000000..a523a03e
 --- /dev/null
 +++ b/apps/server/src/mcp/DieTaskService.ts
 @@ -0,0 +1,607 @@
@@ -2054,7 +2054,7 @@ index 000000000..a523a03e0
 +});
 +export const layer = Layer.effect(DieTaskService, make);
 diff --git a/apps/server/src/mcp/McpHttpServer.ts b/apps/server/src/mcp/McpHttpServer.ts
-index 810ac9d49..7e5e0effd 100644
+index 810ac9d4..7e5e0eff 100644
 --- a/apps/server/src/mcp/McpHttpServer.ts
 +++ b/apps/server/src/mcp/McpHttpServer.ts
 @@ -32,6 +32,7 @@ import { ThreadToolkitHandlersLive } from "./toolkits/thread/handlers.ts";
@@ -2074,7 +2074,7 @@ index 810ac9d49..7e5e0effd 100644
    Layer.provide(ThreadMetadataMcpService.layer),
  );
 diff --git a/apps/server/src/mcp/McpInvocationContext.ts b/apps/server/src/mcp/McpInvocationContext.ts
-index 8e07e0650..a4a5188b1 100644
+index 8e07e065..a4a5188b 100644
 --- a/apps/server/src/mcp/McpInvocationContext.ts
 +++ b/apps/server/src/mcp/McpInvocationContext.ts
 @@ -11,18 +11,26 @@ import * as Effect from "effect/Effect";
@@ -2105,7 +2105,7 @@ index 8e07e0650..a4a5188b1 100644
  }
  
 diff --git a/apps/server/src/mcp/McpSessionRegistry.test.ts b/apps/server/src/mcp/McpSessionRegistry.test.ts
-index ba3c20968..2638f42ab 100644
+index ba3c2096..2638f42a 100644
 --- a/apps/server/src/mcp/McpSessionRegistry.test.ts
 +++ b/apps/server/src/mcp/McpSessionRegistry.test.ts
 @@ -102,6 +102,28 @@ it.effect("always grants pull-requests and gates browser and device access indep
@@ -2138,7 +2138,7 @@ index ba3c20968..2638f42ab 100644
    Effect.gen(function* () {
      const cases = [
 diff --git a/apps/server/src/mcp/McpSessionRegistry.ts b/apps/server/src/mcp/McpSessionRegistry.ts
-index ad741acb9..f58d42cb1 100644
+index ad741acb..f58d42cb 100644
 --- a/apps/server/src/mcp/McpSessionRegistry.ts
 +++ b/apps/server/src/mcp/McpSessionRegistry.ts
 @@ -22,6 +22,10 @@ export interface McpCredentialRequest {
@@ -2188,7 +2188,7 @@ index ad741acb9..f58d42cb1 100644
        };
        yield* SynchronizedRef.update(state, ({ records }) => {
 diff --git a/apps/server/src/mcp/OrchestratorMcpService.test.ts b/apps/server/src/mcp/OrchestratorMcpService.test.ts
-index 8fb351713..ff6b00c1c 100644
+index 8fb35171..ff6b00c1 100644
 --- a/apps/server/src/mcp/OrchestratorMcpService.test.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpService.test.ts
 @@ -28,6 +28,33 @@ import type { McpInvocationScope } from "./McpInvocationContext.ts";
@@ -2431,7 +2431,7 @@ index 8fb351713..ff6b00c1c 100644
              clientRequestId: "delegate-antigravity-1",
            });
 diff --git a/apps/server/src/mcp/OrchestratorMcpService.ts b/apps/server/src/mcp/OrchestratorMcpService.ts
-index 4c58a5854..bccd61f84 100644
+index 4c58a585..bccd61f8 100644
 --- a/apps/server/src/mcp/OrchestratorMcpService.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpService.ts
 @@ -4,6 +4,7 @@ import {
@@ -2660,7 +2660,7 @@ index 4c58a5854..bccd61f84 100644
    OrchestratorMcpService,
    never,
 diff --git a/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts b/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
-index 3a64a87a7..8eb10655b 100644
+index 3a64a87a..8eb10655 100644
 --- a/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
 @@ -50,6 +50,7 @@ import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexA
@@ -2725,7 +2725,7 @@ index 3a64a87a7..8eb10655b 100644
  
          yield* Effect.gen(function* () {
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
-index bdd7a0a2f..bd11a2753 100644
+index bdd7a0a2..bd11a275 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
 +++ b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
 @@ -1,11 +1,42 @@
@@ -2772,7 +2772,7 @@ index bdd7a0a2f..bd11a2753 100644
      Effect.gen(function* () {
        const scope = yield* McpInvocationContext;
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts b/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts
-index de85b6f72..368e426c2 100644
+index de85b6f7..368e426c 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts
 +++ b/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts
 @@ -3,6 +3,10 @@ import { Tool } from "effect/unstable/ai";
@@ -2827,7 +2827,7 @@ index de85b6f72..368e426c2 100644
 +  });
  });
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/tools.ts b/apps/server/src/mcp/toolkits/orchestrator/tools.ts
-index d1f712e75..236ad6f83 100644
+index d1f712e7..236ad6f8 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/tools.ts
 +++ b/apps/server/src/mcp/toolkits/orchestrator/tools.ts
 @@ -1,4 +1,12 @@
@@ -2940,7 +2940,7 @@ index d1f712e75..236ad6f83 100644
    DelegateTaskTool,
    TaskStatusTool,
 diff --git a/apps/server/src/mcp/toolkits/worktree/registration.test.ts b/apps/server/src/mcp/toolkits/worktree/registration.test.ts
-index 924801431..5651b136d 100644
+index 92480143..5651b136 100644
 --- a/apps/server/src/mcp/toolkits/worktree/registration.test.ts
 +++ b/apps/server/src/mcp/toolkits/worktree/registration.test.ts
 @@ -1,5 +1,6 @@
@@ -2972,7 +2972,7 @@ index 924801431..5651b136d 100644
          Layer.build,
        );
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index ee2fb5d4a..c04f1acdb 100644
+index ee2fb5d4..c04f1acd 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -644,7 +644,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
@@ -3007,7 +3007,7 @@ index ee2fb5d4a..c04f1acdb 100644
  });
  
 diff --git a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts
-index ad87b4bf7..c4e24e5d8 100644
+index ad87b4bf..c4e24e5d 100644
 --- a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts
 @@ -40,8 +40,8 @@ import {
@@ -3309,7 +3309,7 @@ index ad87b4bf7..c4e24e5d8 100644
  
  // This fails before a provider transcript exists, so a replay fixture is not
 diff --git a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts
-index 1e5c5b43e..3181b6794 100644
+index 1e5c5b43..3181b679 100644
 --- a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts
 @@ -45,6 +45,7 @@ import {
@@ -3755,7 +3755,7 @@ index 1e5c5b43e..3181b6794 100644
        spawner,
        fileSystem,
 diff --git a/apps/server/src/orchestration-v2/Adapters/PiRpc.ts b/apps/server/src/orchestration-v2/Adapters/PiRpc.ts
-index c6a399b3d..8a15f90c6 100644
+index c6a399b3..8a15f90c 100644
 --- a/apps/server/src/orchestration-v2/Adapters/PiRpc.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/PiRpc.ts
 @@ -24,11 +24,13 @@ import * as Option from "effect/Option";
@@ -3964,7 +3964,7 @@ index c6a399b3d..8a15f90c6 100644
    } satisfies PiRpcConnection;
  });
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
-index 2d448e3b7..a5db5d315 100644
+index 2d448e3b..a5db5d31 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
 @@ -27,6 +27,16 @@ async function loadRequestHook(): Promise<RequestHook> {
@@ -3985,7 +3985,7 @@ index 2d448e3b7..a5db5d315 100644
    for (const key of ["max_tokens", "max_completion_tokens"]) {
      it(`caps ${key} without changing the conversation or tools`, async () => {
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
-index 185bd16f9..87b025782 100644
+index 185bd16f..87b02578 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
 @@ -35,6 +35,7 @@ const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
@@ -4029,7 +4029,7 @@ index 185bd16f9..87b025782 100644
          const registeredName = \`mcp__t3-code__\${name}\`;
          const description = tool.description ?? name;
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts
-index b50a80a1c..f0cb2b815 100644
+index b50a80a1..f0cb2b81 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts
 @@ -88,6 +88,27 @@ describe("pi T3 MCP injection", () => {
@@ -4069,7 +4069,7 @@ index b50a80a1c..f0cb2b815 100644
    );
  });
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts
-index bd10c6267..d9f6e07e9 100644
+index bd10c626..d9f6e07e 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts
 @@ -251,6 +251,9 @@ export function buildPiRpcLaunch(input: {
@@ -4083,7 +4083,7 @@ index bd10c6267..d9f6e07e9 100644
    const hasT3Mcp = hasT3Extension && input.mcpSession !== undefined;
    const extensionSafeArgs =
 diff --git a/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts b/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
-index 567fea60f..d149a665c 100644
+index 567fea60..d149a665 100644
 --- a/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
 +++ b/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
 @@ -40,7 +40,9 @@ import { worktreeRepairDependenciesTestLayer } from "./ProviderTurnStartService.
@@ -4162,7 +4162,7 @@ index 567fea60f..d149a665c 100644
            commandId: CommandId.make("command:delegated-delivery-a2:ack-after-dispose"),
 diff --git a/apps/server/src/orchestration-v2/DelegatedCompletionWake.ts b/apps/server/src/orchestration-v2/DelegatedCompletionWake.ts
 new file mode 100644
-index 000000000..1ac21f77d
+index 00000000..1ac21f77
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/DelegatedCompletionWake.ts
 @@ -0,0 +1,25 @@
@@ -4193,7 +4193,7 @@ index 000000000..1ac21f77d
 +}
 diff --git a/apps/server/src/orchestration-v2/LocalJobNotification.test.ts b/apps/server/src/orchestration-v2/LocalJobNotification.test.ts
 new file mode 100644
-index 000000000..0b79fd650
+index 00000000..0b79fd65
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/LocalJobNotification.test.ts
 @@ -0,0 +1,409 @@
@@ -4608,7 +4608,7 @@ index 000000000..0b79fd650
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts b/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts
 new file mode 100644
-index 000000000..67e142de2
+index 00000000..67e142de
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts
 @@ -0,0 +1,800 @@
@@ -5414,7 +5414,7 @@ index 000000000..67e142de2
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeUsageAccounting.test.ts b/apps/server/src/orchestration-v2/NativeUsageAccounting.test.ts
 new file mode 100644
-index 000000000..40f01a137
+index 00000000..40f01a13
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeUsageAccounting.test.ts
 @@ -0,0 +1,169 @@
@@ -5589,7 +5589,7 @@ index 000000000..40f01a137
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeUsageAccounting.ts b/apps/server/src/orchestration-v2/NativeUsageAccounting.ts
 new file mode 100644
-index 000000000..e8bcfa3bd
+index 00000000..e8bcfa3b
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeUsageAccounting.ts
 @@ -0,0 +1,124 @@
@@ -5718,7 +5718,7 @@ index 000000000..e8bcfa3bd
 +  };
 +}
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index bd4905200..c8061c2aa 100644
+index bd490520..c8061c2a 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -48,6 +48,7 @@ import * as Layer from "effect/Layer";
@@ -6606,7 +6606,7 @@ index bd4905200..c8061c2aa 100644
        Stream.filter(
          (stored) =>
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.test.ts b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
-index acdb7320b..9a4b31ba0 100644
+index acdb7320..9a4b31ba 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.test.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
 @@ -315,6 +315,7 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
@@ -6664,7 +6664,7 @@ index acdb7320b..9a4b31ba0 100644
        yield* projectionStore.apply({
          id: EventId.make("event:provider-usage-reload:replacement"),
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index 191ca7610..53b15b716 100644
+index 191ca761..53b15b71 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
 @@ -64,6 +64,7 @@ import * as Ref from "effect/Ref";
@@ -6797,7 +6797,7 @@ index 191ca7610..53b15b716 100644
                SELECT MAX(sequence) AS snapshot_sequence
                FROM orchestration_events
 diff --git a/apps/server/src/orchestration-v2/ProviderAdapter.ts b/apps/server/src/orchestration-v2/ProviderAdapter.ts
-index 478150bd5..1a8bd06bc 100644
+index 478150bd..1a8bd06b 100644
 --- a/apps/server/src/orchestration-v2/ProviderAdapter.ts
 +++ b/apps/server/src/orchestration-v2/ProviderAdapter.ts
 @@ -486,6 +486,13 @@ export interface ProviderAdapterV2SessionRuntime {
@@ -6815,7 +6815,7 @@ index 478150bd5..1a8bd06bc 100644
     * Manager-owned runtimes expose a synchronous subscription so concurrent
     * provider threads receive independent copies of the process event stream.
 diff --git a/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts b/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts
-index e6af7fa79..2e771859a 100644
+index e6af7fa7..2e771859 100644
 --- a/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts
 +++ b/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts
 @@ -1,3 +1,4 @@
@@ -6944,7 +6944,7 @@ index e6af7fa79..2e771859a 100644
    }),
  );
 diff --git a/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts b/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts
-index 1c95c3ba9..92ac23803 100644
+index 1c95c3ba..92ac2380 100644
 --- a/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts
 @@ -10,7 +10,9 @@ import {
@@ -7204,7 +7204,7 @@ index 1c95c3ba9..92ac23803 100644
      return Effect.gen(function* () {
        const attempts = yield* Ref.make(0);
 diff --git a/apps/server/src/orchestration-v2/ProviderContinuationService.ts b/apps/server/src/orchestration-v2/ProviderContinuationService.ts
-index d8f9197f4..b32b1631a 100644
+index d8f9197f..b32b1631 100644
 --- a/apps/server/src/orchestration-v2/ProviderContinuationService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderContinuationService.ts
 @@ -1,6 +1,7 @@
@@ -7381,7 +7381,7 @@ index d8f9197f4..b32b1631a 100644
        Effect.forkScoped,
      );
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts
-index 8d2947094..18f775d1e 100644
+index 8d294709..18f775d1 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts
 @@ -1,9 +1,13 @@
@@ -8429,7 +8429,7 @@ index 8d2947094..18f775d1e 100644
        );
      }),
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
-index ced52cee8..92e2e5869 100644
+index ced52cee..92e2e586 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 @@ -31,6 +31,8 @@ import * as ProjectService from "../project/ProjectService.ts";
@@ -8900,7 +8900,7 @@ index ced52cee8..92e2e5869 100644
                };
                yield* Ref.update(sessions, (current) => {
 diff --git a/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts b/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
-index cb6f66d4e..f8aaba3f7 100644
+index cb6f66d4..f8aaba3f 100644
 --- a/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
 +++ b/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
 @@ -1741,6 +1741,8 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch
@@ -8913,7 +8913,7 @@ index cb6f66d4e..f8aaba3f7 100644
            launches.launch(request).pipe(
              Effect.andThen(
 diff --git a/apps/server/src/orchestration-v2/ThreadLaunchService.ts b/apps/server/src/orchestration-v2/ThreadLaunchService.ts
-index 3cafae35e..d33d2be2b 100644
+index 3cafae35..d33d2be2 100644
 --- a/apps/server/src/orchestration-v2/ThreadLaunchService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadLaunchService.ts
 @@ -75,6 +75,8 @@ export interface ThreadLaunchInput {
@@ -8982,7 +8982,7 @@ index 3cafae35e..d33d2be2b 100644
  
  export const layer = Layer.effect(ThreadLaunchService, make);
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 6a5084601..e0f463f4a 100644
+index 6a508460..e0f463f4 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -83,6 +83,7 @@ export function existingThreadIdsForCommand(
@@ -9049,7 +9049,7 @@ index 6a5084601..e0f463f4a 100644
  );
  
 diff --git a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
-index f81d477ed..65e38b075 100644
+index f81d477e..65e38b07 100644
 --- a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 +++ b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 @@ -158,6 +158,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
@@ -9061,7 +9061,7 @@ index f81d477ed..65e38b075 100644
        return [command.parentThreadId];
      case "thread.fork":
 diff --git a/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts b/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
-index b159540b6..d88ecc098 100644
+index b159540b..d88ecc09 100644
 --- a/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
 +++ b/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
 @@ -16,6 +16,7 @@ import { ProjectionProjectRepositoryLive } from "../../persistence/Layers/Projec
@@ -9101,7 +9101,7 @@ index b159540b6..d88ecc098 100644
        ),
 diff --git a/apps/server/src/provider/DieWebPi.test.ts b/apps/server/src/provider/DieWebPi.test.ts
 new file mode 100644
-index 000000000..9d2bb056c
+index 00000000..9d2bb056
 --- /dev/null
 +++ b/apps/server/src/provider/DieWebPi.test.ts
 @@ -0,0 +1,42 @@
@@ -9149,7 +9149,7 @@ index 000000000..9d2bb056c
 +});
 diff --git a/apps/server/src/provider/DieWebPi.ts b/apps/server/src/provider/DieWebPi.ts
 new file mode 100644
-index 000000000..c09c1fec6
+index 00000000..c09c1fec
 --- /dev/null
 +++ b/apps/server/src/provider/DieWebPi.ts
 @@ -0,0 +1,29 @@
@@ -9183,7 +9183,7 @@ index 000000000..c09c1fec6
 +  return providerInstanceId === "pi" && dieWebBinary(environment) !== undefined;
 +}
 diff --git a/apps/server/src/provider/Drivers/PiDriver.ts b/apps/server/src/provider/Drivers/PiDriver.ts
-index 72cb0fec7..276e08cd0 100644
+index 72cb0fec..276e08cd 100644
 --- a/apps/server/src/provider/Drivers/PiDriver.ts
 +++ b/apps/server/src/provider/Drivers/PiDriver.ts
 @@ -36,6 +36,7 @@ import {
@@ -9226,7 +9226,7 @@ index 72cb0fec7..276e08cd0 100644
          orchestrationAdapter,
          textGeneration,
 diff --git a/apps/server/src/provider/Layers/PiProvider.test.ts b/apps/server/src/provider/Layers/PiProvider.test.ts
-index 4f7a6f6ad..663756e13 100644
+index 4f7a6f6a..663756e1 100644
 --- a/apps/server/src/provider/Layers/PiProvider.test.ts
 +++ b/apps/server/src/provider/Layers/PiProvider.test.ts
 @@ -74,6 +74,11 @@ describe("PiProvider", () => {
@@ -9242,7 +9242,7 @@ index 4f7a6f6ad..663756e13 100644
      }).pipe(Effect.provide(NodeServices.layer)),
    );
 diff --git a/apps/server/src/provider/Layers/PiProvider.ts b/apps/server/src/provider/Layers/PiProvider.ts
-index edbace801..5abac7d1d 100644
+index edbace80..5abac7d1 100644
 --- a/apps/server/src/provider/Layers/PiProvider.ts
 +++ b/apps/server/src/provider/Layers/PiProvider.ts
 @@ -43,6 +43,7 @@ import {
@@ -9334,7 +9334,7 @@ index edbace801..5abac7d1d 100644
        presentation: PI_PRESENTATION,
        enabled: piSettings.enabled,
 diff --git a/apps/server/src/provider/Layers/ProviderRegistry.test.ts b/apps/server/src/provider/Layers/ProviderRegistry.test.ts
-index 24ecd5710..e32af6709 100644
+index 24ecd571..e32af670 100644
 --- a/apps/server/src/provider/Layers/ProviderRegistry.test.ts
 +++ b/apps/server/src/provider/Layers/ProviderRegistry.test.ts
 @@ -2598,7 +2598,12 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
@@ -9364,7 +9364,7 @@ index 24ecd5710..e32af6709 100644
              assert.strictEqual(reprobedCodex?.installed, false);
            }).pipe(Effect.provide(runtimeServices));
 diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index b7534969d..6336a2136 100644
+index b7534969..6336a213 100644
 --- a/apps/server/src/server.ts
 +++ b/apps/server/src/server.ts
 @@ -64,6 +64,7 @@ import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
@@ -9384,7 +9384,7 @@ index b7534969d..6336a2136 100644
      websocketRpcRouteLayer,
    ),
 diff --git a/apps/server/src/serverRuntimeStartup.test.ts b/apps/server/src/serverRuntimeStartup.test.ts
-index a89d010fa..255992efd 100644
+index a89d010f..255992ef 100644
 --- a/apps/server/src/serverRuntimeStartup.test.ts
 +++ b/apps/server/src/serverRuntimeStartup.test.ts
 @@ -13,9 +13,46 @@ import * as Ref from "effect/Ref";
@@ -9435,7 +9435,7 @@ index a89d010fa..255992efd 100644
    assert.deepEqual(ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(), {
      instanceId: ProviderInstanceId.make("codex"),
 diff --git a/apps/server/src/serverRuntimeStartup.ts b/apps/server/src/serverRuntimeStartup.ts
-index 2ec488f2b..d4702f427 100644
+index 2ec488f2..d4702f42 100644
 --- a/apps/server/src/serverRuntimeStartup.ts
 +++ b/apps/server/src/serverRuntimeStartup.ts
 @@ -172,10 +172,16 @@ const recordStartupHeartbeat = Effect.gen(function* () {
@@ -9517,7 +9517,7 @@ index 2ec488f2b..d4702f427 100644
                ).pipe(Effect.annotateLogs({ pairingUrl: startupBrowserTarget }));
 diff --git a/apps/server/src/terminal/BunPtyAdapter.test.ts b/apps/server/src/terminal/BunPtyAdapter.test.ts
 new file mode 100644
-index 000000000..26c2f6cf8
+index 00000000..26c2f6cf
 --- /dev/null
 +++ b/apps/server/src/terminal/BunPtyAdapter.test.ts
 @@ -0,0 +1,229 @@
@@ -9752,7 +9752,7 @@ index 000000000..26c2f6cf8
 +);
 diff --git a/apps/server/src/terminal/BunPtyAdapter.ts b/apps/server/src/terminal/BunPtyAdapter.ts
 new file mode 100644
-index 000000000..350de371c
+index 00000000..350de371
 --- /dev/null
 +++ b/apps/server/src/terminal/BunPtyAdapter.ts
 @@ -0,0 +1,186 @@
@@ -9943,7 +9943,7 @@ index 000000000..350de371c
 +    }),
 +  });
 diff --git a/apps/server/src/terminal/Manager.test.ts b/apps/server/src/terminal/Manager.test.ts
-index be62d0eeb..543be8473 100644
+index be62d0ee..543be847 100644
 --- a/apps/server/src/terminal/Manager.test.ts
 +++ b/apps/server/src/terminal/Manager.test.ts
 @@ -788,6 +788,70 @@ it.layer(
@@ -10065,7 +10065,7 @@ index be62d0eeb..543be8473 100644
      Effect.gen(function* () {
        const { manager, ptyAdapter } = yield* createManager(3);
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index 398442ee1..39f83e3c7 100644
+index 398442ee..39f83e3c 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -6,6 +6,8 @@
@@ -10330,7 +10330,7 @@ index 398442ee1..39f83e3c7 100644
        session.processEventDrainRunning = false;
        yield* persistHistory(input.threadId, terminalId, session.history);
 diff --git a/apps/server/src/terminal/NodePtyAdapter.test.ts b/apps/server/src/terminal/NodePtyAdapter.test.ts
-index e6650025f..11df4fe33 100644
+index e6650025..11df4fe3 100644
 --- a/apps/server/src/terminal/NodePtyAdapter.test.ts
 +++ b/apps/server/src/terminal/NodePtyAdapter.test.ts
 @@ -28,6 +28,7 @@ const makeTestLayer = (platform: NodeJS.Platform = "win32") =>
@@ -10342,7 +10342,7 @@ index e6650025f..11df4fe33 100644
        ),
      ),
 diff --git a/apps/server/src/terminal/NodePtyAdapter.ts b/apps/server/src/terminal/NodePtyAdapter.ts
-index 67cdcecdd..a8621acf0 100644
+index 67cdcecd..a8621acf 100644
 --- a/apps/server/src/terminal/NodePtyAdapter.ts
 +++ b/apps/server/src/terminal/NodePtyAdapter.ts
 @@ -8,6 +8,7 @@ import * as Path from "effect/Path";
@@ -10371,7 +10371,7 @@ index 67cdcecdd..a8621acf0 100644
 +export { BunTerminalRuntimeRef } from "./BunPtyAdapter.ts";
 diff --git a/apps/server/src/terminal/SubscriberStream.test.ts b/apps/server/src/terminal/SubscriberStream.test.ts
 new file mode 100644
-index 000000000..536728851
+index 00000000..53672885
 --- /dev/null
 +++ b/apps/server/src/terminal/SubscriberStream.test.ts
 @@ -0,0 +1,167 @@
@@ -10544,7 +10544,7 @@ index 000000000..536728851
 +});
 diff --git a/apps/server/src/terminal/SubscriberStream.ts b/apps/server/src/terminal/SubscriberStream.ts
 new file mode 100644
-index 000000000..3f6627778
+index 00000000..3f662777
 --- /dev/null
 +++ b/apps/server/src/terminal/SubscriberStream.ts
 @@ -0,0 +1,144 @@
@@ -10693,7 +10693,7 @@ index 000000000..3f6627778
 +  );
 +}
 diff --git a/apps/server/src/vcs/GitVcsDriverCore.test.ts b/apps/server/src/vcs/GitVcsDriverCore.test.ts
-index d42c5b74e..2f0957a08 100644
+index d42c5b74..2f0957a0 100644
 --- a/apps/server/src/vcs/GitVcsDriverCore.test.ts
 +++ b/apps/server/src/vcs/GitVcsDriverCore.test.ts
 @@ -2227,6 +2227,34 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
@@ -10733,7 +10733,7 @@ index d42c5b74e..2f0957a08 100644
          const cwd = yield* makeTmpDir();
 diff --git a/apps/server/src/voice/PiVoiceChannels.fd.test.ts b/apps/server/src/voice/PiVoiceChannels.fd.test.ts
 new file mode 100644
-index 000000000..dbc4f6a8c
+index 00000000..dbc4f6a8
 --- /dev/null
 +++ b/apps/server/src/voice/PiVoiceChannels.fd.test.ts
 @@ -0,0 +1,64 @@
@@ -10803,7 +10803,7 @@ index 000000000..dbc4f6a8c
 +});
 diff --git a/apps/server/src/voice/PiVoiceChannels.ts b/apps/server/src/voice/PiVoiceChannels.ts
 new file mode 100644
-index 000000000..e83f6425c
+index 00000000..e83f6425
 --- /dev/null
 +++ b/apps/server/src/voice/PiVoiceChannels.ts
 @@ -0,0 +1,122 @@
@@ -10931,7 +10931,7 @@ index 000000000..e83f6425c
 +});
 diff --git a/apps/server/src/voice/VoiceRoute.test.ts b/apps/server/src/voice/VoiceRoute.test.ts
 new file mode 100644
-index 000000000..6af1a7c26
+index 00000000..6af1a7c2
 --- /dev/null
 +++ b/apps/server/src/voice/VoiceRoute.test.ts
 @@ -0,0 +1,159 @@
@@ -11096,7 +11096,7 @@ index 000000000..6af1a7c26
 +});
 diff --git a/apps/server/src/voice/VoiceRoute.ts b/apps/server/src/voice/VoiceRoute.ts
 new file mode 100644
-index 000000000..3cf62079f
+index 00000000..3cf62079
 --- /dev/null
 +++ b/apps/server/src/voice/VoiceRoute.ts
 @@ -0,0 +1,206 @@
@@ -11307,7 +11307,7 @@ index 000000000..3cf62079f
 +
 +export const voiceRouteLayer = HttpRouter.add("GET", VOICE_ROUTE, voiceRouteHandler);
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 176ef3bd5..629e3a84c 100644
+index 176ef3bd..629e3a84 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -174,6 +174,7 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -11441,7 +11441,7 @@ index 176ef3bd5..629e3a84c 100644
              Effect.forkScoped,
            );
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 96c366ccd..214301f4a 100644
+index 96c366cc..214301f4 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
 @@ -1,3 +1,4 @@
@@ -11466,7 +11466,7 @@ index 96c366ccd..214301f4a 100644
                              activeTaskSteps={activeComposerTaskSteps}
                              compactThreadUnavailable={compactThreadUnavailable}
 diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
-index 89390422f..059b486f2 100644
+index 89390422..059b486f 100644
 --- a/apps/web/src/components/ThreadRouteView.tsx
 +++ b/apps/web/src/components/ThreadRouteView.tsx
 @@ -54,6 +54,11 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
@@ -11518,9 +11518,65 @@ index 89390422f..059b486f2 100644
      view = (
        <ChatView
          {...(nextChatViewKey ? { key: nextChatViewKey.key } : {})}
+diff --git a/apps/web/src/components/VoiceControls.test.tsx b/apps/web/src/components/VoiceControls.test.tsx
+new file mode 100644
+index 00000000..e61a788a
+--- /dev/null
++++ b/apps/web/src/components/VoiceControls.test.tsx
+@@ -0,0 +1,50 @@
++import { act } from "react";
++import { create, type ReactTestRenderer } from "react-test-renderer";
++import { expect, test, vi } from "vite-plus/test";
++import { VoiceControls } from "./VoiceControls";
++
++const fixture = vi.hoisted(() => ({ acquisitions: 0, releases: 0, failRelease: false }));
++vi.mock("../live/device-adapters", () => ({
++  browserMediaSource: () => ({ acquire16k: async () => {
++    fixture.acquisitions++;
++    return { onPcm16: () => () => {}, stop: async () => {
++      if (fixture.failRelease) throw new Error("microphone remains open");
++      fixture.releases++;
++    } };
++  } }),
++  browserTransportFactory: () => ({ connect: async () => ({
++    queuedBytes: 0, onMessage: () => () => {}, send16k() {}, sendControl() {}, close: async () => {},
++  }) }),
++  browserAudioOutput: () => ({ queuedBytes: 0, enqueue24k() {}, clear() {}, stop: async () => {} }),
++}));
++
++// Exercise the shipped React owner across remounts; the microphone must not be
++// reacquired until a failed asynchronous release is successfully retried.
++test("provider/thread switch keeps failed owner and offers Retry cleanup", async () => {
++  let tree!: ReactTestRenderer;
++  await act(async () => { tree = create(<VoiceControls threadId="one" />); });
++  const click = async (label: string) => {
++    const button = tree.root.findAllByType("button").find((node) => node.children.includes(label));
++    expect(button).toBeDefined();
++    await act(async () => { await button!.props.onClick(); });
++  };
++  await click("Start voice");
++  expect(fixture.acquisitions).toBe(1);
++  fixture.failRelease = true;
++  await click("End voice");
++  expect(tree.root.findAllByType("button").some((node) => node.children.includes("Retry cleanup"))).toBe(true);
++  await act(async () => { tree.update(<VoiceControls threadId="two" />); });
++  expect(fixture.acquisitions).toBe(1);
++  await act(async () => { tree.root.findByType("select").props.onChange({ target: { value: "openai" } }); });
++  expect(tree.root.findAllByType("button").find((node) => node.children.includes("Start voice"))?.props.disabled).toBe(true);
++  await click("Retry cleanup");
++  expect(fixture.acquisitions).toBe(1);
++  fixture.failRelease = false;
++  await click("Retry cleanup");
++  await click("Start voice");
++  expect(fixture.acquisitions).toBe(2);
++  await act(async () => { tree.root.findByType("select").props.onChange({ target: { value: "openai" } }); });
++  expect(fixture.releases).toBeGreaterThan(0);
++  expect(fixture.acquisitions).toBe(2);
++  await act(async () => { tree.unmount(); });
++});
 diff --git a/apps/web/src/components/VoiceControls.tsx b/apps/web/src/components/VoiceControls.tsx
 new file mode 100644
-index 000000000..e076add36
+index 00000000..e076add3
 --- /dev/null
 +++ b/apps/web/src/components/VoiceControls.tsx
 @@ -0,0 +1,180 @@
@@ -11705,7 +11761,7 @@ index 000000000..e076add36
 +  );
 +}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index 54689eee2..93851b117 100644
+index 54689eee..93851b11 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
 @@ -1,5 +1,6 @@
@@ -11782,7 +11838,7 @@ index 54689eee2..93851b117 100644
                      pendingAction={pendingPrimaryAction}
                      isRunning={phase === "running"}
 diff --git a/apps/web/src/components/chat/DraftHeroHeadline.tsx b/apps/web/src/components/chat/DraftHeroHeadline.tsx
-index d542cd6a8..407cfb9b5 100644
+index d542cd6a..407cfb9b 100644
 --- a/apps/web/src/components/chat/DraftHeroHeadline.tsx
 +++ b/apps/web/src/components/chat/DraftHeroHeadline.tsx
 @@ -177,10 +177,16 @@ export function DraftHeroHeadline({
@@ -11807,7 +11863,7 @@ index d542cd6a8..407cfb9b5 100644
                  setModelSelection(draftId, defaultModelSelection, {
                    replaceOptions: true,
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index e00b01b16..c4fa1f94e 100644
+index e00b01b1..c4fa1f94 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 @@ -1,4 +1,4 @@
@@ -11929,7 +11985,7 @@ index e00b01b16..c4fa1f94e 100644
 +  });
 +});
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 80f146569..5c9bd32c8 100644
+index 80f14656..5c9bd32c 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
 @@ -836,6 +836,7 @@ function deriveTurnFolds(input: {
@@ -11968,7 +12024,7 @@ index 80f146569..5c9bd32c8 100644
            collapsedSupersededEntryIds.has(nextEntry.id) ||
 diff --git a/apps/web/src/components/chat/nativeUsageCost.logic.test.ts b/apps/web/src/components/chat/nativeUsageCost.logic.test.ts
 new file mode 100644
-index 000000000..a83f7844b
+index 00000000..a83f7844
 --- /dev/null
 +++ b/apps/web/src/components/chat/nativeUsageCost.logic.test.ts
 @@ -0,0 +1,69 @@
@@ -12043,7 +12099,7 @@ index 000000000..a83f7844b
 +});
 diff --git a/apps/web/src/components/chat/nativeUsageCost.logic.ts b/apps/web/src/components/chat/nativeUsageCost.logic.ts
 new file mode 100644
-index 000000000..d3855ebb6
+index 00000000..d3855ebb
 --- /dev/null
 +++ b/apps/web/src/components/chat/nativeUsageCost.logic.ts
 @@ -0,0 +1,6 @@
@@ -12054,7 +12110,7 @@ index 000000000..d3855ebb6
 +  return usage !== null && (usage.own.turns > 0 || usage.subtree.turns > 0);
 +}
 diff --git a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx b/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
-index f19e41599..bc569dd38 100644
+index f19e4159..bc569dd3 100644
 --- a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
 +++ b/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
 @@ -152,6 +152,7 @@ import {
@@ -12075,7 +12131,7 @@ index f19e41599..bc569dd38 100644
      store.setReviewComments(
        target,
 diff --git a/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts b/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
-index 978ae6958..47d98c1d3 100644
+index 978ae695..47d98c1d 100644
 --- a/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
 +++ b/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
 @@ -30,6 +30,8 @@ import {
@@ -12124,7 +12180,7 @@ index 978ae6958..47d98c1d3 100644
    const detail = (overrides: Record<string, unknown> = {}) =>
      ({
 diff --git a/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts b/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
-index b8d2d897a..aa0afa5de 100644
+index b8d2d897..aa0afa5d 100644
 --- a/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
 +++ b/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
 @@ -793,6 +793,25 @@ export function stripPullRequestHandoffReferences(
@@ -12154,7 +12210,7 @@ index b8d2d897a..aa0afa5de 100644
   * The prompt the composer should hold once a hand-off lands there.
   *
 diff --git a/apps/web/src/components/settings/providerDriverMeta.ts b/apps/web/src/components/settings/providerDriverMeta.ts
-index 53908510c..cb547ee06 100644
+index 53908510..cb547ee0 100644
 --- a/apps/web/src/components/settings/providerDriverMeta.ts
 +++ b/apps/web/src/components/settings/providerDriverMeta.ts
 @@ -85,8 +85,7 @@ const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
@@ -12168,7 +12224,7 @@ index 53908510c..cb547ee06 100644
    },
    {
 diff --git a/apps/web/src/composerDraftStore.test.ts b/apps/web/src/composerDraftStore.test.ts
-index df7969a86..d803b1279 100644
+index df7969a8..d803b127 100644
 --- a/apps/web/src/composerDraftStore.test.ts
 +++ b/apps/web/src/composerDraftStore.test.ts
 @@ -2448,6 +2448,74 @@ describe("composerDraftStore sticky composer settings", () => {
@@ -12247,7 +12303,7 @@ index df7969a86..d803b1279 100644
      const store = useComposerDraftStore.getState();
  
 diff --git a/apps/web/src/hooks/useHandleNewThread.ts b/apps/web/src/hooks/useHandleNewThread.ts
-index 3b2becd43..6a680cd37 100644
+index 3b2becd4..6a680cd3 100644
 --- a/apps/web/src/hooks/useHandleNewThread.ts
 +++ b/apps/web/src/hooks/useHandleNewThread.ts
 @@ -94,10 +94,11 @@ export function useNewThreadHandler() {
@@ -12299,7 +12355,7 @@ index 3b2becd43..6a680cd37 100644
          }
          await router.navigate({
 diff --git a/apps/web/src/lib/chatThreadActions.test.ts b/apps/web/src/lib/chatThreadActions.test.ts
-index c145404a7..b3d857962 100644
+index c145404a..b3d85796 100644
 --- a/apps/web/src/lib/chatThreadActions.test.ts
 +++ b/apps/web/src/lib/chatThreadActions.test.ts
 @@ -58,18 +58,48 @@ describe("chatThreadActions", () => {
@@ -12362,7 +12418,7 @@ index c145404a7..b3d857962 100644
          destinationDraftId: "draft-b",
        }),
 diff --git a/apps/web/src/lib/chatThreadActions.ts b/apps/web/src/lib/chatThreadActions.ts
-index c14a26d03..fc7717cc7 100644
+index c14a26d0..fc7717cc 100644
 --- a/apps/web/src/lib/chatThreadActions.ts
 +++ b/apps/web/src/lib/chatThreadActions.ts
 @@ -46,14 +46,21 @@ export function resolveNewDraftStartFromOrigin(input: {
@@ -12392,7 +12448,7 @@ index c14a26d03..fc7717cc7 100644
  
  export function hasExplicitComposerModelSelection(
 diff --git a/apps/web/src/lib/syntaxHighlighting.test.ts b/apps/web/src/lib/syntaxHighlighting.test.ts
-index 1f7ce756b..7c27f5898 100644
+index 1f7ce756..7c27f589 100644
 --- a/apps/web/src/lib/syntaxHighlighting.test.ts
 +++ b/apps/web/src/lib/syntaxHighlighting.test.ts
 @@ -9,10 +9,24 @@ vi.mock("@pierre/diffs", () => ({
@@ -12486,7 +12542,7 @@ index 1f7ce756b..7c27f5898 100644
 +  await expect(reloaded).resolves.toBe(highlighter);
  });
 diff --git a/apps/web/src/lib/syntaxHighlighting.ts b/apps/web/src/lib/syntaxHighlighting.ts
-index 3be008ac2..c6db4df17 100644
+index 3be008ac..c6db4df1 100644
 --- a/apps/web/src/lib/syntaxHighlighting.ts
 +++ b/apps/web/src/lib/syntaxHighlighting.ts
 @@ -15,25 +15,63 @@ import { resolveDiffThemeName } from "./diffRendering";
@@ -12557,12 +12613,627 @@ index 3be008ac2..c6db4df17 100644
 +  cacheHighlighterPromise(language, promise);
    return promise;
  }
+diff --git a/apps/web/src/live/controller.test.ts b/apps/web/src/live/controller.test.ts
+new file mode 100644
+index 00000000..496b599c
+--- /dev/null
++++ b/apps/web/src/live/controller.test.ts
+@@ -0,0 +1,609 @@
++import { describe, expect, test } from "vite-plus/test";
++import { BrowserLiveController, type Capture, type Transport, type TransportMessage } from "./controller";
++function deferred<T>() {
++  let resolve!: (x: T) => void, reject!: (e: Error) => void;
++  const promise = new Promise<T>((a, b) => {
++    resolve = a;
++    reject = b;
++  });
++  return { promise, resolve, reject };
++}
++function rig() {
++  const mic = deferred<Capture>(),
++    socket = deferred<Transport>();
++  let frame: (x: Uint8Array) => void = () => {},
++    message: (x: TransportMessage) => void = () => {};
++  const calls = {
++    tracks: 0,
++    closes: 0,
++    stops: 0,
++    clears: 0,
++    sent: [] as Uint8Array[],
++    played: [] as Uint8Array[],
++    inputQueued: 0,
++    outputQueued: 0,
++  };
++  const capture: Capture = {
++    onPcm16(cb) {
++      frame = cb;
++      return () => {
++        frame = () => {};
++      };
++    },
++    stop() {
++      calls.tracks++;
++    },
++  };
++  const transport: Transport = {
++    get queuedBytes() {
++      return calls.inputQueued;
++    },
++    onMessage(cb) {
++      message = cb;
++      return () => {
++        message = () => {};
++      };
++    },
++    sendControl() {},
++    send16k(x) {
++      calls.sent.push(x.slice());
++    },
++    close() {
++      calls.closes++;
++    },
++  };
++  const controller = new BrowserLiveController(
++    { acquire16k: () => mic.promise },
++    { connect: () => socket.promise },
++    () => ({
++      get queuedBytes() {
++        return calls.outputQueued;
++      },
++      enqueue24k(x) {
++        calls.played.push(x.slice());
++      },
++      clear() {
++        calls.clears++;
++      },
++      stop() {
++        calls.stops++;
++      },
++    }),
++  );
++  const tick = async () => {
++    await Promise.resolve();
++    await Promise.resolve();
++  };
++  const connect = async () => {
++    const starting = controller.start();
++    mic.resolve(capture);
++    await tick();
++    socket.resolve(transport);
++    await starting;
++  };
++  return {
++    mic,
++    socket,
++    capture,
++    transport,
++    calls,
++    controller,
++    tick,
++    connect,
++    frame: (x: Uint8Array) => frame(x),
++    message: (x: TransportMessage) => message(x),
++  };
++}
++const pcm = new Uint8Array([1, 0]);
++describe("browser live lifecycle (offline)", () => {
++  test("permission failure is visible; retry reaches ready; mute and interruption control frames", async () => {
++    const r = rig();
++    const states: string[] = [];
++    r.controller.subscribe((x) => states.push(x.phase));
++    const first = r.controller.start();
++    r.mic.reject(new Error("permission denied"));
++    await first;
++    expect(r.controller.state).toEqual({ phase: "error", reason: "permission denied" });
++    // A fresh rig tests successful path; the same controller retry is tested below with a sequential media source.
++    const q = rig();
++    await q.connect();
++    expect(q.controller.state.phase).toBe("connecting");
++    q.frame(pcm);
++    expect(q.calls.sent).toHaveLength(0);
++    q.message({ type: "ready" });
++    q.frame(pcm);
++    expect(q.calls.sent).toHaveLength(1);
++    q.controller.setMuted(true);
++    q.frame(pcm);
++    expect(q.calls.sent).toHaveLength(1);
++    q.message({ type: "audio", pcm16: pcm });
++    expect(q.calls.played).toHaveLength(1);
++    q.message({ type: "interrupted" });
++    expect(q.calls.clears).toBe(1);
++    expect(q.controller.state.phase).toBe("muted");
++    q.controller.setMuted(false);
++    q.frame(pcm);
++    expect(q.calls.sent).toHaveLength(2);
++    q.message({ type: "ready" });
++    q.frame(pcm);
++    expect(q.calls.sent).toHaveLength(3);
++    await q.controller.end();
++    expect(states).toContain("requesting-mic");
++  });
++  test("end during mic acquisition stops late track without opening socket", async () => {
++    const r = rig();
++    const start = r.controller.start();
++    r.controller.end();
++    r.mic.resolve(r.capture);
++    await start;
++    expect(r.calls.tracks).toBe(1);
++    await r.controller.end();
++    expect(r.controller.state.phase).toBe("ended");
++    expect(r.calls.closes).toBe(0);
++  });
++  test("end during socket connection closes late socket and all owned resources", async () => {
++    const r = rig();
++    const start = r.controller.start();
++    r.mic.resolve(r.capture);
++    await r.tick();
++    r.controller.end();
++    r.socket.resolve(r.transport);
++    await start;
++    await r.controller.end();
++    expect(r.calls).toMatchObject({ tracks: 1, stops: 1, closes: 1 });
++  });
++  test("disconnect, queue overflow and malformed frames fail visibly and clean up", async () => {
++    const r = rig();
++    await r.connect();
++    r.message({ type: "ready" });
++    r.calls.inputQueued = 262144;
++    r.frame(pcm);
++    expect(r.controller.state).toEqual({ phase: "error", reason: "input queue full" });
++    await r.controller.end();
++    expect(r.calls).toMatchObject({ tracks: 1, stops: 1, closes: 1 });
++    const q = rig();
++    await q.connect();
++    q.message({ type: "ready" });
++    q.calls.outputQueued = 524288;
++    q.message({ type: "audio", pcm16: pcm });
++    expect(q.controller.state.reason).toBe("output buffer full");
++    const x = rig();
++    await x.connect();
++    x.message({ type: "closed", reason: "offline" });
++    expect(x.controller.state.reason).toBe("offline");
++    await x.controller.dispose();
++    expect(x.calls.closes).toBe(1);
++    const y = rig();
++    await y.connect();
++    y.message({ type: "ready" });
++    y.frame(new Uint8Array(3));
++    expect(y.controller.state.reason).toBe("invalid PCM16 frame");
++  });
++  test("retry on the same controller and dispose", async () => {
++    let attempts = 0;
++    const r = rig();
++    const c = new BrowserLiveController(
++      {
++        acquire16k: async () => {
++          if (!attempts++) throw new Error("denied");
++          return r.capture;
++        },
++      },
++      { connect: async () => r.transport },
++      () => ({
++        queuedBytes: 0,
++        enqueue24k() {},
++        clear() {},
++        stop() {
++          r.calls.stops++;
++        },
++      }),
++    );
++    await c.start();
++    expect(c.state.phase).toBe("error");
++    await c.start();
++    expect(c.state.phase).toBe("connecting");
++    await c.dispose();
++    expect(r.calls).toMatchObject({ tracks: 1, stops: 1, closes: 1 });
++    await expect(c.start()).rejects.toThrow("disposed");
++  });
++});
++
++test("teardown failure is visible while other resources still release", async () => {
++  const r = rig();
++  await r.connect();
++  r.capture.stop = () => {
++    throw new Error("device stuck");
++  };
++  await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
++  expect(r.controller.state).toEqual({ phase: "error", reason: "resource cleanup failed" });
++  expect(r.calls.stops).toBe(1);
++  expect(r.calls.closes).toBe(1);
++});
++
++test("dispose aborts a pending transport handshake", async () => {
++  let signal: AbortSignal | undefined;
++  const r = rig();
++  const c = new BrowserLiveController(
++    {
++      async acquire16k() {
++        return r.capture;
++      },
++    },
++    {
++      connect(value) {
++        signal = value;
++        return r.socket.promise;
++      },
++    },
++    () => ({ queuedBytes: 0, enqueue24k() {}, clear() {}, stop() {} }),
++  );
++  const starting = c.start();
++  await r.tick();
++  c.dispose();
++  expect(signal?.aborted).toBe(true);
++  r.socket.resolve(r.transport);
++  await starting;
++  expect(r.calls.tracks).toBe(1);
++  await c.dispose();
++  expect(r.calls.closes).toBe(1);
++});
++
++test("failed resource release blocks restart until retry succeeds", async () => {
++  const r = rig();
++  await r.connect();
++  let fail = true;
++  r.transport.close = () => {
++    if (fail) throw new Error("socket still open");
++    r.calls.closes++;
++  };
++  await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
++  expect(r.controller.state.phase).toBe("error");
++  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
++  fail = false;
++  await r.controller.end();
++  expect(r.controller.state.phase).toBe("ended");
++  expect(r.calls.closes).toBe(1);
++});
++
++test("late acquisition release failure is reported and retried before next start", async () => {
++  const r = rig();
++  const pending = r.controller.start();
++  r.controller.end();
++  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
++  let fail = true;
++  r.capture.stop = () => {
++    if (fail) throw new Error("track still live");
++    r.calls.tracks++;
++  };
++  r.mic.resolve(r.capture);
++  await pending;
++  expect(r.controller.state).toEqual({ phase: "error", reason: "late resource cleanup failed" });
++  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
++  fail = false;
++  await r.controller.end();
++  expect(r.calls.tracks).toBe(1);
++});
++
++test("late socket close failure is visible and blocks a new capture", async () => {
++  const r = rig();
++  const pending = r.controller.start();
++  r.mic.resolve(r.capture);
++  await r.tick();
++  r.controller.end();
++  let fail = true;
++  r.transport.close = () => {
++    if (fail) throw new Error("socket live");
++    r.calls.closes++;
++  };
++  r.socket.resolve(r.transport);
++  await pending;
++  expect(r.controller.state.reason).toBe("late resource cleanup failed");
++  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
++  fail = false;
++  await r.controller.end();
++  expect(r.calls.closes).toBe(1);
++});
++
++
++test("synchronous end from requesting-mic clears pending without acquiring", async () => {
++  const r = rig();
++  let once = true;
++  let ending: Promise<void> | undefined;
++  r.controller.subscribe((state) => {
++    if (once && state.phase === "requesting-mic") {
++      once = false;
++      ending = r.controller.end();
++    }
++  });
++  await r.controller.start();
++  await ending;
++  expect(r.controller.state.phase).toBe("ended");
++  // A second attempt can enter acquisition (not rejected by a stuck pending flag).
++  const again = r.controller.start();
++  expect(r.controller.state.phase).toBe("requesting-mic");
++  r.controller.end();
++  r.mic.resolve(r.capture);
++  await again;
++  expect(r.calls.tracks).toBe(1);
++});
++
++test("dispose retries failed release but never permits another acquisition", async () => {
++  const r = rig();
++  await r.connect();
++  let fails = true;
++  r.transport.close = () => {
++    if (fails) throw new Error("socket live");
++    r.calls.closes++;
++  };
++  await expect(r.controller.dispose()).rejects.toThrow("resource cleanup failed");
++  expect(r.controller.state.reason).toBe("resource cleanup failed");
++  await expect(r.controller.start()).rejects.toThrow("disposed");
++  fails = false;
++  await r.controller.end();
++  expect(r.controller.state.phase).toBe("ended");
++  expect(r.calls.closes).toBe(1);
++  await expect(r.controller.start()).rejects.toThrow("disposed");
++});
++
++test("late release failure after dispose remains retryable", async () => {
++  const r = rig();
++  const starting = r.controller.start();
++  r.controller.dispose();
++  let fails = true;
++  r.capture.stop = () => {
++    if (fails) throw new Error("track live");
++    r.calls.tracks++;
++  };
++  r.mic.resolve(r.capture);
++  await starting;
++  expect(r.controller.state.reason).toBe("late resource cleanup failed");
++  fails = false;
++  await r.controller.end();
++  expect(r.controller.state.phase).toBe("ended");
++  expect(r.calls.tracks).toBe(1);
++  await expect(r.controller.start()).rejects.toThrow("disposed");
++});
++
++for (const registration of ["transport", "capture"] as const) {
++  test(`synchronous end during ${registration} registration retains failed unsubscribe`, async () => {
++    const r = rig();
++    let fails = true, unsubscribed = 0;
++    let firstEnd: Promise<void> | undefined;
++    if (registration === "transport") {
++      r.transport.onMessage = () => {
++        firstEnd = r.controller.end();
++        void firstEnd.catch(() => {});
++        return () => {
++          if (fails) throw new Error("listener live");
++          unsubscribed++;
++        };
++      };
++    } else {
++      r.capture.onPcm16 = () => {
++        firstEnd = r.controller.end();
++        void firstEnd.catch(() => {});
++        return () => {
++          if (fails) throw new Error("listener live");
++          unsubscribed++;
++        };
++      };
++    }
++    const starting = r.controller.start();
++    r.mic.resolve(r.capture);
++    await r.tick();
++    r.socket.resolve(r.transport);
++    await starting;
++    expect(r.controller.state.reason).toBe("late resource cleanup failed");
++    await expect(r.controller.start()).rejects.toThrow("previous resources not released");
++    await expect(firstEnd).rejects.toThrow("resource cleanup failed");
++    fails = false;
++    await r.controller.end();
++    expect(r.controller.state.phase).toBe("ended");
++    expect(unsubscribed).toBe(1);
++  });
++}
++
++
++test("synchronous dispose from requesting-mic does not acquire or leave pending", async () => {
++  const r = rig();
++  let disposing: Promise<void> | undefined;
++  r.controller.subscribe((state) => {
++    if (state.phase === "requesting-mic") disposing = r.controller.dispose();
++  });
++  await r.controller.start();
++  await disposing;
++  expect(r.controller.state.phase).toBe("ended");
++  await expect(r.controller.start()).rejects.toThrow("disposed");
++});
++
++test("dispose during registration retains a late failed unsubscribe for end retry", async () => {
++  const r = rig();
++  let fails = true, releases = 0;
++  r.transport.onMessage = () => {
++    void r.controller.dispose().catch(() => {});
++    return () => {
++      if (fails) throw new Error("listener live");
++      releases++;
++    };
++  };
++  const starting = r.controller.start();
++  r.mic.resolve(r.capture);
++  await r.tick();
++  r.socket.resolve(r.transport);
++  await starting;
++  expect(r.controller.state.reason).toBe("late resource cleanup failed");
++  fails = false;
++  await r.controller.end();
++  expect(r.controller.state.phase).toBe("ended");
++  expect(releases).toBe(1);
++  await expect(r.controller.start()).rejects.toThrow("disposed");
++});
++
++
++test("end waits for asynchronous capture, audio and socket teardown", async () => {
++  const r = rig();
++  const capture = deferred<void>(), audio = deferred<void>(), socket = deferred<void>();
++  r.capture.stop = () => capture.promise;
++  r.transport.close = () => socket.promise;
++  // A separate controller verifies all three asynchronous resources, including output.
++  const c = new BrowserLiveController(
++    { acquire16k: async () => r.capture },
++    { connect: async () => r.transport },
++    () => ({ queuedBytes: 0, enqueue24k() {}, clear() {}, stop: () => audio.promise }),
++  );
++  await c.start();
++  let settled = false;
++  const ending = c.end().then(() => { settled = true; });
++  await r.tick();
++  expect(settled).toBe(false);
++  capture.resolve();
++  await r.tick();
++  expect(settled).toBe(false);
++  audio.resolve();
++  await r.tick();
++  expect(settled).toBe(false);
++  socket.resolve();
++  await ending;
++  expect(c.state.phase).toBe("ended");
++});
++
++test("capture overflow during connecting fails visibly and releases capture", async () => {
++  const r = rig();
++  let error: ((e: Error) => void) | undefined;
++  r.capture.onError = (cb) => { error = cb; return () => { error = undefined; }; };
++  const pending = r.controller.start();
++  r.mic.resolve(r.capture);
++  await r.tick();
++  error?.(new Error("capture worklet queue overflow"));
++  r.socket.resolve(r.transport);
++  await pending;
++  await r.controller.end();
++  expect(r.calls.tracks).toBe(1);
++  expect(r.calls.closes).toBe(1);
++});
++
++
++test("immediate start/end and dispose prevent acquisition before startup resumes", async () => {
++  for (const stop of ["end", "dispose"] as const) {
++    const r = rig();
++    const starting = r.controller.start();
++    const ending = r.controller[stop]();
++    r.mic.resolve(r.capture);
++    await Promise.all([starting, ending]);
++    expect(r.calls.tracks).toBe(1);
++    expect(r.calls.closes).toBe(0);
++    expect(r.controller.state.phase).toBe("ended");
++  }
++});
++
++test("end/dispose during deferred failed-release retry cannot start a new mic", async () => {
++  for (const stop of ["end", "dispose"] as const) {
++    const r = rig();
++    await r.connect();
++    r.capture.stop = () => { throw new Error("track busy"); };
++    await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
++    const retry = deferred<void>();
++    r.capture.stop = () => retry.promise;
++    const starting = r.controller.start();
++    const ending = r.controller[stop]();
++    retry.resolve();
++    await Promise.all([starting, ending]);
++    expect(r.controller.state.phase).toBe("ended");
++    expect(r.calls.tracks).toBe(0); // replaced stop did not increment fixture's counter
++    expect(r.calls.closes).toBe(1);
++    if (stop === "dispose") await expect(r.controller.start()).rejects.toThrow("disposed");
++  }
++});
++
++test("concurrent end/dispose callers wait for the same asynchronous teardown", async () => {
++  const r = rig();
++  await r.connect();
++  const gate = deferred<void>();
++  r.capture.stop = () => gate.promise;
++  const first = r.controller.end();
++  const second = r.controller.end();
++  const disposed = r.controller.dispose();
++  expect(second).toBe(first);
++  expect(disposed).toBe(first);
++  let done = false;
++  void Promise.all([first, second, disposed]).then(() => { done = true; });
++  await r.tick();
++  expect(done).toBe(false);
++  gate.resolve();
++  await Promise.all([first, second, disposed]);
++  expect(r.controller.state.phase).toBe("ended");
++});
++
++test("async teardown failures reject every concurrent waiter and remain retryable", async () => {
++  const r = rig();
++  await r.connect();
++  const gate = deferred<void>();
++  let failing = true;
++  r.transport.close = async () => {
++    await gate.promise;
++    if (failing) throw new Error("socket busy");
++    r.calls.closes++;
++  };
++  const first = r.controller.end();
++  const second = r.controller.dispose();
++  gate.resolve();
++  const results = await Promise.allSettled([first, second]);
++  expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"]);
++  expect(r.controller.state.phase).toBe("error");
++  failing = false;
++  await r.controller.dispose();
++  expect(r.controller.state.phase).toBe("ended");
++  expect(r.calls.closes).toBe(1);
++});
++
++test("late asynchronous stop failure rejects awaited end, then retries", async () => {
++  const r = rig();
++  const starting = r.controller.start();
++  const ending = r.controller.end();
++  const gate = deferred<void>();
++  let failing = true;
++  r.capture.stop = async () => {
++    await gate.promise;
++    if (failing) throw new Error("track busy");
++    r.calls.tracks++;
++  };
++  r.mic.resolve(r.capture);
++  gate.resolve();
++  await starting;
++  await expect(ending).rejects.toThrow("resource cleanup failed");
++  expect(r.controller.state.phase).toBe("error");
++  failing = false;
++  await r.controller.end();
++  expect(r.calls.tracks).toBe(1);
++});
++
++
++test("duplicate start preserves pending acquisition for awaited end", async () => {
++  const r = rig();
++  const starting = r.controller.start();
++  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
++  let ended = false;
++  const ending = r.controller.end().then(() => { ended = true; });
++  await r.tick();
++  expect(ended).toBe(false);
++  r.mic.resolve(r.capture);
++  await Promise.all([starting, ending]);
++  expect(r.calls.tracks).toBe(1);
++  expect(r.calls.closes).toBe(0);
++});
++
++test("start cannot overlap an end retry after failed cleanup", async () => {
++  const r = rig();
++  await r.connect();
++  r.capture.stop = () => { throw new Error("busy"); };
++  await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
++  const released = deferred<void>();
++  r.capture.stop = () => released.promise;
++  const ending = r.controller.end();
++  for (let i = 0; i < 10; i++) await r.tick();
++  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
++  released.resolve();
++  await ending;
++  expect(r.controller.state.phase).toBe("ended");
++});
 diff --git a/apps/web/src/live/controller.ts b/apps/web/src/live/controller.ts
 new file mode 100644
-index 000000000..3364bc023
+index 00000000..25c94992
 --- /dev/null
 +++ b/apps/web/src/live/controller.ts
-@@ -0,0 +1,263 @@
+@@ -0,0 +1,287 @@
 +export type Phase = "idle" | "requesting-mic" | "connecting" | "ready" | "muted" | "ended" | "error";
 +export type LiveState = { phase: Phase; reason?: string };
 +// All PCM is binary, signed 16-bit little-endian mono. Capture: 16kHz; playback: 24kHz.
@@ -12608,6 +13279,7 @@ index 000000000..3364bc023
 +  private muted = false;
 +  private pending: Promise<void> | undefined;
 +  private cleanupTask: Promise<boolean> | undefined;
++  private endTask: Promise<void> | undefined;
 +  private failedReleases: Array<() => Promise<void> | void> = [];
 +  private capture: Capture | undefined;
 +  private transport: Transport | undefined;
@@ -12646,6 +13318,9 @@ index 000000000..3364bc023
 +  }
 +  /** Resolves after setup; only the server's ready message makes the session ready. */
 +  start(): Promise<void> {
++    // A rejected duplicate must not replace the acquisition that end() must await.
++    if (this.pending || this.cleanupTask || this.endTask)
++      return Promise.reject(new Error("previous resources not released"));
 +    const task = this.startInternal();
 +    this.pending = task;
 +    void task.finally(() => { if (this.pending === task) this.pending = undefined; }).catch(() => {});
@@ -12653,10 +13328,14 @@ index 000000000..3364bc023
 +  }
 +  private async startInternal(): Promise<void> {
 +    if (this.disposed) throw new Error("disposed");
-+    if (this.pending || this.cleanupTask) throw new Error("previous resources not released");
++    if (this.pending || this.cleanupTask || this.endTask) throw new Error("previous resources not released");
 +    if (!["idle", "ended", "error"].includes(this.value.phase)) throw new Error("already started");
-+    if (this.failedReleases.length > 0 && !(await this.retryReleases())) throw new Error("previous resources not released");
 +    const id = ++this.generation;
++    if (this.failedReleases.length > 0) {
++      const clean = await this.retryReleases();
++      if (!this.active(id)) return;
++      if (!clean) throw new Error("previous resources not released");
++    }
 +    this.muted = false;
 +    this.abort = new AbortController();
 +    try {
@@ -12781,6 +13460,8 @@ index 000000000..3364bc023
 +    this.setState("error", reason);
 +    void this.cleanup().then((clean) => {
 +      if (!clean && this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
++    }).catch(() => {
++      if (this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
 +    });
 +  }
 +  private cleanup(): Promise<boolean> {
@@ -12807,28 +13488,42 @@ index 000000000..3364bc023
 +    for (const release of releases) if (release) await this.releaseLate(release);
 +    return this.failedReleases.length === 0;
 +  }
-+  async end(): Promise<void> {
++  /** Resolves only once all resources (including late acquisitions) are released; rejects on cleanup failure. */
++  end(): Promise<void> {
++    if (this.endTask) return this.endTask;
++    const task = this.endInternal();
++    this.endTask = task;
++    void task.then(() => { if (this.endTask === task) this.endTask = undefined; }, () => {
++      if (this.endTask === task) this.endTask = undefined;
++    });
++    return task;
++  }
++  private async endInternal(): Promise<void> {
 +    ++this.generation;
 +    try { this.transport?.sendControl({ type: "end" }); } catch {}
 +    const cleanup = this.cleanup();
 +    // An uncancellable getUserMedia may resolve after end; do not claim release before
 +    // its late capture has actually been stopped.
 +    const pending = this.pending;
-+    if (pending) await pending.catch(() => {});
-+    await cleanup;
-+    const clean = await this.retryReleases();
-+    this.setState(clean ? "ended" : "error", clean ? undefined : "resource cleanup failed");
++    try {
++      if (pending) await pending.catch(() => {});
++      await cleanup;
++      if (!(await this.retryReleases())) throw new Error("resource cleanup failed");
++      this.setState("ended");
++    } catch (error) {
++      this.setState("error", "resource cleanup failed");
++      throw error;
++    }
 +  }
-+  async dispose(): Promise<void> {
-+    if (this.disposed) return;
++  dispose(): Promise<void> {
 +    this.disposed = true;
 +    this.listeners.clear();
-+    await this.end();
++    return this.end();
 +  }
 +}
 diff --git a/apps/web/src/live/device-adapters.ts b/apps/web/src/live/device-adapters.ts
 new file mode 100644
-index 000000000..308fd4710
+index 00000000..308fd471
 --- /dev/null
 +++ b/apps/web/src/live/device-adapters.ts
 @@ -0,0 +1,350 @@
@@ -13184,7 +13879,7 @@ index 000000000..308fd4710
 +}
 diff --git a/apps/web/src/live/protocol.ts b/apps/web/src/live/protocol.ts
 new file mode 100644
-index 000000000..ccfdcacbb
+index 00000000..ccfdcacb
 --- /dev/null
 +++ b/apps/web/src/live/protocol.ts
 @@ -0,0 +1,26 @@
@@ -13215,7 +13910,7 @@ index 000000000..ccfdcacbb
 +  throw new Error("Unknown voice control");
 +}
 diff --git a/apps/web/src/session-logic.ts b/apps/web/src/session-logic.ts
-index 059710305..d1b1d6a75 100644
+index 05971030..d1b1d6a7 100644
 --- a/apps/web/src/session-logic.ts
 +++ b/apps/web/src/session-logic.ts
 @@ -78,6 +78,8 @@ export interface WorkLogEntry {
@@ -13240,7 +13935,7 @@ index 059710305..d1b1d6a75 100644
    } as const;
  
 diff --git a/package.json b/package.json
-index d15bacce2..198cf4a0e 100644
+index d15bacce..198cf4a0 100644
 --- a/package.json
 +++ b/package.json
 @@ -1,6 +1,47 @@
@@ -13379,7 +14074,7 @@ index d15bacce2..198cf4a0e 100644
 +  }
  }
 diff --git a/packages/client-runtime/src/rpc/client.test.ts b/packages/client-runtime/src/rpc/client.test.ts
-index 032603f28..2995af426 100644
+index 032603f2..2995af42 100644
 --- a/packages/client-runtime/src/rpc/client.test.ts
 +++ b/packages/client-runtime/src/rpc/client.test.ts
 @@ -566,6 +566,53 @@ describe("environment RPC", () => {
@@ -13437,7 +14132,7 @@ index 032603f28..2995af426 100644
      Effect.gen(function* () {
        const domainError = new Error("thread not found yet");
 diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
-index 8d75e499f..ccd58a9b1 100644
+index 8d75e499..ccd58a9b 100644
 --- a/packages/client-runtime/src/rpc/client.ts
 +++ b/packages/client-runtime/src/rpc/client.ts
 @@ -191,6 +191,8 @@ interface SubscriptionOptions<TTag extends EnvironmentSubscriptionRpcTag> {
@@ -13485,7 +14180,7 @@ index 8d75e499f..ccd58a9b1 100644
                        if (hasOnlyExpectedFailures && options?.onExpectedFailure !== undefined) {
                          const handled = Stream.fromEffect(options.onExpectedFailure(cause)).pipe(
 diff --git a/packages/client-runtime/src/state/orchestrationV2Projection.test.ts b/packages/client-runtime/src/state/orchestrationV2Projection.test.ts
-index 1a53afb8d..afb38182c 100644
+index 1a53afb8..afb38182 100644
 --- a/packages/client-runtime/src/state/orchestrationV2Projection.test.ts
 +++ b/packages/client-runtime/src/state/orchestrationV2Projection.test.ts
 @@ -122,6 +122,14 @@ describe("applyOrchestrationV2ProjectionEvent", () => {
@@ -13578,7 +14273,7 @@ index 1a53afb8d..afb38182c 100644
 +  });
 +});
 diff --git a/packages/client-runtime/src/state/orchestrationV2Projection.ts b/packages/client-runtime/src/state/orchestrationV2Projection.ts
-index 9af2eb343..455b0a073 100644
+index 9af2eb34..455b0a07 100644
 --- a/packages/client-runtime/src/state/orchestrationV2Projection.ts
 +++ b/packages/client-runtime/src/state/orchestrationV2Projection.ts
 @@ -227,6 +227,15 @@ export function applyOrchestrationV2ProjectionEvent(
@@ -13598,7 +14293,7 @@ index 9af2eb343..455b0a073 100644
        };
      case "runtime-request.updated":
 diff --git a/packages/client-runtime/src/state/terminal.ts b/packages/client-runtime/src/state/terminal.ts
-index 3bc2bca78..06ec2e26f 100644
+index 3bc2bca7..06ec2e26 100644
 --- a/packages/client-runtime/src/state/terminal.ts
 +++ b/packages/client-runtime/src/state/terminal.ts
 @@ -5,7 +5,6 @@ import { Atom } from "effect/unstable/reactivity";
@@ -13642,7 +14337,7 @@ index 3bc2bca78..06ec2e26f 100644
      metadata: createEnvironmentSubscriptionAtomFamily(runtime, {
        label: "environment-data:terminal:metadata",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index f6218f189..3046c0115 100644
+index f6218f18..3046c011 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -126,7 +126,10 @@ export type OrchestrationV2ContextSourcePoint = typeof OrchestrationV2ContextSou
@@ -13844,7 +14539,7 @@ index f6218f189..3046c0115 100644
      type: Schema.Literal("thread.created.record"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/orchestratorMcp.test.ts b/packages/contracts/src/orchestratorMcp.test.ts
-index 617442ece..0b7e65f97 100644
+index 617442ec..0b7e65f9 100644
 --- a/packages/contracts/src/orchestratorMcp.test.ts
 +++ b/packages/contracts/src/orchestratorMcp.test.ts
 @@ -2,6 +2,10 @@ import { describe, expect, it } from "@effect/vitest";
@@ -13940,7 +14635,7 @@ index 617442ece..0b7e65f97 100644
 +  });
  });
 diff --git a/packages/contracts/src/orchestratorMcp.ts b/packages/contracts/src/orchestratorMcp.ts
-index 194807114..5f1fe3794 100644
+index 19480711..5f1fe379 100644
 --- a/packages/contracts/src/orchestratorMcp.ts
 +++ b/packages/contracts/src/orchestratorMcp.ts
 @@ -44,7 +44,9 @@ const OrchestratorMcpTitle = TrimmedNonEmptyString.check(Schema.isMaxLength(512)
@@ -14076,7 +14771,7 @@ index 194807114..5f1fe3794 100644
    /**
     * When true (the default), the scheduled task fires into the calling thread
 diff --git a/packages/contracts/src/providerRuntime.test.ts b/packages/contracts/src/providerRuntime.test.ts
-index f7404c66e..33b277ba6 100644
+index f7404c66..33b277ba 100644
 --- a/packages/contracts/src/providerRuntime.test.ts
 +++ b/packages/contracts/src/providerRuntime.test.ts
 @@ -25,19 +25,38 @@ describe("ProviderRuntimeEvent", () => {
@@ -14131,7 +14826,7 @@ index f7404c66e..33b277ba6 100644
        decodeRuntimeEvent({
          ...completeEvent,
 diff --git a/packages/contracts/src/providerRuntime.ts b/packages/contracts/src/providerRuntime.ts
-index f5a273263..32a24f505 100644
+index f5a27326..32a24f50 100644
 --- a/packages/contracts/src/providerRuntime.ts
 +++ b/packages/contracts/src/providerRuntime.ts
 @@ -333,6 +333,12 @@ const TurnTokenUsageCommonFields = {
@@ -14148,7 +14843,7 @@ index f5a273263..32a24f505 100644
  };
  export const TurnTokenUsage = Schema.Union([
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index ba92ec1da..d56406507 100644
+index ba92ec1d..d5640650 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -817,23 +817,22 @@ export type AntigravitySettings = typeof AntigravitySettings.Type;
@@ -14182,7 +14877,7 @@ index ba92ec1da..d56406507 100644
      ),
 diff --git a/packages/shared/src/hostProcess.test.ts b/packages/shared/src/hostProcess.test.ts
 new file mode 100644
-index 000000000..2ba981e59
+index 00000000..2ba981e5
 --- /dev/null
 +++ b/packages/shared/src/hostProcess.test.ts
 @@ -0,0 +1,25 @@
@@ -14212,7 +14907,7 @@ index 000000000..2ba981e59
 +  });
 +});
 diff --git a/packages/shared/src/hostProcess.ts b/packages/shared/src/hostProcess.ts
-index 9bd41a825..ca69bb15d 100644
+index 9bd41a82..ca69bb15 100644
 --- a/packages/shared/src/hostProcess.ts
 +++ b/packages/shared/src/hostProcess.ts
 @@ -2,7 +2,6 @@ import * as Context from "effect/Context";
@@ -14272,7 +14967,7 @@ index 9bd41a825..ca69bb15d 100644
   * Every IP address this machine answers to: the interface addresses, plus
   * whatever the resolver returns for the machine's own hostname. The latter
 diff --git a/packages/shared/src/t3McpToolPresentation.ts b/packages/shared/src/t3McpToolPresentation.ts
-index dd38709bd..767b45583 100644
+index dd38709b..767b4558 100644
 --- a/packages/shared/src/t3McpToolPresentation.ts
 +++ b/packages/shared/src/t3McpToolPresentation.ts
 @@ -93,6 +93,13 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
@@ -14290,7 +14985,7 @@ index dd38709bd..767b45583 100644
      ["Get", "Getting", "Got", "orchestration capabilities"],
      "capabilities",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index 2a6429b8e..1ace55916 100644
+index 2a6429b8..1ace5591 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -208,6 +208,6 @@ peerDependencyRules:
