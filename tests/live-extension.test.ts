@@ -1,3 +1,4 @@
+import type { SessionUpdate } from "../src/session/operations";
 import { stopCurrentLive } from "../src/live/lifecycle-access";
 import { GPTLiveSession, type LiveSocket } from "../src/live/gpt-live-session";
 import { defaultSocket, OpenAIRealtimeSession, type RealtimeSocket } from "../src/live/openai-session";
@@ -616,7 +617,7 @@ describe("Live voice", () => {
 
 test("live orchestration keeps capture/playback active, forwards actual completion, and disconnect only detaches voice", async () => {
   let finish!: () => void;
-  let listener: ((event: unknown) => void) | undefined;
+  let listener: ((event: SessionUpdate) => void) | undefined;
   let stopped = 0;
   let sent = 0;
   let subscribed = 0;

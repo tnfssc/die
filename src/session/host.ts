@@ -1,3 +1,4 @@
+import type { SessionOperations, SessionUpdate } from "./operations";
 import { VOICE_ENTRY, type TranscriptEntry } from "./transcript";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, lstat as stat, utimes, writeFile } from "node:fs/promises";
@@ -29,12 +30,7 @@ export interface SessionAuthority {
   sendUserMessage(text: string, options: { deliverAs: "steer" | "followUp"; expandPromptTemplates: false }): void;
   confirmStop(id: string): Promise<boolean>;
 }
-export type HostUpdate = {
-  type: "spawned" | "updated" | "completed" | "stopping" | "assistant" | "turn_end";
-  id?: string;
-  status?: string;
-  text?: string;
-};
+
 const MAX_REQUESTS = 256;
 const MAX_TEXT = 4096;
 
@@ -118,12 +114,12 @@ async function retainSnapshot(content: string): Promise<{ path: string; created:
   });
 }
 
-export class SessionHost {
+export class SessionHost implements SessionOperations {
   private readonly requests = new Map<
     string,
     { hash: string; result: Promise<unknown>; operation: string; state: "pending" | "dispatched" | "failed" }
   >();
-  private readonly listeners = new Set<(update: HostUpdate) => void>();
+  private readonly listeners = new Set<(update: SessionUpdate) => void>();
   private readonly unsubscribe: () => void;
   private readonly owner: object;
   private readonly sessionId: string | undefined;
@@ -141,7 +137,7 @@ export class SessionHost {
       this.observe({ type: event.type, id: event.task.id, status: event.task.status });
     });
   }
-  observe(update: HostUpdate): void {
+  observe(update: SessionUpdate): void {
     if (!this.active()) return;
     for (const listener of this.listeners) {
       try {
@@ -437,7 +433,7 @@ export class SessionHost {
       this.polling = false;
     }
   }
-  subscribe(listener: (update: HostUpdate) => void): () => void {
+  subscribe(listener: (update: SessionUpdate) => void): () => void {
     this.assertActive();
     this.listeners.add(listener);
     if (!this.watcher) {

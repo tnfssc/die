@@ -10,3 +10,5 @@ it meanwhile. Failed handoffs leave private content under the same 24-hour
 eligibility and aggregate budget. lstat rejects symlink files/directories.
 Cleanup is lazy on future snapshot creation, not a background deletion promise.
 13 host tests/typecheck passed.
+
+Ownership update (2026-09-25): snapshot policy now belongs to `src/session/host.ts`, with transcript entries in `src/session/transcript.ts`. Live consumes shared session operations; tasks supplies existing execution operations. See [shared session boundary](live/session-host-boundary.md). Formats and budgets above are unchanged.
