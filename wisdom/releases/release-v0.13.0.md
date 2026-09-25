@@ -58,3 +58,35 @@ before Live tests, with pinned Node/pnpm and a 30-minute lane timeout. No
 tests were skipped, renamed out of the gate, or pointed at a fake binary.
 Failed log: artifacts/live-main-macos-failure.log. Candidate must be pushed
 again and both hosted gates pass at its new SHA before tagging.
+
+New candidate e8396419427ebcae193192f876931a7dfc27bb36 pushed after bash syntax,
+actionlint and diff checks. Product code is unchanged from the locally passing
+candidate; only macOS CI setup and wisdom changed.
+CI: https://github.com/tnfssc/die/actions/runs/36162937859
+Release dry run: https://github.com/tnfssc/die/actions/runs/36162937959
+Requested cancellation of superseded dry run 36162060555 to avoid duplicate
+build work. Its watcher failing from cancellation is not a new product failure.
+
+## Correct macOS fix after CI contract review
+
+Dry run 36162937959 failed three CI-contract tests: the macOS source lane
+intentionally excludes full web/packaging builds. The earlier build addition
+was the wrong fix. Existing tests/fixtures/live-execute-cli.sh already invokes
+the REAL src/cli.ts hidden execute route, with a child process and real IPC,
+not an evaluator stub. This is documented in
+[macOS source CLI](../live/macos-live-ci-source-cli.md); parent missed that
+existing path in the first correction.
+
+Restored the original macOS workflow/runner. New integration fixture now uses
+DIE_PROBE_EXECUTABLE if supplied, compiled dist/die when built (Linux/release),
+or the existing real source wrapper when no binary exists (macOS source lane).
+Added the new fixture to the existing macOS regression guard. No tests skipped
+or moved out of the macOS glob. Forced-source integration + CI contracts:
+31 passed, 385 assertions, 0 failed. Full local gate is being rerun before
+push. Production feature code has not changed during these CI corrections.
+
+Corrected full local shared gate task_b18290f4 passed: 1098 root tests,
+17 opt-in skips, 0 failures; all web, build, lint/format/typecheck, transport
+and standalone smoke gates passed again. Log: artifacts/live-main-release-ci-final.log.
+Value 7 now links the recurring source-CLI-fixture lesson; no new value was
+needed. Existing source tests stay in the macOS lane and use real runtime/IPC.

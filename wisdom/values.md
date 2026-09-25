@@ -42,7 +42,7 @@ From: [PR hygiene](quality/pr-hygiene-final.md), [first-launch defaults](packagi
 
 Look at what already does job before adding another way. More state, more layers, more rules need real reason. Simple does not mean skipping safety or recovery we need. Solve current request, not every future plan.
 
-From: [worktree design](t3/t3-worktree-design.md), [resource triage](resources/memory-resource-judgment.md), [CI deduplication](ci/ci-trigger-dedup.md).
+From: [worktree design](t3/t3-worktree-design.md), [resource triage](resources/memory-resource-judgment.md), [CI deduplication](ci/ci-trigger-dedup.md), [source CLI fixtures](live/macos-live-ci-source-cli.md).
 
 ## 8. Show what is real
 

@@ -1,6 +1,7 @@
 /** Real offline Pi -> Live owner -> registered execute -> production task manager integration. */
 import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { getModel } from "@earendil-works/pi-ai/compat";
@@ -24,7 +25,12 @@ import {
 import { VoiceSession } from "../src/live/session";
 import { registerLiveStop } from "../src/live/lifecycle-access";
 
-const executable = process.env.DIE_PROBE_EXECUTABLE ?? resolve(import.meta.dir, "../dist/die");
+// Release/Linux gates build dist/die first. The source-only macOS lane uses
+// the existing real CLI wrapper, never a mock runtime or a skipped test.
+const compiled = resolve(import.meta.dir, "../dist/die");
+const executable =
+  process.env.DIE_PROBE_EXECUTABLE ??
+  (existsSync(compiled) ? compiled : resolve(import.meta.dir, "fixtures/live-execute-cli.sh"));
 const cleanup: Array<() => Promise<void> | void> = [];
 const depth = process.env.DIE_SUBAGENT_DEPTH,
   kind = process.env.DIE_SUBAGENT_TYPE;

@@ -17,6 +17,9 @@ test("macOS Live CI prepares source CLI assets without building the web runtime"
   expect(tests).toBeGreaterThan(prepare);
   const fixture = readFileSync(resolve(import.meta.dir, "live-execute-controls.test.ts"), "utf8");
   expect(fixture).toContain("fixtures/live-execute-cli.sh");
+  const integration = readFileSync(resolve(import.meta.dir, "live-main-integration.test.ts"), "utf8");
+  expect(integration).toContain("existsSync(compiled)");
+  expect(integration).toContain("fixtures/live-execute-cli.sh");
   const wrapper = readFileSync(resolve(import.meta.dir, "fixtures/live-execute-cli.sh"), "utf8");
   expect(wrapper).toContain("src/cli.ts");
   expect(wrapper).toContain('"$@"');
