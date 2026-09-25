@@ -1,0 +1,26 @@
+# Low-bandwidth transport review — 2026-09-25
+
+## Recommendation
+
+**Do not make the Gemini PCM relay the default web transport** if upload/download bytes and server performance are priorities. It is a useful, **unshipped** lifecycle and authority prototype, but its steady-state browser payload is about **32 kB/s up and 48 kB/s down**; the server also carries and converts the provider leg. The worktree’s `wisdom/live/web-port.md` estimates roughly **4.8 MB/min on the browser leg** and **11.2 MB/min of total server audio traffic** for continuous full duplex. Those are estimates, not measurements. Animation should not be driven by PCM frames or a perpetual render loop regardless of transport.
+
+**Prefer an OpenAI-only browser WebRTC/Opus proof of concept**, with browser media going directly to Realtime and an authenticated **server sideband** handling conversation events and tools. Keep the application’s existing session as the sole tool authority:
+
+1. An authenticated, origin-checked web request identifies the *owning* thread/session. The server establishes its owner-bound Pi IPC bridge and enforces one voice session per owner before issuing a short-lived, narrowly scoped browser credential.
+2. The browser negotiates WebRTC, sends its microphone track, and plays the remote audio track. Keep only coarse lifecycle/transcript state in UI; use CSS or event-driven animation, not audio-frame React updates or idle `requestAnimationFrame`.
+3. The server attaches a sideband to **that same provider call** using its long-lived credential. Only server-side code registers/handles tool calls, correlates committed input item → completed transcript → current response, checks interruption/revision and idempotency, and invokes `createOrchestration(ownerBoundSessionOperations)`. Return tool outputs over the sideband. End/replacement revokes future dispatch, closes both connections, and leaves jobs running.
+4. Treat browser data-channel events, thread IDs, and even requests apparently coming from the provider as **non-authoritative**. Verify what a browser-held ephemeral credential can mutate—including session instructions, tools, and tool outputs—before claiming the sideband prevents browser tool spoofing. Host-side transcript correlation and operation authorization remain mandatory.
+
+## What the code proves—and does not
+
+`src/live/openai-session.ts` already implements **server WebSocket PCM Realtime**, with item-correlated transcription, response revisions, interruption handling, bounded calls, and server-side function-call outputs. `src/live/orchestration.ts` supplies the completed-input gate and host operations. Those are reusable **logic and tests**, not a WebRTC/sideband adapter: the current session owns its WebSocket, emits PCM audio, and sends `session.update` and tool results on that socket. In particular, do not reuse `src/live/web-relay.ts` for OpenAI unchanged: its transcript accumulator explicitly implements **Gemini** semantics.
+
+The web integration is also absent. `web/live/README.md` says there is no shipped button, device adapter, route, or credential exchange. The pinned upstream web backend uses authenticated routes and `PiAdapterV2`’s **Pi JSONL RPC**, not an in-process `SessionHost`; a browser thread ID cannot create authority. The relay’s injected `SessionOperations` is not yet an owner-bound upstream implementation. Offline tests validate its binary/lifecycle seams, not real-network acoustics, latency, or cost.
+
+**Provider API blocker, not an established code capability:** this review made no credentialed/network calls. Confirm against current OpenAI documentation and a controlled integration test the ephemeral-credential issuance and scope, WebRTC SDP/call-ID flow, sideband attachment and event parity, Opus negotiation, and whether the browser can modify tool/session state. Do not assume the existing WebSocket event implementation can simply be connected to a sideband, or that Gemini/GPT-Live provide the same facility.
+
+## Next slice
+
+Before wiring shipped UI, build a **small OpenAI-only, feature-flagged transport/authority spike**: authenticated owner-bound web route and Pi IPC adapter; ephemeral issuance; browser WebRTC media; server sideband receiving completed transcription and function calls; one harmless `session_context` call, then a gated `agent_send` test. Include tests for stale/replayed calls, barge-in, owner switch, teardown, and browser attempts to supply tool outputs. Measure bytes in each direction, server CPU/memory, input-to-playout latency, and idle behavior against the PCM relay before choosing the production default.
+
+If sideband semantics or credential permissions cannot uphold that boundary, **do not ship direct tools on an assumed-safe channel**. A compressed browser→relay fallback is possible, but it adds browser encoding, server decoding, framing and queue management while the provider still takes PCM; it reduces the browser leg without removing server media work. Benchmark that fallback rather than treating it as the simpler default. No files were edited and no paid calls were made.
