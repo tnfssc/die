@@ -204,3 +204,9 @@ Values unchanged. Existing one-owner and honest-proof guidance caught the
 important gaps: fake job replies and schema acceptance cannot prove a shared
 main-agent lifecycle. This investigation applies those values rather than
 adding another one.
+
+## Scope update
+
+User approved production implementation and asked for a release when done.
+See [main-orchestrator-implementation.md](main-orchestrator-implementation.md)
+for active worktrees, acceptance criteria and release ownership.
