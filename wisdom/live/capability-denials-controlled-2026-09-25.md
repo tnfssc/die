@@ -1,0 +1,24 @@
+# Live capability denials: controlled text-input comparisons (2026-09-25)
+
+Continues [recorded-context probe](capability-denials-recorded-context-2026-09-25.md). **No production prompt change is justified yet.** Missing exact filename makes clarification appropriate, not necessarily a capability failure.
+
+## Method and boundaries
+
+Reproduce: bun install --frozen-lockfile; bun scripts/prepare-assets.ts; DIE_CAPABILITY_PROBE=1 bun scripts/probe-live-controlled.ts en:fresh:baseline en:fresh:guidance. Each argument is one paid session (max 48/invocation). See the script for condition names, variants and synthetic wording. Default credentials and recorded preamble/cwd/execute schema follow the earlier probe. Source JSONL is read only through the original Live boundary at 17:32:53; no full transcript is stored here. Original-context trials use the earlier JSON branch-context projection, **not** actual provider replay. Synthetic prior-refusal context is alternating user/assistant text, not reconstruction of interrupted audio turns. The /tmp/live-probe-*.wav names are synthetic: no files are inspected, modified or assumed to exist.
+
+Input is text items in an audio-output Realtime session, execute auto-selected. Every execute call is intercepted and receives the same synthetic error; no generated JS, shell, subagent or FFmpeg runs. Speech after interception mostly reports this synthetic error, so post-tool claims cannot establish runtime access. These are tool-selection and generated-code probes, **not audio ASR/mic/desktop-access tests**. A tool attempt does not prove the filename is accessible. Provider output and generated code remain outside this document; original-target raw output can include private context. Keep raw JSONL private when rerunning.
+
+## Results: 72 connected sessions, zero provider errors
+
+| Prompt and context | Baseline execute | Operational guidance execute | Interpretation |
+| --- | ---: | ---: | --- |
+| Explicit action, authorized named file, English/Telugu/transliterated Telugu, fresh or alternating prior-denial dialogue | 12/12 | 12/12 | First batch stopped at 24/24 calls: ceiling, not guidance benefit. |
+| Natural named-file request, English/Telugu, fresh or alternating prior-denial dialogue | 12/12 | 12/12 | Three repetitions per condition; explicit “use tools” not required. |
+| Original audio request, recorded branch snapshot, no precise filename | 0/3 | 0/3 | Asks for audio/path or upload: valid clarification. |
+| Original later execute follow-up, recorded branch snapshot | 2/3 | 2/3 | Baseline no-call offered command after promising action; guided no-call claimed desktop commands unavailable. |
+
+Guidance stated scope beyond coding, shell/Bun/subagent routes, action rather than recipe, earlier denial not a permission boundary, and logging helper returns. Of 52 execute calls, one generated JS snippet failed a non-executing Bun TS syntax parse (top-level return), and 10 imported nonexistent die module (2 baseline, 8 guided). **Tool selection is not execution correctness.** These small samples are not a causal estimate of guidance harming code validity. A follow-up 12-session natural named-file variant added the explicit reminder that shell/subagent/jobs are already globals inside execute and there is no die module: 12/12 chose execute, 0/12 imported die, 0/12 failed the syntax parse. Matched natural named-file trials had die imports in 1/12 baseline and 4/12 generic-guided snippets. This is a preliminary code-generation signal, not proof code would run or evidence that false denials are solved. Three repeats per original condition have wide uncertainty: 2/3 vs 2/3 does not demonstrate equivalence; 0/3 does not establish a universal zero-call rate. The real past denial may depend on ASR, interrupted provider conversation, projected history, ambiguity or runtime tool results; none is isolated here.
+
+Practical current guidance: for an authorized request to act on a named file, try execute, inspect the real result, use shell/Bun or delegate as appropriate, and report real blockers. If the file name/path is missing, ask for it instead of declaring the environment lacks command access. Do not infer a tool restriction from an earlier assistant claim; do not assert desktop filesystem access until checked. Shared-root suffix did not reliably fix original follow-up and produced no synthetic tool-selection lift, so **do not patch production denial instructions based on these comparisons**. The narrow globals/no-import reminder may merit a later tool-description test, but a production change requires syntax/runtime checks with safe controlled execution, not these intercepted calls. Consented audio fixture with intercepted execution and real alternating turns remains the gap.
+
+Values unchanged: [go look, leave user's work safe, show what is real](../values.md) cover the lesson; this is a local probe recipe, not a new value.
