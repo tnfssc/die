@@ -4,9 +4,9 @@ Use these to choose what to do. Not rules set in stone. User's words come first.
 
 ## 1. Finish what user needs
 
-One piece works? Whole thing may still fail. Check what user does and gets back. Check how work recovers and passes to next person. Package or parts working together is the risk? Test built thing. Small edit? No need costly live test without reason. For voice or other device work, test the user’s platform and the real interaction. A protocol test or a quiet CI runner does not prove the experience.
+One piece works? Whole thing may still fail. Check what user does and gets back. Check how work recovers and passes to next person. Package or parts working together is the risk? Test built thing. Code copied or adapted into a shipped layer? Run its key checks there too. Passing tests on the source copy do not prove the shipped copy. Small edit? No need costly live test without reason. For voice or other device work, test the user’s platform and the real interaction. A protocol test or a quiet CI runner does not prove the experience.
 
-From: [packaging](packaging/single-binary-packaging.md), [live acceptance](releases/final-live-validation.md), [lifecycle acceptance](t3/t3-v2-production-lifecycle-final.md), [Live redesign](live/redesign-research.md).
+From: [packaging](packaging/single-binary-packaging.md), [live acceptance](releases/final-live-validation.md), [lifecycle acceptance](t3/t3-v2-production-lifecycle-final.md), [Live redesign](live/redesign-research.md), [web live shipped-copy review](web/live-voice-port.md).
 
 ## 2. Say what proof shows
 
