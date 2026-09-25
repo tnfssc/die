@@ -15,6 +15,7 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   const events = () => ({ emit: bus.emit, on: bus.on });
   let voiceCommand!: (args: string, ctx: any) => Promise<void>;
   const voicePi = {
+    appendEntry() {}, // Real Pi supports cost/transcript entries.
     events: events(),
     registerCommand: (_name: string, command: any) => {
       voiceCommand = command.handler;
