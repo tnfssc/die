@@ -34,3 +34,7 @@ Native Pi message entries remain the authoritative text conversation. The shared
 - First full run had 10 shell-output failures because fish printed untrusted-mise warnings for this new worktree. Setting `MISE_TRUSTED_CONFIG_PATHS=$PWD` only in the test process resolved all 10; no persistent trust or main-checkout change. An earlier targeted run lacked dist/die and therefore failed three compiled-runner/footer tests; all passed after compilation.
 - Added direct completed-input/history authority tests, port/cancellation/scope tests, and dependency-boundary guards (session cannot import Live/task implementations; tasks cannot import Live). Existing transcript, branch snapshot, reconnect, realtime ordering, cancellation, delegation, and provider mock tests pass.
 - No paid provider, microphone, speaker, or real native backend acceptance performed. Offline protocol/adapter tests do not establish live audio UX. Fresh web rebuild and real-device/provider acceptance remain outside this bounded refactor.
+
+## Main checkout integration
+
+Fast-forwarded through `acc952f` after parent review. Focused session/Live tests in this checkout: 101 passed, 0 failed with a fresh TMPDIR. The first run hit existing snapshot capacity (4 failures); no existing snapshots were removed. Main checkout typecheck is blocked by missing installed `@types/ws`, already declared at 8.18.1 before this change. Worktree typecheck above used that cached dependency and passed. Main dependency installation was left alone. `git diff --check` passed.
