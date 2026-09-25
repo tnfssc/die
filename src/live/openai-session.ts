@@ -140,7 +140,6 @@ export interface RealtimeSocket {
   readonly bufferedAmount?: number;
   send(data: string): void;
   close(): void;
-  shutdown?(): Promise<void>;
   addEventListener(type: "open" | "message" | "error" | "close", handler: (event: any) => void): void;
 }
 export type RealtimeSocketFactory = (url: string, headers: Record<string, string>) => RealtimeSocket;

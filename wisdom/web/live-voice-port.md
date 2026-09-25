@@ -1,3 +1,5 @@
+> Superseded: browser voice was removed. See [web voice removal](../live/web-voice-removal.md). Historical notes only.
+
 # Web live voice port
 
 ## Current state — final parent check, 2026-09-25

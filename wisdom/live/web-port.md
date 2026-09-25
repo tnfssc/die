@@ -1,3 +1,5 @@
+> Superseded: browser voice was removed. See [web voice removal](web-voice-removal.md). Historical notes only.
+
 # Web Live port foundation (not shipped voice)
 
 ## Ownership and source traced

@@ -1,6 +1,6 @@
 diff --git a/apps/server/src/auth/DieWebAuth.test.ts b/apps/server/src/auth/DieWebAuth.test.ts
 new file mode 100644
-index 00000000..3e8a4048
+index 000000000..3e8a40483
 --- /dev/null
 +++ b/apps/server/src/auth/DieWebAuth.test.ts
 @@ -0,0 +1,97 @@
@@ -103,7 +103,7 @@ index 00000000..3e8a4048
 +});
 diff --git a/apps/server/src/auth/DieWebAuth.ts b/apps/server/src/auth/DieWebAuth.ts
 new file mode 100644
-index 00000000..56eda5fd
+index 000000000..56eda5fd7
 --- /dev/null
 +++ b/apps/server/src/auth/DieWebAuth.ts
 @@ -0,0 +1,66 @@
@@ -174,7 +174,7 @@ index 00000000..56eda5fd
 +  scopes: [...AuthAdministrativeScopes] as ReadonlyArray<AuthEnvironmentScope>,
 +};
 diff --git a/apps/server/src/auth/EnvironmentAuth.test.ts b/apps/server/src/auth/EnvironmentAuth.test.ts
-index bfa1b87d..79cfaaee 100644
+index bfa1b87de..79cfaaee0 100644
 --- a/apps/server/src/auth/EnvironmentAuth.test.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.test.ts
 @@ -78,6 +78,50 @@ const requestMetadata = {
@@ -229,7 +229,7 @@ index bfa1b87d..79cfaaee 100644
      Effect.gen(function* () {
        const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
 diff --git a/apps/server/src/auth/EnvironmentAuth.ts b/apps/server/src/auth/EnvironmentAuth.ts
-index 481ffc2f..7f8e4b71 100644
+index 481ffc2fa..7f8e4b712 100644
 --- a/apps/server/src/auth/EnvironmentAuth.ts
 +++ b/apps/server/src/auth/EnvironmentAuth.ts
 @@ -37,6 +37,7 @@ import * as PairingGrantStore from "./PairingGrantStore.ts";
@@ -298,7 +298,7 @@ index 481ffc2f..7f8e4b71 100644
        if (Option.isSome(requestUrl)) {
          const websocketTicket = requestUrl.value.searchParams.get(WEBSOCKET_TICKET_QUERY_PARAM);
 diff --git a/apps/server/src/bin.ts b/apps/server/src/bin.ts
-index 06309387..66c1c2c4 100644
+index 063093874..66c1c2c4f 100644
 --- a/apps/server/src/bin.ts
 +++ b/apps/server/src/bin.ts
 @@ -9,6 +9,12 @@
@@ -315,7 +315,7 @@ index 06309387..66c1c2c4 100644
    isEntrypoint({
      moduleUrl: import.meta.url,
 diff --git a/apps/server/src/binCli.ts b/apps/server/src/binCli.ts
-index 331d68c8..a5c8b63a 100644
+index 331d68c8f..a5c8b63ae 100644
 --- a/apps/server/src/binCli.ts
 +++ b/apps/server/src/binCli.ts
 @@ -2,6 +2,7 @@ import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
@@ -358,7 +358,7 @@ index 331d68c8..a5c8b63a 100644
 +  });
  }
 diff --git a/apps/server/src/cli/config.test.ts b/apps/server/src/cli/config.test.ts
-index 61ac22ad..c5a8f2f3 100644
+index 61ac22adb..c5a8f2f35 100644
 --- a/apps/server/src/cli/config.test.ts
 +++ b/apps/server/src/cli/config.test.ts
 @@ -225,6 +225,7 @@ it.layer(NodeServices.layer)("cli config resolution", (it) => {
@@ -418,7 +418,7 @@ index 61ac22ad..c5a8f2f3 100644
          noBrowser: true,
          startupPresentation: "headless",
 diff --git a/apps/server/src/cli/config.ts b/apps/server/src/cli/config.ts
-index 09a30aeb..d4f9f9b0 100644
+index 09a30aeb1..d4f9f9b0a 100644
 --- a/apps/server/src/cli/config.ts
 +++ b/apps/server/src/cli/config.ts
 @@ -20,6 +20,7 @@ import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -468,7 +468,7 @@ index 09a30aeb..d4f9f9b0 100644
        startupPresentation,
        desktopBootstrapToken,
 diff --git a/apps/server/src/config.ts b/apps/server/src/config.ts
-index 701aca58..2369316e 100644
+index 701aca58e..2369316e8 100644
 --- a/apps/server/src/config.ts
 +++ b/apps/server/src/config.ts
 @@ -91,6 +91,8 @@ export class ServerConfig extends Context.Service<
@@ -482,7 +482,7 @@ index 701aca58..2369316e 100644
      readonly desktopBootstrapToken: string | undefined;
 diff --git a/apps/server/src/mcp/DieDelegationPolicy.test.ts b/apps/server/src/mcp/DieDelegationPolicy.test.ts
 new file mode 100644
-index 00000000..c08cabf7
+index 000000000..c08cabf7e
 --- /dev/null
 +++ b/apps/server/src/mcp/DieDelegationPolicy.test.ts
 @@ -0,0 +1,107 @@
@@ -595,7 +595,7 @@ index 00000000..c08cabf7
 +});
 diff --git a/apps/server/src/mcp/DieDelegationPolicy.ts b/apps/server/src/mcp/DieDelegationPolicy.ts
 new file mode 100644
-index 00000000..31dc2b24
+index 000000000..31dc2b24a
 --- /dev/null
 +++ b/apps/server/src/mcp/DieDelegationPolicy.ts
 @@ -0,0 +1,119 @@
@@ -720,7 +720,7 @@ index 00000000..31dc2b24
 +}
 diff --git a/apps/server/src/mcp/DieTaskService.test.ts b/apps/server/src/mcp/DieTaskService.test.ts
 new file mode 100644
-index 00000000..80a959ff
+index 000000000..80a959ff0
 --- /dev/null
 +++ b/apps/server/src/mcp/DieTaskService.test.ts
 @@ -0,0 +1,716 @@
@@ -1442,7 +1442,7 @@ index 00000000..80a959ff
 +);
 diff --git a/apps/server/src/mcp/DieTaskService.ts b/apps/server/src/mcp/DieTaskService.ts
 new file mode 100644
-index 00000000..a523a03e
+index 000000000..a523a03e0
 --- /dev/null
 +++ b/apps/server/src/mcp/DieTaskService.ts
 @@ -0,0 +1,607 @@
@@ -2054,7 +2054,7 @@ index 00000000..a523a03e
 +});
 +export const layer = Layer.effect(DieTaskService, make);
 diff --git a/apps/server/src/mcp/McpHttpServer.ts b/apps/server/src/mcp/McpHttpServer.ts
-index 810ac9d4..7e5e0eff 100644
+index 810ac9d49..7e5e0effd 100644
 --- a/apps/server/src/mcp/McpHttpServer.ts
 +++ b/apps/server/src/mcp/McpHttpServer.ts
 @@ -32,6 +32,7 @@ import { ThreadToolkitHandlersLive } from "./toolkits/thread/handlers.ts";
@@ -2074,7 +2074,7 @@ index 810ac9d4..7e5e0eff 100644
    Layer.provide(ThreadMetadataMcpService.layer),
  );
 diff --git a/apps/server/src/mcp/McpInvocationContext.ts b/apps/server/src/mcp/McpInvocationContext.ts
-index 8e07e065..a4a5188b 100644
+index 8e07e0650..a4a5188b1 100644
 --- a/apps/server/src/mcp/McpInvocationContext.ts
 +++ b/apps/server/src/mcp/McpInvocationContext.ts
 @@ -11,18 +11,26 @@ import * as Effect from "effect/Effect";
@@ -2105,7 +2105,7 @@ index 8e07e065..a4a5188b 100644
  }
  
 diff --git a/apps/server/src/mcp/McpSessionRegistry.test.ts b/apps/server/src/mcp/McpSessionRegistry.test.ts
-index ba3c2096..2638f42a 100644
+index ba3c20968..2638f42ab 100644
 --- a/apps/server/src/mcp/McpSessionRegistry.test.ts
 +++ b/apps/server/src/mcp/McpSessionRegistry.test.ts
 @@ -102,6 +102,28 @@ it.effect("always grants pull-requests and gates browser and device access indep
@@ -2138,7 +2138,7 @@ index ba3c2096..2638f42a 100644
    Effect.gen(function* () {
      const cases = [
 diff --git a/apps/server/src/mcp/McpSessionRegistry.ts b/apps/server/src/mcp/McpSessionRegistry.ts
-index ad741acb..f58d42cb 100644
+index ad741acb9..f58d42cb1 100644
 --- a/apps/server/src/mcp/McpSessionRegistry.ts
 +++ b/apps/server/src/mcp/McpSessionRegistry.ts
 @@ -22,6 +22,10 @@ export interface McpCredentialRequest {
@@ -2188,7 +2188,7 @@ index ad741acb..f58d42cb 100644
        };
        yield* SynchronizedRef.update(state, ({ records }) => {
 diff --git a/apps/server/src/mcp/OrchestratorMcpService.test.ts b/apps/server/src/mcp/OrchestratorMcpService.test.ts
-index 8fb35171..ff6b00c1 100644
+index 8fb351713..ff6b00c1c 100644
 --- a/apps/server/src/mcp/OrchestratorMcpService.test.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpService.test.ts
 @@ -28,6 +28,33 @@ import type { McpInvocationScope } from "./McpInvocationContext.ts";
@@ -2431,7 +2431,7 @@ index 8fb35171..ff6b00c1 100644
              clientRequestId: "delegate-antigravity-1",
            });
 diff --git a/apps/server/src/mcp/OrchestratorMcpService.ts b/apps/server/src/mcp/OrchestratorMcpService.ts
-index 4c58a585..bccd61f8 100644
+index 4c58a5854..bccd61f84 100644
 --- a/apps/server/src/mcp/OrchestratorMcpService.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpService.ts
 @@ -4,6 +4,7 @@ import {
@@ -2660,7 +2660,7 @@ index 4c58a585..bccd61f8 100644
    OrchestratorMcpService,
    never,
 diff --git a/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts b/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
-index 3a64a87a..8eb10655 100644
+index 3a64a87a7..8eb10655b 100644
 --- a/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
 +++ b/apps/server/src/mcp/OrchestratorMcpToolkit.integration.test.ts
 @@ -50,6 +50,7 @@ import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexA
@@ -2725,7 +2725,7 @@ index 3a64a87a..8eb10655 100644
  
          yield* Effect.gen(function* () {
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
-index bdd7a0a2..bd11a275 100644
+index bdd7a0a2f..bd11a2753 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
 +++ b/apps/server/src/mcp/toolkits/orchestrator/handlers.ts
 @@ -1,11 +1,42 @@
@@ -2772,7 +2772,7 @@ index bdd7a0a2..bd11a275 100644
      Effect.gen(function* () {
        const scope = yield* McpInvocationContext;
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts b/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts
-index de85b6f7..368e426c 100644
+index de85b6f72..368e426c2 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts
 +++ b/apps/server/src/mcp/toolkits/orchestrator/tools.test.ts
 @@ -3,6 +3,10 @@ import { Tool } from "effect/unstable/ai";
@@ -2827,7 +2827,7 @@ index de85b6f7..368e426c 100644
 +  });
  });
 diff --git a/apps/server/src/mcp/toolkits/orchestrator/tools.ts b/apps/server/src/mcp/toolkits/orchestrator/tools.ts
-index d1f712e7..236ad6f8 100644
+index d1f712e75..236ad6f83 100644
 --- a/apps/server/src/mcp/toolkits/orchestrator/tools.ts
 +++ b/apps/server/src/mcp/toolkits/orchestrator/tools.ts
 @@ -1,4 +1,12 @@
@@ -2940,7 +2940,7 @@ index d1f712e7..236ad6f8 100644
    DelegateTaskTool,
    TaskStatusTool,
 diff --git a/apps/server/src/mcp/toolkits/worktree/registration.test.ts b/apps/server/src/mcp/toolkits/worktree/registration.test.ts
-index 92480143..5651b136 100644
+index 924801431..5651b136d 100644
 --- a/apps/server/src/mcp/toolkits/worktree/registration.test.ts
 +++ b/apps/server/src/mcp/toolkits/worktree/registration.test.ts
 @@ -1,5 +1,6 @@
@@ -2972,7 +2972,7 @@ index 92480143..5651b136 100644
          Layer.build,
        );
 diff --git a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
-index ee2fb5d4..c04f1acd 100644
+index ee2fb5d4a..c04f1acdb 100644
 --- a/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
 @@ -644,7 +644,7 @@ describe("ClaudeAdapterV2 MCP query overrides", () => {
@@ -3007,7 +3007,7 @@ index ee2fb5d4..c04f1acd 100644
  });
  
 diff --git a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts
-index ad87b4bf..c4e24e5d 100644
+index ad87b4bf7..c4e24e5d8 100644
 --- a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.test.ts
 @@ -40,8 +40,8 @@ import {
@@ -3309,7 +3309,7 @@ index ad87b4bf..c4e24e5d 100644
  
  // This fails before a provider transcript exists, so a replay fixture is not
 diff --git a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts
-index 1e5c5b43..3181b679 100644
+index 1e5c5b43e..3d573983b 100644
 --- a/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/PiAdapterV2.ts
 @@ -45,6 +45,7 @@ import {
@@ -3324,7 +3324,7 @@ index 1e5c5b43..3181b679 100644
    type PiCompactCommand,
  } from "../../provider/PiCommands.ts";
  import { mergeProviderInstanceEnvironment } from "../../provider/ProviderInstanceEnvironment.ts";
-+import { applyDieWebPiSettings, dieWebBinary } from "../../provider/DieWebPi.ts";
++import { applyDieWebPiSettings } from "../../provider/DieWebPi.ts";
  import { IdAllocatorV2 } from "../IdAllocator.ts";
  import {
    ProviderAdapterEnsureThreadError,
@@ -3479,18 +3479,7 @@ index 1e5c5b43..3181b679 100644
  }
  
  interface PendingPiPrompt {
-@@ -436,6 +561,10 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
-         args: launch.args,
-         cwd,
-         env: launch.env,
-+        // Only Die Pi, never an arbitrary configured Pi tool, receives voice FDs.
-+        ...(dieWebBinary(options.environment) === (options.settings.binaryPath || "pi")
-+          ? { voice: { threadId: input.threadId, providerSessionId: input.providerSessionId } }
-+          : {}),
-       }).pipe(
-         Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, options.spawner),
-         Effect.mapError(
-@@ -474,6 +603,9 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -474,6 +599,9 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
          ProviderAdapterV2Error | Cause.Done
        >();
        const pendingPrompts = new Map<string, PendingPiPrompt>();
@@ -3500,7 +3489,7 @@ index 1e5c5b43..3181b679 100644
        const sessionApprovals = new Set<string>();
        // Answering a dialog and terminalizing a turn both publish lifecycle
        // events. Pi can settle immediately after `extension_ui_response`, so
-@@ -491,6 +623,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -491,6 +619,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
        let unsolicitedActivityDetected = false;
        let appliedModel: string | null = null;
        let appliedThinking: string | null = null;
@@ -3508,7 +3497,7 @@ index 1e5c5b43..3181b679 100644
        /** Last thread title synced into pi's session name (`/resume` listing). */
        let appliedSessionName: string | null = null;
        /** Extension failures raised during startup are attached to the next turn. */
-@@ -1093,6 +1226,102 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -1093,6 +1222,102 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
          }
        });
  
@@ -3611,7 +3600,7 @@ index 1e5c5b43..3181b679 100644
        // ── extension UI prompts ──────────────────────────────
  
        const cancelPrompt = (pending: PendingPiPrompt, resolvedAt: DateTime.Utc) =>
-@@ -1413,6 +1642,10 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -1413,6 +1638,10 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
              status: turn.interrupted ? "interrupted" : failure !== null ? "failed" : "completed",
              completedAt,
              ...(tokenUsage === undefined ? {} : { tokenUsage }),
@@ -3622,7 +3611,7 @@ index 1e5c5b43..3181b679 100644
            },
          });
          yield* updateProviderThread(state, {
-@@ -1520,6 +1753,8 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -1520,6 +1749,8 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
        const handleSessionEvent = Effect.fnUntraced(function* (event: PiRpcRecord) {
          const state = threadState;
          const turn = state?.activeTurn ?? null;
@@ -3631,7 +3620,7 @@ index 1e5c5b43..3181b679 100644
          switch (event["type"]) {
            case "agent_start": {
              if (turn === null) {
-@@ -1575,6 +1810,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -1575,6 +1806,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
              if (turn === null) return;
              const message = event["message"];
              if (recordString(message, "role") !== "assistant") return;
@@ -3639,7 +3628,7 @@ index 1e5c5b43..3181b679 100644
              yield* completeOpenStreamItems(turn);
              if (recordString(message, "stopReason") === "error" && turn.failure === null) {
                turn.failure = makeProviderFailure({
-@@ -1621,6 +1857,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -1621,6 +1853,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
              };
              turn.activeCompaction = null;
              const result = event["result"];
@@ -3647,7 +3636,7 @@ index 1e5c5b43..3181b679 100644
              if (result === null || result === undefined) {
                if (event["aborted"] === true) {
                  yield* emitCompaction(turn, compaction, "cancelled");
-@@ -1861,7 +2098,8 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -1861,7 +2094,8 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
                turn.providerTurn.id !== event["providerTurnId"] ||
                turn.settleProbeGeneration !== event["settleProbeGeneration"] ||
                (!settleAfterAgentActivity && turn.sawAgentActivity) ||
@@ -3657,7 +3646,7 @@ index 1e5c5b43..3181b679 100644
              ) {
                return;
              }
-@@ -1986,6 +2224,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -1986,6 +2220,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
            // configured and skipping set_model or set_session_name.
            appliedModel = null;
            appliedThinking = null;
@@ -3665,7 +3654,7 @@ index 1e5c5b43..3181b679 100644
            appliedSessionName = null;
            // The baselines describe the session we just left too. Dropping
            // them lets the `get_state` below re-capture this session's own
-@@ -2069,6 +2308,13 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -2069,6 +2304,13 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
  
        const applySelection = Effect.fnUntraced(function* (modelSelection: ModelSelection) {
          const thinking = getModelSelectionStringOptionValue(modelSelection, "thinking");
@@ -3679,7 +3668,7 @@ index 1e5c5b43..3181b679 100644
          if (modelSelection.model === PI_INHERIT_MODEL_SLUG) {
            // Returning to "Pi default" after an explicit pick has to replay the
            // captured baseline, otherwise Pi stays on the last model applied.
-@@ -2126,6 +2372,10 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -2126,6 +2368,10 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
            yield* request({ type: "set_thinking_level", level: thinking });
            appliedThinking = thinking;
          }
@@ -3690,7 +3679,7 @@ index 1e5c5b43..3181b679 100644
        });
  
        const resolvePromptPayload = Effect.fnUntraced(function* (
-@@ -2173,6 +2423,16 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -2173,6 +2419,16 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
            return sessionEntity;
          },
          events: Stream.fromQueue(events),
@@ -3707,7 +3696,7 @@ index 1e5c5b43..3181b679 100644
          ensureThread: (threadInput) =>
            registerThread(threadInput).pipe(
              Effect.mapError(
-@@ -2288,6 +2548,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -2288,6 +2544,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
                  compactCommand !== null || (payload?.message.trimStart().startsWith("/") ?? false),
                latestCompactionAfterTokens: null,
                lastLiveUsedTokens: null,
@@ -3715,7 +3704,7 @@ index 1e5c5b43..3181b679 100644
                settleProbeGeneration: 0,
                settleWhenIdle: false,
                sawCompaction: false,
-@@ -2428,7 +2689,8 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -2428,7 +2685,8 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
                interruptInput.requestRuntimeRestart === true ||
                turn.settleWhenIdle ||
                turn.activeCompaction !== null ||
@@ -3725,7 +3714,7 @@ index 1e5c5b43..3181b679 100644
              ) {
                // Pi's generic abort does not cancel manual compaction. Terminate
                // so Stop covers user /compact as well as detached recovery compact.
-@@ -2623,6 +2885,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
+@@ -2623,6 +2881,7 @@ export function makePiAdapterV2(options: PiAdapterV2Options): ProviderAdapterV2S
              }
              appliedModel = null;
              appliedThinking = null;
@@ -3733,7 +3722,7 @@ index 1e5c5b43..3181b679 100644
              appliedSessionName = null;
              yield* updateProviderThread(state, { nativeThreadRef: providerRef(forkSessionFile) });
              const entriesData = yield* request({ type: "get_entries" }).pipe(
-@@ -2901,7 +3164,10 @@ export const PiAdapterV2Driver: ProviderAdapterDriver<PiSettings, PiAdapterV2Dri
+@@ -2901,7 +3160,10 @@ export const PiAdapterV2Driver: ProviderAdapterDriver<PiSettings, PiAdapterV2Dri
        const serverConfig = yield* ServerConfig;
        return makePiAdapterV2({
          instanceId: input.instanceId,
@@ -3745,7 +3734,7 @@ index 1e5c5b43..3181b679 100644
          environment: mergeProviderInstanceEnvironment(input.environment, hostEnvironment),
          spawner,
          fileSystem,
-@@ -2934,7 +3200,7 @@ const layer: Layer.Layer<ProviderAdapterV2, never, PiAdapterV2DriverEnv> = Layer
+@@ -2934,7 +3196,7 @@ const layer: Layer.Layer<ProviderAdapterV2, never, PiAdapterV2DriverEnv> = Layer
      const serverConfig = yield* ServerConfig;
      return makePiAdapterV2({
        instanceId: PI_DEFAULT_INSTANCE_ID,
@@ -3755,10 +3744,10 @@ index 1e5c5b43..3181b679 100644
        spawner,
        fileSystem,
 diff --git a/apps/server/src/orchestration-v2/Adapters/PiRpc.ts b/apps/server/src/orchestration-v2/Adapters/PiRpc.ts
-index c6a399b3..8a15f90c 100644
+index c6a399b3d..947b0578c 100644
 --- a/apps/server/src/orchestration-v2/Adapters/PiRpc.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/PiRpc.ts
-@@ -24,11 +24,13 @@ import * as Option from "effect/Option";
+@@ -24,6 +24,7 @@ import * as Option from "effect/Option";
  import * as Predicate from "effect/Predicate";
  import * as Queue from "effect/Queue";
  import * as Scope from "effect/Scope";
@@ -3766,21 +3755,7 @@ index c6a399b3..8a15f90c 100644
  import * as Schema from "effect/Schema";
  import * as Stream from "effect/Stream";
  import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
- import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
- import { resolveSpawnCommand } from "@t3tools/shared/shell";
-+import { attachPiVoiceChannel } from "../../voice/PiVoiceChannels.ts";
- 
- export class PiRpcError extends Schema.TaggedError<PiRpcError>()("PiRpcError", {
-   operation: Schema.String,
-@@ -72,6 +74,7 @@ export interface PiRpcSpawnOptions {
-   readonly args: ReadonlyArray<string>;
-   readonly cwd: string | undefined;
-   readonly env: NodeJS.ProcessEnv;
-+  readonly voice?: { readonly threadId: string; readonly providerSessionId: string };
- }
- 
- export interface PiRpcConnection {
-@@ -98,6 +101,8 @@ export interface PiRpcConnection {
+@@ -98,6 +99,8 @@ export interface PiRpcConnection {
     * fresh process on the next turn.
     */
    readonly terminate: Effect.Effect<void>;
@@ -3789,7 +3764,7 @@ index c6a399b3..8a15f90c 100644
  }
  
  const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-@@ -107,7 +112,11 @@ interface PendingPiRequest {
+@@ -107,7 +110,11 @@ interface PendingPiRequest {
    readonly deferred: Deferred.Deferred<unknown, PiRpcError>;
  }
  
@@ -3802,26 +3777,7 @@ index c6a399b3..8a15f90c 100644
  
  function makeJsonlFramer() {
    let buffer = "";
-@@ -207,7 +216,8 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
-     .spawn(
-       ChildProcess.make(spawnCommand.command, spawnCommand.args, {
-         ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
--        env: options.env,
-+        env: options.voice ? { ...options.env, DIE_WEB_VOICE_FD: "3", DIE_WEB_VOICE_OUTPUT_FD: "4" } : options.env,
-+        ...(options.voice ? { additionalFds: { fd3: { type: "input" as const }, fd4: { type: "output" as const } } } : {}),
-         extendEnv: false,
-         shell: spawnCommand.shell,
-         detached: platform !== "win32",
-@@ -215,6 +225,8 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
-     )
-     .pipe(Effect.mapError((cause) => new PiRpcError({ operation: "spawn", cause })));
- 
-+  if (options.voice) yield* attachPiVoiceChannel(child, options.voice.threadId, options.voice.providerSessionId);
-+
-   let childExited = false;
-   let diagnosingStdoutClose = false;
- 
-@@ -257,6 +269,17 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
+@@ -257,6 +264,17 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
  
    const terminateProcess =
      platform === "win32" ? terminateWindowsTree : terminatePiProcess(killProcessGroup, hasExited);
@@ -3839,7 +3795,7 @@ index c6a399b3..8a15f90c 100644
  
    // Registered before any further setup: an interrupt or failure between the
    // spawn and the rest of this constructor would otherwise leak a detached
-@@ -264,8 +287,12 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
+@@ -264,8 +282,12 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
    yield* Scope.addFinalizer(scope, terminateProcess.pipe(Effect.ignore, Effect.uninterruptible));
  
    const pendingRequests = new Map<string, PendingPiRequest>();
@@ -3854,7 +3810,7 @@ index c6a399b3..8a15f90c 100644
    const transportDown = yield* Deferred.make<never, PiRpcError>();
    const exitDeferred = yield* Deferred.make<number, PiRpcError>();
    let nextRequestId = 0;
-@@ -305,7 +332,15 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
+@@ -305,7 +327,15 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
            return;
          }
        }
@@ -3871,7 +3827,7 @@ index c6a399b3..8a15f90c 100644
      });
  
    // Watch exit before the reader so an immediate crash can populate
-@@ -411,10 +446,16 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
+@@ -411,10 +441,16 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
  
    const send = (record: PiRpcRecord): Effect.Effect<void, PiRpcError> =>
      Effect.gen(function* () {
@@ -3892,7 +3848,7 @@ index c6a399b3..8a15f90c 100644
        // A refused offer means `failTransport` already closed the queue, so the
        // write can never land; surface the transport error instead of
        // reporting a success the caller cannot rely on.
-@@ -427,32 +468,37 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
+@@ -427,32 +463,37 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
      record: PiRpcRecord,
      timeoutMs = DEFAULT_REQUEST_TIMEOUT_MS,
    ): Effect.Effect<unknown, PiRpcError> =>
@@ -3956,7 +3912,7 @@ index c6a399b3..8a15f90c 100644
  
    return {
      send,
-@@ -460,5 +506,6 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
+@@ -460,5 +501,6 @@ export const makePiRpcConnection = Effect.fnUntraced(function* (options: PiRpcSp
      events,
      exited: Deferred.await(exitDeferred),
      terminate: terminateProcess.pipe(Effect.ignore, Effect.uninterruptible),
@@ -3964,7 +3920,7 @@ index c6a399b3..8a15f90c 100644
    } satisfies PiRpcConnection;
  });
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
-index 2d448e3b..a5db5d31 100644
+index 2d448e3b7..a5db5d315 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.test.ts
 @@ -27,6 +27,16 @@ async function loadRequestHook(): Promise<RequestHook> {
@@ -3985,7 +3941,7 @@ index 2d448e3b..a5db5d31 100644
    for (const key of ["max_tokens", "max_completion_tokens"]) {
      it(`caps ${key} without changing the conversation or tools`, async () => {
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
-index 185bd16f..87b02578 100644
+index 185bd16f9..87b025782 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpExtensionSource.ts
 @@ -35,6 +35,7 @@ const READ_ONLY_TOOLS = new Set(["read", "grep", "find", "ls"]);
@@ -4029,7 +3985,7 @@ index 185bd16f..87b02578 100644
          const registeredName = \`mcp__t3-code__\${name}\`;
          const description = tool.description ?? name;
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts
-index b50a80a1..f0cb2b81 100644
+index b50a80a1c..f0cb2b815 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.test.ts
 @@ -88,6 +88,27 @@ describe("pi T3 MCP injection", () => {
@@ -4069,7 +4025,7 @@ index b50a80a1..f0cb2b81 100644
    );
  });
 diff --git a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts
-index bd10c626..d9f6e07e 100644
+index bd10c6267..d9f6e07e9 100644
 --- a/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts
 +++ b/apps/server/src/orchestration-v2/Adapters/piT3McpInjection.ts
 @@ -251,6 +251,9 @@ export function buildPiRpcLaunch(input: {
@@ -4083,7 +4039,7 @@ index bd10c626..d9f6e07e 100644
    const hasT3Mcp = hasT3Extension && input.mcpSession !== undefined;
    const extensionSafeArgs =
 diff --git a/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts b/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
-index 567fea60..d149a665 100644
+index 567fea60f..d149a665c 100644
 --- a/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
 +++ b/apps/server/src/orchestration-v2/DelegatedCompletionDelivery.test.ts
 @@ -40,7 +40,9 @@ import { worktreeRepairDependenciesTestLayer } from "./ProviderTurnStartService.
@@ -4162,7 +4118,7 @@ index 567fea60..d149a665 100644
            commandId: CommandId.make("command:delegated-delivery-a2:ack-after-dispose"),
 diff --git a/apps/server/src/orchestration-v2/DelegatedCompletionWake.ts b/apps/server/src/orchestration-v2/DelegatedCompletionWake.ts
 new file mode 100644
-index 00000000..1ac21f77
+index 000000000..1ac21f77d
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/DelegatedCompletionWake.ts
 @@ -0,0 +1,25 @@
@@ -4193,7 +4149,7 @@ index 00000000..1ac21f77
 +}
 diff --git a/apps/server/src/orchestration-v2/LocalJobNotification.test.ts b/apps/server/src/orchestration-v2/LocalJobNotification.test.ts
 new file mode 100644
-index 00000000..0b79fd65
+index 000000000..0b79fd650
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/LocalJobNotification.test.ts
 @@ -0,0 +1,409 @@
@@ -4608,7 +4564,7 @@ index 00000000..0b79fd65
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts b/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts
 new file mode 100644
-index 00000000..67e142de
+index 000000000..67e142de2
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts
 @@ -0,0 +1,800 @@
@@ -5414,7 +5370,7 @@ index 00000000..67e142de
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeUsageAccounting.test.ts b/apps/server/src/orchestration-v2/NativeUsageAccounting.test.ts
 new file mode 100644
-index 00000000..40f01a13
+index 000000000..40f01a137
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeUsageAccounting.test.ts
 @@ -0,0 +1,169 @@
@@ -5589,7 +5545,7 @@ index 00000000..40f01a13
 +});
 diff --git a/apps/server/src/orchestration-v2/NativeUsageAccounting.ts b/apps/server/src/orchestration-v2/NativeUsageAccounting.ts
 new file mode 100644
-index 00000000..e8bcfa3b
+index 000000000..e8bcfa3bd
 --- /dev/null
 +++ b/apps/server/src/orchestration-v2/NativeUsageAccounting.ts
 @@ -0,0 +1,124 @@
@@ -5718,7 +5674,7 @@ index 00000000..e8bcfa3b
 +  };
 +}
 diff --git a/apps/server/src/orchestration-v2/Orchestrator.ts b/apps/server/src/orchestration-v2/Orchestrator.ts
-index bd490520..c8061c2a 100644
+index bd4905200..c8061c2aa 100644
 --- a/apps/server/src/orchestration-v2/Orchestrator.ts
 +++ b/apps/server/src/orchestration-v2/Orchestrator.ts
 @@ -48,6 +48,7 @@ import * as Layer from "effect/Layer";
@@ -6606,7 +6562,7 @@ index bd490520..c8061c2a 100644
        Stream.filter(
          (stored) =>
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.test.ts b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
-index acdb7320..9a4b31ba 100644
+index acdb7320b..9a4b31ba0 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.test.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.test.ts
 @@ -315,6 +315,7 @@ it.layer(TestLayer)("ProjectionStoreV2", (it) => {
@@ -6664,7 +6620,7 @@ index acdb7320..9a4b31ba 100644
        yield* projectionStore.apply({
          id: EventId.make("event:provider-usage-reload:replacement"),
 diff --git a/apps/server/src/orchestration-v2/ProjectionStore.ts b/apps/server/src/orchestration-v2/ProjectionStore.ts
-index 191ca761..53b15b71 100644
+index 191ca7610..53b15b716 100644
 --- a/apps/server/src/orchestration-v2/ProjectionStore.ts
 +++ b/apps/server/src/orchestration-v2/ProjectionStore.ts
 @@ -64,6 +64,7 @@ import * as Ref from "effect/Ref";
@@ -6797,7 +6753,7 @@ index 191ca761..53b15b71 100644
                SELECT MAX(sequence) AS snapshot_sequence
                FROM orchestration_events
 diff --git a/apps/server/src/orchestration-v2/ProviderAdapter.ts b/apps/server/src/orchestration-v2/ProviderAdapter.ts
-index 478150bd..1a8bd06b 100644
+index 478150bd5..1a8bd06bc 100644
 --- a/apps/server/src/orchestration-v2/ProviderAdapter.ts
 +++ b/apps/server/src/orchestration-v2/ProviderAdapter.ts
 @@ -486,6 +486,13 @@ export interface ProviderAdapterV2SessionRuntime {
@@ -6815,7 +6771,7 @@ index 478150bd..1a8bd06b 100644
     * Manager-owned runtimes expose a synchronous subscription so concurrent
     * provider threads receive independent copies of the process event stream.
 diff --git a/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts b/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts
-index e6af7fa7..2e771859 100644
+index e6af7fa79..2e771859a 100644
 --- a/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts
 +++ b/apps/server/src/orchestration-v2/ProviderContinuationRequests.ts
 @@ -1,3 +1,4 @@
@@ -6944,7 +6900,7 @@ index e6af7fa7..2e771859 100644
    }),
  );
 diff --git a/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts b/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts
-index 1c95c3ba..92ac2380 100644
+index 1c95c3ba9..92ac23803 100644
 --- a/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderContinuationService.test.ts
 @@ -10,7 +10,9 @@ import {
@@ -7204,7 +7160,7 @@ index 1c95c3ba..92ac2380 100644
      return Effect.gen(function* () {
        const attempts = yield* Ref.make(0);
 diff --git a/apps/server/src/orchestration-v2/ProviderContinuationService.ts b/apps/server/src/orchestration-v2/ProviderContinuationService.ts
-index d8f9197f..b32b1631 100644
+index d8f9197f4..b32b1631a 100644
 --- a/apps/server/src/orchestration-v2/ProviderContinuationService.ts
 +++ b/apps/server/src/orchestration-v2/ProviderContinuationService.ts
 @@ -1,6 +1,7 @@
@@ -7381,7 +7337,7 @@ index d8f9197f..b32b1631 100644
        Effect.forkScoped,
      );
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts
-index 8d294709..18f775d1 100644
+index 8d2947094..18f775d1e 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.test.ts
 @@ -1,9 +1,13 @@
@@ -8429,7 +8385,7 @@ index 8d294709..18f775d1 100644
        );
      }),
 diff --git a/apps/server/src/orchestration-v2/ProviderSessionManager.ts b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
-index ced52cee..92e2e586 100644
+index ced52cee8..92e2e5869 100644
 --- a/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 +++ b/apps/server/src/orchestration-v2/ProviderSessionManager.ts
 @@ -31,6 +31,8 @@ import * as ProjectService from "../project/ProjectService.ts";
@@ -8900,7 +8856,7 @@ index ced52cee..92e2e586 100644
                };
                yield* Ref.update(sessions, (current) => {
 diff --git a/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts b/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
-index cb6f66d4..f8aaba3f 100644
+index cb6f66d4e..f8aaba3f7 100644
 --- a/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
 +++ b/apps/server/src/orchestration-v2/ThreadLaunchService.test.ts
 @@ -1741,6 +1741,8 @@ it.effect("shared intake preserves durable attachment bytes after a lost launch
@@ -8913,7 +8869,7 @@ index cb6f66d4..f8aaba3f 100644
            launches.launch(request).pipe(
              Effect.andThen(
 diff --git a/apps/server/src/orchestration-v2/ThreadLaunchService.ts b/apps/server/src/orchestration-v2/ThreadLaunchService.ts
-index 3cafae35..d33d2be2 100644
+index 3cafae35e..d33d2be2b 100644
 --- a/apps/server/src/orchestration-v2/ThreadLaunchService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadLaunchService.ts
 @@ -75,6 +75,8 @@ export interface ThreadLaunchInput {
@@ -8982,7 +8938,7 @@ index 3cafae35..d33d2be2 100644
  
  export const layer = Layer.effect(ThreadLaunchService, make);
 diff --git a/apps/server/src/orchestration-v2/ThreadManagementService.ts b/apps/server/src/orchestration-v2/ThreadManagementService.ts
-index 6a508460..e0f463f4 100644
+index 6a5084601..e0f463f4a 100644
 --- a/apps/server/src/orchestration-v2/ThreadManagementService.ts
 +++ b/apps/server/src/orchestration-v2/ThreadManagementService.ts
 @@ -83,6 +83,7 @@ export function existingThreadIdsForCommand(
@@ -9049,7 +9005,7 @@ index 6a508460..e0f463f4 100644
  );
  
 diff --git a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
-index f81d477e..65e38b07 100644
+index f81d477ed..65e38b075 100644
 --- a/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 +++ b/apps/server/src/orchestration-v2/testkit/OrchestratorScenario.ts
 @@ -158,6 +158,7 @@ function commandThreadIds(command: OrchestrationV2Command): ReadonlyArray<Thread
@@ -9061,7 +9017,7 @@ index f81d477e..65e38b07 100644
        return [command.parentThreadId];
      case "thread.fork":
 diff --git a/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts b/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
-index b159540b..d88ecc09 100644
+index b159540b6..d88ecc098 100644
 --- a/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
 +++ b/apps/server/src/orchestration-v2/testkit/ProviderReplayHarness.ts
 @@ -16,6 +16,7 @@ import { ProjectionProjectRepositoryLive } from "../../persistence/Layers/Projec
@@ -9101,7 +9057,7 @@ index b159540b..d88ecc09 100644
        ),
 diff --git a/apps/server/src/provider/DieWebPi.test.ts b/apps/server/src/provider/DieWebPi.test.ts
 new file mode 100644
-index 00000000..9d2bb056
+index 000000000..9d2bb056c
 --- /dev/null
 +++ b/apps/server/src/provider/DieWebPi.test.ts
 @@ -0,0 +1,42 @@
@@ -9149,7 +9105,7 @@ index 00000000..9d2bb056
 +});
 diff --git a/apps/server/src/provider/DieWebPi.ts b/apps/server/src/provider/DieWebPi.ts
 new file mode 100644
-index 00000000..c09c1fec
+index 000000000..c09c1fec6
 --- /dev/null
 +++ b/apps/server/src/provider/DieWebPi.ts
 @@ -0,0 +1,29 @@
@@ -9183,7 +9139,7 @@ index 00000000..c09c1fec
 +  return providerInstanceId === "pi" && dieWebBinary(environment) !== undefined;
 +}
 diff --git a/apps/server/src/provider/Drivers/PiDriver.ts b/apps/server/src/provider/Drivers/PiDriver.ts
-index 72cb0fec..276e08cd 100644
+index 72cb0fec7..276e08cd0 100644
 --- a/apps/server/src/provider/Drivers/PiDriver.ts
 +++ b/apps/server/src/provider/Drivers/PiDriver.ts
 @@ -36,6 +36,7 @@ import {
@@ -9226,7 +9182,7 @@ index 72cb0fec..276e08cd 100644
          orchestrationAdapter,
          textGeneration,
 diff --git a/apps/server/src/provider/Layers/PiProvider.test.ts b/apps/server/src/provider/Layers/PiProvider.test.ts
-index 4f7a6f6a..663756e1 100644
+index 4f7a6f6ad..663756e13 100644
 --- a/apps/server/src/provider/Layers/PiProvider.test.ts
 +++ b/apps/server/src/provider/Layers/PiProvider.test.ts
 @@ -74,6 +74,11 @@ describe("PiProvider", () => {
@@ -9242,7 +9198,7 @@ index 4f7a6f6a..663756e1 100644
      }).pipe(Effect.provide(NodeServices.layer)),
    );
 diff --git a/apps/server/src/provider/Layers/PiProvider.ts b/apps/server/src/provider/Layers/PiProvider.ts
-index edbace80..5abac7d1 100644
+index edbace801..5abac7d1d 100644
 --- a/apps/server/src/provider/Layers/PiProvider.ts
 +++ b/apps/server/src/provider/Layers/PiProvider.ts
 @@ -43,6 +43,7 @@ import {
@@ -9334,7 +9290,7 @@ index edbace80..5abac7d1 100644
        presentation: PI_PRESENTATION,
        enabled: piSettings.enabled,
 diff --git a/apps/server/src/provider/Layers/ProviderRegistry.test.ts b/apps/server/src/provider/Layers/ProviderRegistry.test.ts
-index 24ecd571..e32af670 100644
+index 24ecd5710..e32af6709 100644
 --- a/apps/server/src/provider/Layers/ProviderRegistry.test.ts
 +++ b/apps/server/src/provider/Layers/ProviderRegistry.test.ts
 @@ -2598,7 +2598,12 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsModule.layerTest(), Te
@@ -9363,28 +9319,8 @@ index 24ecd571..e32af670 100644
              assert.strictEqual(reprobedCodex?.status, "error");
              assert.strictEqual(reprobedCodex?.installed, false);
            }).pipe(Effect.provide(runtimeServices));
-diff --git a/apps/server/src/server.ts b/apps/server/src/server.ts
-index b7534969..6336a213 100644
---- a/apps/server/src/server.ts
-+++ b/apps/server/src/server.ts
-@@ -64,6 +64,7 @@ import * as McpSessionRegistry from "./mcp/McpSessionRegistry.ts";
- import * as PreviewAutomationBroker from "./mcp/PreviewAutomationBroker.ts";
- import * as DeviceService from "./device/DeviceService.ts";
- import { deviceHubProxyRouteLayer } from "./device/DeviceHubProxy.ts";
-+import { voiceRouteLayer } from "./voice/VoiceRoute.ts";
- import * as PreviewManager from "./preview/Manager.ts";
- import * as PortScanner from "./preview/PortScanner.ts";
- import * as ProcessRunner from "./processRunner.ts";
-@@ -604,6 +605,7 @@ const makeRoutesLayer = Layer.mergeAll(
-     assetRouteLayer,
-     attachmentUploadRouteLayer,
-     deviceHubProxyRouteLayer,
-+    voiceRouteLayer,
-     staticAndDevRouteLayer,
-     websocketRpcRouteLayer,
-   ),
 diff --git a/apps/server/src/serverRuntimeStartup.test.ts b/apps/server/src/serverRuntimeStartup.test.ts
-index a89d010f..255992ef 100644
+index a89d010fa..255992efd 100644
 --- a/apps/server/src/serverRuntimeStartup.test.ts
 +++ b/apps/server/src/serverRuntimeStartup.test.ts
 @@ -13,9 +13,46 @@ import * as Ref from "effect/Ref";
@@ -9435,7 +9371,7 @@ index a89d010f..255992ef 100644
    assert.deepEqual(ServerRuntimeStartup.getAutoBootstrapThreadModelSelection(), {
      instanceId: ProviderInstanceId.make("codex"),
 diff --git a/apps/server/src/serverRuntimeStartup.ts b/apps/server/src/serverRuntimeStartup.ts
-index 2ec488f2..d4702f42 100644
+index 2ec488f2b..d4702f427 100644
 --- a/apps/server/src/serverRuntimeStartup.ts
 +++ b/apps/server/src/serverRuntimeStartup.ts
 @@ -172,10 +172,16 @@ const recordStartupHeartbeat = Effect.gen(function* () {
@@ -9517,7 +9453,7 @@ index 2ec488f2..d4702f42 100644
                ).pipe(Effect.annotateLogs({ pairingUrl: startupBrowserTarget }));
 diff --git a/apps/server/src/terminal/BunPtyAdapter.test.ts b/apps/server/src/terminal/BunPtyAdapter.test.ts
 new file mode 100644
-index 00000000..26c2f6cf
+index 000000000..26c2f6cf8
 --- /dev/null
 +++ b/apps/server/src/terminal/BunPtyAdapter.test.ts
 @@ -0,0 +1,229 @@
@@ -9752,7 +9688,7 @@ index 00000000..26c2f6cf
 +);
 diff --git a/apps/server/src/terminal/BunPtyAdapter.ts b/apps/server/src/terminal/BunPtyAdapter.ts
 new file mode 100644
-index 00000000..350de371
+index 000000000..350de371c
 --- /dev/null
 +++ b/apps/server/src/terminal/BunPtyAdapter.ts
 @@ -0,0 +1,186 @@
@@ -9943,7 +9879,7 @@ index 00000000..350de371
 +    }),
 +  });
 diff --git a/apps/server/src/terminal/Manager.test.ts b/apps/server/src/terminal/Manager.test.ts
-index be62d0ee..543be847 100644
+index be62d0eeb..543be8473 100644
 --- a/apps/server/src/terminal/Manager.test.ts
 +++ b/apps/server/src/terminal/Manager.test.ts
 @@ -788,6 +788,70 @@ it.layer(
@@ -10065,7 +10001,7 @@ index be62d0ee..543be847 100644
      Effect.gen(function* () {
        const { manager, ptyAdapter } = yield* createManager(3);
 diff --git a/apps/server/src/terminal/Manager.ts b/apps/server/src/terminal/Manager.ts
-index 398442ee..39f83e3c 100644
+index 398442ee1..39f83e3c7 100644
 --- a/apps/server/src/terminal/Manager.ts
 +++ b/apps/server/src/terminal/Manager.ts
 @@ -6,6 +6,8 @@
@@ -10330,7 +10266,7 @@ index 398442ee..39f83e3c 100644
        session.processEventDrainRunning = false;
        yield* persistHistory(input.threadId, terminalId, session.history);
 diff --git a/apps/server/src/terminal/NodePtyAdapter.test.ts b/apps/server/src/terminal/NodePtyAdapter.test.ts
-index e6650025..11df4fe3 100644
+index e6650025f..11df4fe33 100644
 --- a/apps/server/src/terminal/NodePtyAdapter.test.ts
 +++ b/apps/server/src/terminal/NodePtyAdapter.test.ts
 @@ -28,6 +28,7 @@ const makeTestLayer = (platform: NodeJS.Platform = "win32") =>
@@ -10342,7 +10278,7 @@ index e6650025..11df4fe3 100644
        ),
      ),
 diff --git a/apps/server/src/terminal/NodePtyAdapter.ts b/apps/server/src/terminal/NodePtyAdapter.ts
-index 67cdcecd..a8621acf 100644
+index 67cdcecdd..a8621acf0 100644
 --- a/apps/server/src/terminal/NodePtyAdapter.ts
 +++ b/apps/server/src/terminal/NodePtyAdapter.ts
 @@ -8,6 +8,7 @@ import * as Path from "effect/Path";
@@ -10371,7 +10307,7 @@ index 67cdcecd..a8621acf 100644
 +export { BunTerminalRuntimeRef } from "./BunPtyAdapter.ts";
 diff --git a/apps/server/src/terminal/SubscriberStream.test.ts b/apps/server/src/terminal/SubscriberStream.test.ts
 new file mode 100644
-index 00000000..53672885
+index 000000000..536728851
 --- /dev/null
 +++ b/apps/server/src/terminal/SubscriberStream.test.ts
 @@ -0,0 +1,167 @@
@@ -10544,7 +10480,7 @@ index 00000000..53672885
 +});
 diff --git a/apps/server/src/terminal/SubscriberStream.ts b/apps/server/src/terminal/SubscriberStream.ts
 new file mode 100644
-index 00000000..3f662777
+index 000000000..3f6627778
 --- /dev/null
 +++ b/apps/server/src/terminal/SubscriberStream.ts
 @@ -0,0 +1,144 @@
@@ -10693,7 +10629,7 @@ index 00000000..3f662777
 +  );
 +}
 diff --git a/apps/server/src/vcs/GitVcsDriverCore.test.ts b/apps/server/src/vcs/GitVcsDriverCore.test.ts
-index d42c5b74..2f0957a0 100644
+index d42c5b74e..2f0957a08 100644
 --- a/apps/server/src/vcs/GitVcsDriverCore.test.ts
 +++ b/apps/server/src/vcs/GitVcsDriverCore.test.ts
 @@ -2227,6 +2227,34 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
@@ -10731,583 +10667,8 @@ index d42c5b74..2f0957a0 100644
      it.effect("uses parallel checkout without skipping filters or hooks", () =>
        Effect.gen(function* () {
          const cwd = yield* makeTmpDir();
-diff --git a/apps/server/src/voice/PiVoiceChannels.fd.test.ts b/apps/server/src/voice/PiVoiceChannels.fd.test.ts
-new file mode 100644
-index 00000000..dbc4f6a8
---- /dev/null
-+++ b/apps/server/src/voice/PiVoiceChannels.fd.test.ts
-@@ -0,0 +1,64 @@
-+import * as Stream from "effect/Stream";
-+import { expect, it } from "vite-plus/test";
-+import * as Effect from "effect/Effect";
-+import * as Layer from "effect/Layer";
-+import * as Queue from "effect/Queue";
-+import * as NodeServices from "@effect/platform-node/NodeServices";
-+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
-+import { attachPiVoiceChannel, getVoiceChannel } from "./PiVoiceChannels.ts";
-+
-+it("wires actual anonymous FD3 input and FD4 output to the owning Pi process scope", async () => {
-+  const script =
-+    'const net = require("node:net"); const input = new net.Socket({fd:3,readable:true,writable:false}); const output = new net.Socket({fd:4,readable:false,writable:true}); input.on("data",chunk => output.write(chunk));';
-+  const observed = await Effect.gen(function* () {
-+    const spawn = yield* ChildProcessSpawner.ChildProcessSpawner;
-+    const child = yield* spawn.spawn(
-+      ChildProcess.make(process.execPath, ["-e", script], {
-+        additionalFds: { fd3: { type: "input" }, fd4: { type: "output" } },
-+      }),
-+    );
-+    const channel = yield* attachPiVoiceChannel(child, "thread-test", "session-test");
-+    expect(getVoiceChannel("thread-test")).toBe(channel);
-+    yield* channel.send(0, new TextEncoder().encode('{"type":"ready"}'));
-+    return yield* Queue.take(channel.receive).pipe(Effect.timeout("3 seconds"));
-+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.runPromise);
-+  expect(new TextDecoder().decode(observed.payload)).toBe('{"type":"ready"}');
-+  expect(getVoiceChannel("thread-test")).toBeUndefined();
-+});
-+
-+it("revokes the exact old generation on Pi replacement without affecting the new one", async () => {
-+  await Effect.gen(function* () {
-+    const spawn = yield* ChildProcessSpawner.ChildProcessSpawner;
-+    const make = () =>
-+      spawn.spawn(
-+        ChildProcess.make(process.execPath, ["-e", "setInterval(()=>{},1000)"], {
-+          additionalFds: { fd3: { type: "input" }, fd4: { type: "output" } },
-+        }),
-+      );
-+    const a = yield* attachPiVoiceChannel(yield* make(), "replacement-thread", "one");
-+    const b = yield* attachPiVoiceChannel(yield* make(), "replacement-thread", "two");
-+    expect(getVoiceChannel("replacement-thread")).toBe(b);
-+    expect(a.generation).not.toBe(b.generation);
-+    yield* a.close;
-+    expect(getVoiceChannel("replacement-thread")).toBe(b);
-+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.runPromise);
-+  expect(getVoiceChannel("replacement-thread")).toBeUndefined();
-+});
-+
-+
-+it("channel invalidation delivers private FD EOF while coding process stays running", async () => {
-+  await Effect.gen(function* () {
-+    const spawn = yield* ChildProcessSpawner.ChildProcessSpawner;
-+    const child = yield* spawn.spawn(ChildProcess.make(process.execPath, ["-e", "new (require('net').Socket)({fd:3,readable:true,writable:false}).on('end',()=>process.stdout.write('voice-eof')).resume();setInterval(()=>{},1000);"], {
-+      additionalFds: {fd3:{type:"input"},fd4:{type:"output"}},
-+    }));
-+    const channel = yield* attachPiVoiceChannel(child,"eof-thread","eof-session");
-+    yield* Effect.sleep("30 millis");
-+    yield* channel.close;
-+    const output = yield* Stream.runHead(child.stdout).pipe(Effect.timeout("2 seconds"));
-+    expect(output._tag).toBe("Some");
-+    if (output._tag === "Some") expect(new TextDecoder().decode(output.value)).toBe("voice-eof");
-+    expect(yield* child.isRunning).toBe(true);
-+    expect(getVoiceChannel("eof-thread")).toBeUndefined();
-+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.runPromise);
-+});
-diff --git a/apps/server/src/voice/PiVoiceChannels.ts b/apps/server/src/voice/PiVoiceChannels.ts
-new file mode 100644
-index 00000000..e83f6425
---- /dev/null
-+++ b/apps/server/src/voice/PiVoiceChannels.ts
-@@ -0,0 +1,122 @@
-+import type * as Cause from "effect/Cause";
-+import * as Effect from "effect/Effect";
-+import * as Queue from "effect/Queue";
-+import * as Scope from "effect/Scope";
-+import * as Stream from "effect/Stream";
-+import type { ChildProcessSpawner } from "effect/unstable/process";
-+
-+export type VoiceProvider = "gemini" | "openai";
-+export interface VoiceChannel {
-+  readonly generation: symbol;
-+  readonly threadId: string;
-+  readonly providerSessionId: string;
-+  readonly receive: Queue.Queue<{ readonly kind: number; readonly payload: Uint8Array }>;
-+  readonly send: (kind: number, payload: Uint8Array) => Effect.Effect<void>;
-+  readonly close: Effect.Effect<void>;
-+}
-+
-+const channels = new Map<string, VoiceChannel>();
-+export function getVoiceChannel(threadId: string): VoiceChannel | undefined {
-+  return channels.get(threadId);
-+}
-+const MAX_CONTROL = 16 * 1024;
-+const MAX_PCM = 64 * 1024;
-+export function encodeVoiceFrame(kind: number, payload: Uint8Array): Uint8Array {
-+  if (
-+    (kind !== 0 && kind !== 1 && kind !== 2) ||
-+    payload.length > (kind === 0 ? MAX_CONTROL : MAX_PCM)
-+  )
-+    throw new Error("Invalid voice frame");
-+  const frame = new Uint8Array(payload.length + 5);
-+  frame[0] = kind;
-+  new DataView(frame.buffer).setUint32(1, payload.length, false);
-+  frame.set(payload, 5);
-+  return frame;
-+}
-+export function decodeVoiceFrames(onFrame: (kind: number, payload: Uint8Array) => void) {
-+  let pending = new Uint8Array(0);
-+  return (chunk: Uint8Array) => {
-+    if (pending.length + chunk.length > 2 * MAX_PCM + 5)
-+      throw new Error("Voice pipe buffer exceeded");
-+    const joined = new Uint8Array(pending.length + chunk.length);
-+    joined.set(pending);
-+    joined.set(chunk, pending.length);
-+    let offset = 0;
-+    while (joined.length - offset >= 5) {
-+      const kind = joined[offset]!;
-+      const length = new DataView(joined.buffer, joined.byteOffset + offset).getUint32(1, false);
-+      if ((kind !== 0 && kind !== 2) || length > (kind === 0 ? MAX_CONTROL : MAX_PCM))
-+        throw new Error("Invalid voice pipe frame");
-+      if (joined.length - offset - 5 < length) break;
-+      onFrame(kind, joined.slice(offset + 5, offset + 5 + length));
-+      offset += 5 + length;
-+    }
-+    pending = joined.slice(offset);
-+  };
-+}
-+export const voiceControl = (record: Record<string, unknown>) =>
-+  encodeVoiceFrame(0, new TextEncoder().encode(JSON.stringify(record)));
-+
-+/** Spawn-scoped, bounded, anonymous pipes. Never store a file path or secret in child env. */
-+export const attachPiVoiceChannel = Effect.fn("voice.attachPiVoiceChannel")(function* (
-+  child: ChildProcessSpawner.ChildProcessHandle,
-+  threadId: string,
-+  providerSessionId: string,
-+) {
-+  const scope = yield* Effect.scope;
-+  const outgoing = yield* Queue.dropping<Uint8Array, Cause.Done>(32);
-+  const receive = yield* Queue.dropping<{ kind: number; payload: Uint8Array }>(32);
-+  const generation = Symbol("pi-process-generation");
-+  let closed = false;
-+  const channel: VoiceChannel = {
-+    generation,
-+    threadId,
-+    providerSessionId,
-+    receive,
-+    send: (kind, payload) =>
-+      Effect.sync(() => encodeVoiceFrame(kind, payload)).pipe(
-+        Effect.flatMap((frame) => Queue.offer(outgoing, frame)),
-+        Effect.flatMap((ok) =>
-+          ok ? Effect.void : Effect.die(new Error("Voice output queue overflow")),
-+        ),
-+      ),
-+    close: Effect.gen(function* () {
-+      if (closed) return;
-+      closed = true;
-+      if (channels.get(threadId) === channel) channels.delete(threadId);
-+      // Queue.shutdown interrupts the sink and leaves FD3 open. End normally so
-+      // NodeSink closes ONLY this private pipe; the coding process stays alive.
-+      yield* Queue.clear(outgoing);
-+      yield* Queue.end(outgoing);
-+      yield* Queue.shutdown(receive);
-+    }),
-+  };
-+  const previous = channels.get(threadId);
-+  if (previous) yield* previous.close;
-+  channels.set(threadId, channel);
-+  yield* Scope.addFinalizer(scope, channel.close);
-+  const frames: Array<{ kind: number; payload: Uint8Array }> = [];
-+  const decoder = decodeVoiceFrames((kind, payload) => {
-+    frames.push({ kind, payload });
-+  });
-+  yield* Stream.runForEach(child.getOutputFd(4), (chunk) =>
-+    Effect.gen(function* () {
-+      decoder(chunk);
-+      for (const frame of frames.splice(0)) {
-+        if (closed || !(yield* Queue.offer(receive, frame)))
-+          throw new Error("Voice pipe queue overflow");
-+      }
-+    }),
-+  ).pipe(
-+    Effect.ensuring(channel.close),
-+    Effect.catchCause(() => Effect.void),
-+    Effect.forkIn(scope),
-+  );
-+  yield* Stream.fromQueue(outgoing).pipe(
-+    Stream.run(child.getInputFd(3)),
-+    Effect.ensuring(channel.close),
-+    Effect.catchCause(() => Effect.void),
-+    Effect.forkIn(scope),
-+  );
-+  return channel;
-+});
-diff --git a/apps/server/src/voice/VoiceRoute.test.ts b/apps/server/src/voice/VoiceRoute.test.ts
-new file mode 100644
-index 00000000..6af1a7c2
---- /dev/null
-+++ b/apps/server/src/voice/VoiceRoute.test.ts
-@@ -0,0 +1,159 @@
-+import { describe, expect, it } from "vite-plus/test";
-+import * as Effect from "effect/Effect";
-+import * as Layer from "effect/Layer";
-+import * as Queue from "effect/Queue";
-+import { HttpRouter } from "effect/unstable/http";
-+import {
-+  AuthOrchestrationOperateScope,
-+  AuthOrchestrationReadScope,
-+  AuthSessionId,
-+} from "@t3tools/contracts";
-+import { EnvironmentAuth, ServerAuthMissingCredentialError } from "../auth/EnvironmentAuth.ts";
-+import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
-+import { voiceRouteLayer, stopVoiceChannel } from "./VoiceRoute.ts";
-+import type { VoiceChannel } from "./PiVoiceChannels.ts";
-+import { decodeVoiceFrames, encodeVoiceFrame, voiceControl } from "./PiVoiceChannels.ts";
-+
-+function fixture(
-+  scopes: ReadonlyArray<typeof AuthOrchestrationOperateScope | typeof AuthOrchestrationReadScope>,
-+  authorized = true,
-+) {
-+  let authCalls = 0;
-+  const { handler, dispose } = HttpRouter.toWebHandler(
-+    voiceRouteLayer.pipe(
-+      Layer.provideMerge(
-+        Layer.mergeAll(
-+          Layer.succeed(EnvironmentAuth, {
-+            authenticateWebSocketUpgrade: () => {
-+              authCalls++;
-+              return authorized
-+                ? Effect.succeed({
-+                    sessionId: AuthSessionId.make("owner"),
-+                    subject: "owner",
-+                    method: "bearer-access-token",
-+                    scopes,
-+                  })
-+                : Effect.fail(new ServerAuthMissingCredentialError({}));
-+            },
-+          } as unknown as EnvironmentAuth["Service"]),
-+          Layer.succeed(ThreadManagementService, {
-+            getThreadSnapshot: () => Effect.die("no thread"),
-+          } as unknown as ThreadManagementService["Service"]),
-+        ),
-+      ),
-+    ),
-+    { disableLogger: true },
-+  );
-+  return { handler, dispose, authCalls: () => authCalls };
-+}
-+
-+describe("authenticated voice route", () => {
-+  it("rejects missing, cross-origin and null origins before auth", async () => {
-+    const f = fixture([AuthOrchestrationOperateScope]);
-+    try {
-+      for (const origin of [undefined, "https://evil.test", "null"]) {
-+        const headers = origin ? { origin } : {};
-+        const r = await f.handler(
-+          new Request("http://localhost/api/voice/ws?threadId=thread", { headers }),
-+        );
-+        expect(r.status).toBe(403);
-+      }
-+      expect(
-+        (
-+          await f.handler(
-+            new Request("http://localhost/api/voice/ws?threadId=thread", {
-+              headers: { origin: "http://localhost", "sec-fetch-site": "cross-site" },
-+            }),
-+          )
-+        ).status,
-+      ).toBe(403);
-+      expect(f.authCalls()).toBe(0);
-+    } finally {
-+      await f.dispose();
-+    }
-+  });
-+  it("rejects invalid credentials, read-only scope, malformed and stale thread", async () => {
-+    for (const [scopes, authorized, expected] of [
-+      [[AuthOrchestrationOperateScope], false, 401],
-+      [[AuthOrchestrationReadScope], true, 401],
-+      [[AuthOrchestrationOperateScope], true, 409],
-+    ] as const) {
-+      const f = fixture([...scopes], authorized);
-+      try {
-+        const r = await f.handler(
-+          new Request("http://localhost/api/voice/ws?threadId=thread", {
-+            headers: { origin: "http://localhost" },
-+          }),
-+        );
-+        expect(r.status).toBe(expected);
-+      } finally {
-+        await f.dispose();
-+      }
-+    }
-+    const f = fixture([AuthOrchestrationOperateScope]);
-+    try {
-+      expect(
-+        (
-+          await f.handler(
-+            new Request("http://localhost/api/voice/ws?threadId=../path", {
-+              headers: { origin: "http://localhost" },
-+            }),
-+          )
-+        ).status,
-+      ).toBe(400);
-+    } finally {
-+      await f.dispose();
-+    }
-+  });
-+});
-+
-+it.each(["gemini", "openai"] as const)(
-+  "frames %s start and binary audio without browser tool authority",
-+  (provider) => {
-+    const observed: Array<{ kind: number; payload: Uint8Array }> = [];
-+    const decode = decodeVoiceFrames((kind, payload) => observed.push({ kind, payload }));
-+    const start = voiceControl({ type: "start", provider });
-+    decode(start.subarray(0, 3));
-+    decode(start.subarray(3));
-+    decode(encodeVoiceFrame(2, new Uint8Array([123, 0, 1, 0])));
-+    expect(JSON.parse(new TextDecoder().decode(observed[0]?.payload))).toEqual({
-+      type: "start",
-+      provider,
-+    });
-+    expect(observed[1]?.payload).toEqual(new Uint8Array([123, 0, 1, 0]));
-+    expect(() => encodeVoiceFrame(0, new Uint8Array(16385))).toThrow();
-+  },
-+);
-+
-+it("drains stale audio before teardown acknowledgement and revokes on missing ACK", async () => {
-+  await Effect.gen(function* () {
-+    const receive = yield* Queue.dropping<{ kind: number; payload: Uint8Array }>(8);
-+    let closed = 0;
-+    let stops = 0;
-+    const channel = {
-+      receive,
-+      send: () =>
-+        Effect.sync(() => {
-+          stops++;
-+        }).pipe(
-+          Effect.andThen(Queue.offer(receive, { kind: 2, payload: new Uint8Array([1, 0]) })),
-+          Effect.andThen(
-+            Queue.offer(receive, {
-+              kind: 0,
-+              payload: new TextEncoder().encode('{"type":"stopped","stopped":true}'),
-+            }),
-+          ),
-+          Effect.asVoid,
-+        ),
-+      close: Effect.sync(() => {
-+        closed++;
-+      }),
-+    } as unknown as VoiceChannel;
-+    expect(yield* stopVoiceChannel(channel, "100 millis")).toBe(true);
-+    expect(stops).toBe(1);
-+    expect(closed).toBe(0);
-+    const missing = { ...channel, send: () => Effect.void } as VoiceChannel;
-+    expect(yield* stopVoiceChannel(missing, "20 millis")).toBe(false);
-+    expect(closed).toBe(1);
-+  }).pipe(Effect.runPromise);
-+});
-diff --git a/apps/server/src/voice/VoiceRoute.ts b/apps/server/src/voice/VoiceRoute.ts
-new file mode 100644
-index 00000000..3cf62079
---- /dev/null
-+++ b/apps/server/src/voice/VoiceRoute.ts
-@@ -0,0 +1,206 @@
-+import * as Effect from "effect/Effect";
-+import * as Queue from "effect/Queue";
-+import * as Duration from "effect/Duration";
-+import * as Schema from "effect/Schema";
-+import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
-+import * as EnvironmentAuth from "../auth/EnvironmentAuth.ts";
-+import { AuthOrchestrationOperateScope, ThreadId } from "@t3tools/contracts";
-+import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
-+import { getVoiceChannel, type VoiceChannel } from "./PiVoiceChannels.ts";
-+
-+export const VOICE_ROUTE = "/api/voice/ws";
-+const encoder = new TextEncoder();
-+const decoder = new TextDecoder("utf-8", { fatal: true });
-+const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
-+const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
-+const clients = new Map<string, symbol>();
-+
-+function sameOrigin(request: HttpServerRequest.HttpServerRequest): boolean {
-+  const url = HttpServerRequest.toURL(request);
-+  if (url._tag !== "Some") return false;
-+  const raw = request.headers.origin;
-+  if (!raw || raw === "null" || raw !== url.value.origin) return false;
-+  const site = request.headers["sec-fetch-site"];
-+  return site === undefined || site === "same-origin" || site === "none";
-+}
-+
-+function readControl(payload: Uint8Array): Record<string, unknown> | undefined {
-+  if (payload.length > 16 * 1024) return undefined;
-+  try {
-+    const value: unknown = decodeJson(decoder.decode(payload));
-+    return typeof value === "object" && value !== null && !Array.isArray(value)
-+      ? (value as Record<string, unknown>)
-+      : undefined;
-+  } catch {
-+    return undefined;
-+  }
-+}
-+
-+/** ACK is issued only after the root owner has awaited provider teardown. */
-+export const stopVoiceChannel = (channel: VoiceChannel, timeout: Duration.Input = "10 seconds") =>
-+  Effect.gen(function* () {
-+    let safe = false;
-+    try {
-+      yield* channel.send(0, encoder.encode(encodeJson({ type: "stop" })));
-+      safe = yield* Effect.gen(function* () {
-+        while (true) {
-+          const frame = yield* Queue.take(channel.receive);
-+          if (frame.kind !== 0) continue;
-+          const control = readControl(frame.payload);
-+          if (control?.type === "stopped") return control.stopped === true;
-+        }
-+      }).pipe(
-+        Effect.timeout(timeout),
-+        Effect.catchCause(() => Effect.succeed(false)),
-+      );
-+    } catch {
-+      safe = false;
-+    }
-+    if (!safe) yield* channel.close.pipe(Effect.catchCause(() => Effect.void));
-+    return safe;
-+  });
-+
-+export const voiceRouteHandler = Effect.fn("voice.route")(function* () {
-+  const request = yield* HttpServerRequest.HttpServerRequest;
-+  const url = HttpServerRequest.toURL(request);
-+  if (url._tag !== "Some" || !sameOrigin(request))
-+    return HttpServerResponse.text("Forbidden", { status: 403 });
-+  const auth = yield* EnvironmentAuth.EnvironmentAuth;
-+  const principal = yield* auth.authenticateWebSocketUpgrade(request).pipe(Effect.option);
-+  if (
-+    principal._tag !== "Some" ||
-+    !principal.value.scopes.includes(AuthOrchestrationOperateScope)
-+  ) {
-+    return HttpServerResponse.text("Unauthorized", { status: 401 });
-+  }
-+  const threadId = url.value.searchParams.get("threadId");
-+  if (!threadId || threadId.length > 128 || !/^[a-zA-Z0-9_-]+$/.test(threadId)) {
-+    return HttpServerResponse.text("Invalid thread", { status: 400 });
-+  }
-+  const channel = getVoiceChannel(threadId);
-+  if (!channel || clients.has(threadId))
-+    return HttpServerResponse.text("No active owner", { status: 409 });
-+  const threadManagement = yield* ThreadManagementService.ThreadManagementService;
-+  const ownsThread = threadManagement.getThreadSnapshot(ThreadId.make(threadId)).pipe(
-+    Effect.map((snapshot) => {
-+      const { thread, providerThreads } = snapshot.projection;
-+      return (
-+        thread.archivedAt === null &&
-+        providerThreads.some(
-+          (providerThread) =>
-+            providerThread.id === thread.activeProviderThreadId &&
-+            providerThread.providerSessionId === channel.providerSessionId &&
-+            providerThread.appThreadId === thread.id,
-+        )
-+      );
-+    }),
-+    Effect.catchCause(() => Effect.succeed(false)),
-+  );
-+  if (!(yield* ownsThread)) return HttpServerResponse.text("Thread owner changed", { status: 409 });
-+  const generation = channel.generation;
-+  clients.set(threadId, generation);
-+  const active = () =>
-+    getVoiceChannel(threadId) === channel && clients.get(threadId) === generation;
-+  let finalized = false;
-+  let notifyStopped: ((safe: boolean) => Effect.Effect<void>) | undefined;
-+  const teardown = Effect.gen(function* () {
-+    if (finalized) return;
-+    finalized = true;
-+    let safe = false;
-+    if (active()) {
-+      // Only release the owner claim after root has stopped the provider.
-+      safe = yield* stopVoiceChannel(channel);
-+      if (notifyStopped) yield* notifyStopped(safe).pipe(Effect.catchCause(() => Effect.void));
-+      clients.delete(threadId);
-+    } else if (clients.get(threadId) === generation) {
-+      // Old Pi process generation was replaced. Never stop the new owner.
-+      clients.delete(threadId);
-+    }
-+  });
-+  return yield* Effect.gen(function* () {
-+    const socket = yield* request.upgrade;
-+    if (!active() || !(yield* ownsThread)) return HttpServerResponse.empty();
-+    yield* Effect.scoped(
-+      Effect.gen(function* () {
-+        const writer = yield* socket.writer;
-+        notifyStopped = (safe) =>
-+          writer
-+            .writeAll([encodeJson({ type: "stopped", stopped: safe })])
-+            .pipe(Effect.catchCause(() => Effect.void));
-+        const { pull } = yield* socket.reader;
-+        const browserToRoot = Effect.gen(function* () {
-+          let started = false;
-+          while (active()) {
-+            const messages = yield* pull;
-+            for (const message of messages) {
-+              const chunk = typeof message === "string" ? encoder.encode(message) : message;
-+              if (chunk.length > 64 * 1024) return;
-+              // Effect Socket.reader yields Uint8Array for WS TEXT as well as binary.
-+              // Our explicit 0x01 audio prefix keeps JSON controls unambiguous.
-+              if (chunk[0] === 123) {
-+                const control = readControl(chunk);
-+                if (!control) return;
-+                if (!started) {
-+                  if (
-+                    control.type !== "start" ||
-+                    (control.provider !== "gemini" && control.provider !== "openai")
-+                  )
-+                    return;
-+                  started = true;
-+                  yield* channel.send(
-+                    0,
-+                    encoder.encode(encodeJson({ type: "start", provider: control.provider })),
-+                  );
-+                } else if (control.type === "stop") {
-+                  return;
-+                } else if (control.type === "mute" && typeof control.muted === "boolean") {
-+                  yield* channel.send(
-+                    0,
-+                    encoder.encode(encodeJson({ type: "mute", muted: control.muted })),
-+                  );
-+                } else return; // Provider VAD handles interruption; no inert interrupt control.
-+              } else if (
-+                started &&
-+                chunk[0] === 1 &&
-+                chunk.length > 1 &&
-+                (chunk.length - 1) % 2 === 0 &&
-+                chunk.length <= 3201
-+              ) {
-+                yield* channel.send(1, chunk.subarray(1));
-+              } else return;
-+            }
-+          }
-+        });
-+        const rootToBrowser = Effect.gen(function* () {
-+          while (active()) {
-+            const frame = yield* Queue.take(channel.receive);
-+            if (!active()) break;
-+            if (frame.kind === 0) {
-+              const control = readControl(frame.payload);
-+              if (
-+                !control ||
-+                !["ready", "started", "error", "status", "interrupt"].includes(String(control.type))
-+              )
-+                break;
-+              yield* writer.writeAll([decoder.decode(frame.payload)]);
-+              if (control.type === "status" && control.state === "closed") break;
-+            } else if (frame.kind === 2) yield* writer.writeAll([frame.payload]);
-+            else break;
-+          }
-+        });
-+        const ownerWatch = Effect.gen(function* () {
-+          while (active()) {
-+            yield* Effect.sleep("1 seconds");
-+            if (!(yield* ownsThread)) break;
-+          }
-+        });
-+        yield* Effect.raceFirst(Effect.raceFirst(browserToRoot, rootToBrowser), ownerWatch).pipe(
-+          Effect.catchCause(() => Effect.void),
-+        );
-+      }).pipe(Effect.ensuring(teardown)),
-+    );
-+    return HttpServerResponse.empty();
-+  }).pipe(Effect.ensuring(teardown));
-+});
-+
-+export const voiceRouteLayer = HttpRouter.add("GET", VOICE_ROUTE, voiceRouteHandler);
 diff --git a/apps/server/src/ws.ts b/apps/server/src/ws.ts
-index 176ef3bd..629e3a84 100644
+index 176ef3bd5..629e3a84c 100644
 --- a/apps/server/src/ws.ts
 +++ b/apps/server/src/ws.ts
 @@ -174,6 +174,7 @@ import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -11441,23 +10802,10 @@ index 176ef3bd..629e3a84 100644
              Effect.forkScoped,
            );
 diff --git a/apps/web/src/components/ChatView.tsx b/apps/web/src/components/ChatView.tsx
-index 96c366cc..214301f4 100644
+index 96c366ccd..585c8f7b4 100644
 --- a/apps/web/src/components/ChatView.tsx
 +++ b/apps/web/src/components/ChatView.tsx
-@@ -1,3 +1,4 @@
-+import { VoiceControls } from "./VoiceControls";
- import { usageLimitRecoveryBannerItem } from "./chat/UsageLimitRecoveryBanner";
- import {
-   resolveBackgroundDraftWorkspaceOptions,
-@@ -10568,6 +10569,7 @@ export default function ChatView(props: ChatViewProps) {
-                       </div>
-                     </div>
-                   ) : null}
-+                  {activeThreadId && !isLocalDraftThread && selectedProvider === "pi" ? <VoiceControls key={activeThreadId} threadId={activeThreadId} /> : null}
-                   <div
-                     ref={draftHeroTransition.composerAnchorRef}
-                     className="relative z-10"
-@@ -10676,6 +10678,7 @@ export default function ChatView(props: ChatViewProps) {
+@@ -10676,6 +10676,7 @@ export default function ChatView(props: ChatViewProps) {
                              activeProjectDefaultModelSelection={activeProjectDefaultModelSelection}
                              activeThreadModelSelection={activeThread?.modelSelection}
                              activeContextWindow={activeContextWindow}
@@ -11466,7 +10814,7 @@ index 96c366cc..214301f4 100644
                              activeTaskSteps={activeComposerTaskSteps}
                              compactThreadUnavailable={compactThreadUnavailable}
 diff --git a/apps/web/src/components/ThreadRouteView.tsx b/apps/web/src/components/ThreadRouteView.tsx
-index 89390422..059b486f 100644
+index 89390422f..059b486f2 100644
 --- a/apps/web/src/components/ThreadRouteView.tsx
 +++ b/apps/web/src/components/ThreadRouteView.tsx
 @@ -54,6 +54,11 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
@@ -11518,250 +10866,8 @@ index 89390422..059b486f 100644
      view = (
        <ChatView
          {...(nextChatViewKey ? { key: nextChatViewKey.key } : {})}
-diff --git a/apps/web/src/components/VoiceControls.test.tsx b/apps/web/src/components/VoiceControls.test.tsx
-new file mode 100644
-index 00000000..e61a788a
---- /dev/null
-+++ b/apps/web/src/components/VoiceControls.test.tsx
-@@ -0,0 +1,50 @@
-+import { act } from "react";
-+import { create, type ReactTestRenderer } from "react-test-renderer";
-+import { expect, test, vi } from "vite-plus/test";
-+import { VoiceControls } from "./VoiceControls";
-+
-+const fixture = vi.hoisted(() => ({ acquisitions: 0, releases: 0, failRelease: false }));
-+vi.mock("../live/device-adapters", () => ({
-+  browserMediaSource: () => ({ acquire16k: async () => {
-+    fixture.acquisitions++;
-+    return { onPcm16: () => () => {}, stop: async () => {
-+      if (fixture.failRelease) throw new Error("microphone remains open");
-+      fixture.releases++;
-+    } };
-+  } }),
-+  browserTransportFactory: () => ({ connect: async () => ({
-+    queuedBytes: 0, onMessage: () => () => {}, send16k() {}, sendControl() {}, close: async () => {},
-+  }) }),
-+  browserAudioOutput: () => ({ queuedBytes: 0, enqueue24k() {}, clear() {}, stop: async () => {} }),
-+}));
-+
-+// Exercise the shipped React owner across remounts; the microphone must not be
-+// reacquired until a failed asynchronous release is successfully retried.
-+test("provider/thread switch keeps failed owner and offers Retry cleanup", async () => {
-+  let tree!: ReactTestRenderer;
-+  await act(async () => { tree = create(<VoiceControls threadId="one" />); });
-+  const click = async (label: string) => {
-+    const button = tree.root.findAllByType("button").find((node) => node.children.includes(label));
-+    expect(button).toBeDefined();
-+    await act(async () => { await button!.props.onClick(); });
-+  };
-+  await click("Start voice");
-+  expect(fixture.acquisitions).toBe(1);
-+  fixture.failRelease = true;
-+  await click("End voice");
-+  expect(tree.root.findAllByType("button").some((node) => node.children.includes("Retry cleanup"))).toBe(true);
-+  await act(async () => { tree.update(<VoiceControls threadId="two" />); });
-+  expect(fixture.acquisitions).toBe(1);
-+  await act(async () => { tree.root.findByType("select").props.onChange({ target: { value: "openai" } }); });
-+  expect(tree.root.findAllByType("button").find((node) => node.children.includes("Start voice"))?.props.disabled).toBe(true);
-+  await click("Retry cleanup");
-+  expect(fixture.acquisitions).toBe(1);
-+  fixture.failRelease = false;
-+  await click("Retry cleanup");
-+  await click("Start voice");
-+  expect(fixture.acquisitions).toBe(2);
-+  await act(async () => { tree.root.findByType("select").props.onChange({ target: { value: "openai" } }); });
-+  expect(fixture.releases).toBeGreaterThan(0);
-+  expect(fixture.acquisitions).toBe(2);
-+  await act(async () => { tree.unmount(); });
-+});
-diff --git a/apps/web/src/components/VoiceControls.tsx b/apps/web/src/components/VoiceControls.tsx
-new file mode 100644
-index 00000000..e076add3
---- /dev/null
-+++ b/apps/web/src/components/VoiceControls.tsx
-@@ -0,0 +1,180 @@
-+import { useEffect, useRef, useState } from "react";
-+import { BrowserLiveController, type LiveState } from "../live/controller";
-+import {
-+  browserAudioOutput,
-+  browserMediaSource,
-+  browserTransportFactory,
-+} from "../live/device-adapters";
-+
-+type Provider = "gemini" | "openai";
-+
-+/** A new session component is mounted for each selected thread and provider. */
-+export function VoiceControls({ threadId }: { threadId: string }) {
-+  const [provider, setProvider] = useState<Provider>("gemini");
-+  return (
-+    <div
-+      className="flex flex-wrap items-center gap-2 px-2 py-1 text-xs"
-+      aria-label="Voice controls"
-+    >
-+      <label htmlFor="voice-provider">Voice provider</label>
-+      <select
-+        id="voice-provider"
-+        className="rounded border border-border bg-background px-2 py-1 text-foreground"
-+        value={provider}
-+        onChange={(event) => setProvider(event.target.value as Provider)}
-+      >
-+        <option value="gemini">Gemini</option>
-+        <option value="openai">OpenAI</option>
-+      </select>
-+      <VoiceSession key={threadId + ":" + provider} threadId={threadId} provider={provider} />
-+    </div>
-+  );
-+}
-+
-+// One voice device owner across thread/provider remounts. Failed cleanup retains
-+// that owner, so a new component cannot acquire a second microphone behind it.
-+let owner: BrowserLiveController | undefined;
-+let releaseTask: Promise<void> | undefined;
-+function releaseOwner(): Promise<void> {
-+  if (releaseTask) return releaseTask;
-+  const current = owner;
-+  if (!current) return Promise.resolve();
-+  const task = current.end().then(() => {
-+    if (owner === current) owner = undefined;
-+  });
-+  releaseTask = task;
-+  void task
-+    .finally(() => {
-+      if (releaseTask === task) releaseTask = undefined;
-+    })
-+    .catch(() => {});
-+  return task;
-+}
-+
-+function VoiceSession({ threadId, provider }: { threadId: string; provider: Provider }) {
-+  const [controller] = useState(
-+    () =>
-+      new BrowserLiveController(
-+        browserMediaSource(),
-+        browserTransportFactory("/api/voice/ws?threadId=" + encodeURIComponent(threadId), provider),
-+        browserAudioOutput,
-+      ),
-+  );
-+  const [state, setState] = useState<LiveState>(controller.state);
-+  const [transition, setTransition] = useState<"start" | "stop" | undefined>();
-+  const [error, setError] = useState<string>();
-+  const mounted = useRef(false);
-+  const operation = useRef(0);
-+  const stop = async () => {
-+    const id = ++operation.current;
-+    setTransition("stop");
-+    setError(undefined);
-+    try {
-+      await releaseOwner();
-+    } catch {
-+      if (mounted.current) setError("Voice cleanup failed. Retry cleanup before starting again.");
-+    } finally {
-+      if (mounted.current && operation.current === id) setTransition(undefined);
-+    }
-+  };
-+  useEffect(() => {
-+    mounted.current = true;
-+    const unsubscribe = controller.subscribe(setState);
-+    if (owner && owner !== controller) void stop();
-+    return () => {
-+      mounted.current = false;
-+      unsubscribe();
-+      // Rejection is retained in owner/releaseTask for the next mounted controls
-+      // to report and retry; never forget a failed device/provider release.
-+      if (owner === controller) void releaseOwner().catch(() => {});
-+    };
-+  }, [controller]);
-+  const start = async () => {
-+    const id = ++operation.current;
-+    setTransition("start");
-+    setError(undefined);
-+    try {
-+      if (owner && owner !== controller) await releaseOwner();
-+      if (!mounted.current) return;
-+      owner = controller;
-+      await controller.start();
-+    } catch {
-+      if (mounted.current)
-+        setError("Voice could not start. End voice or retry cleanup before starting again.");
-+    } finally {
-+      if (mounted.current && operation.current === id) setTransition(undefined);
-+    }
-+  };
-+  const active = ["requesting-mic", "connecting", "ready", "muted"].includes(state.phase);
-+  const needsCleanup = owner === controller && state.phase === "error";
-+  const blocked =
-+    transition !== undefined ||
-+    error !== undefined ||
-+    needsCleanup ||
-+    (!!owner && owner !== controller);
-+  return (
-+    <>
-+      {!active && (
-+        <button
-+          type="button"
-+          className="rounded border border-border px-2 py-1"
-+          disabled={blocked}
-+          onClick={() => {
-+            void start();
-+          }}
-+        >
-+          Start voice
-+        </button>
-+      )}
-+      {(state.phase === "ready" || state.phase === "muted") && (
-+        <button
-+          type="button"
-+          className="rounded border border-border px-2 py-1"
-+          disabled={transition === "stop"}
-+          onClick={() => controller.setMuted(state.phase !== "muted")}
-+        >
-+          {state.phase === "muted" ? "Unmute" : "Mute"}
-+        </button>
-+      )}
-+      {active && (
-+        <button
-+          type="button"
-+          className="rounded border border-border px-2 py-1"
-+          disabled={transition === "stop"}
-+          onClick={() => {
-+            void stop();
-+          }}
-+        >
-+          End voice
-+        </button>
-+      )}
-+      {(error || needsCleanup) && (
-+        <button
-+          type="button"
-+          className="rounded border border-border px-2 py-1"
-+          disabled={transition === "stop"}
-+          onClick={() => {
-+            void stop();
-+          }}
-+        >
-+          Retry cleanup
-+        </button>
-+      )}
-+      <span role="status" aria-live="polite">
-+        {transition === "stop"
-+          ? "Stopping voice…"
-+          : (error ??
-+            state.reason ??
-+            (state.phase === "requesting-mic"
-+              ? "Requesting microphone…"
-+              : state.phase === "connecting"
-+                ? "Connecting voice…"
-+                : state.phase === "muted"
-+                  ? "Voice muted"
-+                  : state.phase === "ready"
-+                    ? "Voice connected"
-+                    : ""))}
-+      </span>
-+    </>
-+  );
-+}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index 54689eee..93851b11 100644
+index 54689eee2..93851b117 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
 @@ -1,5 +1,6 @@
@@ -11838,7 +10944,7 @@ index 54689eee..93851b11 100644
                      pendingAction={pendingPrimaryAction}
                      isRunning={phase === "running"}
 diff --git a/apps/web/src/components/chat/DraftHeroHeadline.tsx b/apps/web/src/components/chat/DraftHeroHeadline.tsx
-index d542cd6a..407cfb9b 100644
+index d542cd6a8..407cfb9b5 100644
 --- a/apps/web/src/components/chat/DraftHeroHeadline.tsx
 +++ b/apps/web/src/components/chat/DraftHeroHeadline.tsx
 @@ -177,10 +177,16 @@ export function DraftHeroHeadline({
@@ -11863,7 +10969,7 @@ index d542cd6a..407cfb9b 100644
                  setModelSelection(draftId, defaultModelSelection, {
                    replaceOptions: true,
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
-index e00b01b1..c4fa1f94 100644
+index e00b01b16..c4fa1f94e 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.test.ts
 @@ -1,4 +1,4 @@
@@ -11985,7 +11091,7 @@ index e00b01b1..c4fa1f94 100644
 +  });
 +});
 diff --git a/apps/web/src/components/chat/MessagesTimeline.logic.ts b/apps/web/src/components/chat/MessagesTimeline.logic.ts
-index 80f14656..5c9bd32c 100644
+index 80f146569..5c9bd32c8 100644
 --- a/apps/web/src/components/chat/MessagesTimeline.logic.ts
 +++ b/apps/web/src/components/chat/MessagesTimeline.logic.ts
 @@ -836,6 +836,7 @@ function deriveTurnFolds(input: {
@@ -12024,7 +11130,7 @@ index 80f14656..5c9bd32c 100644
            collapsedSupersededEntryIds.has(nextEntry.id) ||
 diff --git a/apps/web/src/components/chat/nativeUsageCost.logic.test.ts b/apps/web/src/components/chat/nativeUsageCost.logic.test.ts
 new file mode 100644
-index 00000000..a83f7844
+index 000000000..a83f7844b
 --- /dev/null
 +++ b/apps/web/src/components/chat/nativeUsageCost.logic.test.ts
 @@ -0,0 +1,69 @@
@@ -12099,7 +11205,7 @@ index 00000000..a83f7844
 +});
 diff --git a/apps/web/src/components/chat/nativeUsageCost.logic.ts b/apps/web/src/components/chat/nativeUsageCost.logic.ts
 new file mode 100644
-index 00000000..d3855ebb
+index 000000000..d3855ebb6
 --- /dev/null
 +++ b/apps/web/src/components/chat/nativeUsageCost.logic.ts
 @@ -0,0 +1,6 @@
@@ -12110,7 +11216,7 @@ index 00000000..d3855ebb
 +  return usage !== null && (usage.own.turns > 0 || usage.subtree.turns > 0);
 +}
 diff --git a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx b/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
-index f19e4159..bc569dd3 100644
+index f19e41599..bc569dd38 100644
 --- a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
 +++ b/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
 @@ -152,6 +152,7 @@ import {
@@ -12131,7 +11237,7 @@ index f19e4159..bc569dd3 100644
      store.setReviewComments(
        target,
 diff --git a/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts b/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
-index 978ae695..47d98c1d 100644
+index 978ae6958..47d98c1d3 100644
 --- a/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
 +++ b/apps/web/src/components/pullRequest/pullRequestDetail.logic.test.ts
 @@ -30,6 +30,8 @@ import {
@@ -12180,7 +11286,7 @@ index 978ae695..47d98c1d 100644
    const detail = (overrides: Record<string, unknown> = {}) =>
      ({
 diff --git a/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts b/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
-index b8d2d897..aa0afa5d 100644
+index b8d2d897a..aa0afa5de 100644
 --- a/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
 +++ b/apps/web/src/components/pullRequest/pullRequestDetail.logic.ts
 @@ -793,6 +793,25 @@ export function stripPullRequestHandoffReferences(
@@ -12210,7 +11316,7 @@ index b8d2d897..aa0afa5d 100644
   * The prompt the composer should hold once a hand-off lands there.
   *
 diff --git a/apps/web/src/components/settings/providerDriverMeta.ts b/apps/web/src/components/settings/providerDriverMeta.ts
-index 53908510..cb547ee0 100644
+index 53908510c..cb547ee06 100644
 --- a/apps/web/src/components/settings/providerDriverMeta.ts
 +++ b/apps/web/src/components/settings/providerDriverMeta.ts
 @@ -85,8 +85,7 @@ const PROVIDER_CLIENT_DEFINITIONS: readonly ProviderClientDefinition[] = [
@@ -12224,7 +11330,7 @@ index 53908510..cb547ee0 100644
    },
    {
 diff --git a/apps/web/src/composerDraftStore.test.ts b/apps/web/src/composerDraftStore.test.ts
-index df7969a8..d803b127 100644
+index df7969a86..d803b1279 100644
 --- a/apps/web/src/composerDraftStore.test.ts
 +++ b/apps/web/src/composerDraftStore.test.ts
 @@ -2448,6 +2448,74 @@ describe("composerDraftStore sticky composer settings", () => {
@@ -12303,7 +11409,7 @@ index df7969a8..d803b127 100644
      const store = useComposerDraftStore.getState();
  
 diff --git a/apps/web/src/hooks/useHandleNewThread.ts b/apps/web/src/hooks/useHandleNewThread.ts
-index 3b2becd4..6a680cd3 100644
+index 3b2becd43..6a680cd37 100644
 --- a/apps/web/src/hooks/useHandleNewThread.ts
 +++ b/apps/web/src/hooks/useHandleNewThread.ts
 @@ -94,10 +94,11 @@ export function useNewThreadHandler() {
@@ -12355,7 +11461,7 @@ index 3b2becd4..6a680cd3 100644
          }
          await router.navigate({
 diff --git a/apps/web/src/lib/chatThreadActions.test.ts b/apps/web/src/lib/chatThreadActions.test.ts
-index c145404a..b3d85796 100644
+index c145404a7..b3d857962 100644
 --- a/apps/web/src/lib/chatThreadActions.test.ts
 +++ b/apps/web/src/lib/chatThreadActions.test.ts
 @@ -58,18 +58,48 @@ describe("chatThreadActions", () => {
@@ -12418,7 +11524,7 @@ index c145404a..b3d85796 100644
          destinationDraftId: "draft-b",
        }),
 diff --git a/apps/web/src/lib/chatThreadActions.ts b/apps/web/src/lib/chatThreadActions.ts
-index c14a26d0..fc7717cc 100644
+index c14a26d03..fc7717cc7 100644
 --- a/apps/web/src/lib/chatThreadActions.ts
 +++ b/apps/web/src/lib/chatThreadActions.ts
 @@ -46,14 +46,21 @@ export function resolveNewDraftStartFromOrigin(input: {
@@ -12448,7 +11554,7 @@ index c14a26d0..fc7717cc 100644
  
  export function hasExplicitComposerModelSelection(
 diff --git a/apps/web/src/lib/syntaxHighlighting.test.ts b/apps/web/src/lib/syntaxHighlighting.test.ts
-index 1f7ce756..7c27f589 100644
+index 1f7ce756b..7c27f5898 100644
 --- a/apps/web/src/lib/syntaxHighlighting.test.ts
 +++ b/apps/web/src/lib/syntaxHighlighting.test.ts
 @@ -9,10 +9,24 @@ vi.mock("@pierre/diffs", () => ({
@@ -12542,7 +11648,7 @@ index 1f7ce756..7c27f589 100644
 +  await expect(reloaded).resolves.toBe(highlighter);
  });
 diff --git a/apps/web/src/lib/syntaxHighlighting.ts b/apps/web/src/lib/syntaxHighlighting.ts
-index 3be008ac..c6db4df1 100644
+index 3be008ac2..c6db4df17 100644
 --- a/apps/web/src/lib/syntaxHighlighting.ts
 +++ b/apps/web/src/lib/syntaxHighlighting.ts
 @@ -15,25 +15,63 @@ import { resolveDiffThemeName } from "./diffRendering";
@@ -12613,1304 +11719,8 @@ index 3be008ac..c6db4df1 100644
 +  cacheHighlighterPromise(language, promise);
    return promise;
  }
-diff --git a/apps/web/src/live/controller.test.ts b/apps/web/src/live/controller.test.ts
-new file mode 100644
-index 00000000..496b599c
---- /dev/null
-+++ b/apps/web/src/live/controller.test.ts
-@@ -0,0 +1,609 @@
-+import { describe, expect, test } from "vite-plus/test";
-+import { BrowserLiveController, type Capture, type Transport, type TransportMessage } from "./controller";
-+function deferred<T>() {
-+  let resolve!: (x: T) => void, reject!: (e: Error) => void;
-+  const promise = new Promise<T>((a, b) => {
-+    resolve = a;
-+    reject = b;
-+  });
-+  return { promise, resolve, reject };
-+}
-+function rig() {
-+  const mic = deferred<Capture>(),
-+    socket = deferred<Transport>();
-+  let frame: (x: Uint8Array) => void = () => {},
-+    message: (x: TransportMessage) => void = () => {};
-+  const calls = {
-+    tracks: 0,
-+    closes: 0,
-+    stops: 0,
-+    clears: 0,
-+    sent: [] as Uint8Array[],
-+    played: [] as Uint8Array[],
-+    inputQueued: 0,
-+    outputQueued: 0,
-+  };
-+  const capture: Capture = {
-+    onPcm16(cb) {
-+      frame = cb;
-+      return () => {
-+        frame = () => {};
-+      };
-+    },
-+    stop() {
-+      calls.tracks++;
-+    },
-+  };
-+  const transport: Transport = {
-+    get queuedBytes() {
-+      return calls.inputQueued;
-+    },
-+    onMessage(cb) {
-+      message = cb;
-+      return () => {
-+        message = () => {};
-+      };
-+    },
-+    sendControl() {},
-+    send16k(x) {
-+      calls.sent.push(x.slice());
-+    },
-+    close() {
-+      calls.closes++;
-+    },
-+  };
-+  const controller = new BrowserLiveController(
-+    { acquire16k: () => mic.promise },
-+    { connect: () => socket.promise },
-+    () => ({
-+      get queuedBytes() {
-+        return calls.outputQueued;
-+      },
-+      enqueue24k(x) {
-+        calls.played.push(x.slice());
-+      },
-+      clear() {
-+        calls.clears++;
-+      },
-+      stop() {
-+        calls.stops++;
-+      },
-+    }),
-+  );
-+  const tick = async () => {
-+    await Promise.resolve();
-+    await Promise.resolve();
-+  };
-+  const connect = async () => {
-+    const starting = controller.start();
-+    mic.resolve(capture);
-+    await tick();
-+    socket.resolve(transport);
-+    await starting;
-+  };
-+  return {
-+    mic,
-+    socket,
-+    capture,
-+    transport,
-+    calls,
-+    controller,
-+    tick,
-+    connect,
-+    frame: (x: Uint8Array) => frame(x),
-+    message: (x: TransportMessage) => message(x),
-+  };
-+}
-+const pcm = new Uint8Array([1, 0]);
-+describe("browser live lifecycle (offline)", () => {
-+  test("permission failure is visible; retry reaches ready; mute and interruption control frames", async () => {
-+    const r = rig();
-+    const states: string[] = [];
-+    r.controller.subscribe((x) => states.push(x.phase));
-+    const first = r.controller.start();
-+    r.mic.reject(new Error("permission denied"));
-+    await first;
-+    expect(r.controller.state).toEqual({ phase: "error", reason: "permission denied" });
-+    // A fresh rig tests successful path; the same controller retry is tested below with a sequential media source.
-+    const q = rig();
-+    await q.connect();
-+    expect(q.controller.state.phase).toBe("connecting");
-+    q.frame(pcm);
-+    expect(q.calls.sent).toHaveLength(0);
-+    q.message({ type: "ready" });
-+    q.frame(pcm);
-+    expect(q.calls.sent).toHaveLength(1);
-+    q.controller.setMuted(true);
-+    q.frame(pcm);
-+    expect(q.calls.sent).toHaveLength(1);
-+    q.message({ type: "audio", pcm16: pcm });
-+    expect(q.calls.played).toHaveLength(1);
-+    q.message({ type: "interrupted" });
-+    expect(q.calls.clears).toBe(1);
-+    expect(q.controller.state.phase).toBe("muted");
-+    q.controller.setMuted(false);
-+    q.frame(pcm);
-+    expect(q.calls.sent).toHaveLength(2);
-+    q.message({ type: "ready" });
-+    q.frame(pcm);
-+    expect(q.calls.sent).toHaveLength(3);
-+    await q.controller.end();
-+    expect(states).toContain("requesting-mic");
-+  });
-+  test("end during mic acquisition stops late track without opening socket", async () => {
-+    const r = rig();
-+    const start = r.controller.start();
-+    r.controller.end();
-+    r.mic.resolve(r.capture);
-+    await start;
-+    expect(r.calls.tracks).toBe(1);
-+    await r.controller.end();
-+    expect(r.controller.state.phase).toBe("ended");
-+    expect(r.calls.closes).toBe(0);
-+  });
-+  test("end during socket connection closes late socket and all owned resources", async () => {
-+    const r = rig();
-+    const start = r.controller.start();
-+    r.mic.resolve(r.capture);
-+    await r.tick();
-+    r.controller.end();
-+    r.socket.resolve(r.transport);
-+    await start;
-+    await r.controller.end();
-+    expect(r.calls).toMatchObject({ tracks: 1, stops: 1, closes: 1 });
-+  });
-+  test("disconnect, queue overflow and malformed frames fail visibly and clean up", async () => {
-+    const r = rig();
-+    await r.connect();
-+    r.message({ type: "ready" });
-+    r.calls.inputQueued = 262144;
-+    r.frame(pcm);
-+    expect(r.controller.state).toEqual({ phase: "error", reason: "input queue full" });
-+    await r.controller.end();
-+    expect(r.calls).toMatchObject({ tracks: 1, stops: 1, closes: 1 });
-+    const q = rig();
-+    await q.connect();
-+    q.message({ type: "ready" });
-+    q.calls.outputQueued = 524288;
-+    q.message({ type: "audio", pcm16: pcm });
-+    expect(q.controller.state.reason).toBe("output buffer full");
-+    const x = rig();
-+    await x.connect();
-+    x.message({ type: "closed", reason: "offline" });
-+    expect(x.controller.state.reason).toBe("offline");
-+    await x.controller.dispose();
-+    expect(x.calls.closes).toBe(1);
-+    const y = rig();
-+    await y.connect();
-+    y.message({ type: "ready" });
-+    y.frame(new Uint8Array(3));
-+    expect(y.controller.state.reason).toBe("invalid PCM16 frame");
-+  });
-+  test("retry on the same controller and dispose", async () => {
-+    let attempts = 0;
-+    const r = rig();
-+    const c = new BrowserLiveController(
-+      {
-+        acquire16k: async () => {
-+          if (!attempts++) throw new Error("denied");
-+          return r.capture;
-+        },
-+      },
-+      { connect: async () => r.transport },
-+      () => ({
-+        queuedBytes: 0,
-+        enqueue24k() {},
-+        clear() {},
-+        stop() {
-+          r.calls.stops++;
-+        },
-+      }),
-+    );
-+    await c.start();
-+    expect(c.state.phase).toBe("error");
-+    await c.start();
-+    expect(c.state.phase).toBe("connecting");
-+    await c.dispose();
-+    expect(r.calls).toMatchObject({ tracks: 1, stops: 1, closes: 1 });
-+    await expect(c.start()).rejects.toThrow("disposed");
-+  });
-+});
-+
-+test("teardown failure is visible while other resources still release", async () => {
-+  const r = rig();
-+  await r.connect();
-+  r.capture.stop = () => {
-+    throw new Error("device stuck");
-+  };
-+  await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
-+  expect(r.controller.state).toEqual({ phase: "error", reason: "resource cleanup failed" });
-+  expect(r.calls.stops).toBe(1);
-+  expect(r.calls.closes).toBe(1);
-+});
-+
-+test("dispose aborts a pending transport handshake", async () => {
-+  let signal: AbortSignal | undefined;
-+  const r = rig();
-+  const c = new BrowserLiveController(
-+    {
-+      async acquire16k() {
-+        return r.capture;
-+      },
-+    },
-+    {
-+      connect(value) {
-+        signal = value;
-+        return r.socket.promise;
-+      },
-+    },
-+    () => ({ queuedBytes: 0, enqueue24k() {}, clear() {}, stop() {} }),
-+  );
-+  const starting = c.start();
-+  await r.tick();
-+  c.dispose();
-+  expect(signal?.aborted).toBe(true);
-+  r.socket.resolve(r.transport);
-+  await starting;
-+  expect(r.calls.tracks).toBe(1);
-+  await c.dispose();
-+  expect(r.calls.closes).toBe(1);
-+});
-+
-+test("failed resource release blocks restart until retry succeeds", async () => {
-+  const r = rig();
-+  await r.connect();
-+  let fail = true;
-+  r.transport.close = () => {
-+    if (fail) throw new Error("socket still open");
-+    r.calls.closes++;
-+  };
-+  await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
-+  expect(r.controller.state.phase).toBe("error");
-+  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
-+  fail = false;
-+  await r.controller.end();
-+  expect(r.controller.state.phase).toBe("ended");
-+  expect(r.calls.closes).toBe(1);
-+});
-+
-+test("late acquisition release failure is reported and retried before next start", async () => {
-+  const r = rig();
-+  const pending = r.controller.start();
-+  r.controller.end();
-+  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
-+  let fail = true;
-+  r.capture.stop = () => {
-+    if (fail) throw new Error("track still live");
-+    r.calls.tracks++;
-+  };
-+  r.mic.resolve(r.capture);
-+  await pending;
-+  expect(r.controller.state).toEqual({ phase: "error", reason: "late resource cleanup failed" });
-+  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
-+  fail = false;
-+  await r.controller.end();
-+  expect(r.calls.tracks).toBe(1);
-+});
-+
-+test("late socket close failure is visible and blocks a new capture", async () => {
-+  const r = rig();
-+  const pending = r.controller.start();
-+  r.mic.resolve(r.capture);
-+  await r.tick();
-+  r.controller.end();
-+  let fail = true;
-+  r.transport.close = () => {
-+    if (fail) throw new Error("socket live");
-+    r.calls.closes++;
-+  };
-+  r.socket.resolve(r.transport);
-+  await pending;
-+  expect(r.controller.state.reason).toBe("late resource cleanup failed");
-+  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
-+  fail = false;
-+  await r.controller.end();
-+  expect(r.calls.closes).toBe(1);
-+});
-+
-+
-+test("synchronous end from requesting-mic clears pending without acquiring", async () => {
-+  const r = rig();
-+  let once = true;
-+  let ending: Promise<void> | undefined;
-+  r.controller.subscribe((state) => {
-+    if (once && state.phase === "requesting-mic") {
-+      once = false;
-+      ending = r.controller.end();
-+    }
-+  });
-+  await r.controller.start();
-+  await ending;
-+  expect(r.controller.state.phase).toBe("ended");
-+  // A second attempt can enter acquisition (not rejected by a stuck pending flag).
-+  const again = r.controller.start();
-+  expect(r.controller.state.phase).toBe("requesting-mic");
-+  r.controller.end();
-+  r.mic.resolve(r.capture);
-+  await again;
-+  expect(r.calls.tracks).toBe(1);
-+});
-+
-+test("dispose retries failed release but never permits another acquisition", async () => {
-+  const r = rig();
-+  await r.connect();
-+  let fails = true;
-+  r.transport.close = () => {
-+    if (fails) throw new Error("socket live");
-+    r.calls.closes++;
-+  };
-+  await expect(r.controller.dispose()).rejects.toThrow("resource cleanup failed");
-+  expect(r.controller.state.reason).toBe("resource cleanup failed");
-+  await expect(r.controller.start()).rejects.toThrow("disposed");
-+  fails = false;
-+  await r.controller.end();
-+  expect(r.controller.state.phase).toBe("ended");
-+  expect(r.calls.closes).toBe(1);
-+  await expect(r.controller.start()).rejects.toThrow("disposed");
-+});
-+
-+test("late release failure after dispose remains retryable", async () => {
-+  const r = rig();
-+  const starting = r.controller.start();
-+  r.controller.dispose();
-+  let fails = true;
-+  r.capture.stop = () => {
-+    if (fails) throw new Error("track live");
-+    r.calls.tracks++;
-+  };
-+  r.mic.resolve(r.capture);
-+  await starting;
-+  expect(r.controller.state.reason).toBe("late resource cleanup failed");
-+  fails = false;
-+  await r.controller.end();
-+  expect(r.controller.state.phase).toBe("ended");
-+  expect(r.calls.tracks).toBe(1);
-+  await expect(r.controller.start()).rejects.toThrow("disposed");
-+});
-+
-+for (const registration of ["transport", "capture"] as const) {
-+  test(`synchronous end during ${registration} registration retains failed unsubscribe`, async () => {
-+    const r = rig();
-+    let fails = true, unsubscribed = 0;
-+    let firstEnd: Promise<void> | undefined;
-+    if (registration === "transport") {
-+      r.transport.onMessage = () => {
-+        firstEnd = r.controller.end();
-+        void firstEnd.catch(() => {});
-+        return () => {
-+          if (fails) throw new Error("listener live");
-+          unsubscribed++;
-+        };
-+      };
-+    } else {
-+      r.capture.onPcm16 = () => {
-+        firstEnd = r.controller.end();
-+        void firstEnd.catch(() => {});
-+        return () => {
-+          if (fails) throw new Error("listener live");
-+          unsubscribed++;
-+        };
-+      };
-+    }
-+    const starting = r.controller.start();
-+    r.mic.resolve(r.capture);
-+    await r.tick();
-+    r.socket.resolve(r.transport);
-+    await starting;
-+    expect(r.controller.state.reason).toBe("late resource cleanup failed");
-+    await expect(r.controller.start()).rejects.toThrow("previous resources not released");
-+    await expect(firstEnd).rejects.toThrow("resource cleanup failed");
-+    fails = false;
-+    await r.controller.end();
-+    expect(r.controller.state.phase).toBe("ended");
-+    expect(unsubscribed).toBe(1);
-+  });
-+}
-+
-+
-+test("synchronous dispose from requesting-mic does not acquire or leave pending", async () => {
-+  const r = rig();
-+  let disposing: Promise<void> | undefined;
-+  r.controller.subscribe((state) => {
-+    if (state.phase === "requesting-mic") disposing = r.controller.dispose();
-+  });
-+  await r.controller.start();
-+  await disposing;
-+  expect(r.controller.state.phase).toBe("ended");
-+  await expect(r.controller.start()).rejects.toThrow("disposed");
-+});
-+
-+test("dispose during registration retains a late failed unsubscribe for end retry", async () => {
-+  const r = rig();
-+  let fails = true, releases = 0;
-+  r.transport.onMessage = () => {
-+    void r.controller.dispose().catch(() => {});
-+    return () => {
-+      if (fails) throw new Error("listener live");
-+      releases++;
-+    };
-+  };
-+  const starting = r.controller.start();
-+  r.mic.resolve(r.capture);
-+  await r.tick();
-+  r.socket.resolve(r.transport);
-+  await starting;
-+  expect(r.controller.state.reason).toBe("late resource cleanup failed");
-+  fails = false;
-+  await r.controller.end();
-+  expect(r.controller.state.phase).toBe("ended");
-+  expect(releases).toBe(1);
-+  await expect(r.controller.start()).rejects.toThrow("disposed");
-+});
-+
-+
-+test("end waits for asynchronous capture, audio and socket teardown", async () => {
-+  const r = rig();
-+  const capture = deferred<void>(), audio = deferred<void>(), socket = deferred<void>();
-+  r.capture.stop = () => capture.promise;
-+  r.transport.close = () => socket.promise;
-+  // A separate controller verifies all three asynchronous resources, including output.
-+  const c = new BrowserLiveController(
-+    { acquire16k: async () => r.capture },
-+    { connect: async () => r.transport },
-+    () => ({ queuedBytes: 0, enqueue24k() {}, clear() {}, stop: () => audio.promise }),
-+  );
-+  await c.start();
-+  let settled = false;
-+  const ending = c.end().then(() => { settled = true; });
-+  await r.tick();
-+  expect(settled).toBe(false);
-+  capture.resolve();
-+  await r.tick();
-+  expect(settled).toBe(false);
-+  audio.resolve();
-+  await r.tick();
-+  expect(settled).toBe(false);
-+  socket.resolve();
-+  await ending;
-+  expect(c.state.phase).toBe("ended");
-+});
-+
-+test("capture overflow during connecting fails visibly and releases capture", async () => {
-+  const r = rig();
-+  let error: ((e: Error) => void) | undefined;
-+  r.capture.onError = (cb) => { error = cb; return () => { error = undefined; }; };
-+  const pending = r.controller.start();
-+  r.mic.resolve(r.capture);
-+  await r.tick();
-+  error?.(new Error("capture worklet queue overflow"));
-+  r.socket.resolve(r.transport);
-+  await pending;
-+  await r.controller.end();
-+  expect(r.calls.tracks).toBe(1);
-+  expect(r.calls.closes).toBe(1);
-+});
-+
-+
-+test("immediate start/end and dispose prevent acquisition before startup resumes", async () => {
-+  for (const stop of ["end", "dispose"] as const) {
-+    const r = rig();
-+    const starting = r.controller.start();
-+    const ending = r.controller[stop]();
-+    r.mic.resolve(r.capture);
-+    await Promise.all([starting, ending]);
-+    expect(r.calls.tracks).toBe(1);
-+    expect(r.calls.closes).toBe(0);
-+    expect(r.controller.state.phase).toBe("ended");
-+  }
-+});
-+
-+test("end/dispose during deferred failed-release retry cannot start a new mic", async () => {
-+  for (const stop of ["end", "dispose"] as const) {
-+    const r = rig();
-+    await r.connect();
-+    r.capture.stop = () => { throw new Error("track busy"); };
-+    await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
-+    const retry = deferred<void>();
-+    r.capture.stop = () => retry.promise;
-+    const starting = r.controller.start();
-+    const ending = r.controller[stop]();
-+    retry.resolve();
-+    await Promise.all([starting, ending]);
-+    expect(r.controller.state.phase).toBe("ended");
-+    expect(r.calls.tracks).toBe(0); // replaced stop did not increment fixture's counter
-+    expect(r.calls.closes).toBe(1);
-+    if (stop === "dispose") await expect(r.controller.start()).rejects.toThrow("disposed");
-+  }
-+});
-+
-+test("concurrent end/dispose callers wait for the same asynchronous teardown", async () => {
-+  const r = rig();
-+  await r.connect();
-+  const gate = deferred<void>();
-+  r.capture.stop = () => gate.promise;
-+  const first = r.controller.end();
-+  const second = r.controller.end();
-+  const disposed = r.controller.dispose();
-+  expect(second).toBe(first);
-+  expect(disposed).toBe(first);
-+  let done = false;
-+  void Promise.all([first, second, disposed]).then(() => { done = true; });
-+  await r.tick();
-+  expect(done).toBe(false);
-+  gate.resolve();
-+  await Promise.all([first, second, disposed]);
-+  expect(r.controller.state.phase).toBe("ended");
-+});
-+
-+test("async teardown failures reject every concurrent waiter and remain retryable", async () => {
-+  const r = rig();
-+  await r.connect();
-+  const gate = deferred<void>();
-+  let failing = true;
-+  r.transport.close = async () => {
-+    await gate.promise;
-+    if (failing) throw new Error("socket busy");
-+    r.calls.closes++;
-+  };
-+  const first = r.controller.end();
-+  const second = r.controller.dispose();
-+  gate.resolve();
-+  const results = await Promise.allSettled([first, second]);
-+  expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"]);
-+  expect(r.controller.state.phase).toBe("error");
-+  failing = false;
-+  await r.controller.dispose();
-+  expect(r.controller.state.phase).toBe("ended");
-+  expect(r.calls.closes).toBe(1);
-+});
-+
-+test("late asynchronous stop failure rejects awaited end, then retries", async () => {
-+  const r = rig();
-+  const starting = r.controller.start();
-+  const ending = r.controller.end();
-+  const gate = deferred<void>();
-+  let failing = true;
-+  r.capture.stop = async () => {
-+    await gate.promise;
-+    if (failing) throw new Error("track busy");
-+    r.calls.tracks++;
-+  };
-+  r.mic.resolve(r.capture);
-+  gate.resolve();
-+  await starting;
-+  await expect(ending).rejects.toThrow("resource cleanup failed");
-+  expect(r.controller.state.phase).toBe("error");
-+  failing = false;
-+  await r.controller.end();
-+  expect(r.calls.tracks).toBe(1);
-+});
-+
-+
-+test("duplicate start preserves pending acquisition for awaited end", async () => {
-+  const r = rig();
-+  const starting = r.controller.start();
-+  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
-+  let ended = false;
-+  const ending = r.controller.end().then(() => { ended = true; });
-+  await r.tick();
-+  expect(ended).toBe(false);
-+  r.mic.resolve(r.capture);
-+  await Promise.all([starting, ending]);
-+  expect(r.calls.tracks).toBe(1);
-+  expect(r.calls.closes).toBe(0);
-+});
-+
-+test("start cannot overlap an end retry after failed cleanup", async () => {
-+  const r = rig();
-+  await r.connect();
-+  r.capture.stop = () => { throw new Error("busy"); };
-+  await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
-+  const released = deferred<void>();
-+  r.capture.stop = () => released.promise;
-+  const ending = r.controller.end();
-+  for (let i = 0; i < 10; i++) await r.tick();
-+  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
-+  released.resolve();
-+  await ending;
-+  expect(r.controller.state.phase).toBe("ended");
-+});
-diff --git a/apps/web/src/live/controller.ts b/apps/web/src/live/controller.ts
-new file mode 100644
-index 00000000..25c94992
---- /dev/null
-+++ b/apps/web/src/live/controller.ts
-@@ -0,0 +1,287 @@
-+export type Phase = "idle" | "requesting-mic" | "connecting" | "ready" | "muted" | "ended" | "error";
-+export type LiveState = { phase: Phase; reason?: string };
-+// All PCM is binary, signed 16-bit little-endian mono. Capture: 16kHz; playback: 24kHz.
-+export interface Capture {
-+  onPcm16(cb: (frame: Uint8Array) => void): () => void;
-+  onError?(cb: (error: Error) => void): () => void;
-+  stop(): Promise<void> | void;
-+}
-+export interface MediaSource {
-+  acquire16k(signal: AbortSignal): Promise<Capture>;
-+}
-+export interface AudioOutput {
-+  readonly queuedBytes: number;
-+  enqueue24k(frame: Uint8Array): void;
-+  clear(): void;
-+  stop(): Promise<void> | void;
-+}
-+export type TransportMessage =
-+  | { type: "ready" | "interrupted" | "pending" }
-+  | { type: "audio"; pcm16: Uint8Array }
-+  | { type: "closed" | "error"; reason?: string };
-+export interface Transport {
-+  readonly queuedBytes: number;
-+  onMessage(cb: (message: TransportMessage) => void): () => void;
-+  send16k(frame: Uint8Array): void;
-+  sendControl(control: { type: "mute"; muted: boolean } | { type: "end" }): void;
-+  close(): Promise<void> | void;
-+}
-+export interface TransportFactory {
-+  connect(signal: AbortSignal): Promise<Transport>;
-+}
-+const INPUT_FRAME_LIMIT = 3200,
-+  INPUT_LIMIT = 6400,
-+  OUTPUT_LIMIT = 12000;
-+
-+/** Lifecycle owner. Adapters must bound their own queues, copy retained frames and make stop/close idempotent. */
-+export class BrowserLiveController {
-+  private value: LiveState = { phase: "idle" };
-+  private generation = 0;
-+  private disposed = false;
-+  private abort: AbortController | undefined;
-+  private deadline: ReturnType<typeof setTimeout> | undefined;
-+  private muted = false;
-+  private pending: Promise<void> | undefined;
-+  private cleanupTask: Promise<boolean> | undefined;
-+  private endTask: Promise<void> | undefined;
-+  private failedReleases: Array<() => Promise<void> | void> = [];
-+  private capture: Capture | undefined;
-+  private transport: Transport | undefined;
-+  private output: AudioOutput | undefined;
-+  private offCapture: (() => void) | undefined;
-+  private offCaptureError: (() => void) | undefined;
-+  private offTransport: (() => void) | undefined;
-+  private listeners = new Set<(state: LiveState) => void>();
-+  constructor(
-+    private media: MediaSource,
-+    private network: TransportFactory,
-+    private audio: () => AudioOutput,
-+  ) {}
-+  get state(): LiveState {
-+    return this.value;
-+  }
-+  subscribe(cb: (state: LiveState) => void): () => void {
-+    this.listeners.add(cb);
-+    cb(this.value);
-+    return () => {
-+      this.listeners.delete(cb);
-+    };
-+  }
-+  private setState(phase: Phase, reason?: string): void {
-+    this.value = { phase, ...(reason ? { reason } : {}) };
-+    for (const cb of [...this.listeners]) {
-+      try {
-+        cb(this.value);
-+      } catch {
-+        /* UI observer cannot retain microphone resources. */
-+      }
-+    }
-+  }
-+  private active(id: number): boolean {
-+    return !this.disposed && this.generation === id;
-+  }
-+  /** Resolves after setup; only the server's ready message makes the session ready. */
-+  start(): Promise<void> {
-+    // A rejected duplicate must not replace the acquisition that end() must await.
-+    if (this.pending || this.cleanupTask || this.endTask)
-+      return Promise.reject(new Error("previous resources not released"));
-+    const task = this.startInternal();
-+    this.pending = task;
-+    void task.finally(() => { if (this.pending === task) this.pending = undefined; }).catch(() => {});
-+    return task;
-+  }
-+  private async startInternal(): Promise<void> {
-+    if (this.disposed) throw new Error("disposed");
-+    if (this.pending || this.cleanupTask || this.endTask) throw new Error("previous resources not released");
-+    if (!["idle", "ended", "error"].includes(this.value.phase)) throw new Error("already started");
-+    const id = ++this.generation;
-+    if (this.failedReleases.length > 0) {
-+      const clean = await this.retryReleases();
-+      if (!this.active(id)) return;
-+      if (!clean) throw new Error("previous resources not released");
-+    }
-+    this.muted = false;
-+    this.abort = new AbortController();
-+    try {
-+      this.setState("requesting-mic");
-+      if (!this.active(id)) return;
-+      const capture = await this.media.acquire16k(this.abort!.signal);
-+      if (!this.active(id)) {
-+        await this.releaseLate(() => capture.stop());
-+        return;
-+      }
-+      this.capture = capture;
-+      this.offCaptureError = capture.onError?.((error) => { if (this.active(id)) this.fail(error); });
-+      if (!this.active(id)) return;
-+      this.output = this.audio();
-+      if (!this.active(id)) return;
-+      this.setState("connecting");
-+      if (!this.active(id)) return;
-+      this.deadline = setTimeout(() => {
-+        if (this.active(id)) this.fail("connection timed out");
-+      }, 15000);
-+      const transport = await this.network.connect(this.abort!.signal);
-+      if (!this.active(id)) {
-+        await this.releaseLate(() => transport.close());
-+        return;
-+      }
-+      this.transport = transport;
-+      const offTransport = transport.onMessage((message) => this.receive(id, message));
-+      if (!this.active(id)) {
-+        await this.releaseLate(offTransport);
-+        return;
-+      }
-+      this.offTransport = offTransport;
-+      const offCapture = capture.onPcm16((frame) => this.input(id, frame));
-+      if (!this.active(id)) {
-+        await this.releaseLate(offCapture);
-+        return;
-+      }
-+      this.offCapture = offCapture;
-+    } catch (error) {
-+      if (this.active(id)) this.fail(error);
-+    }
-+  }
-+  private async releaseLate(release: () => Promise<void> | void): Promise<void> {
-+    try {
-+      await release();
-+    } catch {
-+      this.failedReleases.push(release);
-+      this.setState("error", "late resource cleanup failed");
-+    }
-+  }
-+  private async retryReleases(): Promise<boolean> {
-+    const pending = this.failedReleases.splice(0);
-+    for (const release of pending) await this.releaseLate(release);
-+    return this.failedReleases.length === 0;
-+  }
-+  setMuted(muted: boolean): void {
-+    if (!["ready", "muted"].includes(this.value.phase)) return;
-+    this.muted = muted;
-+    try {
-+      this.transport!.sendControl({ type: "mute", muted });
-+      this.setState(muted ? "muted" : "ready");
-+    } catch {
-+      this.fail("mute failed");
-+    }
-+  }
-+  private valid(frame: Uint8Array, limit: number): void {
-+    if (!(frame instanceof Uint8Array) || !frame.byteLength || frame.byteLength % 2 || frame.byteLength > limit)
-+      throw new Error("invalid PCM16 frame");
-+  }
-+  private input(id: number, frame: Uint8Array): void {
-+    if (!this.active(id) || this.muted || this.value.phase !== "ready") return;
-+    try {
-+      this.valid(frame, INPUT_FRAME_LIMIT);
-+      if (
-+        !Number.isFinite(this.transport!.queuedBytes) ||
-+        this.transport!.queuedBytes < 0 ||
-+        this.transport!.queuedBytes + frame.byteLength > INPUT_LIMIT
-+      )
-+        throw new Error("input queue full");
-+      this.transport!.send16k(frame);
-+    } catch (error) {
-+      this.fail(error);
-+    }
-+  }
-+  private receive(id: number, message: TransportMessage): void {
-+    if (!this.active(id)) return;
-+    try {
-+      switch (message.type) {
-+        case "pending":
-+          break;
-+        case "ready":
-+          clearTimeout(this.deadline);
-+          this.deadline = undefined;
-+          this.setState(this.muted ? "muted" : "ready");
-+          break;
-+        case "interrupted":
-+          this.output?.clear();
-+          break; // Speech interruption never pauses capture or cancels work.
-+        case "audio":
-+          if (!["ready", "muted"].includes(this.value.phase)) return;
-+          this.valid(message.pcm16, 9600);
-+          if (
-+            !Number.isFinite(this.output!.queuedBytes) ||
-+            this.output!.queuedBytes < 0 ||
-+            this.output!.queuedBytes + message.pcm16.byteLength > OUTPUT_LIMIT
-+          )
-+            throw new Error("output buffer full");
-+          this.output!.enqueue24k(message.pcm16);
-+          break;
-+        case "closed":
-+        case "error":
-+          this.fail(message.reason ?? "transport disconnected");
-+          break;
-+      }
-+    } catch (error) {
-+      if (this.active(id)) this.fail(error);
-+    }
-+  }
-+  private fail(error: unknown): void {
-+    const reason = error instanceof Error ? error.message : String(error);
-+    ++this.generation;
-+    this.setState("error", reason);
-+    void this.cleanup().then((clean) => {
-+      if (!clean && this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
-+    }).catch(() => {
-+      if (this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
-+    });
-+  }
-+  private cleanup(): Promise<boolean> {
-+    if (this.cleanupTask) return this.cleanupTask;
-+    const task = this.cleanupInternal();
-+    this.cleanupTask = task;
-+    void task.finally(() => { if (this.cleanupTask === task) this.cleanupTask = undefined; }).catch(() => {});
-+    return task;
-+  }
-+  private async cleanupInternal(): Promise<boolean> {
-+    clearTimeout(this.deadline);
-+    this.deadline = undefined;
-+    this.abort?.abort();
-+    this.abort = undefined;
-+    const capture = this.capture, output = this.output, transport = this.transport;
-+    const releases: Array<(() => Promise<void> | void) | undefined> = [
-+      this.offCapture, this.offCaptureError, this.offTransport,
-+      capture && (() => capture.stop()), output && (() => output.stop()), transport && (() => transport.close()),
-+    ];
-+    this.offCapture = this.offCaptureError = this.offTransport = undefined;
-+    this.capture = undefined;
-+    this.output = undefined;
-+    this.transport = undefined;
-+    for (const release of releases) if (release) await this.releaseLate(release);
-+    return this.failedReleases.length === 0;
-+  }
-+  /** Resolves only once all resources (including late acquisitions) are released; rejects on cleanup failure. */
-+  end(): Promise<void> {
-+    if (this.endTask) return this.endTask;
-+    const task = this.endInternal();
-+    this.endTask = task;
-+    void task.then(() => { if (this.endTask === task) this.endTask = undefined; }, () => {
-+      if (this.endTask === task) this.endTask = undefined;
-+    });
-+    return task;
-+  }
-+  private async endInternal(): Promise<void> {
-+    ++this.generation;
-+    try { this.transport?.sendControl({ type: "end" }); } catch {}
-+    const cleanup = this.cleanup();
-+    // An uncancellable getUserMedia may resolve after end; do not claim release before
-+    // its late capture has actually been stopped.
-+    const pending = this.pending;
-+    try {
-+      if (pending) await pending.catch(() => {});
-+      await cleanup;
-+      if (!(await this.retryReleases())) throw new Error("resource cleanup failed");
-+      this.setState("ended");
-+    } catch (error) {
-+      this.setState("error", "resource cleanup failed");
-+      throw error;
-+    }
-+  }
-+  dispose(): Promise<void> {
-+    this.disposed = true;
-+    this.listeners.clear();
-+    return this.end();
-+  }
-+}
-diff --git a/apps/web/src/live/device-adapters.ts b/apps/web/src/live/device-adapters.ts
-new file mode 100644
-index 00000000..308fd471
---- /dev/null
-+++ b/apps/web/src/live/device-adapters.ts
-@@ -0,0 +1,350 @@
-+import type { AudioOutput, Capture, MediaSource, Transport, TransportFactory, TransportMessage } from "./controller";
-+import { decodeRelayMessage } from "./protocol";
-+
-+// Integrate hardware samples over 16k sample intervals, even at 44.1kHz.
-+// Audio render callbacks alone drive capture; no idle timer or animation loop.
-+export const CAPTURE_PROCESSOR = `
-+class PcmCapture extends AudioWorkletProcessor {
-+  constructor() { super(); this.phase = 0; this.sum = 0; this.frame = new Uint8Array(640); this.index = 0; this.outstanding = 0; this.overflow = false; this.port.onmessage = (e) => { if (e.data === "ack" && this.outstanding > 0) this.outstanding--; }; }
-+  process(inputs) {
-+    const input = inputs[0] && inputs[0][0];
-+    if (!input) return true;
-+    const width = 16000 / sampleRate;
-+    for (let i = 0; i < input.length; i++) {
-+      let left = width;
-+      const value = Number.isFinite(input[i]) ? input[i] : 0;
-+      while (left > 1e-10) {
-+        const part = Math.min(left, 1 - this.phase);
-+        this.sum += value * part; this.phase += part; left -= part;
-+        if (this.phase >= 1 - 1e-10) {
-+          const sample = Math.max(-1, Math.min(1, this.sum));
-+          const pcm = sample < 0 ? Math.round(sample * 32768) : Math.round(sample * 32767);
-+          this.frame[this.index++] = pcm & 255; this.frame[this.index++] = (pcm >> 8) & 255;
-+          if (this.index === this.frame.length) {
-+            if (this.outstanding >= 8) {
-+              if (!this.overflow) { this.overflow = true; this.port.postMessage({ type: "overflow" }); }
-+            } else if (!this.overflow) {
-+              this.outstanding++; this.port.postMessage(this.frame, [this.frame.buffer]);
-+            }
-+            this.frame = new Uint8Array(640); this.index = 0;
-+          }
-+          this.phase = 0; this.sum = 0;
-+        }
-+      }
-+    }
-+    return true;
-+  }
-+}
-+registerProcessor('die-pcm-capture', PcmCapture);
-+`;
-+
-+/** Must be called only after a deliberate user action (the controller's start()). */
-+export function browserMediaSource(): MediaSource {
-+  return {
-+    async acquire16k(signal: AbortSignal): Promise<Capture> {
-+      if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-+      // getUserMedia cannot be cancelled: release a late stream immediately.
-+      const stream = await navigator.mediaDevices.getUserMedia({
-+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
-+        video: false,
-+      });
-+      let context: AudioContext | undefined;
-+      let source: MediaStreamAudioSourceNode | undefined;
-+      let node: AudioWorkletNode | undefined;
-+      let silence: GainNode | undefined;
-+      let stopped = false;
-+      let closeStarted = false;
-+      let closed: Promise<void> = Promise.resolve();
-+      let listener: ((frame: Uint8Array) => void) | undefined;
-+      let errorListener: ((error: Error) => void) | undefined;
-+      let captureError: Error | undefined;
-+      let failedTracks: MediaStreamTrack[] = [];
-+      const stop = async () => {
-+        if (!stopped) {
-+          stopped = true;
-+          listener = undefined; errorListener = undefined;
-+          if (node) node.port.onmessage = null;
-+          node?.port.close();
-+          // A disconnected/closed graph cannot keep capture alive. Always stop tracks
-+          // even when one track or a graph disconnect throws.
-+          for (const disconnect of [() => source?.disconnect(), () => node?.disconnect(), () => silence?.disconnect()]) {
-+            try { disconnect(); } catch { /* context.close below releases the graph */ }
-+          }
-+          failedTracks = stream.getTracks();
-+        }
-+        const tracks = failedTracks;
-+        failedTracks = [];
-+        for (const track of tracks) {
-+          try { track.stop(); } catch { failedTracks.push(track); }
-+        }
-+        if (context && !closeStarted) {
-+          closeStarted = true;
-+          try {
-+            closed = context.close().catch((error) => { closeStarted = false; throw error; });
-+          } catch (error) { closeStarted = false; throw error; }
-+        }
-+        await closed;
-+        if (failedTracks.length) throw new Error("microphone track stop failed");
-+      };
-+      try {
-+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-+        context = new AudioContext();
-+        const url = URL.createObjectURL(new Blob([CAPTURE_PROCESSOR], { type: "text/javascript" }));
-+        try {
-+          await context.audioWorklet.addModule(url);
-+        } finally {
-+          URL.revokeObjectURL(url);
-+        }
-+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-+        source = context.createMediaStreamSource(stream);
-+        node = new AudioWorkletNode(context, "die-pcm-capture");
-+        silence = context.createGain();
-+        silence.gain.value = 0;
-+        node.port.onmessage = (event: MessageEvent<Uint8Array | { type: string }>) => {
-+          if (stopped) return;
-+          if (event.data instanceof Uint8Array && event.data.byteLength === 640) {
-+            try { listener?.(event.data.slice()); } finally { node?.port.postMessage("ack"); }
-+          } else if (!(event.data instanceof Uint8Array) && event.data?.type === "overflow") {
-+            captureError = new Error("capture worklet queue overflow");
-+            errorListener?.(captureError);
-+          }
-+        };
-+        source.connect(node);
-+        node.connect(silence);
-+        silence.connect(context.destination);
-+        await context.resume();
-+        if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-+        return {
-+          onPcm16(cb) {
-+            listener = cb;
-+            return () => {
-+              if (listener === cb) listener = undefined;
-+            };
-+          },
-+          onError(cb: (error: Error) => void) {
-+            errorListener = cb;
-+            if (captureError) cb(captureError);
-+            return () => { if (errorListener === cb) errorListener = undefined; };
-+          },
-+          stop,
-+          // Exposed for adapter-only verification; controller awaits stop().
-+          get closed() {
-+            return closed;
-+          },
-+        } as Capture & { readonly closed: Promise<void> };
-+      } catch (error) {
-+        await stop().catch(() => {});
-+        throw error;
-+      }
-+    },
-+  };
-+}
-+
-+/** PCM16LE 24kHz, scheduled on the audio clock. Stop/clear cut currently playing speech. */
-+export function browserAudioOutput(): AudioOutput & { readonly closed: Promise<void> } {
-+  const context = new AudioContext();
-+  const playing = new Set<AudioBufferSourceNode>();
-+  let endTime = context.currentTime;
-+  let stopped = false;
-+  let closed: Promise<void> = Promise.resolve();
-+  const clear = () => {
-+    for (const source of playing) {
-+      source.onended = null;
-+      try {
-+        source.stop();
-+      } catch {}
-+      source.disconnect();
-+    }
-+    playing.clear();
-+    endTime = context.currentTime;
-+  };
-+  return {
-+    get queuedBytes() {
-+      return stopped ? 0 : Math.max(0, Math.ceil((endTime - context.currentTime) * 48000));
-+    },
-+    enqueue24k(frame) {
-+      if (stopped) throw new Error("audio output stopped");
-+      if (!frame.byteLength || frame.byteLength % 2 || frame.byteLength > 9600) throw new Error("Invalid output frame");
-+      if (Math.max(0, endTime - context.currentTime) * 48000 + frame.byteLength > 12000)
-+        throw new Error("output buffer full");
-+      const buffer = context.createBuffer(1, frame.byteLength / 2, 24000);
-+      const samples = buffer.getChannelData(0);
-+      const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
-+      for (let i = 0; i < samples.length; i++) samples[i] = view.getInt16(i * 2, true) / 32768;
-+      const source = context.createBufferSource();
-+      source.buffer = buffer;
-+      source.connect(context.destination);
-+      source.onended = () => {
-+        playing.delete(source);
-+        source.disconnect();
-+      };
-+      const start = Math.max(context.currentTime, endTime);
-+      source.start(start);
-+      playing.add(source);
-+      endTime = start + buffer.duration;
-+    },
-+    clear,
-+    async stop() {
-+      if (!stopped) { stopped = true; clear(); }
-+      if (context.state !== "closed") closed = context.close();
-+      await closed;
-+    },
-+    get closed() {
-+      return closed;
-+    },
-+  };
-+}
-+
-+/** Dedicated same-origin relay endpoint; no credentials/provider keys in socket messages. */
-+export function browserTransportFactory(path: string, provider: "gemini" | "openai"): TransportFactory {
-+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("#"))
-+    throw new Error("Expected same-origin relay path");
-+  return {
-+    connect(signal): Promise<Transport> {
-+      if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
-+      const url = new URL(path, location.href);
-+      url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-+      const socket = new WebSocket(url.href);
-+      socket.binaryType = "arraybuffer";
-+      return new Promise((resolve, reject) => {
-+        let active = true;
-+        let opened = false;
-+        let stopSent = false;
-+        let acknowledged = false;
-+        let acknowledge!: () => void;
-+        let rejectAcknowledgement!: (error: Error) => void;
-+        const stopped = new Promise<void>((resolve, reject) => { acknowledge = resolve; rejectAcknowledgement = reject; });
-+        void stopped.catch(() => {});
-+        let callback: ((message: TransportMessage) => void) | undefined;
-+        let closing: Promise<void> | undefined;
-+        // A ready/error/audio frame can arrive before the connect Promise's caller
-+        // installs its listener. Preserve that order with a small, byte-bounded queue.
-+        let subscribed = false;
-+        let earlyBytes = 0;
-+        const early: TransportMessage[] = [];
-+        const deliver = (message: TransportMessage) => {
-+          if (callback) { callback(message); return; }
-+          if (subscribed) return; // Listener removed during teardown; never accumulate.
-+          const bytes = message.type === "audio" ? message.pcm16.byteLength : 1024;
-+          if (early.length >= 16 || earlyBytes + bytes > 32768) {
-+            early.splice(0, early.length, { type: "error", reason: "Voice startup buffer full" });
-+            earlyBytes = 1024;
-+            void close().catch(() => {});
-+            return;
-+          }
-+          early.push(message); earlyBytes += bytes;
-+        };
-+        const close = (): Promise<void> => {
-+          if (closing) return closing;
-+          active = false;
-+          signal.removeEventListener("abort", abort);
-+          socket.onopen = null;
-+          const task = (async () => {
-+            // Keep the reader until the authenticated route confirms root provider teardown.
-+            if (opened && !acknowledged) {
-+              if (socket.readyState !== WebSocket.OPEN) throw new Error("Voice teardown was not acknowledged");
-+              if (!stopSent) { stopSent = true; socket.send(JSON.stringify({ type: "stop" })); }
-+              let timer: ReturnType<typeof setTimeout> | undefined;
-+              try { await Promise.race([stopped, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Voice teardown acknowledgement timed out")), 12000); })]); }
-+              finally { clearTimeout(timer); }
-+            }
-+            socket.onmessage = socket.onerror = null;
-+            await new Promise<void>((resolve, reject) => {
-+              if (socket.readyState === WebSocket.CLOSED) { resolve(); return; }
-+              const timer = setTimeout(() => reject(new Error("Voice socket close timed out")), 3000);
-+              socket.onclose = () => { clearTimeout(timer); resolve(); };
-+              try { socket.close(); } catch (error) { clearTimeout(timer); reject(error); }
-+            });
-+          })();
-+          closing = task;
-+          void task.catch(() => { if (closing === task) closing = undefined; });
-+          return task;
-+        };
-+        const abort = () => {
-+          void close().then(
-+            () => reject(new DOMException("Aborted", "AbortError")),
-+            reject,
-+          );
-+        };
-+        signal.addEventListener("abort", abort, { once: true });
-+        if (signal.aborted) {
-+          abort();
-+          return;
-+        }
-+        socket.onerror = () => {
-+          if (!active) return;
-+          if (!opened) {
-+            void close().then(() => reject(new Error("Voice socket failed")), reject);
-+          } else deliver({ type: "error", reason: "Voice socket failed" });
-+        };
-+        socket.onclose = () => {
-+          if (opened && !acknowledged) rejectAcknowledgement(new Error("Voice teardown was not acknowledged"));
-+          if (!active) return;
-+          if (!opened) {
-+            void close().then(() => reject(new Error("Voice socket closed")), reject);
-+          } else {
-+            deliver({ type: "closed" });
-+            void close().catch(() => {});
-+          }
-+        };
-+        socket.onopen = () => {
-+          if (!active) return;
-+          opened = true;
-+          socket.send(JSON.stringify({ type: "start", provider }));
-+          resolve({
-+            get queuedBytes() {
-+              return socket.bufferedAmount;
-+            },
-+            onMessage(cb) {
-+              callback = cb;
-+              subscribed = true;
-+              const queued = early.splice(0); earlyBytes = 0;
-+              for (const message of queued) { if (callback !== cb) break; cb(message); }
-+              return () => {
-+                if (callback === cb) callback = undefined;
-+              };
-+            },
-+            send16k(frame) {
-+              if (!active || socket.readyState !== WebSocket.OPEN) throw new Error("Voice socket closed");
-+              if (
-+                !frame.byteLength ||
-+                frame.byteLength > 3200 ||
-+                frame.byteLength % 2 ||
-+                socket.bufferedAmount + frame.byteLength > 6400
-+              )
-+                throw new Error("Input buffer full");
-+              const packet = new Uint8Array(frame.byteLength + 1);
-+              packet[0] = 1;
-+              packet.set(frame, 1);
-+              socket.send(packet);
-+            },
-+            sendControl(control) {
-+              if (!active || socket.readyState !== WebSocket.OPEN) throw new Error("Voice socket closed");
-+              if (control.type === "end") stopSent = true;
-+              socket.send(JSON.stringify(control.type === "end" ? { type: "stop" } : control));
-+            },
-+            close,
-+          });
-+        };
-+        socket.onmessage = (event) => {
-+          if (typeof event.data === "string" && event.data.length <= 16384) {
-+            try {
-+              const message = JSON.parse(event.data);
-+              if (message?.type === "stopped") {
-+                if (message.stopped === true) { acknowledged = true; acknowledge(); }
-+                else rejectAcknowledgement(new Error("Voice provider teardown failed"));
-+                return;
-+              }
-+            } catch { /* Normal decoder reports malformed controls while active. */ }
-+          }
-+          if (!active) return;
-+          try {
-+            deliver(decodeRelayMessage(event.data));
-+          } catch {
-+            deliver({ type: "error", reason: "Invalid voice message" });
-+          }
-+        };
-+      });
-+    },
-+  };
-+}
-diff --git a/apps/web/src/live/protocol.ts b/apps/web/src/live/protocol.ts
-new file mode 100644
-index 00000000..ccfdcacb
---- /dev/null
-+++ b/apps/web/src/live/protocol.ts
-@@ -0,0 +1,26 @@
-+import type { TransportMessage } from "./controller";
-+
-+/** Decode only the documented root voice controls; never render arbitrary provider text. */
-+export function decodeRelayMessage(data: unknown): TransportMessage {
-+  if (data instanceof ArrayBuffer) data = new Uint8Array(data);
-+  if (data instanceof Uint8Array) {
-+    if (!data.byteLength || data.byteLength % 2 || data.byteLength > 9600) throw new Error("Invalid audio frame");
-+    return { type: "audio", pcm16: data };
-+  }
-+  if (typeof data !== "string" || data.length > 16384) throw new Error("Invalid voice control");
-+  const value: unknown = JSON.parse(data);
-+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid voice control");
-+  const message = value as Record<string, unknown>;
-+  if (message.type === "status" && message.state === "ready") return { type: "ready" };
-+  if (message.type === "interrupt" && Number.isSafeInteger(message.epoch)) return { type: "interrupted" };
-+  if (message.type === "error") {
-+    const reason = message.code === "credentials_unavailable"
-+      ? "Voice credentials are missing or unavailable. Configure them on the server."
-+      : "Voice connection failed";
-+    return { type: "error", reason };
-+  }
-+  if (message.type === "status" && message.state === "closed") return { type: "closed" };
-+  // Root emits handshake ready and started before provider status ready.
-+  if (message.type === "ready" || message.type === "started" || message.type === "status") return { type: "pending" };
-+  throw new Error("Unknown voice control");
-+}
 diff --git a/apps/web/src/session-logic.ts b/apps/web/src/session-logic.ts
-index 05971030..d1b1d6a7 100644
+index 059710305..d1b1d6a75 100644
 --- a/apps/web/src/session-logic.ts
 +++ b/apps/web/src/session-logic.ts
 @@ -78,6 +78,8 @@ export interface WorkLogEntry {
@@ -13935,7 +11745,7 @@ index 05971030..d1b1d6a7 100644
    } as const;
  
 diff --git a/package.json b/package.json
-index d15bacce..198cf4a0 100644
+index d15bacce2..198cf4a0e 100644
 --- a/package.json
 +++ b/package.json
 @@ -1,6 +1,47 @@
@@ -14074,7 +11884,7 @@ index d15bacce..198cf4a0 100644
 +  }
  }
 diff --git a/packages/client-runtime/src/rpc/client.test.ts b/packages/client-runtime/src/rpc/client.test.ts
-index 032603f2..2995af42 100644
+index 032603f28..2995af426 100644
 --- a/packages/client-runtime/src/rpc/client.test.ts
 +++ b/packages/client-runtime/src/rpc/client.test.ts
 @@ -566,6 +566,53 @@ describe("environment RPC", () => {
@@ -14132,7 +11942,7 @@ index 032603f2..2995af42 100644
      Effect.gen(function* () {
        const domainError = new Error("thread not found yet");
 diff --git a/packages/client-runtime/src/rpc/client.ts b/packages/client-runtime/src/rpc/client.ts
-index 8d75e499..ccd58a9b 100644
+index 8d75e499f..ccd58a9b1 100644
 --- a/packages/client-runtime/src/rpc/client.ts
 +++ b/packages/client-runtime/src/rpc/client.ts
 @@ -191,6 +191,8 @@ interface SubscriptionOptions<TTag extends EnvironmentSubscriptionRpcTag> {
@@ -14180,7 +11990,7 @@ index 8d75e499..ccd58a9b 100644
                        if (hasOnlyExpectedFailures && options?.onExpectedFailure !== undefined) {
                          const handled = Stream.fromEffect(options.onExpectedFailure(cause)).pipe(
 diff --git a/packages/client-runtime/src/state/orchestrationV2Projection.test.ts b/packages/client-runtime/src/state/orchestrationV2Projection.test.ts
-index 1a53afb8..afb38182 100644
+index 1a53afb8d..afb38182c 100644
 --- a/packages/client-runtime/src/state/orchestrationV2Projection.test.ts
 +++ b/packages/client-runtime/src/state/orchestrationV2Projection.test.ts
 @@ -122,6 +122,14 @@ describe("applyOrchestrationV2ProjectionEvent", () => {
@@ -14273,7 +12083,7 @@ index 1a53afb8..afb38182 100644
 +  });
 +});
 diff --git a/packages/client-runtime/src/state/orchestrationV2Projection.ts b/packages/client-runtime/src/state/orchestrationV2Projection.ts
-index 9af2eb34..455b0a07 100644
+index 9af2eb343..455b0a073 100644
 --- a/packages/client-runtime/src/state/orchestrationV2Projection.ts
 +++ b/packages/client-runtime/src/state/orchestrationV2Projection.ts
 @@ -227,6 +227,15 @@ export function applyOrchestrationV2ProjectionEvent(
@@ -14293,7 +12103,7 @@ index 9af2eb34..455b0a07 100644
        };
      case "runtime-request.updated":
 diff --git a/packages/client-runtime/src/state/terminal.ts b/packages/client-runtime/src/state/terminal.ts
-index 3bc2bca7..06ec2e26 100644
+index 3bc2bca78..06ec2e26f 100644
 --- a/packages/client-runtime/src/state/terminal.ts
 +++ b/packages/client-runtime/src/state/terminal.ts
 @@ -5,7 +5,6 @@ import { Atom } from "effect/unstable/reactivity";
@@ -14337,7 +12147,7 @@ index 3bc2bca7..06ec2e26 100644
      metadata: createEnvironmentSubscriptionAtomFamily(runtime, {
        label: "environment-data:terminal:metadata",
 diff --git a/packages/contracts/src/orchestrationV2.ts b/packages/contracts/src/orchestrationV2.ts
-index f6218f18..3046c011 100644
+index f6218f189..3046c0115 100644
 --- a/packages/contracts/src/orchestrationV2.ts
 +++ b/packages/contracts/src/orchestrationV2.ts
 @@ -126,7 +126,10 @@ export type OrchestrationV2ContextSourcePoint = typeof OrchestrationV2ContextSou
@@ -14539,7 +12349,7 @@ index f6218f18..3046c011 100644
      type: Schema.Literal("thread.created.record"),
      commandId: CommandId,
 diff --git a/packages/contracts/src/orchestratorMcp.test.ts b/packages/contracts/src/orchestratorMcp.test.ts
-index 617442ec..0b7e65f9 100644
+index 617442ece..0b7e65f97 100644
 --- a/packages/contracts/src/orchestratorMcp.test.ts
 +++ b/packages/contracts/src/orchestratorMcp.test.ts
 @@ -2,6 +2,10 @@ import { describe, expect, it } from "@effect/vitest";
@@ -14635,7 +12445,7 @@ index 617442ec..0b7e65f9 100644
 +  });
  });
 diff --git a/packages/contracts/src/orchestratorMcp.ts b/packages/contracts/src/orchestratorMcp.ts
-index 19480711..5f1fe379 100644
+index 194807114..5f1fe3794 100644
 --- a/packages/contracts/src/orchestratorMcp.ts
 +++ b/packages/contracts/src/orchestratorMcp.ts
 @@ -44,7 +44,9 @@ const OrchestratorMcpTitle = TrimmedNonEmptyString.check(Schema.isMaxLength(512)
@@ -14771,7 +12581,7 @@ index 19480711..5f1fe379 100644
    /**
     * When true (the default), the scheduled task fires into the calling thread
 diff --git a/packages/contracts/src/providerRuntime.test.ts b/packages/contracts/src/providerRuntime.test.ts
-index f7404c66..33b277ba 100644
+index f7404c66e..33b277ba6 100644
 --- a/packages/contracts/src/providerRuntime.test.ts
 +++ b/packages/contracts/src/providerRuntime.test.ts
 @@ -25,19 +25,38 @@ describe("ProviderRuntimeEvent", () => {
@@ -14826,7 +12636,7 @@ index f7404c66..33b277ba 100644
        decodeRuntimeEvent({
          ...completeEvent,
 diff --git a/packages/contracts/src/providerRuntime.ts b/packages/contracts/src/providerRuntime.ts
-index f5a27326..32a24f50 100644
+index f5a273263..32a24f505 100644
 --- a/packages/contracts/src/providerRuntime.ts
 +++ b/packages/contracts/src/providerRuntime.ts
 @@ -333,6 +333,12 @@ const TurnTokenUsageCommonFields = {
@@ -14843,7 +12653,7 @@ index f5a27326..32a24f50 100644
  };
  export const TurnTokenUsage = Schema.Union([
 diff --git a/packages/contracts/src/settings.ts b/packages/contracts/src/settings.ts
-index ba92ec1d..d5640650 100644
+index ba92ec1da..d56406507 100644
 --- a/packages/contracts/src/settings.ts
 +++ b/packages/contracts/src/settings.ts
 @@ -817,23 +817,22 @@ export type AntigravitySettings = typeof AntigravitySettings.Type;
@@ -14877,7 +12687,7 @@ index ba92ec1d..d5640650 100644
      ),
 diff --git a/packages/shared/src/hostProcess.test.ts b/packages/shared/src/hostProcess.test.ts
 new file mode 100644
-index 00000000..2ba981e5
+index 000000000..2ba981e59
 --- /dev/null
 +++ b/packages/shared/src/hostProcess.test.ts
 @@ -0,0 +1,25 @@
@@ -14907,7 +12717,7 @@ index 00000000..2ba981e5
 +  });
 +});
 diff --git a/packages/shared/src/hostProcess.ts b/packages/shared/src/hostProcess.ts
-index 9bd41a82..ca69bb15 100644
+index 9bd41a825..ca69bb15d 100644
 --- a/packages/shared/src/hostProcess.ts
 +++ b/packages/shared/src/hostProcess.ts
 @@ -2,7 +2,6 @@ import * as Context from "effect/Context";
@@ -14967,7 +12777,7 @@ index 9bd41a82..ca69bb15 100644
   * Every IP address this machine answers to: the interface addresses, plus
   * whatever the resolver returns for the machine's own hostname. The latter
 diff --git a/packages/shared/src/t3McpToolPresentation.ts b/packages/shared/src/t3McpToolPresentation.ts
-index dd38709b..767b4558 100644
+index dd38709bd..767b45583 100644
 --- a/packages/shared/src/t3McpToolPresentation.ts
 +++ b/packages/shared/src/t3McpToolPresentation.ts
 @@ -93,6 +93,13 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
@@ -14985,7 +12795,7 @@ index dd38709b..767b4558 100644
      ["Get", "Getting", "Got", "orchestration capabilities"],
      "capabilities",
 diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
-index 2a6429b8..1ace5591 100644
+index 2a6429b8e..1ace55916 100644
 --- a/pnpm-workspace.yaml
 +++ b/pnpm-workspace.yaml
 @@ -208,6 +208,6 @@ peerDependencyRules:

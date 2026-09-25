@@ -1,6 +1,6 @@
 import type { SessionOperations, SessionUpdate } from "./operations";
 import { VOICE_ENTRY, type TranscriptEntry } from "./transcript";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, lstat as stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -114,20 +114,12 @@ async function retainSnapshot(content: string): Promise<{ path: string; created:
   });
 }
 
-/** Voice-owner capability; revoke on disconnect, switch or end. Revocation does not close the host or stop jobs. */
-export interface SessionHostLease extends SessionOperations {
-  valid(): boolean;
-  onRevoke(listener: () => void): () => void;
-  revoke(): void;
-}
-
 export class SessionHost implements SessionOperations {
   private readonly requests = new Map<
     string,
     { hash: string; result: Promise<unknown>; operation: string; state: "pending" | "dispatched" | "failed" }
   >();
   private readonly listeners = new Set<(update: SessionUpdate) => void>();
-  private readonly leaseRevokers = new Set<() => void>();
   private readonly unsubscribe: () => void;
   private readonly owner: object;
   private readonly sessionId: string | undefined;
@@ -271,20 +263,13 @@ export class SessionHost implements SessionOperations {
     if (!this.active() || manager.getLeafId() !== leaf) throw new Error("Host branch changed during handoff");
     return { text: JSON.stringify(context) };
   }
-  private queue(
-    requestId: string,
-    text: string,
-    deliverAs: "steer" | "followUp",
-    check: () => void = () => {},
-  ): Promise<{ queued: true }> {
+  private queue(requestId: string, text: string, deliverAs: "steer" | "followUp"): Promise<{ queued: true }> {
     if (!text.trim() || text.length > MAX_TEXT) throw new Error("Invalid host message text");
     return this.once(requestId, deliverAs, text, async () => {
-      check();
       const leaf = this.host.context.sessionManager.getLeafId();
       const context = await this.transcriptContext();
       try {
         this.assertActive();
-        check();
         if (this.host.context.sessionManager.getLeafId() !== leaf)
           throw new Error("Host branch changed during handoff");
         this.host.sendUserMessage(
@@ -354,17 +339,10 @@ export class SessionHost implements SessionOperations {
     this.assertActive();
     return this.host.tasks.inspect(id, offset, this.host.context, signal);
   }
-  stop(
-    requestId: string,
-    id: string,
-    signal: AbortSignal = new AbortController().signal,
-    check: () => void = () => {},
-  ): Promise<unknown> {
+  stop(requestId: string, id: string, signal: AbortSignal = new AbortController().signal): Promise<unknown> {
     return this.once(requestId, "stop", id, async () => {
-      check();
       if (!(await this.host.confirmStop(id))) throw new Error("User did not confirm cancellation");
       this.assertActive();
-      check();
       return this.host.tasks.stop(id, this.host.context, signal);
     });
   }
@@ -471,102 +449,8 @@ export class SessionHost implements SessionOperations {
       }
     };
   }
-  /** Each lease belongs to this host instance, not a client-supplied session ID.
-   * Request IDs stay in the host's bounded dedupe map across lease revocation. */
-  lease(): SessionHostLease {
-    const prefix = "lease-" + randomUUID() + ":";
-    let revoked = false;
-    let branchLeaf = this.host.context.sessionManager.getLeafId?.();
-    const unsubscribers = new Set<() => void>();
-    const revocationListeners = new Set<() => void>();
-    const revoke = () => {
-      if (revoked) return;
-      revoked = true;
-      this.leaseRevokers.delete(revoke);
-      for (const unsubscribe of unsubscribers) unsubscribe();
-      unsubscribers.clear();
-      for (const listener of revocationListeners) {
-        try {
-          listener();
-        } catch {
-          /* Revocation must reach every owner. */
-        }
-      }
-      revocationListeners.clear();
-    };
-    this.leaseRevokers.add(revoke);
-    const valid = () => {
-      if (!this.active()) revoke();
-      if (!revoked) {
-        const manager = this.host.context.sessionManager;
-        const leaf = manager.getLeafId?.();
-        if (leaf !== branchLeaf) {
-          // Normal append extends ancestry. A sibling/backward branch move does
-          // not; only scan on leaf change, never for every PCM frame.
-          if (branchLeaf != null && !manager.getBranch().some((entry) => entry.id === branchLeaf)) revoke();
-          else branchLeaf = leaf;
-        }
-      }
-      return !revoked;
-    };
-    const check = () => {
-      if (!valid()) throw new Error("Voice lease revoked");
-      this.assertActive();
-    };
-    const requestId = (id: string) => {
-      check();
-      if (typeof id !== "string" || !id || id.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(id))
-        throw new Error("Invalid request ID");
-      return prefix + createHash("sha256").update(id).digest("hex");
-    };
-    return {
-      send: async (id, text) => this.queue(requestId(id), text, "followUp", check),
-      steer: async (id, text) => this.queue(requestId(id), text, "steer", check),
-      stop: async (id, target) => this.stop(requestId(id), target, undefined, check),
-      list: async (options) => {
-        check();
-        const value = await this.list(options);
-        check();
-        return value;
-      },
-      inspect: async (id, offset) => {
-        check();
-        const value = await this.inspect(id, offset);
-        check();
-        return value;
-      },
-      context: () => {
-        check();
-        return this.context();
-      },
-      subscribe: (listener) => {
-        check();
-        const unsubscribe = this.subscribe((update) => {
-          if (!revoked) listener(update);
-        });
-        unsubscribers.add(unsubscribe);
-        return () => {
-          unsubscribers.delete(unsubscribe);
-          unsubscribe();
-        };
-      },
-      valid,
-      onRevoke: (listener) => {
-        if (!valid()) {
-          listener();
-          return () => {};
-        }
-        revocationListeners.add(listener);
-        return () => {
-          revocationListeners.delete(listener);
-        };
-      },
-      revoke,
-    };
-  }
   close(): void {
     this.closed = true;
-    for (const revoke of this.leaseRevokers) revoke();
     if (this.watcher) clearInterval(this.watcher);
     this.watcher = undefined;
     this.nativeActive.clear();

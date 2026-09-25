@@ -15,11 +15,11 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   const events = () => ({ emit: bus.emit, on: bus.on });
   let voiceCommand!: (args: string, ctx: any) => Promise<void>;
   const voicePi = {
-    appendEntry() {}, // Real Pi supports cost/transcript entries.
     events: events(),
     registerCommand: (_name: string, command: any) => {
       voiceCommand = command.handler;
     },
+    appendEntry() {}, // CLI cost entries use the real Pi API.
     on: (name: string, fn: Function) => handlers.set(name, [...(handlers.get(name) ?? []), fn]),
   } as any;
   const pi = {
@@ -180,12 +180,6 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   await expect(tools!.execute({ name: "agent_steer", args: { requestId: "request-2" } })).rejects.toThrow("transcript");
   expect(sent).toHaveLength(2);
   await voiceCommand("stop", ctx);
-  const lease = host.lease();
-  await fire("session_tree", { oldLeafId: "before", newLeafId: "after" });
-  expect(lease.valid()).toBe(false);
-  const newBranchHost = getSessionHost(voicePi, ctx);
-  expect(newBranchHost).toBeDefined();
-  expect(newBranchHost).not.toBe(host);
   await fire("session_shutdown");
   expect(getSessionHost(voicePi, ctx)).toBeUndefined();
   expect(() => host.context()).toThrow("scope changed");

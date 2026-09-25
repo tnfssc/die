@@ -58,13 +58,6 @@ export function upgradeSocket(url: string, headers: Record<string, string>): Rea
   ws.on("close", () => {
     if (!rejection && !finished) emit("close", {});
   });
-  let shutdownPromise: Promise<void> | undefined;
-  const close = () => {
-    if (rejectionTimer) clearTimeout(rejectionTimer);
-    rejection?.destroy();
-    if (ws.readyState === WebSocket.CONNECTING) ws.terminate();
-    else ws.close();
-  };
   return {
     get readyState() {
       return ws.readyState;
@@ -75,35 +68,11 @@ export function upgradeSocket(url: string, headers: Record<string, string>): Rea
     send(data) {
       ws.send(data);
     },
-    close,
-    shutdown() {
-      if (ws.readyState === WebSocket.CLOSED) return Promise.resolve();
-      if (shutdownPromise) return shutdownPromise;
-      shutdownPromise = new Promise<void>((resolve, reject) => {
-        let timer: ReturnType<typeof setTimeout>;
-        let finalTimer: ReturnType<typeof setTimeout>;
-        const done = () => {
-          clearTimeout(timer);
-          clearTimeout(finalTimer);
-          resolve();
-        };
-        ws.once("close", done);
-        // A peer may never complete the closing handshake. Terminate and still wait
-        // for the actual close event before reporting shutdown to the root bridge.
-        timer = setTimeout(() => {
-          ws.terminate();
-          finalTimer = setTimeout(() => {
-            ws.off("close", done);
-            reject(new Error("OpenAI socket shutdown not observed"));
-          }, 1000);
-        }, 1500);
-        try {
-          close();
-        } catch {
-          ws.terminate();
-        }
-      });
-      return shutdownPromise;
+    close() {
+      if (rejectionTimer) clearTimeout(rejectionTimer);
+      rejection?.destroy();
+      if (ws.readyState === WebSocket.CONNECTING) ws.terminate();
+      else ws.close();
     },
     addEventListener(type, handler) {
       listeners.set(type, [...(listeners.get(type) ?? []), handler]);

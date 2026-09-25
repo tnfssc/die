@@ -23,9 +23,7 @@
     "generate:notices": "bun ./scripts/generate-third-party-notices.ts",
     "prompt:preview": "bun ./scripts/prompt-preview.ts",
     "build:web": "bun ./integrations/t3/build/build.ts",
-    "smoke:live-onboarding": "bun ./scripts/live-onboarding-smoke.ts",
-    "test:browser:live-adapters": "bun tests/browser/live-adapter-offline.ts",
-    "test:browser:live-route": "bun tests/browser/live-route-run.ts"
+    "smoke:live-onboarding": "bun ./scripts/live-onboarding-smoke.ts"
   },
   "dependencies": {
     "@earendil-works/pi-ai": "0.87.1",
