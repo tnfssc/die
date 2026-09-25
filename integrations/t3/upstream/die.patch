@@ -11494,13 +11494,17 @@ index 89390422f..059b486f2 100644
          {...(nextChatViewKey ? { key: nextChatViewKey.key } : {})}
 diff --git a/apps/web/src/components/VoiceControls.tsx b/apps/web/src/components/VoiceControls.tsx
 new file mode 100644
-index 000000000..379488ef4
+index 000000000..e076add36
 --- /dev/null
 +++ b/apps/web/src/components/VoiceControls.tsx
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,180 @@
 +import { useEffect, useRef, useState } from "react";
 +import { BrowserLiveController, type LiveState } from "../live/controller";
-+import { browserAudioOutput, browserMediaSource, browserTransportFactory } from "../live/device-adapters";
++import {
++  browserAudioOutput,
++  browserMediaSource,
++  browserTransportFactory,
++} from "../live/device-adapters";
 +
 +type Provider = "gemini" | "openai";
 +
@@ -11508,7 +11512,10 @@ index 000000000..379488ef4
 +export function VoiceControls({ threadId }: { threadId: string }) {
 +  const [provider, setProvider] = useState<Provider>("gemini");
 +  return (
-+    <div className="flex flex-wrap items-center gap-2 px-2 py-1 text-xs" aria-label="Voice controls">
++    <div
++      className="flex flex-wrap items-center gap-2 px-2 py-1 text-xs"
++      aria-label="Voice controls"
++    >
 +      <label htmlFor="voice-provider">Voice provider</label>
 +      <select
 +        id="voice-provider"
@@ -11532,18 +11539,27 @@ index 000000000..379488ef4
 +  if (releaseTask) return releaseTask;
 +  const current = owner;
 +  if (!current) return Promise.resolve();
-+  const task = current.end().then(() => { if (owner === current) owner = undefined; });
++  const task = current.end().then(() => {
++    if (owner === current) owner = undefined;
++  });
 +  releaseTask = task;
-+  void task.finally(() => { if (releaseTask === task) releaseTask = undefined; }).catch(() => {});
++  void task
++    .finally(() => {
++      if (releaseTask === task) releaseTask = undefined;
++    })
++    .catch(() => {});
 +  return task;
 +}
 +
 +function VoiceSession({ threadId, provider }: { threadId: string; provider: Provider }) {
-+  const [controller] = useState(() => new BrowserLiveController(
-+    browserMediaSource(),
-+    browserTransportFactory("/api/voice/ws?threadId=" + encodeURIComponent(threadId), provider),
-+    browserAudioOutput,
-+  ));
++  const [controller] = useState(
++    () =>
++      new BrowserLiveController(
++        browserMediaSource(),
++        browserTransportFactory("/api/voice/ws?threadId=" + encodeURIComponent(threadId), provider),
++        browserAudioOutput,
++      ),
++  );
 +  const [state, setState] = useState<LiveState>(controller.state);
 +  const [transition, setTransition] = useState<"start" | "stop" | undefined>();
 +  const [error, setError] = useState<string>();
@@ -11551,17 +11567,23 @@ index 000000000..379488ef4
 +  const operation = useRef(0);
 +  const stop = async () => {
 +    const id = ++operation.current;
-+    setTransition("stop"); setError(undefined);
-+    try { await releaseOwner(); }
-+    catch { if (mounted.current) setError("Voice cleanup failed. Retry cleanup before starting again."); }
-+    finally { if (mounted.current && operation.current === id) setTransition(undefined); }
++    setTransition("stop");
++    setError(undefined);
++    try {
++      await releaseOwner();
++    } catch {
++      if (mounted.current) setError("Voice cleanup failed. Retry cleanup before starting again.");
++    } finally {
++      if (mounted.current && operation.current === id) setTransition(undefined);
++    }
 +  };
 +  useEffect(() => {
 +    mounted.current = true;
 +    const unsubscribe = controller.subscribe(setState);
 +    if (owner && owner !== controller) void stop();
 +    return () => {
-+      mounted.current = false; unsubscribe();
++      mounted.current = false;
++      unsubscribe();
 +      // Rejection is retained in owner/releaseTask for the next mounted controls
 +      // to report and retry; never forget a failed device/provider release.
 +      if (owner === controller) void releaseOwner().catch(() => {});
@@ -11569,32 +11591,89 @@ index 000000000..379488ef4
 +  }, [controller]);
 +  const start = async () => {
 +    const id = ++operation.current;
-+    setTransition("start"); setError(undefined);
++    setTransition("start");
++    setError(undefined);
 +    try {
 +      if (owner && owner !== controller) await releaseOwner();
 +      if (!mounted.current) return;
 +      owner = controller;
 +      await controller.start();
-+    } catch { if (mounted.current) setError("Voice could not start. End voice or retry cleanup before starting again."); }
-+    finally { if (mounted.current && operation.current === id) setTransition(undefined); }
++    } catch {
++      if (mounted.current)
++        setError("Voice could not start. End voice or retry cleanup before starting again.");
++    } finally {
++      if (mounted.current && operation.current === id) setTransition(undefined);
++    }
 +  };
 +  const active = ["requesting-mic", "connecting", "ready", "muted"].includes(state.phase);
-+  const blocked = transition !== undefined || (!!owner && owner !== controller);
++  const needsCleanup = owner === controller && state.phase === "error";
++  const blocked =
++    transition !== undefined ||
++    error !== undefined ||
++    needsCleanup ||
++    (!!owner && owner !== controller);
 +  return (
 +    <>
-+      {!active && <button type="button" className="rounded border border-border px-2 py-1" disabled={blocked}
-+        onClick={() => { void start(); }}>Start voice</button>}
-+      {(state.phase === "ready" || state.phase === "muted") && <button type="button"
-+        className="rounded border border-border px-2 py-1" disabled={transition === "stop"}
-+        onClick={() => controller.setMuted(state.phase !== "muted")}>{state.phase === "muted" ? "Unmute" : "Mute"}</button>}
-+      {active && <button type="button" className="rounded border border-border px-2 py-1"
-+        disabled={transition === "stop"} onClick={() => { void stop(); }}>End voice</button>}
-+      {error && <button type="button" className="rounded border border-border px-2 py-1"
-+        disabled={transition === "stop"} onClick={() => { void stop(); }}>Retry cleanup</button>}
++      {!active && (
++        <button
++          type="button"
++          className="rounded border border-border px-2 py-1"
++          disabled={blocked}
++          onClick={() => {
++            void start();
++          }}
++        >
++          Start voice
++        </button>
++      )}
++      {(state.phase === "ready" || state.phase === "muted") && (
++        <button
++          type="button"
++          className="rounded border border-border px-2 py-1"
++          disabled={transition === "stop"}
++          onClick={() => controller.setMuted(state.phase !== "muted")}
++        >
++          {state.phase === "muted" ? "Unmute" : "Mute"}
++        </button>
++      )}
++      {active && (
++        <button
++          type="button"
++          className="rounded border border-border px-2 py-1"
++          disabled={transition === "stop"}
++          onClick={() => {
++            void stop();
++          }}
++        >
++          End voice
++        </button>
++      )}
++      {(error || needsCleanup) && (
++        <button
++          type="button"
++          className="rounded border border-border px-2 py-1"
++          disabled={transition === "stop"}
++          onClick={() => {
++            void stop();
++          }}
++        >
++          Retry cleanup
++        </button>
++      )}
 +      <span role="status" aria-live="polite">
-+        {transition === "stop" ? "Stopping voice…" : error ?? state.reason ??
-+          (state.phase === "requesting-mic" ? "Requesting microphone…" : state.phase === "connecting" ? "Connecting voice…" :
-+          state.phase === "muted" ? "Voice muted" : state.phase === "ready" ? "Voice connected" : "")}
++        {transition === "stop"
++          ? "Stopping voice…"
++          : (error ??
++            state.reason ??
++            (state.phase === "requesting-mic"
++              ? "Requesting microphone…"
++              : state.phase === "connecting"
++                ? "Connecting voice…"
++                : state.phase === "muted"
++                  ? "Voice muted"
++                  : state.phase === "ready"
++                    ? "Voice connected"
++                    : ""))}
 +      </span>
 +    </>
 +  );
