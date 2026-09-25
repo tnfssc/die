@@ -18,3 +18,9 @@ Wisdom/values review after integration and release. Value 3 was already clarifie
 Workers landed as `4371a9e` (prompts), `7b8859e` (runtime), `488c191` (packaging). Parent reviewed diffs and callers. Candidate builder stays separate: it is a non-adopted research tool, not a production path worth giving a new shared abstraction. Worker-focused proof is in feature wisdom. Runtime worker used a placeholder archive for local execute checks; only the parent full production build/gate may establish packaging proof.
 
 Next: independent combined review and full local gate before push. No provider/device calls.
+
+Validation underway at `ef1b283`: full local gate task `task_df836df6`, aggregate `/tmp/die-v0112-local-ci.log`, step logs `artifacts/ci/`. Independent read-only review task `task_404a4fbf`, worktree `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_404a4fbf`, branch `die/review-v0.11.2-integrated-cleanup-404a4fbf`. Earlier baseline `008fdf4` hosted CI passed in run `36109491516`; that is not proof of these new moves.
+
+Independent review approved `008fdf4..ef1b283` with no blocker. It checked prompt bytes, extracted signal/ACK behavior, identity and bootstrap preservation, env scrub consumers, imports and validated release-note selection. Reviewer worktree lacked full dependencies/compiled CLI; its partial tests do not establish full-gate proof. Parent production build/shared CI remains required. No new general lesson beyond value 3.
+
+Full local shared gate passed on `ef1b283` (task `task_df836df6`, exit 0). Root: 1057 passed, 17 existing opt-in tests skipped, 0 failed. Web: 260 backend, 158 model, 26 contracts, 9 projection tests passed. Format/lint/typecheck, full production web/CLI build, offline transport, standalone smoke passed. Release selector returns `support/release-v0.11.2.md` for `v0.11.2`. Only release wisdom changed after tested code. Ready to push and verify hosted CI/full Release dry run before tagging exact SHA.
