@@ -3,7 +3,8 @@ export type LiveState = { phase: Phase; reason?: string };
 // All PCM is binary, signed 16-bit little-endian mono. Capture: 16kHz; playback: 24kHz.
 export interface Capture {
   onPcm16(cb: (frame: Uint8Array) => void): () => void;
-  stop(): void;
+  onError?(cb: (error: Error) => void): () => void;
+  stop(): Promise<void> | void;
 }
 export interface MediaSource {
   acquire16k(signal: AbortSignal): Promise<Capture>;
@@ -12,7 +13,7 @@ export interface AudioOutput {
   readonly queuedBytes: number;
   enqueue24k(frame: Uint8Array): void;
   clear(): void;
-  stop(): void;
+  stop(): Promise<void> | void;
 }
 export type TransportMessage =
   | { type: "ready" | "interrupted" }
@@ -23,7 +24,7 @@ export interface Transport {
   onMessage(cb: (message: TransportMessage) => void): () => void;
   send16k(frame: Uint8Array): void;
   sendControl(control: { type: "mute"; muted: boolean } | { type: "end" }): void;
-  close(): void;
+  close(): Promise<void> | void;
 }
 export interface TransportFactory {
   connect(signal: AbortSignal): Promise<Transport>;
@@ -40,12 +41,14 @@ export class BrowserLiveController {
   private abort?: AbortController;
   private deadline?: ReturnType<typeof setTimeout>;
   private muted = false;
-  private pending = false;
-  private failedReleases: Array<() => void> = [];
+  private pending?: Promise<void>;
+  private cleanupTask?: Promise<boolean>;
+  private failedReleases: Array<() => Promise<void> | void> = [];
   private capture?: Capture;
   private transport?: Transport;
   private output?: AudioOutput;
   private offCapture?: () => void;
+  private offCaptureError?: () => void;
   private offTransport?: () => void;
   private listeners = new Set<(state: LiveState) => void>();
   constructor(
@@ -77,11 +80,17 @@ export class BrowserLiveController {
     return !this.disposed && this.generation === id;
   }
   /** Resolves after setup; only the server's ready message makes the session ready. */
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    const task = this.startInternal();
+    this.pending = task;
+    void task.finally(() => { if (this.pending === task) this.pending = undefined; }).catch(() => {});
+    return task;
+  }
+  private async startInternal(): Promise<void> {
     if (this.disposed) throw new Error("disposed");
+    if (this.pending || this.cleanupTask) throw new Error("previous resources not released");
     if (!["idle", "ended", "error"].includes(this.value.phase)) throw new Error("already started");
-    if (this.pending || !this.retryReleases()) throw new Error("previous resources not released");
-    this.pending = true;
+    if (this.failedReleases.length > 0 && !(await this.retryReleases())) throw new Error("previous resources not released");
     const id = ++this.generation;
     this.muted = false;
     this.abort = new AbortController();
@@ -90,10 +99,12 @@ export class BrowserLiveController {
       if (!this.active(id)) return;
       const capture = await this.media.acquire16k(this.abort!.signal);
       if (!this.active(id)) {
-        this.releaseLate(() => capture.stop());
+        await this.releaseLate(() => capture.stop());
         return;
       }
       this.capture = capture;
+      this.offCaptureError = capture.onError?.((error) => { if (this.active(id)) this.fail(error); });
+      if (!this.active(id)) return;
       this.output = this.audio();
       if (!this.active(id)) return;
       this.setState("connecting");
@@ -103,46 +114,37 @@ export class BrowserLiveController {
       }, 15000);
       const transport = await this.network.connect(this.abort!.signal);
       if (!this.active(id)) {
-        this.releaseLate(() => transport.close());
+        await this.releaseLate(() => transport.close());
         return;
       }
       this.transport = transport;
       const offTransport = transport.onMessage((message) => this.receive(id, message));
       if (!this.active(id)) {
-        this.releaseLate(offTransport);
+        await this.releaseLate(offTransport);
         return;
       }
       this.offTransport = offTransport;
       const offCapture = capture.onPcm16((frame) => this.input(id, frame));
       if (!this.active(id)) {
-        this.releaseLate(offCapture);
+        await this.releaseLate(offCapture);
         return;
       }
       this.offCapture = offCapture;
     } catch (error) {
       if (this.active(id)) this.fail(error);
-    } finally {
-      this.pending = false;
     }
   }
-  private releaseLate(release: () => void): void {
+  private async releaseLate(release: () => Promise<void> | void): Promise<void> {
     try {
-      release();
+      await release();
     } catch {
       this.failedReleases.push(release);
       this.setState("error", "late resource cleanup failed");
     }
   }
-  private retryReleases(): boolean {
-    const pending = this.failedReleases;
-    this.failedReleases = [];
-    for (const release of pending) {
-      try {
-        release();
-      } catch {
-        this.failedReleases.push(release);
-      }
-    }
+  private async retryReleases(): Promise<boolean> {
+    const pending = this.failedReleases.splice(0);
+    for (const release of pending) await this.releaseLate(release);
     return this.failedReleases.length === 0;
   }
   setMuted(muted: boolean): void {
@@ -209,54 +211,51 @@ export class BrowserLiveController {
   private fail(error: unknown): void {
     const reason = error instanceof Error ? error.message : String(error);
     ++this.generation;
-    const clean = this.cleanup();
-    this.setState("error", reason + (clean ? "" : "; resource cleanup failed"));
+    this.setState("error", reason);
+    void this.cleanup().then((clean) => {
+      if (!clean && this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
+    });
   }
-  private cleanup(): boolean {
-    let clean = true;
+  private cleanup(): Promise<boolean> {
+    if (this.cleanupTask) return this.cleanupTask;
+    const task = this.cleanupInternal();
+    this.cleanupTask = task;
+    void task.finally(() => { if (this.cleanupTask === task) this.cleanupTask = undefined; }).catch(() => {});
+    return task;
+  }
+  private async cleanupInternal(): Promise<boolean> {
     clearTimeout(this.deadline);
     this.deadline = undefined;
     this.abort?.abort();
     this.abort = undefined;
-    const capture = this.capture,
-      output = this.output,
-      transport = this.transport;
-    const releases = [
-      this.offCapture,
-      this.offTransport,
-      () => capture?.stop(),
-      () => output?.stop(),
-      () => transport?.close(),
+    const capture = this.capture, output = this.output, transport = this.transport;
+    const releases: Array<(() => Promise<void> | void) | undefined> = [
+      this.offCapture, this.offCaptureError, this.offTransport,
+      capture && (() => capture.stop()), output && (() => output.stop()), transport && (() => transport.close()),
     ];
-    this.offCapture = this.offTransport = undefined;
+    this.offCapture = this.offCaptureError = this.offTransport = undefined;
     this.capture = undefined;
     this.output = undefined;
     this.transport = undefined;
-    // Retain failed closures so a later end/start can verify release.
-    for (const release of releases) {
-      try {
-        release?.();
-      } catch {
-        clean = false;
-        if (release) this.failedReleases.push(release);
-      }
-    }
-    return clean && this.failedReleases.length === 0;
+    for (const release of releases) if (release) await this.releaseLate(release);
+    return this.failedReleases.length === 0;
   }
-  end(): void {
-    if (this.value.phase === "ended" && !this.failedReleases.length) return;
+  async end(): Promise<void> {
     ++this.generation;
-    try {
-      this.transport?.sendControl({ type: "end" });
-    } catch {}
-    const retried = this.retryReleases();
-    const clean = this.cleanup() && retried;
+    try { this.transport?.sendControl({ type: "end" }); } catch {}
+    const cleanup = this.cleanup();
+    // An uncancellable getUserMedia may resolve after end; do not claim release before
+    // its late capture has actually been stopped.
+    const pending = this.pending;
+    if (pending) await pending.catch(() => {});
+    await cleanup;
+    const clean = await this.retryReleases();
     this.setState(clean ? "ended" : "error", clean ? undefined : "resource cleanup failed");
   }
-  dispose(): void {
+  async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
     this.listeners.clear();
-    this.end();
+    await this.end();
   }
 }

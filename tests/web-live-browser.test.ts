@@ -127,7 +127,7 @@ describe("browser live lifecycle (offline)", () => {
     q.message({ type: "ready" });
     q.frame(pcm);
     expect(q.calls.sent).toHaveLength(3);
-    q.controller.end();
+    await q.controller.end();
     expect(states).toContain("requesting-mic");
   });
   test("end during mic acquisition stops late track without opening socket", async () => {
@@ -137,6 +137,7 @@ describe("browser live lifecycle (offline)", () => {
     r.mic.resolve(r.capture);
     await start;
     expect(r.calls.tracks).toBe(1);
+    await r.controller.end();
     expect(r.controller.state.phase).toBe("ended");
     expect(r.calls.closes).toBe(0);
   });
@@ -148,6 +149,7 @@ describe("browser live lifecycle (offline)", () => {
     r.controller.end();
     r.socket.resolve(r.transport);
     await start;
+    await r.controller.end();
     expect(r.calls).toMatchObject({ tracks: 1, stops: 1, closes: 1 });
   });
   test("disconnect, queue overflow and malformed frames fail visibly and clean up", async () => {
@@ -157,6 +159,7 @@ describe("browser live lifecycle (offline)", () => {
     r.calls.inputQueued = 262144;
     r.frame(pcm);
     expect(r.controller.state).toEqual({ phase: "error", reason: "input queue full" });
+    await r.controller.end();
     expect(r.calls).toMatchObject({ tracks: 1, stops: 1, closes: 1 });
     const q = rig();
     await q.connect();
@@ -168,7 +171,7 @@ describe("browser live lifecycle (offline)", () => {
     await x.connect();
     x.message({ type: "closed", reason: "offline" });
     expect(x.controller.state.reason).toBe("offline");
-    x.controller.dispose();
+    await x.controller.dispose();
     expect(x.calls.closes).toBe(1);
     const y = rig();
     await y.connect();
@@ -200,7 +203,7 @@ describe("browser live lifecycle (offline)", () => {
     expect(c.state.phase).toBe("error");
     await c.start();
     expect(c.state.phase).toBe("connecting");
-    c.dispose();
+    await c.dispose();
     expect(r.calls).toMatchObject({ tracks: 1, stops: 1, closes: 1 });
     expect(c.start()).rejects.toThrow("disposed");
   });
@@ -212,7 +215,7 @@ test("teardown failure is visible while other resources still release", async ()
   r.capture.stop = () => {
     throw new Error("device stuck");
   };
-  r.controller.end();
+  await r.controller.end();
   expect(r.controller.state).toEqual({ phase: "error", reason: "resource cleanup failed" });
   expect(r.calls.stops).toBe(1);
   expect(r.calls.closes).toBe(1);
@@ -242,6 +245,7 @@ test("dispose aborts a pending transport handshake", async () => {
   r.socket.resolve(r.transport);
   await starting;
   expect(r.calls.tracks).toBe(1);
+  await c.dispose();
   expect(r.calls.closes).toBe(1);
 });
 
@@ -253,11 +257,11 @@ test("failed resource release blocks restart until retry succeeds", async () => 
     if (fail) throw new Error("socket still open");
     r.calls.closes++;
   };
-  r.controller.end();
+  await r.controller.end();
   expect(r.controller.state.phase).toBe("error");
   expect(r.controller.start()).rejects.toThrow("previous resources not released");
   fail = false;
-  r.controller.end();
+  await r.controller.end();
   expect(r.controller.state.phase).toBe("ended");
   expect(r.calls.closes).toBe(1);
 });
@@ -277,7 +281,7 @@ test("late acquisition release failure is reported and retried before next start
   expect(r.controller.state).toEqual({ phase: "error", reason: "late resource cleanup failed" });
   expect(r.controller.start()).rejects.toThrow("previous resources not released");
   fail = false;
-  r.controller.end();
+  await r.controller.end();
   expect(r.calls.tracks).toBe(1);
 });
 
@@ -297,7 +301,7 @@ test("late socket close failure is visible and blocks a new capture", async () =
   expect(r.controller.state.reason).toBe("late resource cleanup failed");
   expect(r.controller.start()).rejects.toThrow("previous resources not released");
   fail = false;
-  r.controller.end();
+  await r.controller.end();
   expect(r.calls.closes).toBe(1);
 });
 
@@ -305,13 +309,15 @@ test("late socket close failure is visible and blocks a new capture", async () =
 test("synchronous end from requesting-mic clears pending without acquiring", async () => {
   const r = rig();
   let once = true;
+  let ending: Promise<void> | undefined;
   r.controller.subscribe((state) => {
     if (once && state.phase === "requesting-mic") {
       once = false;
-      r.controller.end();
+      ending = r.controller.end();
     }
   });
   await r.controller.start();
+  await ending;
   expect(r.controller.state.phase).toBe("ended");
   // A second attempt can enter acquisition (not rejected by a stuck pending flag).
   const again = r.controller.start();
@@ -330,11 +336,11 @@ test("dispose retries failed release but never permits another acquisition", asy
     if (fails) throw new Error("socket live");
     r.calls.closes++;
   };
-  r.controller.dispose();
+  await r.controller.dispose();
   expect(r.controller.state.reason).toBe("resource cleanup failed");
   expect(r.controller.start()).rejects.toThrow("disposed");
   fails = false;
-  r.controller.end();
+  await r.controller.end();
   expect(r.controller.state.phase).toBe("ended");
   expect(r.calls.closes).toBe(1);
   expect(r.controller.start()).rejects.toThrow("disposed");
@@ -353,7 +359,7 @@ test("late release failure after dispose remains retryable", async () => {
   await starting;
   expect(r.controller.state.reason).toBe("late resource cleanup failed");
   fails = false;
-  r.controller.end();
+  await r.controller.end();
   expect(r.controller.state.phase).toBe("ended");
   expect(r.calls.tracks).toBe(1);
   expect(r.controller.start()).rejects.toThrow("disposed");
@@ -388,7 +394,7 @@ for (const registration of ["transport", "capture"] as const) {
     expect(r.controller.state.reason).toBe("late resource cleanup failed");
     expect(r.controller.start()).rejects.toThrow("previous resources not released");
     fails = false;
-    r.controller.end();
+    await r.controller.end();
     expect(r.controller.state.phase).toBe("ended");
     expect(unsubscribed).toBe(1);
   });
@@ -397,10 +403,12 @@ for (const registration of ["transport", "capture"] as const) {
 
 test("synchronous dispose from requesting-mic does not acquire or leave pending", async () => {
   const r = rig();
+  let disposing: Promise<void> | undefined;
   r.controller.subscribe((state) => {
-    if (state.phase === "requesting-mic") r.controller.dispose();
+    if (state.phase === "requesting-mic") disposing = r.controller.dispose();
   });
   await r.controller.start();
+  await disposing;
   expect(r.controller.state.phase).toBe("ended");
   expect(r.controller.start()).rejects.toThrow("disposed");
 });
@@ -422,8 +430,51 @@ test("dispose during registration retains a late failed unsubscribe for end retr
   await starting;
   expect(r.controller.state.reason).toBe("late resource cleanup failed");
   fails = false;
-  r.controller.end();
+  await r.controller.end();
   expect(r.controller.state.phase).toBe("ended");
   expect(releases).toBe(1);
   expect(r.controller.start()).rejects.toThrow("disposed");
+});
+
+
+test("end waits for asynchronous capture, audio and socket teardown", async () => {
+  const r = rig();
+  const capture = deferred<void>(), audio = deferred<void>(), socket = deferred<void>();
+  r.capture.stop = () => capture.promise;
+  r.transport.close = () => socket.promise;
+  // A separate controller verifies all three asynchronous resources, including output.
+  const c = new BrowserLiveController(
+    { acquire16k: async () => r.capture },
+    { connect: async () => r.transport },
+    () => ({ queuedBytes: 0, enqueue24k() {}, clear() {}, stop: () => audio.promise }),
+  );
+  await c.start();
+  let settled = false;
+  const ending = c.end().then(() => { settled = true; });
+  await r.tick();
+  expect(settled).toBe(false);
+  capture.resolve();
+  await r.tick();
+  expect(settled).toBe(false);
+  audio.resolve();
+  await r.tick();
+  expect(settled).toBe(false);
+  socket.resolve();
+  await ending;
+  expect(c.state.phase).toBe("ended");
+});
+
+test("capture overflow during connecting fails visibly and releases capture", async () => {
+  const r = rig();
+  let error: ((e: Error) => void) | undefined;
+  r.capture.onError = (cb) => { error = cb; return () => { error = undefined; }; };
+  const pending = r.controller.start();
+  r.mic.resolve(r.capture);
+  await r.tick();
+  error?.(new Error("capture worklet queue overflow"));
+  r.socket.resolve(r.transport);
+  await pending;
+  await r.controller.end();
+  expect(r.calls.tracks).toBe(1);
+  expect(r.calls.closes).toBe(1);
 });

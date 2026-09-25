@@ -5,7 +5,7 @@ import { decodeRelayMessage } from "./protocol";
 // Audio render callbacks alone drive capture; no idle timer or animation loop.
 export const CAPTURE_PROCESSOR = `
 class PcmCapture extends AudioWorkletProcessor {
-  constructor() { super(); this.phase = 0; this.sum = 0; this.frame = new Uint8Array(640); this.index = 0; }
+  constructor() { super(); this.phase = 0; this.sum = 0; this.frame = new Uint8Array(640); this.index = 0; this.outstanding = 0; this.overflow = false; this.port.onmessage = (e) => { if (e.data === "ack" && this.outstanding > 0) this.outstanding--; }; }
   process(inputs) {
     const input = inputs[0] && inputs[0][0];
     if (!input) return true;
@@ -21,7 +21,11 @@ class PcmCapture extends AudioWorkletProcessor {
           const pcm = sample < 0 ? Math.round(sample * 32768) : Math.round(sample * 32767);
           this.frame[this.index++] = pcm & 255; this.frame[this.index++] = (pcm >> 8) & 255;
           if (this.index === this.frame.length) {
-            this.port.postMessage(this.frame, [this.frame.buffer]);
+            if (this.outstanding >= 8) {
+              if (!this.overflow) { this.overflow = true; this.port.postMessage({ type: "overflow" }); }
+            } else if (!this.overflow) {
+              this.outstanding++; this.port.postMessage(this.frame, [this.frame.buffer]);
+            }
             this.frame = new Uint8Array(640); this.index = 0;
           }
           this.phase = 0; this.sum = 0;
@@ -49,22 +53,38 @@ export function browserMediaSource(): MediaSource {
       let node: AudioWorkletNode | undefined;
       let silence: GainNode | undefined;
       let stopped = false;
+      let closeStarted = false;
       let closed: Promise<void> = Promise.resolve();
       let listener: ((frame: Uint8Array) => void) | undefined;
-      const stop = () => {
-        if (stopped) return;
-        stopped = true;
-        listener = undefined;
-        if (node) node.port.onmessage = null;
-        node?.port.close();
-        source?.disconnect();
-        node?.disconnect();
-        silence?.disconnect();
-        for (const track of stream.getTracks()) track.stop();
-        if (context) {
-          closed = context.close();
-          void closed.catch(() => {});
+      let errorListener: ((error: Error) => void) | undefined;
+      let captureError: Error | undefined;
+      let failedTracks: MediaStreamTrack[] = [];
+      const stop = async () => {
+        if (!stopped) {
+          stopped = true;
+          listener = undefined; errorListener = undefined;
+          if (node) node.port.onmessage = null;
+          node?.port.close();
+          // A disconnected/closed graph cannot keep capture alive. Always stop tracks
+          // even when one track or a graph disconnect throws.
+          for (const disconnect of [() => source?.disconnect(), () => node?.disconnect(), () => silence?.disconnect()]) {
+            try { disconnect(); } catch { /* context.close below releases the graph */ }
+          }
+          failedTracks = stream.getTracks();
         }
+        const tracks = failedTracks;
+        failedTracks = [];
+        for (const track of tracks) {
+          try { track.stop(); } catch { failedTracks.push(track); }
+        }
+        if (context && !closeStarted) {
+          closeStarted = true;
+          try {
+            closed = context.close().catch((error) => { closeStarted = false; throw error; });
+          } catch (error) { closeStarted = false; throw error; }
+        }
+        await closed;
+        if (failedTracks.length) throw new Error("microphone track stop failed");
       };
       try {
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
@@ -80,9 +100,14 @@ export function browserMediaSource(): MediaSource {
         node = new AudioWorkletNode(context, "die-pcm-capture");
         silence = context.createGain();
         silence.gain.value = 0;
-        node.port.onmessage = (event: MessageEvent<Uint8Array>) => {
-          if (!stopped && event.data instanceof Uint8Array && event.data.byteLength === 640)
-            listener?.(event.data.slice());
+        node.port.onmessage = (event: MessageEvent<Uint8Array | { type: string }>) => {
+          if (stopped) return;
+          if (event.data instanceof Uint8Array && event.data.byteLength === 640) {
+            try { listener?.(event.data.slice()); } finally { node?.port.postMessage("ack"); }
+          } else if (!(event.data instanceof Uint8Array) && event.data?.type === "overflow") {
+            captureError = new Error("capture worklet queue overflow");
+            errorListener?.(captureError);
+          }
         };
         source.connect(node);
         node.connect(silence);
@@ -96,15 +121,19 @@ export function browserMediaSource(): MediaSource {
               if (listener === cb) listener = undefined;
             };
           },
+          onError(cb: (error: Error) => void) {
+            errorListener = cb;
+            if (captureError) cb(captureError);
+            return () => { if (errorListener === cb) errorListener = undefined; };
+          },
           stop,
-          // The controller currently cannot await stop(); callers needing verified release can await this.
+          // Exposed for adapter-only verification; controller awaits stop().
           get closed() {
             return closed;
           },
         } as Capture & { readonly closed: Promise<void> };
       } catch (error) {
-        stop();
-        await closed.catch(() => {});
+        await stop().catch(() => {});
         throw error;
       }
     },
@@ -155,12 +184,10 @@ export function browserAudioOutput(): AudioOutput & { readonly closed: Promise<v
       endTime = start + buffer.duration;
     },
     clear,
-    stop() {
-      if (stopped) return;
-      stopped = true;
-      clear();
-      closed = context.close();
-      void closed.catch(() => {});
+    async stop() {
+      if (!stopped) { stopped = true; clear(); }
+      if (context.state !== "closed") closed = context.close();
+      await closed;
     },
     get closed() {
       return closed;
@@ -183,16 +210,26 @@ export function browserTransportFactory(path: string): TransportFactory {
         let active = true;
         let opened = false;
         let callback: ((message: TransportMessage) => void) | undefined;
-        const close = () => {
-          if (!active) return;
+        let closing: Promise<void> | undefined;
+        const close = (): Promise<void> => {
+          if (closing) return closing;
           active = false;
           signal.removeEventListener("abort", abort);
-          socket.onmessage = socket.onclose = socket.onerror = socket.onopen = null;
-          socket.close();
+          socket.onmessage = socket.onerror = socket.onopen = null;
+          closing = new Promise<void>((resolve, reject) => {
+            if (socket.readyState === WebSocket.CLOSED) { resolve(); return; }
+            const timer = setTimeout(() => reject(new Error("Voice socket close timed out")), 3000);
+            socket.onclose = () => { clearTimeout(timer); resolve(); };
+            try { socket.close(); } catch (error) { clearTimeout(timer); reject(error); }
+          });
+          void closing.catch(() => { closing = undefined; });
+          return closing;
         };
         const abort = () => {
-          close();
-          reject(new DOMException("Aborted", "AbortError"));
+          void close().then(
+            () => reject(new DOMException("Aborted", "AbortError")),
+            reject,
+          );
         };
         signal.addEventListener("abort", abort, { once: true });
         if (signal.aborted) {
@@ -202,18 +239,16 @@ export function browserTransportFactory(path: string): TransportFactory {
         socket.onerror = () => {
           if (!active) return;
           if (!opened) {
-            close();
-            reject(new Error("Voice socket failed"));
+            void close().then(() => reject(new Error("Voice socket failed")), reject);
           } else callback?.({ type: "error", reason: "Voice socket failed" });
         };
         socket.onclose = () => {
           if (!active) return;
           if (!opened) {
-            close();
-            reject(new Error("Voice socket closed"));
+            void close().then(() => reject(new Error("Voice socket closed")), reject);
           } else {
             callback?.({ type: "closed" });
-            close();
+            void close();
           }
         };
         socket.onopen = () => {

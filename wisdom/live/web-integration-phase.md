@@ -44,3 +44,9 @@ All implementation workers use durable worktrees under the main path prefix plus
 - 3d4afbfc initial seam research; branch die/find-canonical-web-route-and-owner-ipc-s-3d4afbfc; no commit.
 
 Values read and unchanged: existing clear ownership, bounded resources, truthful evidence and safe-work preservation cover these findings. Paid provider/microphone acceptance remains pending explicit user approval.
+
+## Async lifecycle remediation (browser/relay worker, 2026-09-25)
+
+Browser controller end/dispose return promises and report ended only after pending acquisition/connection and resource release settle; failed releases remain retryable. Browser capture/output await AudioContext.close(), and browser transport awaits WebSocket close (3-second failure boundary, retryable). Capture worklet has eight unacknowledged 640-byte frames maximum; overflow emits a persistent explicit capture error, including during connecting. Gemini web adapter shutdown terminates pending setup sockets and waits for upstream close. The web factory exposes relay-specific shutdown without changing CLI VoiceProvider; relay async shutdown() verifies it and legacy close() reports stopped:false while pending.
+
+Chromium fake-media loopback is an adapter/standalone relay harness, not shipped-route/auth or paid-provider acceptance. Closing uncancellable getUserMedia can await user permission indefinitely; no verified release is claimed before late results settle. A browser WebSocket with no close event surfaces teardown failure after three seconds. Gemini upstream queue still caps all JSON at 256 KiB, not a latency SLA; real provider pacing and real microphone acoustics are unverified. Route/IPC, canonical patch and session-host changes remain other owners.

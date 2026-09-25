@@ -156,7 +156,7 @@ test("binary browser/relay loop: speech, concurrent host updates, interrupt, mut
   controller.setMuted(true);
   capture(new Uint8Array([3, 0]));
   expect(inputs).toHaveLength(2);
-  controller.end();
+  await controller.end();
   expect(controller.state.phase).toBe("ended");
   expect([closed, tracks, unsubscribed]).toEqual([1, 1, 1]);
   await expect(orchestration.execute({ name: "jobs_list" })).rejects.toThrow("Voice session ended");

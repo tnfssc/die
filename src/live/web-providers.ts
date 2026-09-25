@@ -11,7 +11,11 @@ export function createWebProviderFactory(
 ): WebRelayProviderFactory {
   if (provider === "google") {
     if (model !== VOICE_MODEL) throw new Error("Unsupported Gemini live model");
-    return (callbacks, orchestration) => new VoiceSession(callbacks, webGeminiAdapter(), orchestration, model);
+    return (callbacks, orchestration) => {
+      const adapter = webGeminiAdapter();
+      const session = new VoiceSession(callbacks, adapter, orchestration, model);
+      return Object.assign(session, { shutdown: async () => { session.close(); await adapter.shutdown(); } });
+    };
   }
   if (provider !== "openai" || !(OPENAI_REALTIME_MODELS as readonly string[]).includes(model))
     throw new Error("Unsupported OpenAI Realtime model");

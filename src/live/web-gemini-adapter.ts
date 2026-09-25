@@ -15,14 +15,27 @@ export type GeminiSocketFactory = (url: string, options: WebSocket.ClientOptions
 export function webGeminiAdapter(
   socketFactory: GeminiSocketFactory = (url, options) => new WebSocket(url, options),
   endpoint = ENDPOINT,
-): LiveAdapter {
-  return (apiKey) =>
+): LiveAdapter & { shutdown(): Promise<void> } {
+  const sockets = new Set<WebSocket>();
+  const shutdown = async () => {
+    const pending = [...sockets];
+    for (const socket of pending) socket.terminate();
+    await Promise.all(pending.map((socket) => socket.readyState === WebSocket.CLOSED
+      ? Promise.resolve()
+      : new Promise<void>((resolve, reject) => {
+          const timer = setTimeout(() => reject(new Error("Gemini socket shutdown timed out")), 3000);
+          socket.once("close", () => { clearTimeout(timer); resolve(); });
+        })));
+  };
+  const adapter: LiveAdapter = (apiKey) =>
     ({
       live: {
         connect: (params: LiveParams): Promise<LiveConnection> => {
           const url = new URL(endpoint);
           url.searchParams.set("key", apiKey);
           const socket = socketFactory(url.toString(), { maxPayload: MAX_INBOUND, handshakeTimeout: 10000 });
+          sockets.add(socket);
+          socket.once("close", () => sockets.delete(socket));
           let active = true;
           let ready = false;
           let settled = false;
@@ -56,7 +69,7 @@ export function webGeminiAdapter(
               }),
             close: () => {
               active = false;
-              socket.close();
+              socket.terminate();
             },
           } as LiveConnection;
           return new Promise<LiveConnection>((resolve, reject) => {
@@ -134,4 +147,5 @@ export function webGeminiAdapter(
         },
       },
     }) as unknown as ReturnType<LiveAdapter>;
+  return Object.assign(adapter, { shutdown });
 }

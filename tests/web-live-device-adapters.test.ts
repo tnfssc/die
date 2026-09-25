@@ -177,6 +177,7 @@ test("socket sends copied binary, decodes relay controls, bounds backlog, aborts
     close() {
       this.closed = true;
       this.readyState = 3;
+      queueMicrotask(() => this.onclose?.());
     }
   }
   Object.assign(globalThis, { WebSocket: Socket });
@@ -206,8 +207,8 @@ test("socket sends copied binary, decodes relay controls, bounds backlog, aborts
   expect(() => transport.send16k(frame)).toThrow("Input buffer full");
   transport.sendControl({ type: "mute", muted: true });
   expect(socket.sent[1]).toBe('{"type":"mute","muted":true}');
-  transport.close();
-  transport.close();
+  await transport.close();
+  await transport.close();
   expect(socket.closed).toBe(true);
 });
 
@@ -219,7 +220,9 @@ test("worklet resamples one hardware second to exactly 16k PCM samples at common
       port = {
         postMessage(frame: Uint8Array) {
           frames.push(frame);
+          this.onmessage?.({ data: "ack" });
         },
+        onmessage: undefined as undefined | ((event: { data: string }) => void),
       };
     }
     vm.runInNewContext(CAPTURE_PROCESSOR, {
@@ -241,4 +244,19 @@ test("worklet resamples one hardware second to exactly 16k PCM samples at common
     expect(frames.length).toBe(50);
     expect(frames.every((f) => f.byteLength === 640 && f[0] === 0 && f[1] === 64)).toBe(true);
   }
+});
+
+
+test("worklet bounds transfers without acknowledgements and signals overflow", () => {
+  const messages: (Uint8Array | { type: string })[] = [];
+  let Processor!: new () => { process(inputs: Float32Array[][]): boolean };
+  class Base { port = { postMessage(value: Uint8Array | { type: string }) { messages.push(value); } }; }
+  vm.runInNewContext(CAPTURE_PROCESSOR, {
+    AudioWorkletProcessor: Base, sampleRate: 16000, Uint8Array, Number, Math,
+    registerProcessor(_name: string, constructor: typeof Processor) { Processor = constructor; },
+  });
+  const processor = new Processor();
+  for (let i = 0; i < 16000; i += 128) processor.process([[new Float32Array(128)]]);
+  expect(messages.filter((x) => x instanceof Uint8Array)).toHaveLength(8);
+  expect(messages.filter((x) => !(x instanceof Uint8Array))).toEqual([{ type: "overflow" }]);
 });

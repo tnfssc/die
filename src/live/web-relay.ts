@@ -37,10 +37,12 @@ export function createWebLiveRelay(options: {
   authority?: { valid(): boolean; onRevoke(close: () => void): () => void };
   connectDeadlineMs?: number;
   sessionDeadlineMs?: number;
-}): { start(): Promise<void>; close(): { stopped: boolean } } {
+}): { start(): Promise<void>; close(): { stopped: boolean }; shutdown(): Promise<{ stopped: boolean }> } {
   const { host, apiKey, transport, providerFactory } = options;
   const orchestration = createOrchestration(host);
   let provider: VoiceProvider | undefined;
+  let shutdown: Promise<void> | undefined;
+  let shutdownComplete = true;
   let started = false;
   let ended = false;
   let finishing = false;
@@ -129,9 +131,17 @@ export function createWebLiveRelay(options: {
         },
       ],
       [
-        () => provider?.close(),
         () => {
-          provider = undefined;
+          const current = provider as (VoiceProvider & { shutdown?: () => Promise<void> }) | undefined;
+          if (current?.shutdown) {
+            if (!shutdown) {
+              shutdownComplete = false;
+              shutdown = current.shutdown().then(() => { shutdownComplete = true; provider = undefined; }, () => { cleanupFailed = true; shutdown = undefined; });
+            }
+          } else current?.close();
+        },
+        () => {
+          if (!(provider as (VoiceProvider & { shutdown?: () => Promise<void> }) | undefined)?.shutdown) provider = undefined;
         },
       ],
       [
@@ -343,10 +353,17 @@ export function createWebLiveRelay(options: {
         finish("provider_error");
       }
     },
+    async shutdown() {
+      finish();
+      await shutdown;
+      if (!shutdownComplete) { releaseAll(); await shutdown; }
+      if (cleanupFailed && shutdownComplete) releaseAll();
+      return { stopped: ended && !cleanupFailed && shutdownComplete };
+    },
     close() {
       finish();
       if (cleanupFailed) releaseAll();
-      return { stopped: ended && !cleanupFailed };
+      return { stopped: ended && !cleanupFailed && shutdownComplete };
     },
   };
 }

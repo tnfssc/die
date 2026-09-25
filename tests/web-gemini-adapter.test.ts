@@ -168,3 +168,30 @@ test("close before setup rejects without claiming readiness", async () => {
     server.close();
   }
 });
+
+
+test("pending Gemini setup is terminated and verified before shutdown returns", async () => {
+  const server = new WebSocketServer({ port: 0 });
+  const port = (server.address() as { port: number }).port;
+  let peerClosed = false;
+  server.on("connection", (socket) => {
+    socket.on("close", () => { peerClosed = true; });
+    // Deliberately never send setupComplete.
+  });
+  const adapter = webGeminiAdapter((url, opts) => new WebSocket(url, opts), "ws://127.0.0.1:" + port);
+  try {
+    const pending = adapter("offline").live.connect({
+      model: "gemini-3.8-live",
+      config: { systemInstruction: "test", responseModalities: [Modality.AUDIO] },
+      callbacks: { onmessage() {} },
+    });
+    await new Promise<void>((resolve) => server.once("connection", () => resolve()));
+    await adapter.shutdown();
+    expect(await pending.then(() => "ready", () => "cancelled")).toBe("cancelled");
+    await tick();
+    expect(peerClosed).toBe(true);
+  } finally {
+    await adapter.shutdown();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
