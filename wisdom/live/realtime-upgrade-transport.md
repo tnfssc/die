@@ -14,4 +14,4 @@ No real OpenAI call made. User next test determines actual provider rejection, i
 
 Release review reran 33 focused tests and compiled provider smoke with pinned ws 8.21.3, plus format/lint/diff checks. Added stalled partial-response regression: exactly one request and sanitized failure, bounded completion, closed peer. Bun 1.4.2 ends this partial rejected-Upgrade response early, so the test proves cleanup but does not exercise the full one-second timer; the explicit fallback timer is source-audited. The original ws 8.18.3 pin was rejected: official npm advisories GHSA-58qx-3vcg-4xpx and GHSA-96hv-2xvq-fx4p affect it. The official registry current stable 8.21.3 has no ws advisory in the same query. Gemini already resolved ws 8.21.3 transitively; lockfile deduplication does not change its resolved version.
 
-Feature handoff and release tracking: [wisdom/live/openai-realtime-upgrade-transport.md](../wisdom/live/openai-realtime-upgrade-transport.md).
+Feature handoff and release tracking: [wisdom/live/openai-realtime-upgrade-transport.md](openai-realtime-upgrade-transport.md).

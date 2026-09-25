@@ -81,3 +81,9 @@
 - [Web startup warnings](../web/web-startup-warnings.md): Git 5s noninteractive fetch timeout/fallback traced; title warning isolates naming failure but hides cause. Research/testing status and Mac diagnostics.
 
 - [Pi 0.87.1 dependency update](../dependencies/pi-0.87.1-update.md): root Pi family advanced to current stable patch releases; lockfile, guard, notices, and full validation recorded; T3 pin/vendor unchanged.
+
+## Remove the evidence catch-all (2026-09-25)
+
+User asked to remove the vague `evidence/` home after the structure cleanup. Realtime verification reports and captured JSON now live with `wisdom/live/`; links were updated. The byte-preserved old `.agents/rollback/index-pre-v054.md` snapshot is [index-pre-v054.md](index-pre-v054.md). Its paths and pending-work claims describe that old point in time, not current instructions. No build or test reads it. The temporary evidence/history README added no separate facts and was removed.
+
+Values unchanged: the existing rule to keep records with the feature or system they explain already covers this correction. No new bucket or value is needed.
