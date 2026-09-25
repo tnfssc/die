@@ -41,3 +41,20 @@ published metadata and expected nonempty assets; no redundant binary downloads.
 
 Values reviewed after integrated work: unchanged. One owner, whole-path proof,
 source verification and honest limits already cover this feature and fixes.
+
+Candidate pushed: 7dc618cf97df615e26aa40f76328d3a12b67d368.
+Hosted CI: https://github.com/tnfssc/die/actions/runs/36162060645
+Release dry run: https://github.com/tnfssc/die/actions/runs/36162060555
+Both started; watchers save logs in artifacts/live-main-hosted-ci.log and
+artifacts/live-main-release-dry-run.log. Do not tag until both pass.
+
+## First hosted gate failure
+
+CI 36162060645 failed in the macOS lane: nine new real-runtime Live tests
+reported ENOENT spawning dist/die. That lane previously prepared source assets
+only. Linux/local gates build the CLI first, explaining the local success.
+Parent changed the macOS lane to build the real production CLI/web bundle
+before Live tests, with pinned Node/pnpm and a 30-minute lane timeout. No
+tests were skipped, renamed out of the gate, or pointed at a fake binary.
+Failed log: artifacts/live-main-macos-failure.log. Candidate must be pushed
+again and both hosted gates pass at its new SHA before tagging.

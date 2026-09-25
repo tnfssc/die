@@ -28,7 +28,9 @@ run_step 'Install locked dependencies' install.log "$root" bun install --frozen-
 
 if [[ "$lane" == macos ]]; then
   # This is the separate device-free macOS lane, not the Linux gate.
-  run_step 'Prepare assets' macos-assets.log "$root" bun run prepare:assets
+  # Main-Live integration runs the real execute child; build the production CLI
+  # instead of skipping those tests or substituting a fixture binary.
+  run_step 'Build compiled Live test binary' macos-build.log "$root" bun run build
   run_step 'Offline OpenAI source probe' macos-openai-transport.log "$root" bun scripts/offline-openai-default-transport.ts --source-only
   run_step 'Deterministic Live tests' macos-live-tests.log "$root" bun test tests/live-*.test.ts
   exit 0
