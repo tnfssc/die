@@ -6,10 +6,13 @@ test("macOS Live CI prepares source CLI assets without building the web runtime"
   const workflow = readFileSync(resolve(import.meta.dir, "../.github/workflows/ci.yml"), "utf8");
   const macOSJob = workflow.split("  live-macos:\n")[1]?.split(/^ {2}[a-z][\w-]*:\s*$/m)[0];
   expect(macOSJob).toBeDefined();
-  const prepare = macOSJob!.indexOf("      - run: bun run prepare:assets\n");
-  expect(macOSJob).not.toContain("bun run build");
+  expect(macOSJob).toContain("run: bun run ci:macos");
+  const runner = readFileSync(resolve(import.meta.dir, "../scripts/ci.sh"), "utf8");
+  const lane = runner.split('if [[ "$lane" == macos ]]; then')[1]!.split("\nfi")[0]!;
+  const prepare = lane.indexOf("bun run prepare:assets");
+  expect(lane).not.toContain("bun run build");
   expect(macOSJob).not.toContain("--reuse-web");
-  const tests = macOSJob!.indexOf("        run: bun test tests/live-*.test.ts");
+  const tests = lane.indexOf("bun test tests/live-*.test.ts");
   expect(prepare).toBeGreaterThanOrEqual(0);
   expect(tests).toBeGreaterThan(prepare);
   const fixture = readFileSync(resolve(import.meta.dir, "live-execute-controls.test.ts"), "utf8");

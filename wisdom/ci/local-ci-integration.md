@@ -7,3 +7,9 @@ Work in progress:
 - Shared local/CI runner: task `task_e6f73e2d`, worktree `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_e6f73e2d`, branch `die/share-local-and-ci-check-runner-e6f73e2d`.
 
 Both start at `71a9dbf`. Separate ownership. Review and integrate commits, then run the whole Linux gate before next push. Local Linux does not prove macOS behavior. Do not raise a memory threshold without diagnosing what it measures. Code placement audit runs separately; see `../quality/code-placement-audit.md`.
+
+## Integration
+
+Integrated scheduler change as `dba4adc` and shared runner as `26808b5`. Review caught old workflow-shape assertions in `tests/live-macos-ci.test.ts` and `tests/release-workflows.test.ts`; they now verify workflow delegation and the shared script, keeping the source-only macOS contract. Focused runner/workflow/attention checks: 27 passed.
+
+Full gate is running in task `task_d2864ec4`: `mise exec node@24.21.0 npm:pnpm@11.27.1 -- bun run ci`. Aggregate log `/tmp/die-full-local-ci.log`; durable per-step logs `artifacts/ci/`. Bun is 1.4.2, tmux is present. Installed tools without changing user defaults. Node installed via mise; the older mise aqua pnpm recipe did not match new release asset names, so used the npm backend for the same pinned pnpm version. No push yet.
