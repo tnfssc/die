@@ -4,6 +4,17 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { extractWebArchive, packWebArchive } from "../src/web/archive";
 
+test("all web builders copy the maintained bootstrap to the same packaged filename", async () => {
+  const root = resolve(import.meta.dir, "..");
+  expect(await Bun.file(join(root, "web/die-web-bootstrap.mjs")).exists()).toBe(true);
+  for (const script of ["scripts/build-web.ts", "scripts/build.ts", "scripts/t3-v2-production/build-candidate.ts"]) {
+    const contents = await Bun.file(join(root, script)).text();
+    expect(contents).toContain("web/die-web-bootstrap.mjs");
+    expect(contents).toContain("bootstrap.mjs");
+    expect(contents).not.toContain("support/die-web-bootstrap.mjs");
+  }
+});
+
 test("web archive is deterministic and extracts privately by content hash", async () => {
   const temporary = await mkdtemp(join(tmpdir(), "die-web-runtime-"));
   try {

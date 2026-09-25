@@ -303,14 +303,19 @@ jobs:
         with:
           name: stable-release-assets
           path: dist/release
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.2
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          notes_file=$(bun scripts/select-release-notes.ts "$GITHUB_REF_NAME")
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
             --generate-notes \
-            --notes-file support/release-v0.11.1.md \
+            --notes-file "$notes_file" \
             --title "$GITHUB_REF_NAME" \
             dist/release/die-linux-x64 \
             dist/release/die-linux-x64.sha256 \

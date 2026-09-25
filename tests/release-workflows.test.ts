@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { generateThirdPartyNotices } from "../scripts/generate-third-party-notices";
 import { validateReleaseTag } from "../scripts/validate-release-tag";
+import { selectReleaseNotes } from "../scripts/select-release-notes";
 
 const root = resolve(import.meta.dir, "..");
 const read = (path: string) => Bun.file(resolve(root, path)).text();
@@ -211,6 +212,28 @@ describe("release automation", () => {
     expect(validateReleaseTag("v2.3.4-beta.1", "2.3.4-beta.1")).toBeUndefined();
     expect(validateReleaseTag("v2.3.4", "2.3.5")).toContain("does not match package.json version");
     expect(validateReleaseTag("v2.3.4", "not-semver")).toContain("unsupported version");
+  });
+
+  test("publish selects only notes for the validated tag and fails closed", async () => {
+    const workflow = await read(".github/workflows/release.yml");
+    const publish = workflow.slice(workflow.indexOf("  publish:"));
+    expect(publish).toContain('notes_file=$(bun scripts/select-release-notes.ts "$GITHUB_REF_NAME")');
+    expect(publish).toContain('--notes-file "$notes_file"');
+    expect(publish).not.toContain("--notes-file support/release-v0.11.1.md");
+    expect(publish.indexOf("notes_file=$(bun")).toBeLessThan(publish.indexOf("gh release create"));
+    const directory = await mkdtemp(join(tmpdir(), "die-release-notes-"));
+    try {
+      await mkdir(join(directory, "support"));
+      await Bun.write(join(directory, "support/release-v9.8.7.md"), "current release\n");
+      await Bun.write(join(directory, "support/release-v0.11.1.md"), "stale release\n");
+      expect(await selectReleaseNotes("v9.8.7", "9.8.7", directory)).toBe(join(directory, "support/release-v9.8.7.md"));
+      await expect(selectReleaseNotes("v9.8.8", "9.8.7", directory)).rejects.toThrow("does not match");
+      await expect(selectReleaseNotes("v9.8.6", "9.8.6", directory)).rejects.toThrow("Missing or empty release notes");
+      await Bun.write(join(directory, "support/release-v9.8.6.md"), "");
+      await expect(selectReleaseNotes("v9.8.6", "9.8.6", directory)).rejects.toThrow("Missing or empty release notes");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   test("CLI release validator derives the expected tag from package.json", async () => {

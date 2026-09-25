@@ -47,7 +47,7 @@ await run(["pnpm", "--filter", "t3", "deploy", "--prod", "--legacy", output]);
 await rm(output + "/node_modules/.pnpm/node_modules/t3", { force: true });
 await symlink("../../..", output + "/node_modules/.pnpm/node_modules/t3");
 await cp(source + "/LICENSE", output + "/LICENSE-T3CODE");
-await cp(root + "/support/die-web-bootstrap.mjs", output + "/bootstrap.mjs");
+await cp(root + "/web/die-web-bootstrap.mjs", output + "/bootstrap.mjs");
 await Bun.write(
   output + "/SOURCE.txt",
   [

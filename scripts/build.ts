@@ -27,7 +27,7 @@ const archive = resolve(root, "dist/die-web.archive.gz");
 
 if (reuseWeb) {
   await access(webDirectory);
-  await cp(resolve(root, "support/die-web-bootstrap.mjs"), resolve(webDirectory, "bootstrap.mjs"));
+  await cp(resolve(root, "web/die-web-bootstrap.mjs"), resolve(webDirectory, "bootstrap.mjs"));
   const hash = await packWebArchive(webDirectory, archive, { exclude: ["launcher.mjs", "t3"] });
   console.log("Packed existing web runtime (sha256 " + hash + ")");
 } else await buildWeb();

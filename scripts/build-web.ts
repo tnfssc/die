@@ -81,7 +81,7 @@ export async function buildWeb(): Promise<void> {
   await symlink("../../..", selfReference);
   await verifyPortableOptionalDependencies(output);
   await cp(source + "/LICENSE", output + "/LICENSE-T3CODE");
-  await cp(root + "/support/die-web-bootstrap.mjs", output + "/bootstrap.mjs");
+  await cp(root + "/web/die-web-bootstrap.mjs", output + "/bootstrap.mjs");
   const patchHash = new Bun.CryptoHasher("sha256").update(await Bun.file(patch).bytes()).digest("hex");
   await Bun.write(
     output + "/SOURCE.txt",
