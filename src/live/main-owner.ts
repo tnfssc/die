@@ -120,42 +120,8 @@ function showLiveTool(session: OwnerSession, event: unknown): void {
   try {
     (session as OwnerSession & { _emit?: (event: any) => void })._emit?.(event);
   } catch {
-    // A failed terminal subscriber must not block or retry a real tool call.
+    // Only synchronous dispatch failures are isolated; _emit does not await listeners.
   }
-}
-const LIVE_DISPLAY_CHARS = 4096;
-function liveDisplayResult(result: { content?: Array<{ type: string; text?: string }>; details?: unknown }) {
-  let text = "";
-  let truncated = false;
-  for (const part of result.content ?? []) {
-    if (part.type !== "text") continue;
-    const addition = (text ? "\n" : "") + (part.text ?? "");
-    const left = LIVE_DISPLAY_CHARS - text.length;
-    if (addition.length > left) {
-      text += addition.slice(0, Math.max(0, left));
-      truncated = true;
-      break;
-    }
-    text += addition;
-  }
-  const raw = result.details as Record<string, unknown> | undefined;
-  // Only fields consumed by the ordinary execute renderer, never arbitrary details.
-  const details = raw && {
-    exitCode: raw.exitCode,
-    timedOut: raw.timedOut,
-    cancelled: raw.cancelled,
-    imageError: raw.imageError === undefined ? undefined : true,
-    stdoutLost: raw.stdoutLost,
-    stderrLost: raw.stderrLost,
-    outputArtifactErrors: raw.outputArtifactErrors === undefined ? undefined : true,
-    backgroundJobs: Array.isArray(raw.backgroundJobs) ? raw.backgroundJobs.slice(0, 10).map(() => "job") : undefined,
-    images: Array.isArray(raw.images) ? raw.images.slice(0, 10).map(() => "image") : undefined,
-    handoff: typeof raw.handoff === "string" ? raw.handoff.slice(0, LIVE_DISPLAY_CHARS) : undefined,
-  };
-  return {
-    content: [{ type: "text" as const, text: text + (truncated ? "… [output truncated in terminal]" : "") }],
-    details,
-  };
 }
 async function acquire(
   _pi: ExtensionAPI,
@@ -524,6 +490,7 @@ async function acquire(
           let args: any = call.args ?? {};
           let result: any;
           let isError = false;
+          let acceptingUpdates = true;
           try {
             if (!valid() || call.name !== "execute") throw new Error("Unavailable Live tool");
             const assistantMessage = {
@@ -544,12 +511,11 @@ async function acquire(
               timestamp: Date.now(),
             } as Extract<AgentMessage, { role: "assistant" }>;
             record(session, assistantMessage);
-            // Never expose raw voice-provided code in the terminal preview.
             showLiveTool(session, {
               type: "tool_execution_start",
               toolCallId: id,
               toolName: "execute",
-              args: { code: "" },
+              args: toolCall.arguments,
             });
             args = validateToolArguments(tool, toolCall);
             const decision = await session.agent.beforeToolCall?.({
@@ -562,11 +528,21 @@ async function acquire(
             if (decision?.block) throw new Error(decision.reason ?? "Tool call blocked");
             const actualCall = { ...toolCall, arguments: args };
             // Wrapper supplies the extension runner's real context; no separate evaluator.
-            result = await tool.execute(actualCall.id, args, controller.signal, undefined);
+            result = await tool.execute(actualCall.id, args, controller.signal, (update: unknown) => {
+              if (!acceptingUpdates) return;
+              showLiveTool(session, {
+                type: "tool_execution_update",
+                toolCallId: id,
+                toolName: "execute",
+                args: toolCall.arguments,
+                partialResult: update,
+              });
+            });
           } catch (error) {
             isError = true;
             result = { content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }] };
           }
+          acceptingUpdates = false;
           try {
             const stopReport = stopWorkReports.get(controller);
             if (stopReport !== undefined)
@@ -620,7 +596,7 @@ async function acquire(
               type: "tool_execution_end",
               toolCallId: id,
               toolName: "execute",
-              result: liveDisplayResult(result),
+              result,
               isError,
             });
             retainedToolBytes += Buffer.byteLength(JSON.stringify(result));

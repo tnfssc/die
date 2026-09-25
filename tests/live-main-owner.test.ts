@@ -6,13 +6,27 @@ import {
   DefaultResourceLoader,
   ModelRuntime,
   SessionManager,
+  ToolExecutionComponent,
+  initTheme,
 } from "@earendil-works/pi-coding-agent";
 import { createAssistantMessageEventStream, getModel } from "@earendil-works/pi-ai/compat";
 import tasks from "../src/agent/extension";
+import { stripTerminalSequences } from "@earendil-works/pi-tui";
+import { registerExecuteTool } from "../src/typescript/extension";
 import { dieSystemPrompt } from "../src/prompts";
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { bindInstructionContinuitySession } from "../src/agent/instruction-continuity";
 import { acquireMainOwner, beforeOrdinaryPrompt, currentMainOwner } from "../src/live/main-owner";
+
+beforeAll(() => {
+  const packageDir = process.env.PI_PACKAGE_DIR;
+  delete process.env.PI_PACKAGE_DIR;
+  try {
+    initTheme("dark", false);
+  } finally {
+    if (packageDir !== undefined) process.env.PI_PACKAGE_DIR = packageDir;
+  }
+});
 
 function fixture() {
   const messages: any[] = [];
@@ -162,8 +176,38 @@ describe("direct Live main owner", () => {
       expect(owner.orchestration.tools.map((t) => t.name)).toEqual(["execute"]);
       expect(await owner.orchestration.execute({ name: "execute", args: {} })).toHaveProperty("isError", true);
       expect(toolEvents.map((event) => event.type)).toEqual(["tool_execution_start", "tool_execution_end"]);
-      expect(toolEvents[0].args).toEqual({ code: "" });
+      expect(toolEvents[0].args).toEqual({});
       expect(toolEvents[1].isError).toBe(true);
+      const run = owner.orchestration.execute({ name: "execute", args: { code: "console.log('live visible')" } });
+      await Promise.resolve();
+      expect(toolEvents[2].args).toEqual({ code: "console.log('live visible')" });
+      let actualTool: any;
+      registerExecuteTool(
+        {
+          on() {},
+          registerTool(tool: unknown) {
+            actualTool = tool;
+          },
+        } as any,
+        undefined,
+        undefined,
+        () => 0,
+      );
+      const view = new ToolExecutionComponent(
+        "execute",
+        toolEvents[2].toolCallId,
+        toolEvents[2].args,
+        { showImages: false },
+        actualTool,
+        { requestRender() {} } as never,
+        dir,
+      );
+      view.markExecutionStarted();
+      expect(view.render(120).map(stripTerminalSequences).join("\n")).toContain("live visible");
+      await run;
+      view.updateResult({ ...toolEvents.at(-1).result, isError: toolEvents.at(-1).isError });
+      view.setExpanded(true);
+      expect(view.render(120).map(stripTerminalSequences).join("\n")).toContain("live visible");
       unsubscribe();
       await session.prompt("typed to active live owner");
       expect(
@@ -231,7 +275,7 @@ describe("direct Live main owner", () => {
     expect(f.messages.map((x) => x.role)).toEqual(["user", "assistant", "assistant", "toolResult"]);
     expect(f.entries.map((x) => x.role)).toEqual(f.messages.map((x) => x.role));
     expect(f.events.map((e) => e.type)).toEqual(["tool_execution_start", "tool_execution_end"]);
-    expect(f.events[0].args).toEqual({ code: "" });
+    expect(f.events[0].args).toEqual({ code: "1+1" });
     expect(f.events[1].result.content).toEqual([{ type: "text", text: "result" }]);
     expect(f.events[1].isError).toBe(false);
     await expect(beforeOrdinaryPrompt(f.manager)).rejects.toThrow("Live owns");
@@ -259,18 +303,116 @@ describe("direct Live main owner", () => {
     owner.close();
     await owner.released;
   });
-  test("terminal preview bounds output without changing canonical result or exposing code", async () => {
+  test("terminal event preserves canonical long output, artifacts, images and job identity", async () => {
     const f = fixture();
-    (f.session._toolRegistry.get("execute") as any).execute = async () => ({
-      content: [{ type: "text", text: "x".repeat(10000) }],
-    });
+    const payload = {
+      content: [
+        { type: "text", text: "x".repeat(10000) + "\njob_42\n/path/to/stdout.log" },
+        { type: "image", data: "abc", mimeType: "image/png" },
+      ],
+      details: { backgroundJobs: ["job_42"], stdoutPath: "/path/to/stdout.log", images: ["image_1"] },
+    };
+    (f.session._toolRegistry.get("execute") as any).execute = async () => payload;
     const owner = await acquireMainOwner({} as any, f.ctx);
-    const result = await owner.orchestration.execute({ name: "execute", args: { code: "private token" } });
-    expect((result as any).content[0].text).toHaveLength(10000);
-    expect(f.messages.at(-1).content[0].text).toHaveLength(10000);
-    expect(f.events[0].args).toEqual({ code: "" });
-    expect(f.events[1].result.content[0].text).toContain("[output truncated in terminal]");
-    expect(f.events[1].result.content[0].text.length).toBeLessThan(4200);
+    const result = await owner.orchestration.execute({ name: "execute", args: { code: "await shell('long')" } });
+    expect(f.events[0].args).toEqual({ code: "await shell('long')" });
+    expect(f.events[1].result).toEqual(payload);
+    expect((result as any).content).toEqual(payload.content);
+    expect(f.messages.at(-1).content).toEqual(payload.content);
+    owner.close();
+    await owner.released;
+  });
+  test("production Live events render through pinned ToolExecutionComponent and execute renderers", async () => {
+    let definition: any;
+    registerExecuteTool(
+      {
+        on() {},
+        registerTool(tool: unknown) {
+          definition = tool;
+        },
+      } as any,
+      undefined,
+      undefined,
+      () => 0,
+    );
+    const f = fixture();
+    const output = {
+      content: [
+        { type: "text", text: "Result\n" + "large".repeat(2000) + "\njob_42\n/path/to/stdout.log" },
+        { type: "image", data: "abc", mimeType: "image/png" },
+      ],
+      details: { exitCode: 0, backgroundJobs: ["job_42"], stdoutPath: "/path/to/stdout.log", images: ["image_1"] },
+    };
+    (f.session._toolRegistry.get("execute") as any).execute = async () => output;
+    const owner = await acquireMainOwner({} as any, f.ctx);
+    const run = owner.orchestration.execute({ name: "execute", args: { code: "await shell('long')" } });
+    await Promise.resolve();
+    const start = f.events[0];
+    expect(start.type).toBe("tool_execution_start");
+    const component = (args: any) =>
+      new ToolExecutionComponent(
+        "execute",
+        start.toolCallId,
+        args,
+        { showImages: false },
+        definition,
+        { requestRender() {} } as never,
+        "/tmp",
+      );
+    const visible = (tool: ToolExecutionComponent) => tool.render(120).map(stripTerminalSequences).join("\n");
+    const live = component(start.args);
+    live.markExecutionStarted();
+    expect(visible(live)).toContain("await shell('long')");
+    await run;
+    const end = f.events.at(-1);
+    live.updateResult({ ...end.result, isError: end.isError });
+    expect(visible(live)).toContain("await shell('long')");
+    expect(visible(live)).toContain("1 background");
+    live.setExpanded(true);
+    expect(visible(live)).toContain("job_42");
+    expect(visible(live)).toContain("/path/to/stdout.log");
+    expect(visible(live).match(/large/g)?.length).toBe(2000);
+    expect(end.result.content[1].type).toBe("image");
+    // A rebuilt component from the canonical pair must expose the same call/result.
+    const history = component(f.messages.at(-2).content[0].arguments);
+    history.markExecutionStarted();
+    history.updateResult({ ...f.messages.at(-1), isError: false });
+    history.setExpanded(true);
+    expect(visible(history)).toBe(visible(live));
+    const denied = fixture();
+    denied.deny();
+    const deniedOwner = await acquireMainOwner({} as any, denied.ctx);
+    await deniedOwner.orchestration.execute({ name: "execute", args: { code: "blocked()" } });
+    const error = component(denied.events[0].args);
+    error.markExecutionStarted();
+    error.updateResult({ ...denied.events[1].result, isError: true });
+    expect(visible(error)).toContain("failed");
+    error.setExpanded(true);
+    expect(visible(error)).toContain("permission denied");
+    deniedOwner.close();
+    await deniedOwner.released;
+    owner.close();
+    await owner.released;
+  });
+  test("forwards intermediate updates through the ordinary Pi event shape", async () => {
+    const f = fixture();
+    (f.session._toolRegistry.get("execute") as any).execute = async (
+      _id: string,
+      _args: any,
+      _signal: any,
+      onUpdate: any,
+    ) => {
+      onUpdate({ content: [{ type: "text", text: "partial" }] });
+      return { content: [{ type: "text", text: "done" }] };
+    };
+    const owner = await acquireMainOwner({} as any, f.ctx);
+    await owner.orchestration.execute({ name: "execute", args: { code: "slow" } });
+    expect(f.events.map((event) => event.type)).toEqual([
+      "tool_execution_start",
+      "tool_execution_update",
+      "tool_execution_end",
+    ]);
+    expect(f.events[1].partialResult.content[0].text).toBe("partial");
     owner.close();
     await owner.released;
   });
