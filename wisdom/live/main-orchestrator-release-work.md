@@ -83,3 +83,49 @@ the fully assembled transcript, so a controlled main stream transport is the
 preferred seam if it fits native Live audio. Parent must check these facts
 against implementation before release. All history/tool ordering and completion
 triggerTurn routing need tests, not just the old runtime reachability probe.
+
+## Mid-build review
+
+Implementation integration worktree has GPT-Live removal and direct provider
+changes committed. Shared owner/extension integration and vertical tests are
+still running; baseline test success is not finished-feature proof. Parent
+started read-only task_f74a0ace to review provider commits 21e0abd and 4fc995c
+for wire/result/context bugs before final release review. Worker coordination
+notes in the implementation worktree contain parent lifecycle-hook concerns.
+
+## Parent draft-core review
+
+At the 31-minute checkpoint, shared owner source and vertical tests were
+integrated but still being fixed. Parent flagged overlapping tool/conversation
+history order, frozen per-acquisition context vs active mode/policy changes,
+and silent custom tool-loadout reduction in LIVE-COORDINATION.md. These are
+review questions/blockers to check against the final commit, not final failing
+results. Session tree/fork/switch hooks were verified to stop foreground calls
+separately from ordinary live.stop. Provider review false positive and confirmed
+receive-size issue are recorded in main-orchestrator-provider-review.md.
+
+At the 44-minute checkpoint, implementation was addressing all three parent
+core concerns with queued history, per-user-turn preparation and explicit
+changed-policy rejection. Parent started read-only task_f72bc8a1 against the
+integrated working tree for final ownership/lifecycle review. Do not tag until
+that review and final full-path suite results are checked.
+
+Independent review task_f72bc8a1 found two confirmed draft blockers: immediate
+canonical appends interleave concurrent call/result pairs, and missing final
+ASR leaves pendingTranscript unresolved after turnComplete. Parent rechecked
+current source and sent exact reproduction/test requirements through active
+coordination. No release until both are resolved. See
+[main-orchestrator-final-review.md](main-orchestrator-final-review.md).
+
+## Final blocker fix ownership
+
+At 16:24 both reviewed blockers remained in draft code. Parent started
+task_1bfbf386 for a narrow fix from commit 38cdffb plus the implementation
+working diff. Worktree:
+/home/tnfssc/.die/worktrees/die-a86675007a5e-task_1bfbf386
+Branch: die/fix-live-history-overlap-and-missing-asr-1bfbf386.
+Snapshot patch temporarily saved at main-owner-review-snapshot.patch; worker
+will commit the snapshot separately, then fixes. Cherry-pick only the fix
+commit after the implementation handoff, not the duplicate snapshot baseline.
+Implementation orchestrator was told through LIVE-COORDINATION.md that parent
+owns those fixes and final release.
