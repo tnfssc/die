@@ -1,0 +1,42 @@
+{
+  "date": "2026-09-25",
+  "note": "Synthetic isolated prompt previews. Paid modes stopped at missing canonical credentials; no provider calls occurred. Exit 0 on credential_unavailable is a skipped connected probe, not provider success.",
+  "runs": [
+    {
+      "command": "bun wisdom/live/main-orchestrator-openai-probe.ts realtime --offline",
+      "status": "completed",
+      "exitCode": 0,
+      "output": "{\"event\":\"offline_preview\",\"mode\":\"realtime\",\"rootMode\":\"orchestrator\",\"promptChars\":8279,\"toolNames\":[\"execute\"],\"parameterKeys\":[\"code\",\"timeoutSeconds\",\"outputByteLimit\"],\"networkRequests\":0}\n"
+    },
+    {
+      "command": "bun wisdom/live/main-orchestrator-gemini-probe.ts --offline",
+      "status": "completed",
+      "exitCode": 0,
+      "output": "{\"event\":\"offline_preview\",\"promptChars\":8279,\"toolDescriptionChars\":1232,\"parameterKeys\":[\"code\",\"timeoutSeconds\",\"outputByteLimit\"],\"required\":[\"code\"],\"excluded\":8}\n"
+    },
+    {
+      "command": "bun wisdom/live/main-orchestrator-openai-probe.ts realtime --paid",
+      "status": "completed",
+      "exitCode": 0,
+      "output": "{\"event\":\"offline_preview\",\"mode\":\"realtime\",\"rootMode\":\"orchestrator\",\"promptChars\":8279,\"toolNames\":[\"execute\"],\"parameterKeys\":[\"code\",\"timeoutSeconds\",\"outputByteLimit\"],\"networkRequests\":0}\n{\"event\":\"credential_unavailable\",\"provider\":\"openai\",\"source\":\"existing app credential loader\"}\n"
+    },
+    {
+      "command": "bun wisdom/live/main-orchestrator-openai-probe.ts live-tools --paid",
+      "status": "completed",
+      "exitCode": 0,
+      "output": "{\"event\":\"offline_preview\",\"mode\":\"live-tools\",\"rootMode\":\"orchestrator\",\"promptChars\":8279,\"toolNames\":[\"execute\"],\"parameterKeys\":[\"code\",\"timeoutSeconds\",\"outputByteLimit\"],\"networkRequests\":0}\n{\"event\":\"credential_unavailable\",\"provider\":\"openai\",\"source\":\"existing app credential loader\"}\n"
+    },
+    {
+      "command": "bun wisdom/live/main-orchestrator-openai-probe.ts live-delegation --paid",
+      "status": "completed",
+      "exitCode": 0,
+      "output": "{\"event\":\"offline_preview\",\"mode\":\"live-delegation\",\"rootMode\":\"orchestrator\",\"promptChars\":8279,\"toolNames\":[\"execute\"],\"parameterKeys\":[\"code\",\"timeoutSeconds\",\"outputByteLimit\"],\"networkRequests\":0}\n{\"event\":\"credential_unavailable\",\"provider\":\"openai\",\"source\":\"existing app credential loader\"}\n"
+    },
+    {
+      "command": "bun wisdom/live/main-orchestrator-gemini-probe.ts --paid",
+      "status": "completed",
+      "exitCode": 0,
+      "output": "{\"event\":\"offline_preview\",\"promptChars\":8279,\"toolDescriptionChars\":1232,\"parameterKeys\":[\"code\",\"timeoutSeconds\",\"outputByteLimit\"],\"required\":[\"code\"],\"excluded\":8}\n{\"event\":\"credential_unavailable\",\"source\":\"existing app credential loader\",\"provider\":\"google\"}\n"
+    }
+  ]
+}

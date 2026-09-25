@@ -34,3 +34,11 @@ The second test wires registered execute -> compiled child TS runner/IPC -> **re
 4. Deliver job completions and attention through shared session turn scheduling/IPC mailbox to Live-main continuation (and text fallback when audio unavailable). Current Pi sendMessage targets configured text agent; replacing agent_send alone loses background completions. Test resume/branch changes, compaction and artifact ownership.
 
 Unknown: provider acceptance of execute schema/result size, stable Pi assembled-prompt/turn API for realtime, permission UI, actual job completion delivery and shared history. Separate controlled integration needed.
+
+## Parent integration check
+
+Parent reran both tests with the matching worktree CLI: 2 pass, 22 assertions.
+Typecheck first found five uses of isError, absent from AgentToolResult.
+Assertions now check real text content instead; tsc --noEmit passes. No
+production runtime source changed. See main-orchestrator-investigation.md
+for the combined provider and session-ownership evidence boundary.

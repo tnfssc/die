@@ -1,27 +1,190 @@
-/** Bounded synthetic provider protocol probe. No microphone, Pi jobs or code execution. */
-import { createDefaultLiveCredentialService } from '../../src/live/credentials';
-import { dieSystemPrompt } from '../../src/prompts';
-const mode = process.argv[2];
-if (!['realtime','live-tools','live-delegation'].includes(mode)) throw Error('mode');
-const key = await (await createDefaultLiveCredentialService(undefined,'openai')).loadKey();
-const live = mode !== 'realtime';
-const url = live ? 'wss://api.openai.com/v1/live/sessions' : 'wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1';
-const ws = new WebSocket(url, {headers:{Authorization:'Bearer '+key}} as any);
-const schema={type:'object',properties:{code:{type:'string'},timeoutSeconds:{type:'number',minimum:0.1},outputByteLimit:{type:'number',minimum:0,maximum:Number.MAX_SAFE_INTEGER}},required:['code'],additionalProperties:false};
-const tool={type:'function',name:'execute',description:'Run JS/TS in current directory. Probe only: simulated output; no code is executed.',parameters:schema};
-let step=0, calls=0, timer=setTimeout(()=>{ console.log('deadline', {step,calls});ws.close();},12000);
-const send=(e:any)=>ws.send(JSON.stringify(e));
-ws.addEventListener('open',()=>{
- console.log('open');
- if(live) send({type:'session.start',event_id:'probe_start',session:{model:'gpt-live-1',instructions:dieSystemPrompt()+'\n\nSynthetic test only: call execute with code console.log(2+2) before answering. The client will simulate a result.',audio:{format:{type:'audio/pcm',rate:24000},output:{voice:'marin'}},delegation:{type:'client'},...(mode==='live-tools'?{tools:[tool],tool_choice:'required'}:{})}});
- else send({type:'session.update',session:{type:'realtime',instructions:dieSystemPrompt()+'\n\nSynthetic test only: call execute with code console.log(2+2) before answering. The client will simulate a result.',audio:{input:{format:{type:'audio/pcm',rate:24000},turn_detection:null},output:{format:{type:'audio/pcm',rate:24000},voice:'marin'}},output_modalities:['text'],tools:[tool],tool_choice:'required'}});
-});
-ws.addEventListener('message',(ev:any)=>{let m:any;try{m=JSON.parse(ev.data)}catch{return};let type=m.type;let log:any={type};if(type==='error') log.error={type:m.error?.type,code:m.error?.code,param:m.error?.param,message: typeof m.error?.message==='string'?m.error.message.replaceAll(key,'[redacted]').slice(0,220):undefined};if(type==='session.started'||type==='session.updated')log.session={model:m.session?.model,toolNames:m.session?.tools?.map((x:any)=>x.name),delegation:m.session?.delegation?.type};if(type==='response.output_item.done'||type==='response.output_item.added')log.item={type:m.item?.type,name:m.item?.name,call_id:!!m.item?.call_id};if(type==='response.done')log.response={status:m.response?.status,outputTypes:m.response?.output?.map((x:any)=>x.type)};if(type==='session.delegation.created')log.delegation={target:m.delegation?.target,id:!!m.delegation?.id};if(['error','session.started','session.updated','response.output_item.done','response.output_item.added','response.done','session.delegation.created','session.closed'].includes(type))console.log(JSON.stringify(log));
- if(type==='session.updated'&&!live&&step++===0)send({type:'conversation.item.create',item:{type:'message',role:'user',content:[{type:'input_text',text:'Synthetic test. Call execute now and then report its simulated result.'}]}}),send({type:'response.create',response:{output_modalities:['text']}});
- // GPT-Live documentation specifies input_audio.append, not synthetic text input. Do not invent a text-input event.
- // A silent session cannot establish whether delegation executes a client tool.
+/** Synthetic wire probe. No mic, generated-code evaluation, or user jobs.
+ * bun wisdom/live/main-orchestrator-openai-probe.ts realtime --offline
+ * bun wisdom/live/main-orchestrator-openai-probe.ts realtime --paid
+ * Other paid modes: live-tools, live-delegation. Each socket is limited to 12s.
+ */
+import WebSocket from "ws";
+import { createDefaultLiveCredentialService } from "../../src/live/credentials";
+import { createPromptPreview } from "../../src/prompt-preview";
 
- if(type==='response.output_item.done'&&m.item?.type==='function_call'&&m.item?.name==='execute'){calls++;send({type:'conversation.item.create',item:{type:'function_call_output',call_id:m.item.call_id,output:JSON.stringify({output:'4 (simulated)'})}});send({type:'response.create',response:{output_modalities:['text']}})}
- if(type==='response.done'&&calls){clearTimeout(timer);ws.close()}
+const mode = process.argv[2];
+const paid = process.argv.includes("--paid");
+if (!["realtime", "live-tools", "live-delegation"].includes(mode) || (!paid && !process.argv.includes("--offline"))) {
+  throw new Error("Choose realtime|live-tools|live-delegation and --offline or --paid");
+}
+const preview = await createPromptPreview({ rootMode: "orchestrator", message: "Synthetic diagnostic only." });
+const execute = preview.tools.find((tool) => tool.name === "execute");
+if (preview.tools.length !== 1 || !execute) throw new Error("Expected production execute-only tool frame");
+const tool = { type: "function", name: execute.name, description: execute.description, parameters: execute.parameters };
+console.log(
+  JSON.stringify({
+    event: "offline_preview",
+    mode,
+    rootMode: preview.preview.rootMode,
+    promptChars: preview.systemPrompt.length,
+    toolNames: preview.tools.map((tool) => tool.name),
+    parameterKeys: Object.keys((execute.parameters as any).properties),
+    networkRequests: 0,
+  }),
+);
+if (!paid) process.exit(0);
+let key: string;
+try {
+  key = await (await createDefaultLiveCredentialService(undefined, "openai")).loadKey();
+} catch {
+  console.log(
+    JSON.stringify({ event: "credential_unavailable", provider: "openai", source: "existing app credential loader" }),
+  );
+  process.exit(0);
+}
+const live = mode !== "realtime";
+const url = live ? "wss://api.openai.com/v1/live/sessions" : "wss://api.openai.com/v1/realtime?model=gpt-realtime-2.1";
+const socket = new WebSocket(url, { headers: { Authorization: "Bearer " + key } });
+let ended = false;
+let configured = false,
+  calls = 0,
+  responseActive = false,
+  continuationPending = false;
+let consumedMarker = false,
+  outputChars = 0;
+const log = (event: string, detail: Record<string, unknown> = {}) => console.log(JSON.stringify({ event, ...detail }));
+const send = (event: Record<string, unknown>) => socket.send(JSON.stringify(event));
+const finish = (reason: string) => {
+  if (ended) return;
+  ended = true;
+  clearTimeout(timer);
+  log("final", { reason, configured, calls, consumedMarker, outputChars });
+  socket.terminate();
+};
+const timer = setTimeout(() => finish("deadline"), 12000);
+const createResponse = () => {
+  responseActive = true;
+  send({ type: "response.create", response: { output_modalities: ["text"] } });
+};
+socket.on("open", () => {
+  log("socket_open");
+  if (live)
+    send({
+      type: "session.start",
+      event_id: "probe_start",
+      session: {
+        model: "gpt-live-1",
+        instructions: preview.systemPrompt,
+        audio: { format: { type: "audio/pcm", rate: 24000 }, output: { voice: "marin" } },
+        delegation: { type: "client" },
+        ...(mode === "live-tools" ? { tools: [tool], tool_choice: "auto" } : {}),
+      },
+    });
+  else
+    send({
+      type: "session.update",
+      session: {
+        type: "realtime",
+        instructions: preview.systemPrompt,
+        audio: {
+          input: { format: { type: "audio/pcm", rate: 24000 }, turn_detection: null },
+          output: { format: { type: "audio/pcm", rate: 24000 }, voice: "marin" },
+        },
+        output_modalities: ["text"],
+        tools: [tool],
+        tool_choice: "auto",
+      },
+    });
 });
-ws.addEventListener('close',()=>{clearTimeout(timer);console.log('close')});ws.addEventListener('error',()=>console.log('transport_error'));
+socket.on("message", (raw) => {
+  if (raw.length > 1_000_000) {
+    finish("event_limit");
+    return;
+  }
+  let message: any;
+  try {
+    message = JSON.parse(raw.toString());
+  } catch {
+    return;
+  }
+  const type = message.type;
+  if (type === "error") {
+    log("provider_error", {
+      code: message.error?.code,
+      param: message.error?.param,
+      message:
+        typeof message.error?.message === "string"
+          ? message.error.message.replaceAll(key, "[redacted]").slice(0, 240)
+          : undefined,
+    });
+    finish("provider_error");
+    return;
+  }
+  if ((type === "session.updated" && !live) || (type === "session.started" && live)) {
+    log(type, { model: message.session?.model, toolNames: message.session?.tools?.map((t: any) => t.name) });
+    if (configured) return;
+    configured = true;
+    if (!live) {
+      send({
+        type: "conversation.item.create",
+        item: {
+          type: "message",
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: "Synthetic probe: call execute with console.log(2 + 3), then report the result returned. The fixture will not actually run code; say so. Do not delegate or use other helpers.",
+            },
+          ],
+        },
+      });
+      createResponse();
+    }
+    // GPT-Live has audio input, not a documented synthetic text input event.
+    // A silent accepted session proves setup only, never usable client execution.
+  }
+  if (type === "response.output_item.done" && message.item?.type === "function_call") {
+    calls++;
+    log("function_call", { name: message.item.name, callIdPresent: !!message.item.call_id });
+    if (calls > 1 || message.item.name !== "execute") {
+      finish("call_limit_or_unknown_tool");
+      return;
+    }
+    // Do not parse/evaluate provider code. Match the ordinary tool text-content shape.
+    send({
+      type: "conversation.item.create",
+      item: {
+        type: "function_call_output",
+        call_id: message.item.call_id,
+        output: JSON.stringify({
+          content: [{ type: "text", text: "Synthetic fixture ORBIT-17. No code was executed; no job exists." }],
+        }),
+      },
+    });
+    log("simulated_tool_result");
+    continuationPending = true;
+    if (!responseActive) {
+      continuationPending = false;
+      createResponse();
+    }
+  }
+  if (type === "response.output_text.delta" || type === "response.text.delta") {
+    outputChars += typeof message.delta === "string" ? message.delta.length : 0;
+  }
+  if (type === "response.done") {
+    responseActive = false;
+    const serialized = JSON.stringify(message.response?.output ?? []);
+    consumedMarker ||= /ORBIT[ -]?17/i.test(serialized);
+    log("response_done", { status: message.response?.status, consumedMarker });
+    if (continuationPending) {
+      continuationPending = false;
+      createResponse();
+    } else finish(calls ? "round_trip_done" : "no_tool_call");
+  }
+  if (type === "session.delegation.created")
+    log(type, { idPresent: !!message.delegation?.id, target: message.delegation?.target });
+  if (type === "session.closed") finish("session_closed");
+});
+socket.on("error", () => {
+  log("socket_error");
+  finish("socket_error");
+});
+socket.on("close", (code) => {
+  clearTimeout(timer);
+  log("socket_close", { code });
+});

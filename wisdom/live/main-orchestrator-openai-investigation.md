@@ -23,3 +23,13 @@ Command: temporary node_modules symlink to existing /home/tnfssc/Code/die/node_m
 ## Hard blockers and recommendation
 
 Credential availability blocks connected trials here. GPT-Live public client protocol does not describe native execute calls; delegation provides no executable args and Responses delegation means a separate backend model. For Realtime, direct execute is **protocol-plausible**, not validated or integrated: full prompt/tool capture, root-session execution authority, audio/text turns, interruption/staleness, result reinjection, asynchronous jobs and completion delivery need design and connected end-to-end trials. Recommend an isolated Realtime prototype only after canonical authorized API key is available. Require observed session.updated, actual execute function_call and simulated function_call_output followed by answer, overlap/interrupt response test, then separately safe integration through existing host dispatcher. Do not swap the default or silently substitute a configured-agent handoff. Keep GPT-Live a voice front end pending evidence of native call/results under the actual protocol.
+
+## Parent review
+
+The initial simplified probe below is historical. Parent replaced its prompt
+and tool construction with the actual root orchestrator provider-boundary
+preview, added explicit --offline/--paid modes, call caps and result-marker
+observation. Both modes ran; paid trials still stopped at missing canonical
+credentials. See main-orchestrator-investigation.md and
+main-orchestrator-provider-attempts.json for current evidence. Parent also
+checked the public types and saved selected excerpts with a source hash.

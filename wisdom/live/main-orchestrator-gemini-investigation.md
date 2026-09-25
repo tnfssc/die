@@ -25,3 +25,13 @@ Observed here (existing local checkout dependencies and built assets were tempor
 Keep Pi normal main orchestrator and companion bridge for now. A replacement should route Live to the **same assembled normal system instruction, execute declaration and owned runtime**, not a second privileged evaluator or six-tool façade. Separate voice transport/user-input authority from tool dispatch and preserve normal session/job scope, truncation and cancellation. With an app-configured key, run this bounded probe and check setup acceptance, execute call, model actually consumes ID-matched simulated response (not merely sent), and a follow-up during pending work. Then isolated host-fixture integration should test actual execute code/result and real async lifecycle under normal permissions, text and synthetic audio separately, then full-session continuity/context. None of these provider/host checks passed here.
 
 Related: [values](../values.md), [Gemini research](gemini-live-research.md), [tool examples](official-google-live-tool-examples.md), [voice boundary](voice-prompt.md). Values unchanged: honest proof, bounded use and user-work safety already cover this case.
+
+## Parent review
+
+The first preview used root normal mode (7606 characters). Parent corrected
+the probe to root orchestrator mode and reran it: 8279 characters, the real
+execute declaration, no network. Explicit --paid still stops at missing
+canonical Google credentials. Added --offline, a call cap, hard deadline and
+a full observation window after sending a simulated result. Connected
+behavior remains unproved. See main-orchestrator-investigation.md and
+main-orchestrator-provider-attempts.json for current results.
