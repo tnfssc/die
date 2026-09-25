@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PublicToolFailure } from "../src/live/tool-failure";
+import { InputHandoffError } from "../src/session/input";
 import { VoiceSession } from "../src/live/session.js";
 import type { LiveAdapter, LiveConnection, LiveParams } from "../src/live/types.js";
 
@@ -283,7 +283,7 @@ test("update flood drops old observations honestly while audio continues", async
 
 test("Session exposes allowlisted typed reasons, never exception messages or unknown codes", async () => {
   const h = fixture(async (call) => {
-    const failure = new PublicToolFailure("transcript_unavailable");
+    const failure = new InputHandoffError("transcript_unavailable");
     failure.message = "secret exception detail";
     if (call.id === "unknown-code") (failure as any).code = "secret_code";
     throw failure;

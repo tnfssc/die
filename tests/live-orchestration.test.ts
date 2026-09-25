@@ -1,9 +1,10 @@
 import { expect, test } from "bun:test";
-import { boundedHostContext, createOrchestration, type VoiceHost } from "../src/live/orchestration";
+import { boundedHostContext, createOrchestration } from "../src/live/orchestration";
+import type { SessionOperations } from "../src/session/operations";
 
 test("small honest tool set routes send, steering, authorized inspection and explicit cancellation", async () => {
   const calls: unknown[] = [];
-  const host: VoiceHost = {
+  const host: SessionOperations = {
     send: async (...args) => {
       calls.push(["send", ...args]);
       return { status: "queued" };
@@ -113,7 +114,7 @@ test("host events and tool output cannot become agent instructions", async () =>
 test("completed authority is latest-only, single-use and expires at a fixed monotonic deadline", async () => {
   let now = 0;
   const sent: string[] = [];
-  const host: VoiceHost = {
+  const host: SessionOperations = {
     send: async (_id, text) => {
       sent.push(text);
     },

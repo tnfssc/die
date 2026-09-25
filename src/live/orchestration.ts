@@ -1,19 +1,9 @@
 import type { FunctionDeclaration } from "@google/genai";
-import { PublicToolFailure } from "./tool-failure";
+import { CompletedInput } from "../session/input";
 import type { VoiceOrchestration } from "./types";
 
-/** This surface is backed by the current tasks extension, never a second scheduler. */
-export interface VoiceHost {
-  /** App-authored GPT-Live delegation with quoted provisional context, never final ASR. */
-  delegate?(requestId: string, context: string): Promise<unknown>;
-  send(requestId: string, text: string): Promise<unknown>;
-  steer(requestId: string, text: string): Promise<unknown>;
-  list(options?: { cursor?: string | number; count?: number }): Promise<unknown>;
-  inspect(id: string, offset?: number): Promise<unknown>;
-  stop(requestId: string, id: string): Promise<unknown>;
-  context(): unknown;
-  subscribe(listener: (update: any) => void): () => void;
-}
+import type { SessionOperations } from "../session/operations";
+
 const id = { type: "string", minLength: 1, maxLength: 128 };
 function tool(name: string, description: string, properties: object, required: string[] = []): FunctionDeclaration {
   return {
@@ -78,23 +68,14 @@ export function boundedHostContext(value: unknown): string {
     (serialized.length <= 3800 ? serialized : JSON.stringify({ truncated: true, preview: serialized.slice(0, 1600) }))
   );
 }
-export function createOrchestration(host: VoiceHost, now: () => number = () => performance.now()): VoiceOrchestration {
-  // One completed input request, never observations/history. Model turns are not
-  // input boundaries: NON_BLOCKING tools may span several of them.
-  const ttlMs = 60_000;
-  // Never evict: a forgotten rejected ID could otherwise acquire newer input.
-  // At capacity fail closed until this orchestration/session is replaced.
-  const attemptedRequests = new Set<string>();
-  const maxRequests = 256;
-  let pending: { text: string; expiresAt: number } | undefined;
+export function createOrchestration(
+  host: SessionOperations,
+  now: () => number = () => performance.now(),
+): VoiceOrchestration {
+  const input = new CompletedInput(now);
   return {
-    userTranscript(value) {
-      const text = value.trim();
-      pending = text && value.length <= 4000 ? { text, expiresAt: now() + ttlMs } : undefined;
-    },
-    beginUserTurn() {
-      pending = undefined;
-    },
+    userTranscript: (value) => input.capture(value),
+    beginUserTurn: () => input.revoke(),
     tools: orchestrationTools,
     async execute(call) {
       const args = call.args ?? {};
@@ -102,20 +83,13 @@ export function createOrchestration(host: VoiceHost, now: () => number = () => p
       if (!declaration) throw new Error("Unknown voice tool");
       if (call.name === "agent_send" || call.name === "agent_steer") {
         const requestId = text(args, "requestId", 128);
-        if (attemptedRequests.has(requestId)) throw new PublicToolFailure("request_already_used");
-        if (attemptedRequests.size >= maxRequests) throw new PublicToolFailure("request_limit");
-        // Tombstone even rejected requests, across send/steer and fresh SDK call IDs.
-        attemptedRequests.add(requestId);
+        input.attempt(requestId);
       }
       const allowed = Object.keys((declaration.parametersJsonSchema as any).properties);
       if (Object.keys(args).some((key) => !allowed.includes(key))) throw new Error("Unexpected tool argument");
       let captured: string | undefined;
       if (call.name === "agent_send" || call.name === "agent_steer") {
-        if (pending && now() >= pending.expiresAt) pending = undefined;
-        if (!pending) throw new PublicToolFailure("transcript_unavailable");
-        captured = pending.text;
-        // Consume before calling the host, including ambiguous failures.
-        pending = undefined;
+        captured = input.consume();
       }
       switch (call.name) {
         case "session_context":

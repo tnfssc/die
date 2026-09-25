@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { LiveFragmentGroups, TranscriptLog, type TranscriptEntry } from "../src/live/transcript";
+import { LiveFragmentGroups } from "../src/live/transcript";
+import { TranscriptLog, type TranscriptEntry } from "../src/session/transcript";
 
 test("complete received text persists while viewport identifies clipped and omitted lines", () => {
   const saved: TranscriptEntry[] = [];
@@ -17,8 +18,8 @@ test("complete received text persists while viewport identifies clipped and omit
 test("model-contract final segments are distinct; turn boundaries and interruptions do not imply hearing", () => {
   const saved: TranscriptEntry[] = [];
   const log = new TranscriptLog((e) => saved.push(e));
-  log.receive("You", { text: "first", finished: true, finalitySource: "model_contract" });
-  log.receive("You", { text: "second", finished: true, finalitySource: "model_contract" });
+  log.receive("You", { text: "first", finished: true, replace: true });
+  log.receive("You", { text: "second", finished: true, replace: true });
   log.receive("Voice", { text: "generated" });
   log.finish("Voice", "turn-boundary");
   log.receive("Voice", { text: "cancelled" });

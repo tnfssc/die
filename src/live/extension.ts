@@ -19,12 +19,14 @@ import { runLiveSetup } from "./setup";
 import { LiveAudio, type AudioCallbacks, type AudioSetupError } from "./audio";
 import { getLiveHost } from "./host-access";
 import { registerLiveStop, type LiveStopResult } from "./lifecycle-access";
-import { boundedHostContext, createOrchestration, type VoiceHost } from "./orchestration";
+import { boundedHostContext, createOrchestration } from "./orchestration";
+import type { SessionOperations } from "../session/operations";
 import { VoiceSession } from "./session";
 import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
 import { PlaybackScheduler } from "./playback";
 import { LiveWaveform } from "./waveform";
-import { LiveFragmentGroups, TranscriptLog, VOICE_ENTRY } from "./transcript";
+import { LiveFragmentGroups } from "./transcript";
+import { TranscriptLog, VOICE_ENTRY } from "../session/transcript";
 import { type VoiceCallbacks, type VoiceOrchestration, type VoiceProvider } from "./types";
 
 const ID = "die-live";
@@ -52,7 +54,7 @@ export interface LiveDependencies {
     Partial<Pick<VoiceProvider, "sendContext">> & {
       diagnostics?: { serverInterruptions: number; turnCompletions: number; lastInterruptedAtMs?: number };
     };
-  host(pi: ExtensionAPI, ctx: ExtensionContext): VoiceHost | undefined;
+  host(pi: ExtensionAPI, ctx: ExtensionContext): SessionOperations | undefined;
   audio(
     callbacks: AudioCallbacks,
     signal: AbortSignal,
@@ -114,7 +116,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
 
     orchestration?: VoiceOrchestration;
     private inputUtterance = "";
-    host?: VoiceHost;
+    host?: SessionOperations;
     unsubscribeHost?: () => void;
     audio?: NativeAudio;
     private audioLaunchPending = false;
@@ -501,7 +503,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 // re-authorize stale speech. Keep Gemini's existing capture path.
                 if (this.provider === "openai") {
                   if (t.finished) this.completedInputTranscripts++;
-                  this.transcriptLog.receive("You", t);
+                  this.transcriptLog.receive("You", { ...t, replace: t.finalitySource === "model_contract" });
                   this.render();
                   return;
                 }
@@ -515,7 +517,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                   this.orchestration?.userTranscript(this.inputUtterance);
                   this.inputUtterance = "";
                 }
-                this.transcriptLog.receive("You", t);
+                this.transcriptLog.receive("You", { ...t, replace: t.finalitySource === "model_contract" });
                 this.render();
               },
               onOutputTranscript: (t) => {

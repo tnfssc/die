@@ -1,4 +1,4 @@
-import { VOICE_ENTRY, type TranscriptEntry } from "./transcript";
+import { VOICE_ENTRY, type TranscriptEntry } from "../session/transcript";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, lstat as stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
