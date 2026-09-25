@@ -23,6 +23,12 @@ function harness() {
       },
     }) as ReturnType<LiveAdapter>;
   const connection = {
+    sendClientContent: (data: unknown) => {
+      sends.push(data);
+    },
+    sendToolResponse: (data: unknown) => {
+      sends.push(data);
+    },
     sendRealtimeInput: (data: unknown) => {
       sends.push(data);
       onSend?.();
@@ -53,6 +59,39 @@ const audio = (data = "AAAAAA==", mimeType = "audio/pcm;rate=24000") => ({
 });
 
 describe("voice-only SDK session", () => {
+  test("direct main agent uses external instructions and dispatches execute once", async () => {
+    const h = harness();
+    const calls: unknown[] = [];
+    const s = new VoiceSession({}, h.adapter, {
+      instructions: "ordinary root prompt",
+      directMainAgent: true,
+      tools: [{ name: "execute", parametersJsonSchema: { type: "object", properties: { code: { type: "string" } } } }],
+      userTranscript: () => {},
+      execute: async (call) => {
+        calls.push(call);
+        return { content: [{ type: "text", text: "done" }] };
+      },
+    });
+    const connecting = s.connect("fake");
+    expect(h.params.config?.systemInstruction).toBe("ordinary root prompt");
+    expect(h.params.config?.tools).toMatchObject([{ functionDeclarations: [{ name: "execute" }] }]);
+    h.ready();
+    await connecting;
+    const call = msg({ toolCall: { functionCalls: [{ id: "c1", name: "execute", args: { code: "1+1" } }] } });
+    h.params.callbacks.onmessage(call);
+    h.params.callbacks.onmessage(call);
+    await Bun.sleep(0);
+    expect(calls).toEqual([{ id: "c1", name: "execute", args: { code: "1+1" } }]);
+    expect(h.sends).toEqual([
+      expect.objectContaining({
+        functionResponses: expect.objectContaining({
+          id: "c1",
+          response: { output: { content: [{ type: "text", text: "done" }] } },
+        }),
+      }),
+    ]);
+    s.close();
+  });
   test("Gemini SDK usageMetadata reaches billing without audio render", async () => {
     const h = harness();
     const usage: unknown[] = [];
@@ -333,4 +372,26 @@ describe("voice-only SDK session", () => {
     expect(second.state).toBe("closed");
     expect(k.closes).toBe(1);
   });
+});
+
+test("main Gemini context retains large history and completion explicitly triggers voice", async () => {
+  const h = harness();
+  const s = new VoiceSession({}, h.adapter, {
+    instructions: "root",
+    directMainAgent: true,
+    tools: [],
+    userTranscript() {},
+    async execute() {},
+  });
+  const pending = s.connect("fake");
+  h.ready();
+  await pending;
+  const history = "history:" + "x".repeat(12000);
+  s.sendContext(history, { triggerResponse: false });
+  s.sendContext("job completed");
+  expect(h.sends).toEqual([
+    { turns: [{ role: "user", parts: [{ text: history }] }], turnComplete: false },
+    { turns: [{ role: "user", parts: [{ text: "job completed" }] }], turnComplete: true },
+  ]);
+  s.close();
 });

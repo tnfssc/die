@@ -15,6 +15,10 @@ export function liveConfigPath(): string {
 export function parseLiveConfig(value: unknown): LiveConfig {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid Live settings");
   const { provider, model, openaiModel } = value as Record<string, unknown>;
+  if (model === "gpt-live-1" || openaiModel === "gpt-live-1")
+    throw new Error(
+      "GPT-Live is no longer supported. Edit ~/.die/live-settings.json to select gpt-realtime-2.1, or remove it to use Gemini. No fallback was started.",
+    );
   if ((provider !== "google" && provider !== "openai") || !isLiveModel(provider, model))
     throw new Error("Invalid Live provider/model selection");
   if (openaiModel !== undefined && !isLiveModel("openai", openaiModel)) throw new Error("Invalid OpenAI voice model");

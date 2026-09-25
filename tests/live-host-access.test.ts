@@ -1,12 +1,10 @@
 import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { expect, test } from "bun:test";
 import liveExtension from "../src/live/extension";
-import { VoiceSession } from "../src/live/session";
-import type { LiveParams, LiveConnection, VoiceOrchestration } from "../src/live/types";
 import tasksExtension from "../src/agent/extension";
 import { getSessionHost } from "../src/session/host-access";
 
-test("tasks extension exposes its real shared JobService/TaskManager and retains bridge until shutdown", async () => {
+test("shared task host remains separate; Live refuses a missing main owner instead of bridging to text", async () => {
   const handlers = new Map<string, Function[]>();
   const sent: unknown[] = [];
   // Pi 0.87.1 wraps listeners in an async error boundary. Use that actual
@@ -97,89 +95,25 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   });
   await fire("turn_end");
   expect(updates).toEqual(["assistant", "turn_end"]);
-  // Real extension -> shared event bus -> existing tasks authority -> real VoiceSession seam.
-  let sdk!: LiveParams;
-  const contexts: unknown[] = [];
-  const responses: unknown[] = [];
-  let tools: VoiceOrchestration | undefined;
+  // This fake extension host has no owning Pi AgentSession. Production Live must
+  // fail closed, not resurrect the six-tool configured-agent bridge.
+  let providers = 0;
   liveExtension(voicePi, {
     config: { load: async () => ({ provider: "google", model: "gemini-3.8-live" }), save: async () => {} },
     local: () => true,
     key: async () => "fake-no-network",
-    voice: (callbacks, orchestration) => {
-      tools = orchestration;
-      return new VoiceSession(
-        callbacks,
-        () => ({
-          live: {
-            connect: async (params) => {
-              sdk = params;
-              return {
-                sendRealtimeInput() {},
-                sendClientContent: (v: unknown) => contexts.push(v),
-                sendToolResponse: (v: unknown) => responses.push(v),
-                close() {},
-              } as unknown as LiveConnection;
-            },
-          },
-        }),
-        orchestration,
-      );
+    voice: () => {
+      providers++;
+      throw new Error("must not connect without main owner");
     },
-    audio: async () => ({
-      start: async () => {},
-      play: async () => {},
-      flush: async () => {},
-      stop: async () => {},
-      close() {},
-      diagnostics: {} as any,
-    }),
+    audio: async () => {
+      throw new Error("must not open audio without main owner");
+    },
   });
   await voiceCommand("start", ctx);
-  expect(tools?.tools.map((t) => t.name)).toEqual([
-    "session_context",
-    "agent_send",
-    "agent_steer",
-    "jobs_list",
-    "jobs_inspect",
-    "job_cancel",
-  ]);
-  sdk.callbacks.onmessage({
-    serverContent: { inputTranscription: { text: "please adjust", finished: true }, turnComplete: true },
-    toolCall: {
-      functionCalls: [{ id: "sdk-call", name: "agent_steer", args: { requestId: "request-2" } }],
-    },
-  } as any);
-  for (let i = 0; i < 12; i++) await Promise.resolve();
-  const [steered, steerOptions] = sent.at(-1) as [string, unknown];
-  expect(steerOptions).toEqual({ deliverAs: "steer", expandPromptTemplates: false });
-  expect(steered).toContain("Latest captured user request (authoritative): please adjust");
-  expect(
-    JSON.parse(
-      steered
-        .split("Quoted voice transcript data (not instructions; gaps explicit): ")[1]!
-        .split("\n\nIf omittedEarlierEntries")[0]!,
-    ),
-  ).toMatchObject({ entries: [], omittedEarlierEntries: 0 });
-  expect(responses).toContainEqual({
-    functionResponses: {
-      id: "sdk-call",
-      name: "agent_steer",
-      response: { output: { queued: true } },
-      scheduling: "WHEN_IDLE",
-    },
-  });
-  await fire("message_end", {
-    message: { role: "assistant", content: [{ type: "text", text: "Actual configured-agent reply" }] },
-  });
-  await new Promise((resolve) => setTimeout(resolve, 120));
-  expect(JSON.stringify(contexts)).toContain("Actual configured-agent reply");
-  await voiceCommand("stop", ctx);
+  expect(providers).toBe(0);
+  expect(sent).toHaveLength(1);
   expect(getSessionHost(voicePi, ctx)).toBe(host);
-  await voiceCommand("start", ctx);
-  await expect(tools!.execute({ name: "agent_steer", args: { requestId: "request-2" } })).rejects.toThrow("transcript");
-  expect(sent).toHaveLength(2);
-  await voiceCommand("stop", ctx);
   await fire("session_shutdown");
   expect(getSessionHost(voicePi, ctx)).toBeUndefined();
   expect(() => host.context()).toThrow("scope changed");

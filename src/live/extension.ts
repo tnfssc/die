@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createDefaultLiveCredentialService, type LiveCredentialService, type LiveProviderId } from "./credentials";
@@ -11,23 +10,17 @@ import {
 } from "./providers";
 import { loadLiveConfig, saveLiveConfig, type LiveConfig } from "./config";
 import { VoiceCostTracker, VOICE_COST_ENTRY } from "./cost";
-import { GPTLiveSession, type GPTLiveCallbacks } from "./gpt-live-session";
-import { GptLiveDelegationBridge } from "./gpt-live-delegation";
-import { GptLivePlaybackRecovery } from "./gpt-live-playback";
 import { OpenAIRealtimeSession } from "./openai-session";
 import { liveLocalOnly } from "./status";
 import { runLiveSetup } from "./setup";
 import { LiveAudio, type AudioCallbacks, type AudioSetupError } from "./audio";
-import { getSessionHost } from "../session/host-access";
+import { acquireMainOwner, type MainOwner } from "./main-owner";
 import { registerLiveStop, type LiveStopResult } from "./lifecycle-access";
-import { boundedHostContext, createOrchestration } from "./orchestration";
-import type { SessionOperations } from "../session/operations";
 import { VoiceSession } from "./session";
 import { audioDiagnostic, audioLaunchDiagnostic } from "./diagnostics";
 import { PlaybackScheduler } from "./playback";
 import { LiveWaveform } from "./waveform";
-import { LiveFragmentGroups } from "./transcript";
-import { TranscriptLog, VOICE_ENTRY } from "../session/transcript";
+import { TranscriptLog } from "../session/transcript";
 import { type VoiceCallbacks, type VoiceOrchestration, type VoiceProvider } from "./types";
 
 const ID = "die-live";
@@ -39,7 +32,6 @@ const clean = (value: string) =>
     .replace(/\s+/g, " ");
 
 export interface LiveDependencies {
-  gptLive?(callbacks: GPTLiveCallbacks): GPTLiveSession;
   local(mode: string): boolean;
   /** Local-only bounded test; result is a sanitized human-readable summary, never PCM. */
   speakerCheck(args: { audio: LiveDependencies["audio"]; signal: AbortSignal }): Promise<string>;
@@ -55,14 +47,13 @@ export interface LiveDependencies {
     Partial<Pick<VoiceProvider, "sendContext">> & {
       diagnostics?: { serverInterruptions: number; turnCompletions: number; lastInterruptedAtMs?: number };
     };
-  host(pi: ExtensionAPI, ctx: ExtensionContext): SessionOperations | undefined;
+  owner: typeof acquireMainOwner;
   audio(
     callbacks: AudioCallbacks,
     signal: AbortSignal,
   ): Promise<Pick<LiveAudio, "start" | "play" | "flush" | "stop" | "close" | "diagnostics">>;
 }
 const defaults: LiveDependencies = {
-  gptLive: (callbacks) => new GPTLiveSession(callbacks),
   speakerCheck: async (args) => {
     const { runSpeakerCheck } = await import("./speaker-check");
     const { speakerCheckSummary } = await import("./speaker-summary");
@@ -76,19 +67,24 @@ const defaults: LiveDependencies = {
     (await createDefaultLiveCredentialService(signal, provider)).loadKey(signal),
   config: { load: loadLiveConfig, save: saveLiveConfig },
   voice: (callbacks, orchestration, provider = "google", model = OPENAI_REALTIME_MODELS[0]) => {
-    if (model === OPENAI_LIVE_MODEL) throw new Error("GPT-Live requires its distinct adapter");
+    if (!orchestration?.directMainAgent || !orchestration.instructions)
+      throw new Error(
+        "Main Live requires the current ordinary root owner and execute runtime; no companion fallback is available",
+      );
+    if (model === OPENAI_LIVE_MODEL)
+      throw new Error("GPT-Live is unavailable. Use /live model gpt-realtime-2.1 instead.");
     return provider === "openai"
       ? new OpenAIRealtimeSession(callbacks, undefined, orchestration, model as (typeof OPENAI_REALTIME_MODELS)[number])
       : new VoiceSession(callbacks, undefined, orchestration);
   },
-  host: getSessionHost,
+  owner: acquireMainOwner,
   audio: (callbacks, signal) => LiveAudio.launch({ callbacks, signal }),
 };
 
 type NativeAudio = Awaited<ReturnType<LiveDependencies["audio"]>>;
 type NativeVoice = ReturnType<LiveDependencies["voice"]>;
 
-/** Native full-duplex voice; configured agent work has an independent lifecycle. */
+/** Live owns the ordinary main-agent session; audio interruption never cancels jobs. */
 export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDependencies> = {}): void {
   const deps = { ...defaults, ...injected };
   let selected: LiveConfig = { provider: "google", model: LIVE_PROVIDERS.google.models[0] };
@@ -115,17 +111,15 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       this.ctx.ui.setStatus("die-live-cost", entry.unknown ? "unknown" : "updated");
     });
     readonly sessionId: string | undefined;
-    readonly leafId: string | undefined;
     private stopping?: Promise<LiveStopResult>;
     voice?: NativeVoice;
-    liveVoice?: GPTLiveSession;
-    liveDelegation?: GptLiveDelegationBridge;
-    livePlayback?: GptLivePlaybackRecovery;
 
     orchestration?: VoiceOrchestration;
     private inputUtterance = "";
-    host?: SessionOperations;
-    unsubscribeHost?: () => void;
+    owner?: MainOwner;
+    private outputUtterance = "";
+    private initialContext: Array<{ text: string; options?: { triggerResponse?: boolean } }> = [];
+    private initialContextBytes = 0;
     audio?: NativeAudio;
     private audioLaunchPending = false;
     state = "starting"; // lifecycle only: capture and pump run regardless of presentation
@@ -138,12 +132,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     private lastWidget?: string;
     private readonly waveform = new LiveWaveform();
     private waveTimer?: ReturnType<typeof setInterval>;
-    readonly transcriptLog = new TranscriptLog((entry) => pi.appendEntry?.(VOICE_ENTRY, entry));
-    readonly liveFragments = new LiveFragmentGroups((speaker, text, status) => {
-      this.transcriptLog.receive(speaker, { text });
-      this.transcriptLog.finish(speaker, status);
-      if (this.alive) this.render();
-    });
+    readonly transcriptLog = new TranscriptLog(() => {}); // View only: MainOwner owns ordinary branch history.
     pendingBytes = 0;
     inFlight = false;
     readonly playback: PlaybackScheduler;
@@ -156,7 +145,6 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     readonly lines: string[] = [];
     constructor(readonly ctx: ExtensionContext) {
       this.sessionId = ctx.sessionManager?.getSessionId?.();
-      this.leafId = ctx.sessionManager?.getLeafId?.() ?? undefined;
       const playbackOptions: ConstructorParameters<typeof PlaybackScheduler>[0] = {
         send: (frame, epoch) => {
           if (!this.audio) return Promise.reject(new Error("Audio not ready"));
@@ -173,13 +161,14 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           this.render();
         },
       };
-      if (this.model === OPENAI_LIVE_MODEL) {
-        this.livePlayback = new GptLivePlaybackRecovery(playbackOptions);
-        this.playback = this.livePlayback.scheduler;
-      } else this.playback = new PlaybackScheduler(playbackOptions);
+      this.playback = new PlaybackScheduler(playbackOptions);
     }
     get alive() {
-      return current === this && !this.controller.signal.aborted;
+      return (
+        current === this &&
+        !this.controller.signal.aborted &&
+        this.sessionId === this.ctx.sessionManager?.getSessionId?.()
+      );
     }
     render(immediate = false) {
       if (!this.alive) return;
@@ -241,6 +230,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       this.render();
     }
     interrupt(epoch: number) {
+      this.owner?.interrupt();
+      this.outputUtterance = "";
       if (!this.alive || epoch <= this.generation) return;
       this.orchestration?.beginUserTurn?.();
       this.inputUtterance = "";
@@ -259,7 +250,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     fail(message: string) {
       if (!this.alive) return;
       this.stop();
-      this.ctx.ui.notify("Live stop requested: " + message + ". No agent work was cancelled.", "warning");
+      if (this.sessionId === this.ctx.sessionManager?.getSessionId?.())
+        this.ctx.ui.notify("Live stop requested: " + message + ". No agent work was cancelled.", "warning");
     }
     stop() {
       void this.stopObserved();
@@ -268,19 +260,16 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       if (this.stopping) return this.stopping;
       if (current !== this)
         return Promise.resolve({ stopped: false, errors: ["Live session is no longer active"], jobsUnchanged: true });
-      this.liveFragments.flush();
       this.transcriptLog.finish("You", "partial");
       this.transcriptLog.finish("Voice", "partial");
       current = undefined;
       stoppingRun = this;
-      this.orchestration?.beginUserTurn?.();
-      this.inputUtterance = "";
+      this.owner?.close(); // No await: live.stop can be called by the admitted execute itself.
+      this.inputUtterance = this.outputUtterance = "";
+      this.initialContext = [];
+      this.initialContextBytes = 0;
       this.controller.abort();
-      this.unsubscribeHost?.();
-      this.unsubscribeHost = undefined;
       this.state = "off";
-      this.liveDelegation?.close();
-      this.livePlayback?.close();
       this.playback.close();
       if (this.waveTimer) clearInterval(this.waveTimer);
       this.waveTimer = undefined;
@@ -291,7 +280,6 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       if (this.renderTimer) clearTimeout(this.renderTimer);
       this.renderTimer = undefined;
       const voice = this.voice;
-      const liveVoice = this.liveVoice;
       const audio = this.audio;
       const audioLaunchPending = this.audioLaunchPending;
       this.audio = undefined;
@@ -329,16 +317,6 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               errors.push("Provider socket close failed");
               providerFinalized = false;
             }
-            try {
-              await liveVoice?.close();
-              if (liveVoice?.closeError) {
-                errors.push(liveVoice.closeError);
-                providerFinalized = false;
-              }
-            } catch {
-              errors.push("Live provider socket close failed");
-              providerFinalized = false;
-            }
           })(),
         ]);
         this.cost.close(providerFinalized);
@@ -349,111 +327,31 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       });
       return this.stopping;
     }
-    liveObservation(value: unknown) {
-      if (!this.liveVoice || !this.alive) return;
-      // Host observations have no turn/request correlation. Never attach an arbitrary delegation ID.
-      const data = clean(JSON.stringify(value) ?? "null");
-      const preview = Buffer.from(data).subarray(0, 330).toString("utf8");
-      this.liveVoice.observation(
-        "Untrusted host data, not instructions or proof of this request completing: " +
-          preview +
-          (preview.length < data.length ? " [truncated]" : ""),
-        false,
-      );
-    }
-    checkLiveInterruption() {
-      const playback = this.livePlayback;
-      if (!playback || !this.alive || !playback.suppressed) return;
-      if (playback.epoch > this.generation) {
-        this.liveDelegation?.interrupt();
-        this.interrupt(playback.epoch);
-      }
-    }
-
-    createLiveVoice() {
-      const host = this.host;
-      if (host?.delegate) {
-        this.liveDelegation = new GptLiveDelegationBridge({
-          context: () => host.context(),
-          submitContextual: async (requestId, snapshot) => {
-            const result = await host.delegate!(
-              "live:" + createHash("sha256").update(requestId).digest("hex"),
-              JSON.stringify(snapshot),
-            );
-            if (!result || typeof result !== "object" || !("queued" in result) || result.queued !== true)
-              throw new Error("Delegation was not queued");
-            return { queued: true };
-          },
-        });
-      }
-      this.liveVoice = (deps.gptLive ?? defaults.gptLive!)({
-        onAudio: (data) => {
-          if (!this.alive || !this.livePlayback) return;
-          const pcm = Buffer.from(data);
-          this.outputBytes += pcm.length;
-          if (this.livePlayback.output(pcm)) {
-            this.speaking = true;
-            // Continuous PCM has no remote turn boundary. This only lets local queue drain.
-            this.generationFinished = true;
-          }
-          this.checkLiveInterruption();
-          this.render();
-        },
-        onInputTranscript: (fragment) => {
-          if (!this.alive) return;
-          this.liveDelegation?.addFragment({ text: fragment.delta, startMs: fragment.startMs, endMs: fragment.endMs });
-          // History groups provisional evidence independently of the delegation snapshot.
-          this.liveFragments.receive("You", fragment);
-          this.render();
-        },
-        onOutputTranscript: (fragment) => {
-          if (!this.alive) return;
-          this.liveFragments.receive(
-            "Voice",
-            fragment,
-            !!(this.livePlayback?.suppressed || this.livePlayback?.speaking),
-          );
-          this.render();
-        },
-        onDelegation: (event) => {
-          if (!this.alive) return;
-          if (!this.liveDelegation) {
-            this.liveVoice?.commentary(event.id, "The configured agent bridge is unavailable. No work was started.");
-            return;
-          }
-          this.liveVoice?.thinking(event.id, "Checking the bounded conversation context with the configured agent.");
-          void this.liveDelegation
-            .handleCreated(event)
-            .then((result) => {
-              if (!this.alive) return;
-              if (result.kind === "queued" || result.kind === "clarification")
-                this.liveVoice?.commentary(event.id, result.commentary);
-              else if (result.kind === "unavailable")
-                this.liveVoice?.commentary(
-                  event.id,
-                  "The request could not be dispatched. Please clarify or use the terminal.",
-                );
-            })
-            .catch(() => {
-              if (this.alive) this.fail("GPT-Live delegation failed");
-            });
-        },
-        onError: (reason) => this.fail(reason),
-        onUsage: (usage) => this.cost.cumulative(usage),
-        onClosed: (finalized, usage) => {
-          if (usage) this.cost.cumulative(usage);
-          if (!finalized) this.cost.close(false);
-          if (this.alive) this.fail("GPT-Live session closed");
-        },
-      });
-      this.ctx.ui.notify(
-        "GPT-Live uses continuous PCM and provisional transcripts. Local interruption uses a limited acoustic heuristic. Output resumes after qualified quiet plus a 200ms guard; stale server audio may still be heard. Microphone capture is never muted by playback.",
-        "info",
-      );
-    }
     async start(key: string) {
-      let stage = "audio-helper";
+      let stage = "main-owner";
       try {
+        const deliver = (text: string, options?: { triggerResponse?: boolean }) => {
+          if (!this.alive) return;
+          if (this.voice?.state === "ready") this.voice.sendContext?.(text, options);
+          else {
+            this.initialContextBytes += Buffer.byteLength(text);
+            if (this.initialContextBytes > 1_048_576)
+              throw new Error("Initial Live context exceeds 1 MiB; resume in text");
+            this.initialContext.push({ text, options });
+          }
+        };
+        this.owner = await deps.owner(pi, this.ctx, {
+          onContext: deliver,
+          onInput: deliver,
+          onError: (message) => this.fail(message),
+          signal: this.controller.signal,
+        });
+        if (!this.alive) {
+          this.owner.close();
+          return;
+        }
+        this.orchestration = this.owner.orchestration;
+        stage = "audio-helper";
         // Hello does not open devices. Provider setup must succeed BEFORE audio.start().
         this.audioLaunchPending = true;
         this.audio = await deps.audio(
@@ -462,11 +360,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               if (this.alive && this.state === "running") {
                 this.inputFrames++;
                 this.waveform.capture(pcm);
-                if (this.liveVoice) {
-                  this.livePlayback?.capture(pcm);
-                  this.checkLiveInterruption();
-                  this.liveVoice.appendMicrophone(pcm); // NEVER gate capture on playback/VAD.
-                } else this.voice?.sendAudio(pcm.toString("base64"));
+                this.voice?.sendAudio(pcm.toString("base64"));
                 this.render();
               }
             },
@@ -489,14 +383,17 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         );
         this.audioLaunchPending = false;
         if (!this.alive) {
-          this.audio.close();
+          await this.audio.stop().catch(() => {});
+          try {
+            await this.audio.close();
+          } catch {
+            /* late launch already aborted */
+          }
+          this.audio = undefined;
           return;
         }
         stage = "provider-construction";
-        this.host = deps.host(pi, this.ctx);
-        this.orchestration = this.host && this.model !== OPENAI_LIVE_MODEL ? createOrchestration(this.host) : undefined;
-        if (this.model === OPENAI_LIVE_MODEL) this.createLiveVoice();
-        else {
+        {
           this.voice = deps.voice(
             {
               onAudio: (pcm, epoch) => this.output(pcm, epoch),
@@ -509,6 +406,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               onTurnComplete: () => {
                 if (this.provider === "google") this.cost.turnComplete();
                 if (this.alive) {
+                  this.owner?.turnComplete();
+                  this.outputUtterance = "";
                   this.transcriptLog.finish("Voice", "turn-boundary");
                   this.transcriptLog.finish("You", "partial");
                   this.turns++;
@@ -520,29 +419,22 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               },
               onInputActivity: () => {
                 if (!this.alive) return;
+                this.owner?.beginInput?.();
                 this.orchestration?.beginUserTurn?.();
                 this.inputUtterance = "";
                 this.transcriptLog.finish("You", "partial");
               },
               onInputTranscript: (t) => {
                 if (!this.alive) return;
-                // Realtime ASR is item-correlated and may arrive out of order. Its
-                // provider owns capture authority; received display text must not
-                // re-authorize stale speech. Keep Gemini's existing capture path.
-                if (this.provider === "openai") {
-                  if (t.finished) this.completedInputTranscripts++;
-                  this.transcriptLog.receive("You", { ...t, replace: t.finalitySource === "model_contract" });
-                  this.render();
-                  return;
-                }
-                // Contract-final events are complete segments, not deltas. Latest
-                // segment replaces prior unfinished input; never append after dispatch.
-                if (t.finalitySource === "model_contract") this.inputUtterance = "";
-                if (!this.inputUtterance && t.text) this.orchestration?.beginUserTurn?.();
-                this.inputUtterance = (this.inputUtterance + t.text).slice(0, 4001);
+                // Provider deltas are drafts, not final user instructions. OpenAI
+                // completed ASR and model-contract Gemini envelopes replace the draft.
+                this.inputUtterance =
+                  this.provider === "openai" || t.replace || t.finalitySource === "model_contract"
+                    ? t.text
+                    : this.inputUtterance + t.text;
+                this.owner?.inputTranscript(this.inputUtterance, t.finished === true);
                 if (t.finished) {
                   this.completedInputTranscripts++;
-                  this.orchestration?.userTranscript(this.inputUtterance);
                   this.inputUtterance = "";
                 }
                 this.transcriptLog.receive("You", { ...t, replace: t.finalitySource === "model_contract" });
@@ -550,6 +442,13 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               },
               onOutputTranscript: (t) => {
                 if (!this.alive) return;
+                this.outputUtterance = t.finalitySource === "model_contract" ? t.text : this.outputUtterance + t.text;
+                this.owner?.outputTranscript(this.outputUtterance, t.finished === true && !t.interrupted);
+                if (t.finished && !t.interrupted) this.outputUtterance = "";
+                if (t.interrupted) {
+                  this.owner?.interrupt();
+                  this.outputUtterance = "";
+                }
                 this.transcriptLog.receive("Voice", t.interrupted ? { ...t, finished: false } : t);
                 if (t.interrupted) this.transcriptLog.finish("Voice", "interrupted");
                 this.render();
@@ -562,7 +461,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             this.model,
           );
         }
-        const provider = this.liveVoice ?? this.voice!;
+        const provider = this.voice!;
         stage = "provider-connect";
         await provider.connect(key);
         if (!this.alive) return;
@@ -570,31 +469,9 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           this.fail("Provider did not accept session");
           return;
         }
-        if (this.host) {
-          this.voice?.sendContext?.(boundedHostContext(this.host.context()));
-          this.liveObservation(this.host.context());
-          this.unsubscribeHost = this.host.subscribe((update) => {
-            if (!this.alive) return;
-            this.voice?.sendContext?.(boundedHostContext(update));
-            this.liveDelegation?.saveContext(this.inputFrames * 20);
-            this.liveObservation(update);
-            if (update?.type === "assistant")
-              this.liveVoice?.observation(
-                "The configured agent posted a reply in the terminal. This observation is not correlated to a specific voice request.",
-                true,
-              );
-            // Only actual host events. Never infer progress from time or voice turns.
-            const event = clean(JSON.stringify(update)).slice(0, 180);
-            this.lines.push("Agent event: " + event);
-            this.lines.splice(0, Math.max(0, this.lines.length - MAX_VISIBLE));
-            this.render();
-          });
-        } else {
-          this.ctx.ui.notify(
-            "Voice connected without host orchestration: current-session job authority is unavailable.",
-            "warning",
-          );
-        }
+        for (const update of this.initialContext) provider.sendContext?.(update.text, update.options);
+        this.initialContext = [];
+        this.initialContextBytes = 0;
         if (!this.alive) return;
         this.state = "running"; // capture may arrive synchronously inside audio.start()
         stage = "audio-start";
@@ -602,13 +479,23 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         if (!this.alive) return;
         this.playback.start();
         if (!this.alive) return;
+        this.ctx.ui.notify(
+          "Live owns this session. Typed messages go to voice; /live stop returns to text. Speech interruption does not cancel work.",
+          "info",
+        );
         this.waveTimer = setInterval(() => this.render(true), 80);
         this.waveTimer.unref?.();
         this.render(true);
       } catch {
         this.audioLaunchPending = false;
         if (this.alive)
-          this.fail(this.audio ? "Voice startup failed [" + stage + "]; details withheld" : audioLaunchDiagnostic());
+          this.fail(
+            stage === "main-owner"
+              ? "Cannot start main Live. Wait for the text turn to finish, then retry /live. If it persists, restart Die; the ordinary prompt/runtime could not be acquired."
+              : this.audio
+                ? "Voice startup failed [" + stage + "]; details withheld"
+                : audioLaunchDiagnostic(),
+          );
       }
     }
   }
@@ -626,7 +513,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     return run.stopObserved();
   });
   pi.registerCommand("live", {
-    description: "Toggle voice with selected voice provider (paid; microphone and speakers)",
+    description: "Toggle main-agent voice (paid). Typed input goes to Live; /live stop returns to text.",
     getArgumentCompletions: (prefix) => {
       const matches = ["start", "stop", "setup", "status", "provider", "model", "mic-check", "speaker-check"].filter(
         (value) => value.startsWith(prefix),
@@ -638,15 +525,34 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         try {
           if (!loading) loading = deps.config.load();
           selected = await loading;
+          if (selected.model === OPENAI_LIVE_MODEL) {
+            ctx.ui.notify(
+              "GPT-Live is no longer supported. Edit ~/.die/live-settings.json to select OpenAI model gpt-realtime-2.1 (or remove the settings file to use Gemini), then run /live start. No fallback was started.",
+              "error",
+            );
+            return;
+          }
           loaded = true;
-        } catch {
-          ctx.ui.notify("Could not read Live settings; selection unchanged. Fix settings before using Live.", "error");
+        } catch (error) {
+          ctx.ui.notify(
+            String(error).includes("GPT-Live is no longer supported")
+              ? "GPT-Live is no longer supported. Edit ~/.die/live-settings.json to select gpt-realtime-2.1, or remove it to use Gemini. No fallback was started."
+              : "Could not read Live settings; selection unchanged. Fix settings before using Live.",
+            "error",
+          );
           loading = undefined;
           return;
         }
       }
       const active = current || stoppingRun || entry || confirmation !== undefined || probe || speakerProbe || saving;
       const action = args.trim() || (active ? "stop" : "start");
+      if (action === "model gpt-live-1") {
+        ctx.ui.notify(
+          "GPT-Live is no longer supported. Use /live model gpt-realtime-2.1 instead; no fallback was started.",
+          "error",
+        );
+        return;
+      }
       if (action === "status") {
         ctx.ui.notify(
           current
@@ -666,8 +572,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 current.turns +
                 " · provider interruptions " +
                 (current.voice?.diagnostics?.serverInterruptions ?? "unknown") +
-                " · agent " +
-                (current.host ? "connected" : "unavailable") +
+                " · main owner " +
+                (current.owner ? "connected" : "unavailable") +
                 " · tools configured " +
                 (current.orchestration?.tools.length ?? 0) +
                 " · completed input transcripts " +
@@ -679,14 +585,6 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                     (current.audio.diagnostics.ready.voiceProcessingBypassed ? "bypassed" : "unbypassed") +
                     " (configuration only, AEC unmeasured)"
                   : "unknown") +
-                (current.liveVoice
-                  ? " · client delegation " +
-                    (current.liveDelegation ? "connected" : "unavailable") +
-                    " · GPT-Live output " +
-                    (current.livePlayback?.suppressed
-                      ? "suppressed during speech/quiet guard"
-                      : "active; limited acoustic detector")
-                  : "") +
                 ". Agent work is independent of voice."
             : speakerProbe
               ? "Local speaker check running; provider not connected. /live stop cancels the check; agent work is unchanged."
@@ -717,7 +615,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               LIVE_PROVIDERS[id].label + " · voice model " + model + (selected.provider === id ? " (selected)" : "")
             );
           });
-          const picked = await ctx.ui.select("Live voice provider (coding-agent model is separate)", options);
+          const picked = await ctx.ui.select("Live voice provider (owns main while active)", options);
           choice = picked === options[0] ? "google" : picked === options[1] ? "openai" : undefined;
         } else {
           ctx.ui.notify("Usage: /live provider [google|openai]", "info");
@@ -747,6 +645,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           } finally {
             saving = false;
           }
+          if (owner !== sequence) return;
           selected = next;
           ctx.ui.notify(
             "Live voice provider: " +
@@ -769,7 +668,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         const picked =
           requested ||
           (await ctx.ui.select(
-            "Live " + LIVE_PROVIDERS[selected.provider].label + " voice model (coding-agent model is separate)",
+            "Live " + LIVE_PROVIDERS[selected.provider].label + " voice model (owns main while active)",
             options,
           ));
         const pickedIndex = options.indexOf(picked ?? "");
@@ -809,6 +708,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         } finally {
           saving = false;
         }
+        if (owner !== sequence) return;
         selected = next;
         ctx.ui.notify(
           "Live " +
@@ -933,7 +833,9 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         entry?.abort();
         entry = undefined;
         confirmation = undefined;
+        const stopSessionId = ctx.sessionManager?.getSessionId?.();
         const result = await (current ?? stoppingRun)?.stopObserved();
+        if (stopSessionId !== ctx.sessionManager?.getSessionId?.()) return;
         ctx.ui.notify(
           result && !result.stopped ? "Live stop incomplete: " + result.errors.join("; ") : "Live off.",
           result && !result.stopped ? "warning" : "info",
@@ -950,7 +852,14 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         const controller = new AbortController();
         entry = controller;
         const owner = ++sequence;
-        const alive = () => entry === controller && owner === sequence && !controller.signal.aborted;
+        const entrySessionId = ctx.sessionManager?.getSessionId?.();
+        const entryLeafId = ctx.sessionManager?.getLeafId?.();
+        const alive = () =>
+          entry === controller &&
+          owner === sequence &&
+          !controller.signal.aborted &&
+          entrySessionId === ctx.sessionManager?.getSessionId?.() &&
+          entryLeafId === ctx.sessionManager?.getLeafId?.();
         try {
           let key: string | undefined;
           if (action === "start") {
@@ -990,14 +899,25 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         ctx.ui.notify("Usage: /live [start|setup|stop|status|provider|model|mic-check|speaker-check]", "info");
     },
   });
-  pi.on("session_shutdown", () => {
+  // Navigation must wait for cancellation/results before Pi moves the branch.
+  const stopForNavigation = async () => {
+    const run = current;
+    if (!run) return;
+    run.owner?.stopForeground();
+    await run.stopObserved();
+    await run.owner?.released;
+  };
+  pi.on("session_before_tree", stopForNavigation);
+  pi.on("session_before_fork", stopForNavigation);
+  pi.on("session_before_switch", stopForNavigation);
+  pi.on("session_shutdown", async () => {
     sequence++;
     entry?.abort();
     entry = undefined;
     confirmation = undefined;
     probe?.abort();
     speakerProbe?.abort();
-    current?.stop();
+    await stopForNavigation();
   });
   pi.on("session_start", () => {
     sequence++;
@@ -1021,7 +941,7 @@ async function runOpenAISetup(
     const status = await credentials.status(signal);
     if (signal.aborted) return false;
     if (status.state === "stored_api_key" || status.state === "configured_api_key") {
-      const choice = await ui.select("OpenAI voice (coding-agent model is separate)", ["Start voice", "Done"]);
+      const choice = await ui.select("OpenAI voice (owns the main session while active)", ["Start voice", "Done"]);
       return !signal.aborted && choice === "Start voice";
     }
     if (!explained) {

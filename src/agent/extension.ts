@@ -1,3 +1,4 @@
+import { currentMainOwner, currentMainToolOwner } from "../live/main-owner";
 import { requestForegroundStop } from "../tasks/foreground-stop";
 import { SessionHost, type SessionTaskPort } from "../session/host";
 import { registerSessionHost } from "../session/host-access";
@@ -262,6 +263,14 @@ export default function asynchronousTasksExtension(
       ]
         .filter(Boolean)
         .join("\n\n");
+      const owner = owningContext?.sessionManager && currentMainOwner(owningContext.sessionManager);
+      if (owner) {
+        owner.sendContext(content, {
+          customType: tasks.length ? "task-complete" : "task-attention",
+          details: completionDiagnosticDetails(tasks, notices),
+        });
+        return;
+      }
       pi.sendMessage(
         {
           customType: tasks.length ? "task-complete" : "task-attention",
@@ -524,18 +533,24 @@ export default function asynchronousTasksExtension(
       if (method !== "jobs.stopWork") return result;
       // The helper result must reach execute before aborting that foreground.
       // Async jobs are already requested through the same scoped JobService.
+      const voiceOwner = currentMainToolOwner(ctx.sessionManager);
+      voiceOwner?.captureStopWorkReport?.(result);
       const foreground = requestForegroundStop(
         {
           sessionManager: ctx.sessionManager,
-          isIdle: () => ctx.isIdle(),
+          isIdle: () => (voiceOwner ? false : ctx.isIdle()),
           abort: () => {
-            executeControl.stopForeground(ctx);
-            ctx.abort();
+            if (voiceOwner) voiceOwner.stopForeground();
+            else {
+              executeControl.stopForeground(ctx);
+              ctx.abort();
+            }
           },
         },
         signal,
         (observed) =>
           sessionHost?.observe({ type: "stopping", text: "Foreground stop observation: " + JSON.stringify(observed) }),
+        voiceOwner ? () => currentMainToolOwner(ctx.sessionManager) === voiceOwner : undefined,
       );
       sessionHost?.observe({
         type: "stopping",
@@ -651,6 +666,22 @@ export default function asynchronousTasksExtension(
     }
   });
 
+  pi.on("input", async (event, ctx) => {
+    const owner = currentMainOwner(ctx.sessionManager);
+    if (!owner) return;
+    if (event.source === "extension") return;
+    if (event.images?.length) {
+      ctx.ui.notify("Live typed input cannot forward images; try again without images.", "warning");
+      return { action: "handled" };
+    }
+    try {
+      await owner.typedInput(event.text);
+    } catch {
+      ctx.ui.notify("Live could not prepare this turn. Continue in text.", "warning");
+    }
+    return { action: "handled" };
+  });
+
   pi.on("before_agent_start", (event, ctx) => {
     // Some SDK embedders emit session_start before resumed entries are attached.
     // Rehydrate at the definitive ordinary-turn seam as well.
@@ -701,6 +732,8 @@ export default function asynchronousTasksExtension(
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
+    currentMainOwner(ctx.sessionManager)?.stopForeground();
+    currentMainOwner(ctx.sessionManager)?.close();
     // Pi emits this before reload/new/resume/fork as well as final quit.
     sessionHost?.close();
     sessionHost = undefined;

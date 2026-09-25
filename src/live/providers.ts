@@ -5,10 +5,10 @@ export const OPENAI_REALTIME_MODELS = ["gpt-realtime-2.1", "gpt-realtime-2.1-min
 export const OPENAI_LIVE_MODEL = "gpt-live-1";
 export type LiveModelId = typeof VOICE_MODEL | (typeof OPENAI_REALTIME_MODELS)[number] | typeof OPENAI_LIVE_MODEL;
 
-/** Voice selection is independent of the configured coding-agent model. GPT-Live needs its own transport. */
+/** Voice selection is independent of the configured coding-agent model. GPT-Live is unavailable in production. */
 export const LIVE_PROVIDERS = {
   google: { label: "Google Gemini", models: [VOICE_MODEL] },
-  openai: { label: "OpenAI", models: [...OPENAI_REALTIME_MODELS, OPENAI_LIVE_MODEL] },
+  openai: { label: "OpenAI", models: [...OPENAI_REALTIME_MODELS] },
 } as const;
 export function isLiveModel(provider: LiveProviderId, model: unknown): model is LiveModelId {
   return typeof model === "string" && (LIVE_PROVIDERS[provider].models as readonly string[]).includes(model);

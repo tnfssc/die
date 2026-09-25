@@ -1,3 +1,4 @@
+import { withOrdinaryMainTurn } from "../live/main-owner";
 import type { Agent, AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { AgentSession, type NormalizedBuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
@@ -143,19 +144,21 @@ export function installCurrentConversationAdapter(): void {
   }
   classicAdapterInstalled = true;
   prototype._runAgentPrompt = async function (this: ClassicSession, messages: AgentMessage | AgentMessage[]) {
-    const frame = currentInstructionFrame(this.sessionManager);
-    if (frame) {
-      // prompt() has already run before_agent_start and prepared its transcript
-      // update. Capture those final options. Custom-message turns do not run the
-      // hook, so restore the options for the provider projection and continuations.
-      if (this._runSystemPromptOptions !== undefined) {
-        frame.systemPromptOptions = this._runSystemPromptOptions;
-        frame.systemPrompt = this.systemPrompt;
-      } else if (frame.systemPromptOptions !== undefined) {
-        this._runSystemPromptOptions = frame.systemPromptOptions;
+    return withOrdinaryMainTurn(this.sessionManager, async () => {
+      const frame = currentInstructionFrame(this.sessionManager);
+      if (frame) {
+        // prompt() has already run before_agent_start and prepared its transcript
+        // update. Capture those final options. Custom-message turns do not run the
+        // hook, so restore the options for the provider projection and continuations.
+        if (this._runSystemPromptOptions !== undefined) {
+          frame.systemPromptOptions = this._runSystemPromptOptions;
+          frame.systemPrompt = this.systemPrompt;
+        } else if (frame.systemPromptOptions !== undefined) {
+          this._runSystemPromptOptions = frame.systemPromptOptions;
+        }
       }
-    }
-    return runAgentPrompt.call(this, messages);
+      return runAgentPrompt.call(this, messages);
+    });
   };
   prototype._buildRuntime = function (this: ClassicSession, options: unknown) {
     bindInstructionContinuitySession(this);

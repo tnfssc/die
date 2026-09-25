@@ -1,3 +1,4 @@
+import { voiceToolResult } from "./tool-result";
 import { Behavior, FunctionResponseScheduling, GoogleGenAI, Modality } from "@google/genai";
 import { toolFailureResponse } from "./tool-failure";
 import liveSystemInstruction from "../prompts/live.md" with { type: "text" };
@@ -126,7 +127,7 @@ export class VoiceSession {
       connecting = this.adapter(apiKey).live.connect({
         model: this.model,
         config: {
-          systemInstruction: liveSystemInstruction,
+          systemInstruction: this.orchestration?.instructions ?? liveSystemInstruction,
           responseModalities: [Modality.AUDIO],
           ...(this.orchestration?.tools.length
             ? {
@@ -212,8 +213,26 @@ export class VoiceSession {
     }
   }
   /** Grounded host updates are coalesced and rate-limited; omitted updates are marked, not invented. */
-  sendContext(text: string): void {
+  sendContext(text: string, options?: { triggerResponse?: boolean }): void {
     if (this.stateValue !== "ready" || !this.connection || !text) return;
+    if (this.orchestration?.directMainAgent) {
+      if (Buffer.byteLength(text) > 1_048_576) {
+        this.fail(
+          "invalid_input",
+          "Main context exceeds the 1 MiB voice wire budget; resume in text to inspect the full branch",
+        );
+        return;
+      }
+      try {
+        this.connection.sendClientContent({
+          turns: [{ role: "user", parts: [{ text }] }],
+          turnComplete: options?.triggerResponse !== false,
+        });
+      } catch {
+        this.fail("transport_error", "Could not send main context");
+      }
+      return;
+    }
     if (text.length > MAX_CONTEXT) {
       this.contextGap = true;
     } else {
@@ -335,7 +354,9 @@ export class VoiceSession {
           !!name &&
           this.orchestration.tools.some((tool) => tool.name === name) &&
           (!call.args ||
-            (typeof call.args === "object" && !Array.isArray(call.args) && jsonSize(call.args) <= MAX_TOOL_BYTES));
+            (typeof call.args === "object" &&
+              !Array.isArray(call.args) &&
+              jsonSize(call.args) <= (this.orchestration.directMainAgent ? 1_048_576 : MAX_TOOL_BYTES)));
       } catch {
         /* malformed or cyclic input */
       }
@@ -353,22 +374,16 @@ export class VoiceSession {
           if (
             this.stateValue !== "ready" ||
             entry.cancelled ||
-            ((name === "agent_send" || name === "agent_steer") && inputRevision !== this.inputRevision)
+            (!this.orchestration?.directMainAgent &&
+              (name === "agent_send" || name === "agent_steer") &&
+              inputRevision !== this.inputRevision)
           )
             throw new Error("Tool request invalidated before dispatch");
           entry.dispatched = true;
           return this.orchestration!.execute({ id: call.id, name, args: call.args });
         })
         .then(
-          (result) => {
-            let response: Record<string, unknown> = { output: result ?? null };
-            try {
-              if (jsonSize(response) > MAX_TOOL_BYTES) response = { error: "Tool result too large" };
-            } catch {
-              response = { error: "Invalid tool result" };
-            }
-            reply(response);
-          },
+          (result) => voiceToolResult(result, this.orchestration?.artifactDirectory).then(reply),
           (error) => reply(toolFailureResponse(error)),
         )
         .finally(() => {

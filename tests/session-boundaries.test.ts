@@ -9,9 +9,10 @@ test("shared session code has no provider or task implementation dependencies", 
   }
 });
 
-test("agent runtime composes the shared session host without depending on voice", async () => {
+test("agent runtime composes the shared owner without depending on provider implementations", async () => {
   const source = await readFile(new URL("../src/agent/extension.ts", import.meta.url), "utf8");
-  expect(source).not.toContain('"../live/');
+  expect(source).toContain('"../live/main-owner"');
+  expect(source).not.toMatch(/(?:@google\/genai|live\/(?:session|openai-session|gpt-live-session))/);
   expect(source).toContain('"../session/host"');
 });
 

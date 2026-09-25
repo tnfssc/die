@@ -14,6 +14,8 @@ export type VoiceError = {
 };
 export type VoiceTranscript = {
   text: string;
+  /** This is a complete provider snapshot, not another delta. */
+  replace?: boolean;
   /** Semantic finality. Absence remains unknown for unsupported models. */
   finished?: boolean;
   rawFinished?: boolean;
@@ -48,6 +50,12 @@ export type LiveConnection = Awaited<ReturnType<GoogleGenAI["live"]["connect"]>>
 /** Tool calls belong to the model; host job updates use sendContext, never tool responses. */
 export interface VoiceOrchestration {
   tools: FunctionDeclaration[];
+  /** Effective ordinary root instructions, supplied by the main-agent owner. */
+  instructions?: string;
+  /** Calls are owned by the main agent, not the legacy speech handoff authority. */
+  directMainAgent?: boolean;
+  /** Session-owned directory for complete results that exceed the voice wire budget. */
+  artifactDirectory?: string;
   /** Completed input speech only; never host updates or model output. */
   userTranscript(text: string): void;
   /** Revoke pending authority on fresh input or interruption, not model turn completion. */
@@ -63,6 +71,6 @@ export interface VoiceProvider {
   connect(apiKey: string): Promise<void>;
   sendAudio(base64: string): void;
   endAudio(): void;
-  sendContext(text: string): void;
+  sendContext(text: string, options?: { triggerResponse?: boolean }): void;
   close(): void;
 }

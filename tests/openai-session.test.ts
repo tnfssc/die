@@ -154,6 +154,40 @@ describe("OpenAI GA offline protocol", () => {
     expect(revoked).toBeGreaterThan(0);
     f.session.close();
   });
+  test("direct main execute receives external root prompt and bounded result", async () => {
+    const f = fixture(
+      {},
+      {
+        instructions: "root instructions",
+        directMainAgent: true,
+        tools: [
+          {
+            name: "execute",
+            description: "Run JS",
+            parametersJsonSchema: { type: "object", properties: { code: { type: "string" } } },
+          },
+        ],
+        userTranscript: () => {},
+        execute: async () => ({ content: [{ type: "text", text: "a".repeat(100_000) }] }),
+      },
+    );
+    await f.connect();
+    expect(f.socket.events[0].session.instructions).toBe("root instructions");
+    expect(f.socket.events[0].session.tools.map((t: any) => t.name)).toEqual(["execute"]);
+    f.socket.message({ type: "response.created", response: { id: "r1" } });
+    f.socket.message({
+      type: "response.function_call_arguments.done",
+      name: "execute",
+      response_id: "r1",
+      call_id: "c1",
+      arguments: '{"code":"1"}',
+    });
+    await Bun.sleep(10);
+    const output = JSON.parse(f.socket.events.find((e) => e.item?.call_id === "c1")?.item.output);
+    expect(output.truncated).toBe(true);
+    expect(output.artifactPath).toContain("die-live-tool-");
+    f.session.close();
+  });
   test("tool call id is executed/replied once; invalid call rejected; no late reply after close", async () => {
     let count = 0;
     let resolve!: (result: unknown) => void;
@@ -278,7 +312,8 @@ describe("OpenAI GA offline protocol", () => {
     f.socket.message({ type: "response.output_audio_transcript.delta", delta: "Hi" });
     f.socket.message({ type: "response.output_audio_transcript.done", transcript: "Hi" });
     f.socket.message({ type: "response.done", response: { id: "r1", status: "completed" } });
-    expect(transcript.map((t) => t.text)).toEqual(["Hi", ""]);
+    expect(transcript.map((t) => t.text)).toEqual(["Hi", "Hi"]);
+    expect(transcript.at(-1)).toMatchObject({ replace: true, finalitySource: "provider", rawFinished: true });
     expect(transcript.at(-1).finished).toBe(true);
     expect(turns).toEqual([0]);
     f.session.close();
@@ -910,5 +945,34 @@ test("Realtime response.done usage is emitted once per response ID", async () =>
   f.socket.message(event);
   f.socket.message(event);
   expect(updates).toEqual([["resp-cost", { input_tokens: 10, output_tokens: 20 }]]);
+  f.session.close();
+});
+
+test("main context is preserved and wakes only one Realtime response without replacing root instructions", async () => {
+  const f = fixture(
+    {},
+    {
+      instructions: "root custom instructions",
+      directMainAgent: true,
+      tools: [],
+      userTranscript() {},
+      async execute() {},
+    },
+  );
+  await f.connect();
+  const history = "history:" + "x".repeat(12000);
+  f.session.sendContext(history, { triggerResponse: false });
+  expect(f.socket.events.at(-1).item.content[0].text).toBe(history);
+  expect(f.socket.events.filter((e) => e.type === "response.create")).toHaveLength(0);
+  f.session.sendContext("job completed");
+  f.session.sendContext("second job completed");
+  expect(f.socket.events.filter((e) => e.type === "response.create")).toHaveLength(1);
+  f.socket.message({ type: "response.created", response: { id: "host-response" } });
+  f.session.sendContext("typed while speaking");
+  expect(f.socket.events.filter((e) => e.type === "response.create")).toHaveLength(1);
+  f.socket.message({ type: "response.done", response: { id: "host-response", status: "completed" } });
+  expect(f.socket.events.filter((e) => e.type === "response.create")).toHaveLength(2);
+  expect(f.socket.events.filter((e) => e.type === "session.update")).toHaveLength(1);
+  expect(f.socket.events[0].session.instructions).toBe("root custom instructions");
   f.session.close();
 });

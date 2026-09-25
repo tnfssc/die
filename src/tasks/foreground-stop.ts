@@ -13,6 +13,7 @@ export function requestForegroundStop(
   ctx: Pick<ExtensionContext, "abort" | "isIdle" | "sessionManager">,
   signal: AbortSignal,
   observe: (result: ForegroundStopResult) => void,
+  isCurrent?: () => boolean,
 ): ForegroundStopResult {
   if (ctx.isIdle()) return { outcome: "idle" };
   if (!supportsJobResponseAcknowledgement(signal))
@@ -26,7 +27,11 @@ export function requestForegroundStop(
   };
   const stop = () => {
     cleanup();
-    if (ctx.sessionManager.getSessionId() !== session || ctx.sessionManager.getLeafId() !== leaf) {
+    if (
+      isCurrent
+        ? !isCurrent()
+        : ctx.sessionManager.getSessionId() !== session || ctx.sessionManager.getLeafId() !== leaf
+    ) {
       observe({ outcome: "error", detail: "Session or branch changed before foreground cancellation" });
       return;
     }

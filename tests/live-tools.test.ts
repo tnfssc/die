@@ -82,7 +82,7 @@ describe("SDK orchestration seam", () => {
       { turns: [{ role: "user", parts: [{ text: "Job 1 completed" }] }], turnComplete: false },
     ]);
   });
-  test("failures sanitized, oversized args/results rejected, and disconnect never cancels agent execution", async () => {
+  test("failures sanitized, oversized args rejected, normal results retained, and disconnect never cancels execution", async () => {
     let finish!: (v: unknown) => void;
     let count = 0;
     const h = fixture(async (call) => {
@@ -128,7 +128,7 @@ describe("SDK orchestration seam", () => {
         scheduling: "WHEN_IDLE",
         id: "ok",
         name: "work",
-        response: { error: "Tool result too large" },
+        response: { output: "x".repeat(20000) },
       },
     });
     let resolve!: (v: unknown) => void;
