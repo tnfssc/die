@@ -27,8 +27,10 @@ const browser = await chromium.launch({
 const files: string[] = [];
 async function page(target: string, width: number, height: number) {
   const p = await browser.newPage({ viewport: { width, height } });
-  await p.route("**/*", (request) =>
-    origins.has(new URL(request.request().url()).origin) ? request.continue() : request.abort(),
+  await p.route(
+    "**/*",
+    (request: { request(): { url(): string }; continue(): Promise<void>; abort(): Promise<void> }) =>
+      origins.has(new URL(request.request().url()).origin) ? request.continue() : request.abort(),
   );
   await p.goto(target);
   await p.getByRole("button", { name: "Start voice" }).waitFor();
