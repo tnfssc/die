@@ -85,9 +85,9 @@ export class BrowserLiveController {
     const id = ++this.generation;
     this.muted = false;
     this.abort = new AbortController();
-    this.setState("requesting-mic");
-    if (!this.active(id)) return;
     try {
+      this.setState("requesting-mic");
+      if (!this.active(id)) return;
       const capture = await this.media.acquire16k(this.abort!.signal);
       if (!this.active(id)) {
         this.releaseLate(() => capture.stop());
@@ -109,13 +109,13 @@ export class BrowserLiveController {
       this.transport = transport;
       const offTransport = transport.onMessage((message) => this.receive(id, message));
       if (!this.active(id)) {
-        offTransport();
+        this.releaseLate(offTransport);
         return;
       }
       this.offTransport = offTransport;
       const offCapture = capture.onPcm16((frame) => this.input(id, frame));
       if (!this.active(id)) {
-        offCapture();
+        this.releaseLate(offCapture);
         return;
       }
       this.offCapture = offCapture;
@@ -244,7 +244,7 @@ export class BrowserLiveController {
     return clean && this.failedReleases.length === 0;
   }
   end(): void {
-    if (this.disposed || (this.value.phase === "ended" && !this.failedReleases.length)) return;
+    if (this.value.phase === "ended" && !this.failedReleases.length) return;
     ++this.generation;
     try {
       this.transport?.sendControl({ type: "end" });
@@ -255,8 +255,8 @@ export class BrowserLiveController {
   }
   dispose(): void {
     if (this.disposed) return;
-    this.end();
     this.disposed = true;
     this.listeners.clear();
+    this.end();
   }
 }

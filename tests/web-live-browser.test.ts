@@ -300,3 +300,130 @@ test("late socket close failure is visible and blocks a new capture", async () =
   r.controller.end();
   expect(r.calls.closes).toBe(1);
 });
+
+
+test("synchronous end from requesting-mic clears pending without acquiring", async () => {
+  const r = rig();
+  let once = true;
+  r.controller.subscribe((state) => {
+    if (once && state.phase === "requesting-mic") {
+      once = false;
+      r.controller.end();
+    }
+  });
+  await r.controller.start();
+  expect(r.controller.state.phase).toBe("ended");
+  // A second attempt can enter acquisition (not rejected by a stuck pending flag).
+  const again = r.controller.start();
+  expect(r.controller.state.phase).toBe("requesting-mic");
+  r.controller.end();
+  r.mic.resolve(r.capture);
+  await again;
+  expect(r.calls.tracks).toBe(1);
+});
+
+test("dispose retries failed release but never permits another acquisition", async () => {
+  const r = rig();
+  await r.connect();
+  let fails = true;
+  r.transport.close = () => {
+    if (fails) throw new Error("socket live");
+    r.calls.closes++;
+  };
+  r.controller.dispose();
+  expect(r.controller.state.reason).toBe("resource cleanup failed");
+  expect(r.controller.start()).rejects.toThrow("disposed");
+  fails = false;
+  r.controller.end();
+  expect(r.controller.state.phase).toBe("ended");
+  expect(r.calls.closes).toBe(1);
+  expect(r.controller.start()).rejects.toThrow("disposed");
+});
+
+test("late release failure after dispose remains retryable", async () => {
+  const r = rig();
+  const starting = r.controller.start();
+  r.controller.dispose();
+  let fails = true;
+  r.capture.stop = () => {
+    if (fails) throw new Error("track live");
+    r.calls.tracks++;
+  };
+  r.mic.resolve(r.capture);
+  await starting;
+  expect(r.controller.state.reason).toBe("late resource cleanup failed");
+  fails = false;
+  r.controller.end();
+  expect(r.controller.state.phase).toBe("ended");
+  expect(r.calls.tracks).toBe(1);
+  expect(r.controller.start()).rejects.toThrow("disposed");
+});
+
+for (const registration of ["transport", "capture"] as const) {
+  test(`synchronous end during ${registration} registration retains failed unsubscribe`, async () => {
+    const r = rig();
+    let fails = true, unsubscribed = 0;
+    if (registration === "transport") {
+      r.transport.onMessage = () => {
+        r.controller.end();
+        return () => {
+          if (fails) throw new Error("listener live");
+          unsubscribed++;
+        };
+      };
+    } else {
+      r.capture.onPcm16 = () => {
+        r.controller.end();
+        return () => {
+          if (fails) throw new Error("listener live");
+          unsubscribed++;
+        };
+      };
+    }
+    const starting = r.controller.start();
+    r.mic.resolve(r.capture);
+    await r.tick();
+    r.socket.resolve(r.transport);
+    await starting;
+    expect(r.controller.state.reason).toBe("late resource cleanup failed");
+    expect(r.controller.start()).rejects.toThrow("previous resources not released");
+    fails = false;
+    r.controller.end();
+    expect(r.controller.state.phase).toBe("ended");
+    expect(unsubscribed).toBe(1);
+  });
+}
+
+
+test("synchronous dispose from requesting-mic does not acquire or leave pending", async () => {
+  const r = rig();
+  r.controller.subscribe((state) => {
+    if (state.phase === "requesting-mic") r.controller.dispose();
+  });
+  await r.controller.start();
+  expect(r.controller.state.phase).toBe("ended");
+  expect(r.controller.start()).rejects.toThrow("disposed");
+});
+
+test("dispose during registration retains a late failed unsubscribe for end retry", async () => {
+  const r = rig();
+  let fails = true, releases = 0;
+  r.transport.onMessage = () => {
+    r.controller.dispose();
+    return () => {
+      if (fails) throw new Error("listener live");
+      releases++;
+    };
+  };
+  const starting = r.controller.start();
+  r.mic.resolve(r.capture);
+  await r.tick();
+  r.socket.resolve(r.transport);
+  await starting;
+  expect(r.controller.state.reason).toBe("late resource cleanup failed");
+  fails = false;
+  r.controller.end();
+  expect(r.controller.state.phase).toBe("ended");
+  expect(releases).toBe(1);
+  expect(r.controller.start()).rejects.toThrow("disposed");
+});
