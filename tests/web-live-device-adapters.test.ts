@@ -58,7 +58,7 @@ test("late permission result stops all tracks, no context allocated; capture del
   const signal = new AbortController();
   const acquisition = browserMediaSource().acquire16k(signal.signal);
   signal.abort(); resolve(stream);
-  await expect(acquisition).reject.toThrow();
+  await expect(acquisition).rejects.toThrow();
   expect(tracks.every((track) => track.stopped)).toBe(true);
   expect(contexts.length).toBe(0);
   URL.createObjectURL = () => "blob:fake"; URL.revokeObjectURL = () => {};
@@ -82,11 +82,12 @@ test("socket sends copied binary, decodes relay controls, bounds backlog, aborts
     send(data: any) { this.sent.push(data); }
     close() { this.closed = true; this.readyState = 3; }
   }
-  Object.assign(globalThis, { WebSocket: Socket, location: { href: "https://example.test/page" } });
+  Object.assign(globalThis, { WebSocket: Socket });
+  Object.defineProperty(globalThis, "location", { configurable: true, value: { href: "https://example.test/page" } });
   const abort = new AbortController();
   const pending = browserTransportFactory("/voice").connect(abort.signal);
   abort.abort();
-  await expect(pending).reject.toThrow();
+  await expect(pending).rejects.toThrow();
   expect(Socket.instances[0].closed).toBe(true);
   const connecting = browserTransportFactory("/voice").connect(new AbortController().signal);
   const socket = Socket.instances[1];
