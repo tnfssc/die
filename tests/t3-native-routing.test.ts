@@ -280,10 +280,29 @@ test("bounded launch bookkeeping eviction preserves replay identity", async () =
   try {
     const ledger = new T3LaunchIdentityLedger(path);
     const oldest = await ledger.reserve("intent-0");
-    for (let index = 1; index <= 260; index++) await ledger.reserve("intent-" + index);
-    expect(JSON.parse(await readFile(path, "utf8")).pending).toHaveLength(256);
+    // Seed the boundary with valid entries instead of doing 255 serial, fsynced
+    // writes. The operations under test (eviction and replay after reopening)
+    // still use the real durable ledger path.
+    const pending = [
+      { fingerprint: "intent-0", clientRequestId: oldest },
+      ...Array.from({ length: 255 }, (_, index) => {
+        const fingerprint = "intent-" + (index + 1);
+        return {
+          fingerprint,
+          clientRequestId: "die-v1:" + T3LaunchIdentityLedger.fingerprint([fingerprint]),
+        };
+      }),
+    ];
+    await writeFile(path, JSON.stringify({ version: 1, pending }));
+    const replacement = await new T3LaunchIdentityLedger(path).reserve("intent-256");
+    const evicted = JSON.parse(await readFile(path, "utf8")).pending;
+    expect(evicted).toHaveLength(256);
+    expect(evicted.some((entry: { fingerprint: string }) => entry.fingerprint === "intent-0")).toBe(false);
+    expect(evicted.at(-1)).toEqual({ fingerprint: "intent-256", clientRequestId: replacement });
     expect(await new T3LaunchIdentityLedger(path).reserve("intent-0")).toBe(oldest);
-    expect(JSON.parse(await readFile(path, "utf8")).pending).toHaveLength(256);
+    const replayed = JSON.parse(await readFile(path, "utf8")).pending;
+    expect(replayed).toHaveLength(256);
+    expect(replayed.at(-1)).toEqual({ fingerprint: "intent-0", clientRequestId: oldest });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

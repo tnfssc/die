@@ -46,3 +46,9 @@ Disposition of every finding in `wisdom/t3/t3-v2-native-root-review.md`. Root `s
 - `bun run build` — pass.
 - `TMPDIR=/var/tmp/... bun test ./tests` — **710 pass, 14 skip, 0 fail** (724 tests, 4,575 assertions).
 - The first default-`/tmp` full run reached 707 pass but failed three compiled-binary copy/install tests because the shared tmpfs was full (`ENOSPC`, 79 MB available). Those three tests passed in isolation and the complete suite passed after moving only its temporary directory to `/var/tmp`. No product/test behavior was changed for this infrastructure condition.
+
+## v0.11.2 release dry-run ledger regression (2026-09-25)
+
+At d13ea62 hosted CI passed, but Release dry run 36110554528 timed out the bounded-ledger eviction test at Bun's 5,000 ms default; the next test saw one active serializer. The old eviction fixture called `reserve` 261 times in series on the same path. Each new entry requires an atomic write, file sync and directory sync. The timed-out async loop continued after Bun advanced to later tests, so the global serializer count of one is consistent with test-work bleed, not evidence of a persistent runtime leak. The churn test's 300 independent paths finished in 969 ms even in that release run.
+
+The eviction test now seeds a valid full on-disk ledger at the boundary, retaining the first identity from a real `reserve`, then exercises actual durable overflow, reload and replay writes through separate ledger instances. It asserts capacity, oldest eviction, replacement and restored deterministic identity. This removes 255 unnecessary serial fsynced fixture writes without changing runtime or loosening the zero-active-serializer assertion in the following concurrency test. No asynchronous work is left behind on the normal test path; no global timeout increase. Local timings before/after: 59.37 ms / 2.13 ms (local storage is much faster than the hosted Release runner).
