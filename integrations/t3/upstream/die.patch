@@ -10733,10 +10733,10 @@ index d42c5b74e..2f0957a08 100644
          const cwd = yield* makeTmpDir();
 diff --git a/apps/server/src/voice/PiVoiceChannels.fd.test.ts b/apps/server/src/voice/PiVoiceChannels.fd.test.ts
 new file mode 100644
-index 000000000..10b4cc149
+index 000000000..2d4eef696
 --- /dev/null
 +++ b/apps/server/src/voice/PiVoiceChannels.fd.test.ts
-@@ -0,0 +1,39 @@
+@@ -0,0 +1,45 @@
 +import { expect, it } from "vite-plus/test";
 +import * as Effect from "effect/Effect";
 +import * as Layer from "effect/Layer";
@@ -10746,13 +10746,16 @@ index 000000000..10b4cc149
 +import { attachPiVoiceChannel, getVoiceChannel } from "./PiVoiceChannels.ts";
 +
 +it("wires actual anonymous FD3 input and FD4 output to the owning Pi process scope", async () => {
-+  const script = "const net = require(\"node:net\"); const input = new net.Socket({fd:3,readable:true,writable:false}); const output = new net.Socket({fd:4,readable:false,writable:true}); input.on(\"data\",chunk => output.write(chunk));";
++  const script =
++    'const net = require("node:net"); const input = new net.Socket({fd:3,readable:true,writable:false}); const output = new net.Socket({fd:4,readable:false,writable:true}); input.on("data",chunk => output.write(chunk));';
 +  const observed = await Effect.gen(function* () {
 +    const spawn = yield* ChildProcessSpawner.ChildProcessSpawner;
-+    const child = yield* spawn.spawn(ChildProcess.make(process.execPath, ["-e", script], {
-+      additionalFds: { fd3: {type:"input"}, fd4: {type:"output"} },
-+    }));
-+    const channel = yield* attachPiVoiceChannel(child,"thread-test","session-test");
++    const child = yield* spawn.spawn(
++      ChildProcess.make(process.execPath, ["-e", script], {
++        additionalFds: { fd3: { type: "input" }, fd4: { type: "output" } },
++      }),
++    );
++    const channel = yield* attachPiVoiceChannel(child, "thread-test", "session-test");
 +    expect(getVoiceChannel("thread-test")).toBe(channel);
 +    yield* channel.send(0, new TextEncoder().encode('{"type":"ready"}'));
 +    return yield* Queue.take(channel.receive).pipe(Effect.timeout("3 seconds"));
@@ -10764,9 +10767,12 @@ index 000000000..10b4cc149
 +it("revokes the exact old generation on Pi replacement without affecting the new one", async () => {
 +  await Effect.gen(function* () {
 +    const spawn = yield* ChildProcessSpawner.ChildProcessSpawner;
-+    const make = () => spawn.spawn(ChildProcess.make(process.execPath, ["-e", "setInterval(()=>{},1000)"], {
-+      additionalFds: { fd3: {type:"input"}, fd4: {type:"output"} },
-+    }));
++    const make = () =>
++      spawn.spawn(
++        ChildProcess.make(process.execPath, ["-e", "setInterval(()=>{},1000)"], {
++          additionalFds: { fd3: { type: "input" }, fd4: { type: "output" } },
++        }),
++      );
 +    const a = yield* attachPiVoiceChannel(yield* make(), "replacement-thread", "one");
 +    const b = yield* attachPiVoiceChannel(yield* make(), "replacement-thread", "two");
 +    expect(getVoiceChannel("replacement-thread")).toBe(b);
@@ -10778,10 +10784,10 @@ index 000000000..10b4cc149
 +});
 diff --git a/apps/server/src/voice/PiVoiceChannels.ts b/apps/server/src/voice/PiVoiceChannels.ts
 new file mode 100644
-index 000000000..1e5115396
+index 000000000..093b79122
 --- /dev/null
 +++ b/apps/server/src/voice/PiVoiceChannels.ts
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,115 @@
 +import * as Effect from "effect/Effect";
 +import * as Queue from "effect/Queue";
 +import * as Scope from "effect/Scope";
@@ -10799,11 +10805,17 @@ index 000000000..1e5115396
 +}
 +
 +const channels = new Map<string, VoiceChannel>();
-+export function getVoiceChannel(threadId: string): VoiceChannel | undefined { return channels.get(threadId); }
++export function getVoiceChannel(threadId: string): VoiceChannel | undefined {
++  return channels.get(threadId);
++}
 +const MAX_CONTROL = 16 * 1024;
 +const MAX_PCM = 64 * 1024;
 +export function encodeVoiceFrame(kind: number, payload: Uint8Array): Uint8Array {
-+  if ((kind !== 0 && kind !== 1 && kind !== 2) || payload.length > (kind === 0 ? MAX_CONTROL : MAX_PCM)) throw new Error("Invalid voice frame");
++  if (
++    (kind !== 0 && kind !== 1 && kind !== 2) ||
++    payload.length > (kind === 0 ? MAX_CONTROL : MAX_PCM)
++  )
++    throw new Error("Invalid voice frame");
 +  const frame = new Uint8Array(payload.length + 5);
 +  frame[0] = kind;
 +  new DataView(frame.buffer).setUint32(1, payload.length, false);
@@ -10813,14 +10825,17 @@ index 000000000..1e5115396
 +export function decodeVoiceFrames(onFrame: (kind: number, payload: Uint8Array) => void) {
 +  let pending = new Uint8Array(0);
 +  return (chunk: Uint8Array) => {
-+    if (pending.length + chunk.length > 2 * MAX_PCM + 5) throw new Error("Voice pipe buffer exceeded");
++    if (pending.length + chunk.length > 2 * MAX_PCM + 5)
++      throw new Error("Voice pipe buffer exceeded");
 +    const joined = new Uint8Array(pending.length + chunk.length);
-+    joined.set(pending); joined.set(chunk, pending.length);
++    joined.set(pending);
++    joined.set(chunk, pending.length);
 +    let offset = 0;
 +    while (joined.length - offset >= 5) {
 +      const kind = joined[offset]!;
 +      const length = new DataView(joined.buffer, joined.byteOffset + offset).getUint32(1, false);
-+      if ((kind !== 0 && kind !== 2) || length > (kind === 0 ? MAX_CONTROL : MAX_PCM)) throw new Error("Invalid voice pipe frame");
++      if ((kind !== 0 && kind !== 2) || length > (kind === 0 ? MAX_CONTROL : MAX_PCM))
++        throw new Error("Invalid voice pipe frame");
 +      if (joined.length - offset - 5 < length) break;
 +      onFrame(kind, joined.slice(offset + 5, offset + 5 + length));
 +      offset += 5 + length;
@@ -10828,7 +10843,8 @@ index 000000000..1e5115396
 +    pending = joined.slice(offset);
 +  };
 +}
-+export const voiceControl = (record: Record<string, unknown>) => encodeVoiceFrame(0, new TextEncoder().encode(JSON.stringify(record)));
++export const voiceControl = (record: Record<string, unknown>) =>
++  encodeVoiceFrame(0, new TextEncoder().encode(JSON.stringify(record)));
 +
 +/** Spawn-scoped, bounded, anonymous pipes. Never store a file path or secret in child env. */
 +export const attachPiVoiceChannel = Effect.fn("voice.attachPiVoiceChannel")(function* (
@@ -10842,127 +10858,222 @@ index 000000000..1e5115396
 +  const generation = Symbol("pi-process-generation");
 +  let closed = false;
 +  const channel: VoiceChannel = {
-+    generation, threadId, providerSessionId, receive,
-+    send: (kind, payload) => Effect.sync(() => encodeVoiceFrame(kind, payload)).pipe(Effect.flatMap((frame) => Queue.offer(outgoing, frame)), Effect.flatMap((ok) => ok ? Effect.void : Effect.die(new Error("Voice output queue overflow")))),
-+    close: Effect.sync(() => { closed = true; if (channels.get(threadId) === channel) channels.delete(threadId); }).pipe(
-+      Effect.andThen(Queue.shutdown(outgoing)), Effect.andThen(Queue.shutdown(receive)),
-+    ),
++    generation,
++    threadId,
++    providerSessionId,
++    receive,
++    send: (kind, payload) =>
++      Effect.sync(() => encodeVoiceFrame(kind, payload)).pipe(
++        Effect.flatMap((frame) => Queue.offer(outgoing, frame)),
++        Effect.flatMap((ok) =>
++          ok ? Effect.void : Effect.die(new Error("Voice output queue overflow")),
++        ),
++      ),
++    close: Effect.sync(() => {
++      closed = true;
++      if (channels.get(threadId) === channel) channels.delete(threadId);
++    }).pipe(Effect.andThen(Queue.shutdown(outgoing)), Effect.andThen(Queue.shutdown(receive))),
 +  };
 +  const previous = channels.get(threadId);
 +  if (previous) yield* previous.close;
 +  channels.set(threadId, channel);
 +  yield* Scope.addFinalizer(scope, channel.close);
 +  const frames: Array<{ kind: number; payload: Uint8Array }> = [];
-+  const decoder = decodeVoiceFrames((kind, payload) => { frames.push({ kind, payload }); });
-+  yield* Stream.runForEach(child.getOutputFd(4), (chunk) => Effect.gen(function* () {
-+    decoder(chunk);
-+    for (const frame of frames.splice(0)) {
-+      if (closed || !(yield* Queue.offer(receive, frame))) throw new Error("Voice pipe queue overflow");
-+    }
-+  })).pipe(
-+    Effect.ensuring(channel.close), Effect.catchCause(() => Effect.void), Effect.forkIn(scope),
++  const decoder = decodeVoiceFrames((kind, payload) => {
++    frames.push({ kind, payload });
++  });
++  yield* Stream.runForEach(child.getOutputFd(4), (chunk) =>
++    Effect.gen(function* () {
++      decoder(chunk);
++      for (const frame of frames.splice(0)) {
++        if (closed || !(yield* Queue.offer(receive, frame)))
++          throw new Error("Voice pipe queue overflow");
++      }
++    }),
++  ).pipe(
++    Effect.ensuring(channel.close),
++    Effect.catchCause(() => Effect.void),
++    Effect.forkIn(scope),
 +  );
 +  yield* Stream.fromQueue(outgoing).pipe(
-+    Stream.run(child.getInputFd(3)), Effect.ensuring(channel.close), Effect.catchCause(() => Effect.void), Effect.forkIn(scope),
++    Stream.run(child.getInputFd(3)),
++    Effect.ensuring(channel.close),
++    Effect.catchCause(() => Effect.void),
++    Effect.forkIn(scope),
 +  );
 +  return channel;
 +});
 diff --git a/apps/server/src/voice/VoiceRoute.test.ts b/apps/server/src/voice/VoiceRoute.test.ts
 new file mode 100644
-index 000000000..ddb86030e
+index 000000000..6af1a7c26
 --- /dev/null
 +++ b/apps/server/src/voice/VoiceRoute.test.ts
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,159 @@
 +import { describe, expect, it } from "vite-plus/test";
 +import * as Effect from "effect/Effect";
 +import * as Layer from "effect/Layer";
 +import * as Queue from "effect/Queue";
 +import { HttpRouter } from "effect/unstable/http";
-+import { AuthOrchestrationOperateScope, AuthOrchestrationReadScope, AuthSessionId } from "@t3tools/contracts";
++import {
++  AuthOrchestrationOperateScope,
++  AuthOrchestrationReadScope,
++  AuthSessionId,
++} from "@t3tools/contracts";
 +import { EnvironmentAuth, ServerAuthMissingCredentialError } from "../auth/EnvironmentAuth.ts";
 +import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 +import { voiceRouteLayer, stopVoiceChannel } from "./VoiceRoute.ts";
 +import type { VoiceChannel } from "./PiVoiceChannels.ts";
 +import { decodeVoiceFrames, encodeVoiceFrame, voiceControl } from "./PiVoiceChannels.ts";
 +
-+function fixture(scopes: ReadonlyArray<typeof AuthOrchestrationOperateScope | typeof AuthOrchestrationReadScope>, authorized = true) {
++function fixture(
++  scopes: ReadonlyArray<typeof AuthOrchestrationOperateScope | typeof AuthOrchestrationReadScope>,
++  authorized = true,
++) {
 +  let authCalls = 0;
-+  const { handler, dispose } = HttpRouter.toWebHandler(voiceRouteLayer.pipe(Layer.provideMerge(Layer.mergeAll(
-+    Layer.succeed(EnvironmentAuth, { authenticateWebSocketUpgrade: () => {
-+      authCalls++;
-+      return authorized ? Effect.succeed({ sessionId: AuthSessionId.make("owner"), subject:"owner", method:"bearer-access-token", scopes }) : Effect.fail(new ServerAuthMissingCredentialError({}));
-+    } } as unknown as EnvironmentAuth["Service"]),
-+    Layer.succeed(ThreadManagementService, { getThreadSnapshot: () => Effect.die("no thread") } as unknown as ThreadManagementService["Service"]),
-+  ))), { disableLogger:true });
-+  return { handler, dispose, authCalls:() => authCalls };
++  const { handler, dispose } = HttpRouter.toWebHandler(
++    voiceRouteLayer.pipe(
++      Layer.provideMerge(
++        Layer.mergeAll(
++          Layer.succeed(EnvironmentAuth, {
++            authenticateWebSocketUpgrade: () => {
++              authCalls++;
++              return authorized
++                ? Effect.succeed({
++                    sessionId: AuthSessionId.make("owner"),
++                    subject: "owner",
++                    method: "bearer-access-token",
++                    scopes,
++                  })
++                : Effect.fail(new ServerAuthMissingCredentialError({}));
++            },
++          } as unknown as EnvironmentAuth["Service"]),
++          Layer.succeed(ThreadManagementService, {
++            getThreadSnapshot: () => Effect.die("no thread"),
++          } as unknown as ThreadManagementService["Service"]),
++        ),
++      ),
++    ),
++    { disableLogger: true },
++  );
++  return { handler, dispose, authCalls: () => authCalls };
 +}
 +
 +describe("authenticated voice route", () => {
 +  it("rejects missing, cross-origin and null origins before auth", async () => {
 +    const f = fixture([AuthOrchestrationOperateScope]);
 +    try {
-+      for (const origin of [undefined,"https://evil.test","null"]) {
++      for (const origin of [undefined, "https://evil.test", "null"]) {
 +        const headers = origin ? { origin } : {};
-+        const r = await f.handler(new Request("http://localhost/api/voice/ws?threadId=thread", { headers }));
++        const r = await f.handler(
++          new Request("http://localhost/api/voice/ws?threadId=thread", { headers }),
++        );
 +        expect(r.status).toBe(403);
 +      }
-+      expect((await f.handler(new Request("http://localhost/api/voice/ws?threadId=thread", { headers: { origin:"http://localhost", "sec-fetch-site":"cross-site" } }))).status).toBe(403);
++      expect(
++        (
++          await f.handler(
++            new Request("http://localhost/api/voice/ws?threadId=thread", {
++              headers: { origin: "http://localhost", "sec-fetch-site": "cross-site" },
++            }),
++          )
++        ).status,
++      ).toBe(403);
 +      expect(f.authCalls()).toBe(0);
-+    } finally { await f.dispose(); }
++    } finally {
++      await f.dispose();
++    }
 +  });
 +  it("rejects invalid credentials, read-only scope, malformed and stale thread", async () => {
 +    for (const [scopes, authorized, expected] of [
-+      [[AuthOrchestrationOperateScope],false,401], [[AuthOrchestrationReadScope],true,401],
-+      [[AuthOrchestrationOperateScope],true,409],
++      [[AuthOrchestrationOperateScope], false, 401],
++      [[AuthOrchestrationReadScope], true, 401],
++      [[AuthOrchestrationOperateScope], true, 409],
 +    ] as const) {
 +      const f = fixture([...scopes], authorized);
 +      try {
-+        const r = await f.handler(new Request("http://localhost/api/voice/ws?threadId=thread", { headers: { origin:"http://localhost" } }));
++        const r = await f.handler(
++          new Request("http://localhost/api/voice/ws?threadId=thread", {
++            headers: { origin: "http://localhost" },
++          }),
++        );
 +        expect(r.status).toBe(expected);
-+      } finally { await f.dispose(); }
++      } finally {
++        await f.dispose();
++      }
 +    }
 +    const f = fixture([AuthOrchestrationOperateScope]);
 +    try {
-+      expect((await f.handler(new Request("http://localhost/api/voice/ws?threadId=../path", { headers: { origin:"http://localhost" } }))).status).toBe(400);
-+    } finally { await f.dispose(); }
++      expect(
++        (
++          await f.handler(
++            new Request("http://localhost/api/voice/ws?threadId=../path", {
++              headers: { origin: "http://localhost" },
++            }),
++          )
++        ).status,
++      ).toBe(400);
++    } finally {
++      await f.dispose();
++    }
 +  });
 +});
 +
-+it.each(["gemini", "openai"] as const)("frames %s start and binary audio without browser tool authority", (provider) => {
-+  const observed: Array<{kind:number; payload:Uint8Array}> = [];
-+  const decode = decodeVoiceFrames((kind,payload) => observed.push({kind,payload}));
-+  const start = voiceControl({type:"start",provider});
-+  decode(start.subarray(0,3)); decode(start.subarray(3));
-+  decode(encodeVoiceFrame(2, new Uint8Array([123,0,1,0])));
-+  expect(JSON.parse(new TextDecoder().decode(observed[0]?.payload))).toEqual({type:"start",provider});
-+  expect(observed[1]?.payload).toEqual(new Uint8Array([123,0,1,0]));
-+  expect(() => encodeVoiceFrame(0, new Uint8Array(16385))).toThrow();
-+});
++it.each(["gemini", "openai"] as const)(
++  "frames %s start and binary audio without browser tool authority",
++  (provider) => {
++    const observed: Array<{ kind: number; payload: Uint8Array }> = [];
++    const decode = decodeVoiceFrames((kind, payload) => observed.push({ kind, payload }));
++    const start = voiceControl({ type: "start", provider });
++    decode(start.subarray(0, 3));
++    decode(start.subarray(3));
++    decode(encodeVoiceFrame(2, new Uint8Array([123, 0, 1, 0])));
++    expect(JSON.parse(new TextDecoder().decode(observed[0]?.payload))).toEqual({
++      type: "start",
++      provider,
++    });
++    expect(observed[1]?.payload).toEqual(new Uint8Array([123, 0, 1, 0]));
++    expect(() => encodeVoiceFrame(0, new Uint8Array(16385))).toThrow();
++  },
++);
 +
 +it("drains stale audio before teardown acknowledgement and revokes on missing ACK", async () => {
 +  await Effect.gen(function* () {
-+    const receive = yield* Queue.dropping<{ kind:number; payload:Uint8Array }>(8);
++    const receive = yield* Queue.dropping<{ kind: number; payload: Uint8Array }>(8);
 +    let closed = 0;
 +    let stops = 0;
 +    const channel = {
 +      receive,
-+      send: () => Effect.sync(() => { stops++; }).pipe(Effect.andThen(Queue.offer(receive, { kind:2, payload:new Uint8Array([1,0]) })), Effect.andThen(Queue.offer(receive, { kind:0, payload:new TextEncoder().encode('{"type":"stopped","stopped":true}') })), Effect.asVoid),
-+      close: Effect.sync(() => { closed++; }),
++      send: () =>
++        Effect.sync(() => {
++          stops++;
++        }).pipe(
++          Effect.andThen(Queue.offer(receive, { kind: 2, payload: new Uint8Array([1, 0]) })),
++          Effect.andThen(
++            Queue.offer(receive, {
++              kind: 0,
++              payload: new TextEncoder().encode('{"type":"stopped","stopped":true}'),
++            }),
++          ),
++          Effect.asVoid,
++        ),
++      close: Effect.sync(() => {
++        closed++;
++      }),
 +    } as unknown as VoiceChannel;
-+    expect(yield* stopVoiceChannel(channel,"100 millis")).toBe(true);
++    expect(yield* stopVoiceChannel(channel, "100 millis")).toBe(true);
 +    expect(stops).toBe(1);
 +    expect(closed).toBe(0);
 +    const missing = { ...channel, send: () => Effect.void } as VoiceChannel;
-+    expect(yield* stopVoiceChannel(missing,"20 millis")).toBe(false);
++    expect(yield* stopVoiceChannel(missing, "20 millis")).toBe(false);
 +    expect(closed).toBe(1);
 +  }).pipe(Effect.runPromise);
 +});
 diff --git a/apps/server/src/voice/VoiceRoute.ts b/apps/server/src/voice/VoiceRoute.ts
 new file mode 100644
-index 000000000..f343af31c
+index 000000000..3cf62079f
 --- /dev/null
 +++ b/apps/server/src/voice/VoiceRoute.ts
-@@ -0,0 +1,158 @@
+@@ -0,0 +1,206 @@
 +import * as Effect from "effect/Effect";
 +import * as Queue from "effect/Queue";
 +import * as Duration from "effect/Duration";
@@ -10993,8 +11104,12 @@ index 000000000..f343af31c
 +  if (payload.length > 16 * 1024) return undefined;
 +  try {
 +    const value: unknown = decodeJson(decoder.decode(payload));
-+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
-+  } catch { return undefined; }
++    return typeof value === "object" && value !== null && !Array.isArray(value)
++      ? (value as Record<string, unknown>)
++      : undefined;
++  } catch {
++    return undefined;
++  }
 +}
 +
 +/** ACK is issued only after the root owner has awaited provider teardown. */
@@ -11010,8 +11125,13 @@ index 000000000..f343af31c
 +          const control = readControl(frame.payload);
 +          if (control?.type === "stopped") return control.stopped === true;
 +        }
-+      }).pipe(Effect.timeout(timeout), Effect.catchCause(() => Effect.succeed(false)));
-+    } catch { safe = false; }
++      }).pipe(
++        Effect.timeout(timeout),
++        Effect.catchCause(() => Effect.succeed(false)),
++      );
++    } catch {
++      safe = false;
++    }
 +    if (!safe) yield* channel.close.pipe(Effect.catchCause(() => Effect.void));
 +    return safe;
 +  });
@@ -11019,10 +11139,14 @@ index 000000000..f343af31c
 +export const voiceRouteHandler = Effect.fn("voice.route")(function* () {
 +  const request = yield* HttpServerRequest.HttpServerRequest;
 +  const url = HttpServerRequest.toURL(request);
-+  if (url._tag !== "Some" || !sameOrigin(request)) return HttpServerResponse.text("Forbidden", { status: 403 });
++  if (url._tag !== "Some" || !sameOrigin(request))
++    return HttpServerResponse.text("Forbidden", { status: 403 });
 +  const auth = yield* EnvironmentAuth.EnvironmentAuth;
 +  const principal = yield* auth.authenticateWebSocketUpgrade(request).pipe(Effect.option);
-+  if (principal._tag !== "Some" || !principal.value.scopes.includes(AuthOrchestrationOperateScope)) {
++  if (
++    principal._tag !== "Some" ||
++    !principal.value.scopes.includes(AuthOrchestrationOperateScope)
++  ) {
 +    return HttpServerResponse.text("Unauthorized", { status: 401 });
 +  }
 +  const threadId = url.value.searchParams.get("threadId");
@@ -11030,22 +11154,29 @@ index 000000000..f343af31c
 +    return HttpServerResponse.text("Invalid thread", { status: 400 });
 +  }
 +  const channel = getVoiceChannel(threadId);
-+  if (!channel || clients.has(threadId)) return HttpServerResponse.text("No active owner", { status: 409 });
++  if (!channel || clients.has(threadId))
++    return HttpServerResponse.text("No active owner", { status: 409 });
 +  const threadManagement = yield* ThreadManagementService.ThreadManagementService;
 +  const ownsThread = threadManagement.getThreadSnapshot(ThreadId.make(threadId)).pipe(
 +    Effect.map((snapshot) => {
 +      const { thread, providerThreads } = snapshot.projection;
-+      return thread.archivedAt === null && providerThreads.some((providerThread) =>
-+        providerThread.id === thread.activeProviderThreadId &&
-+        providerThread.providerSessionId === channel.providerSessionId &&
-+        providerThread.appThreadId === thread.id);
++      return (
++        thread.archivedAt === null &&
++        providerThreads.some(
++          (providerThread) =>
++            providerThread.id === thread.activeProviderThreadId &&
++            providerThread.providerSessionId === channel.providerSessionId &&
++            providerThread.appThreadId === thread.id,
++        )
++      );
 +    }),
 +    Effect.catchCause(() => Effect.succeed(false)),
 +  );
 +  if (!(yield* ownsThread)) return HttpServerResponse.text("Thread owner changed", { status: 409 });
 +  const generation = channel.generation;
 +  clients.set(threadId, generation);
-+  const active = () => getVoiceChannel(threadId) === channel && clients.get(threadId) === generation;
++  const active = () =>
++    getVoiceChannel(threadId) === channel && clients.get(threadId) === generation;
 +  let finalized = false;
 +  let notifyStopped: ((safe: boolean) => Effect.Effect<void>) | undefined;
 +  const teardown = Effect.gen(function* () {
@@ -11065,57 +11196,85 @@ index 000000000..f343af31c
 +  return yield* Effect.gen(function* () {
 +    const socket = yield* request.upgrade;
 +    if (!active() || !(yield* ownsThread)) return HttpServerResponse.empty();
-+    yield* Effect.scoped(Effect.gen(function* () {
-+      const writer = yield* socket.writer;
-+      notifyStopped = (safe) => writer.writeAll([encodeJson({ type: "stopped", stopped: safe })]).pipe(Effect.catchCause(() => Effect.void));
-+      const { pull } = yield* socket.reader;
-+      const browserToRoot = Effect.gen(function* () {
-+        let started = false;
-+        while (active()) {
-+          const messages = yield* pull;
-+          for (const message of messages) {
-+          const chunk = typeof message === "string" ? encoder.encode(message) : message;
-+          if (chunk.length > 64 * 1024) return;
-+          // Effect Socket.reader yields Uint8Array for WS TEXT as well as binary.
-+          // Our explicit 0x01 audio prefix keeps JSON controls unambiguous.
-+          if (chunk[0] === 123) {
-+            const control = readControl(chunk);
-+            if (!control) return;
-+            if (!started) {
-+              if (control.type !== "start" || (control.provider !== "gemini" && control.provider !== "openai")) return;
-+              started = true;
-+              yield* channel.send(0, encoder.encode(encodeJson({ type: "start", provider: control.provider })));
-+            } else if (control.type === "stop") { return; }
-+            else if (control.type === "mute" && typeof control.muted === "boolean") {
-+              yield* channel.send(0, encoder.encode(encodeJson({ type: "mute", muted: control.muted })));
-+            } else return; // Provider VAD handles interruption; no inert interrupt control.
-+          } else if (started && chunk[0] === 1 && chunk.length > 1 && (chunk.length - 1) % 2 === 0 && chunk.length <= 3201) {
-+            yield* channel.send(1, chunk.subarray(1));
-+          } else return;
++    yield* Effect.scoped(
++      Effect.gen(function* () {
++        const writer = yield* socket.writer;
++        notifyStopped = (safe) =>
++          writer
++            .writeAll([encodeJson({ type: "stopped", stopped: safe })])
++            .pipe(Effect.catchCause(() => Effect.void));
++        const { pull } = yield* socket.reader;
++        const browserToRoot = Effect.gen(function* () {
++          let started = false;
++          while (active()) {
++            const messages = yield* pull;
++            for (const message of messages) {
++              const chunk = typeof message === "string" ? encoder.encode(message) : message;
++              if (chunk.length > 64 * 1024) return;
++              // Effect Socket.reader yields Uint8Array for WS TEXT as well as binary.
++              // Our explicit 0x01 audio prefix keeps JSON controls unambiguous.
++              if (chunk[0] === 123) {
++                const control = readControl(chunk);
++                if (!control) return;
++                if (!started) {
++                  if (
++                    control.type !== "start" ||
++                    (control.provider !== "gemini" && control.provider !== "openai")
++                  )
++                    return;
++                  started = true;
++                  yield* channel.send(
++                    0,
++                    encoder.encode(encodeJson({ type: "start", provider: control.provider })),
++                  );
++                } else if (control.type === "stop") {
++                  return;
++                } else if (control.type === "mute" && typeof control.muted === "boolean") {
++                  yield* channel.send(
++                    0,
++                    encoder.encode(encodeJson({ type: "mute", muted: control.muted })),
++                  );
++                } else return; // Provider VAD handles interruption; no inert interrupt control.
++              } else if (
++                started &&
++                chunk[0] === 1 &&
++                chunk.length > 1 &&
++                (chunk.length - 1) % 2 === 0 &&
++                chunk.length <= 3201
++              ) {
++                yield* channel.send(1, chunk.subarray(1));
++              } else return;
++            }
 +          }
-+        }
-+      });
-+      const rootToBrowser = Effect.gen(function* () {
-+        while (active()) {
-+          const frame = yield* Queue.take(channel.receive);
-+          if (!active()) break;
-+          if (frame.kind === 0) {
-+            const control = readControl(frame.payload);
-+            if (!control || !["ready", "started", "error", "status", "interrupt"].includes(String(control.type))) break;
-+            yield* writer.writeAll([decoder.decode(frame.payload)]);
-+            if (control.type === "status" && control.state === "closed") break;
-+          } else if (frame.kind === 2) yield* writer.writeAll([frame.payload]);
-+          else break;
-+        }
-+      });
-+      const ownerWatch = Effect.gen(function* () {
-+        while (active()) {
-+          yield* Effect.sleep("1 seconds");
-+          if (!(yield* ownsThread)) break;
-+        }
-+      });
-+      yield* Effect.raceFirst(Effect.raceFirst(browserToRoot, rootToBrowser), ownerWatch).pipe(Effect.catchCause(() => Effect.void));
-+    }).pipe(Effect.ensuring(teardown)));
++        });
++        const rootToBrowser = Effect.gen(function* () {
++          while (active()) {
++            const frame = yield* Queue.take(channel.receive);
++            if (!active()) break;
++            if (frame.kind === 0) {
++              const control = readControl(frame.payload);
++              if (
++                !control ||
++                !["ready", "started", "error", "status", "interrupt"].includes(String(control.type))
++              )
++                break;
++              yield* writer.writeAll([decoder.decode(frame.payload)]);
++              if (control.type === "status" && control.state === "closed") break;
++            } else if (frame.kind === 2) yield* writer.writeAll([frame.payload]);
++            else break;
++          }
++        });
++        const ownerWatch = Effect.gen(function* () {
++          while (active()) {
++            yield* Effect.sleep("1 seconds");
++            if (!(yield* ownsThread)) break;
++          }
++        });
++        yield* Effect.raceFirst(Effect.raceFirst(browserToRoot, rootToBrowser), ownerWatch).pipe(
++          Effect.catchCause(() => Effect.void),
++        );
++      }).pipe(Effect.ensuring(teardown)),
++    );
 +    return HttpServerResponse.empty();
 +  }).pipe(Effect.ensuring(teardown));
 +});
@@ -11335,11 +11494,11 @@ index 89390422f..059b486f2 100644
          {...(nextChatViewKey ? { key: nextChatViewKey.key } : {})}
 diff --git a/apps/web/src/components/VoiceControls.tsx b/apps/web/src/components/VoiceControls.tsx
 new file mode 100644
-index 000000000..8582b565b
+index 000000000..379488ef4
 --- /dev/null
 +++ b/apps/web/src/components/VoiceControls.tsx
-@@ -0,0 +1,68 @@
-+import { useEffect, useState } from "react";
+@@ -0,0 +1,101 @@
++import { useEffect, useRef, useState } from "react";
 +import { BrowserLiveController, type LiveState } from "../live/controller";
 +import { browserAudioOutput, browserMediaSource, browserTransportFactory } from "../live/device-adapters";
 +
@@ -11365,43 +11524,76 @@ index 000000000..8582b565b
 +  );
 +}
 +
++// One voice device owner across thread/provider remounts. Failed cleanup retains
++// that owner, so a new component cannot acquire a second microphone behind it.
++let owner: BrowserLiveController | undefined;
++let releaseTask: Promise<void> | undefined;
++function releaseOwner(): Promise<void> {
++  if (releaseTask) return releaseTask;
++  const current = owner;
++  if (!current) return Promise.resolve();
++  const task = current.end().then(() => { if (owner === current) owner = undefined; });
++  releaseTask = task;
++  void task.finally(() => { if (releaseTask === task) releaseTask = undefined; }).catch(() => {});
++  return task;
++}
++
 +function VoiceSession({ threadId, provider }: { threadId: string; provider: Provider }) {
 +  const [controller] = useState(() => new BrowserLiveController(
 +    browserMediaSource(),
-+    browserTransportFactory(
-+      "/api/voice/ws?threadId=" + encodeURIComponent(threadId), provider,
-+    ),
++    browserTransportFactory("/api/voice/ws?threadId=" + encodeURIComponent(threadId), provider),
 +    browserAudioOutput,
 +  ));
 +  const [state, setState] = useState<LiveState>(controller.state);
++  const [transition, setTransition] = useState<"start" | "stop" | undefined>();
++  const [error, setError] = useState<string>();
++  const mounted = useRef(false);
++  const operation = useRef(0);
++  const stop = async () => {
++    const id = ++operation.current;
++    setTransition("stop"); setError(undefined);
++    try { await releaseOwner(); }
++    catch { if (mounted.current) setError("Voice cleanup failed. Retry cleanup before starting again."); }
++    finally { if (mounted.current && operation.current === id) setTransition(undefined); }
++  };
 +  useEffect(() => {
++    mounted.current = true;
 +    const unsubscribe = controller.subscribe(setState);
++    if (owner && owner !== controller) void stop();
 +    return () => {
-+      unsubscribe();
-+      void controller.dispose().catch(() => {});
++      mounted.current = false; unsubscribe();
++      // Rejection is retained in owner/releaseTask for the next mounted controls
++      // to report and retry; never forget a failed device/provider release.
++      if (owner === controller) void releaseOwner().catch(() => {});
 +    };
 +  }, [controller]);
-+  const active = state.phase === "requesting-mic" || state.phase === "connecting" ||
-+    state.phase === "ready" || state.phase === "muted";
++  const start = async () => {
++    const id = ++operation.current;
++    setTransition("start"); setError(undefined);
++    try {
++      if (owner && owner !== controller) await releaseOwner();
++      if (!mounted.current) return;
++      owner = controller;
++      await controller.start();
++    } catch { if (mounted.current) setError("Voice could not start. End voice or retry cleanup before starting again."); }
++    finally { if (mounted.current && operation.current === id) setTransition(undefined); }
++  };
++  const active = ["requesting-mic", "connecting", "ready", "muted"].includes(state.phase);
++  const blocked = transition !== undefined || (!!owner && owner !== controller);
 +  return (
 +    <>
-+      {!active && (
-+        <button type="button" className="rounded border border-border px-2 py-1" onClick={() => {
-+          void controller.start().catch(() => {});
-+        }}>Start voice</button>
-+      )}
-+      {(state.phase === "ready" || state.phase === "muted") && (
-+        <button type="button" className="rounded border border-border px-2 py-1"
-+          onClick={() => controller.setMuted(state.phase !== "muted")}
-+        >{state.phase === "muted" ? "Unmute" : "Mute"}</button>
-+      )}
-+      {active && (
-+        <button type="button" className="rounded border border-border px-2 py-1" onClick={() => { void controller.end().catch(() => {}); }}>End voice</button>
-+      )}
++      {!active && <button type="button" className="rounded border border-border px-2 py-1" disabled={blocked}
++        onClick={() => { void start(); }}>Start voice</button>}
++      {(state.phase === "ready" || state.phase === "muted") && <button type="button"
++        className="rounded border border-border px-2 py-1" disabled={transition === "stop"}
++        onClick={() => controller.setMuted(state.phase !== "muted")}>{state.phase === "muted" ? "Unmute" : "Mute"}</button>}
++      {active && <button type="button" className="rounded border border-border px-2 py-1"
++        disabled={transition === "stop"} onClick={() => { void stop(); }}>End voice</button>}
++      {error && <button type="button" className="rounded border border-border px-2 py-1"
++        disabled={transition === "stop"} onClick={() => { void stop(); }}>Retry cleanup</button>}
 +      <span role="status" aria-live="polite">
-+        {state.reason ?? (state.phase === "idle" || state.phase === "ended" ? "" :
-+          state.phase === "requesting-mic" ? "Requesting microphone…" :
-+          state.phase === "connecting" ? "Connecting voice…" :
++        {transition === "stop" ? "Stopping voice…" : error ?? state.reason ??
++          (state.phase === "requesting-mic" ? "Requesting microphone…" : state.phase === "connecting" ? "Connecting voice…" :
 +          state.phase === "muted" ? "Voice muted" : state.phase === "ready" ? "Voice connected" : "")}
 +      </span>
 +    </>
