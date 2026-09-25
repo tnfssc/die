@@ -151,3 +151,11 @@ bun install --frozen-lockfile installed that package without tracked dependency
 changes; bun run check and git diff --check now pass. Research and UI fixes
 are integrated locally. Manual voice/TUI expand/redraw check remains before
 release; running installed CLI has not been updated by these source changes.
+
+## Local install
+
+User requested installation. bun run install:local completed successfully on
+2026-09-25. Fresh web/CLI build and embedded native helper self-test/protocol
+v1 passed without audio devices. Installed ~/.local/bin/die matches dist/die
+byte-for-byte; --version remains 0.13.0 (local unreleased fixes, no version bump).
+Restart Die to load it. Physical voice/TUI acceptance still outstanding.
