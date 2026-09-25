@@ -1,13 +1,13 @@
 # Code placement audit (2026-09-25)
 
-User found Live prompt text outside `src/prompts/` and asked for other scattered files, not just prompts. Audit first. No broad moves yet. Look for one concept with split ownership, not files that only look alike. Keep feature-local code when its owner is clear.
+User found Live prompt text outside `src/prompts/` and asked for other scattered files, not just prompts. Audit first; moves implemented for v0.11.2 as recorded below. Look for one concept with split ownership, not files that only look alike. Keep feature-local code when its owner is clear.
 
 Three read-only audits run from `71a9dbf`:
 - Prompts and config: task `task_f4d6bcd0`, worktree `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_f4d6bcd0`, branch `die/audit-prompt-and-config-placement-f4d6bcd0`.
 - Runtime ownership: task `task_523c4f19`, worktree `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_523c4f19`, branch `die/audit-runtime-ownership-and-shared-logic-523c4f19`.
 - Scripts, assets, tests: task `task_d8322538`, worktree `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_d8322538`, branch `die/audit-scripts-assets-and-test-organizati-d8322538`.
 
-Audit complete. Parent checked the named sources and callers. Findings below are a cleanup plan, not runtime validation. No product edits from this audit. CI repair is separate and takes priority; see `../ci/local-ci-integration.md`.
+Audit complete. Parent checked the named sources and callers. Findings below are a cleanup plan, not runtime validation. The initial audit made no product edits. Later implementation follows below. CI repair is separate; see `../ci/local-ci-integration.md`.
 
 ## Checked findings so far
 
@@ -44,3 +44,12 @@ Values: clarified value 3 with this recurring lesson. Shared rules belong with t
 `src/output-buffer.ts` owns the unchanged bounded byte buffer for task output and execute image capture. `src/job-delivery.ts` owns shared acknowledgement, request identity and cancellation signal metadata; `src/typescript/job-bridge.ts` retains the IPC transport and execute globals. `src/delegation-environment.ts` owns the T3 credential names and child-environment scrub rule; MCP configuration and HTTP remain in the client. `src/session/identity.ts` provides `sessionIdentity` for cost attribution and parent links, preserving Pi per-cwd paths and ephemeral synthetic IDs. No compatibility reexports: call sites, tests and leak-audit script import the owning modules directly. Historical resource audit paths remain historical evidence.
 
 Proof (runtime placement): `bun run check` and targeted Biome format pass. Focused suites passed: 132 tests across buffer, session identity, bridge/protocol, foreground stop, execute, task manager, T3 routing/production and stop-work; 66 tests across job service, session costs, notifications, routing and manager. The execute tests used a locally compiled CLI with a placeholder web archive because the full web build requires `pnpm` (not available in this worktree). That substitute does not validate web packaging; the separate packaging worker owns that gate. Values unchanged: the existing shared-rule ownership guidance already covers this move.
+
+## v0.11.2 integrated cleanup
+
+- Live prompts now live in `src/prompts/live.md` and `src/prompts/gpt-live.md`. Wire text stays the same. `src/live/providers.ts` owns Live model IDs; local task profile validation uses `SUBAGENT_TYPES`.
+- Shared buffer is `src/output-buffer.ts`; job signal/acknowledgement contract is `src/job-delivery.ts`; credential scrub rule is `src/delegation-environment.ts`; session identity is `src/session/identity.ts`. No legacy re-export owners remain.
+- Bootstrap source is `web/die-web-bootstrap.mjs`; all three builders keep the packaged filename. Release notes are selected through `scripts/select-release-notes.ts` using the validated version.
+- Candidate web builder remains a non-adopted research tool with distinct inputs/gates, not another production owner. Only its source path changed. No new shared packager was warranted.
+
+Workers integrated as `4371a9e`, `7b8859e`, `488c191`. Full gate and independent review tracked in [v0.11.2 release](../releases/release-v0.11.2.md). Existing value 3 covers these moves; no new value needed.
