@@ -43,6 +43,7 @@ export class BrowserLiveController {
   private muted = false;
   private pending?: Promise<void>;
   private cleanupTask?: Promise<boolean>;
+  private endTask?: Promise<void>;
   private failedReleases: Array<() => Promise<void> | void> = [];
   private capture?: Capture;
   private transport?: Transport;
@@ -90,8 +91,12 @@ export class BrowserLiveController {
     if (this.disposed) throw new Error("disposed");
     if (this.pending || this.cleanupTask) throw new Error("previous resources not released");
     if (!["idle", "ended", "error"].includes(this.value.phase)) throw new Error("already started");
-    if (this.failedReleases.length > 0 && !(await this.retryReleases())) throw new Error("previous resources not released");
     const id = ++this.generation;
+    if (this.failedReleases.length > 0) {
+      const clean = await this.retryReleases();
+      if (!this.active(id)) return;
+      if (!clean) throw new Error("previous resources not released");
+    }
     this.muted = false;
     this.abort = new AbortController();
     try {
@@ -214,6 +219,8 @@ export class BrowserLiveController {
     this.setState("error", reason);
     void this.cleanup().then((clean) => {
       if (!clean && this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
+    }).catch(() => {
+      if (this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
     });
   }
   private cleanup(): Promise<boolean> {
@@ -240,22 +247,36 @@ export class BrowserLiveController {
     for (const release of releases) if (release) await this.releaseLate(release);
     return this.failedReleases.length === 0;
   }
-  async end(): Promise<void> {
+  /** Resolves only once all resources (including late acquisitions) are released; rejects on cleanup failure. */
+  end(): Promise<void> {
+    if (this.endTask) return this.endTask;
+    const task = this.endInternal();
+    this.endTask = task;
+    void task.then(() => { if (this.endTask === task) this.endTask = undefined; }, () => {
+      if (this.endTask === task) this.endTask = undefined;
+    });
+    return task;
+  }
+  private async endInternal(): Promise<void> {
     ++this.generation;
     try { this.transport?.sendControl({ type: "end" }); } catch {}
     const cleanup = this.cleanup();
     // An uncancellable getUserMedia may resolve after end; do not claim release before
     // its late capture has actually been stopped.
     const pending = this.pending;
-    if (pending) await pending.catch(() => {});
-    await cleanup;
-    const clean = await this.retryReleases();
-    this.setState(clean ? "ended" : "error", clean ? undefined : "resource cleanup failed");
+    try {
+      if (pending) await pending.catch(() => {});
+      await cleanup;
+      if (!(await this.retryReleases())) throw new Error("resource cleanup failed");
+      this.setState("ended");
+    } catch (error) {
+      this.setState("error", "resource cleanup failed");
+      throw error;
+    }
   }
-  async dispose(): Promise<void> {
-    if (this.disposed) return;
+  dispose(): Promise<void> {
     this.disposed = true;
     this.listeners.clear();
-    await this.end();
+    return this.end();
   }
 }

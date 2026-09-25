@@ -215,7 +215,7 @@ test("teardown failure is visible while other resources still release", async ()
   r.capture.stop = () => {
     throw new Error("device stuck");
   };
-  await r.controller.end();
+  await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
   expect(r.controller.state).toEqual({ phase: "error", reason: "resource cleanup failed" });
   expect(r.calls.stops).toBe(1);
   expect(r.calls.closes).toBe(1);
@@ -257,7 +257,7 @@ test("failed resource release blocks restart until retry succeeds", async () => 
     if (fail) throw new Error("socket still open");
     r.calls.closes++;
   };
-  await r.controller.end();
+  await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
   expect(r.controller.state.phase).toBe("error");
   expect(r.controller.start()).rejects.toThrow("previous resources not released");
   fail = false;
@@ -336,7 +336,7 @@ test("dispose retries failed release but never permits another acquisition", asy
     if (fails) throw new Error("socket live");
     r.calls.closes++;
   };
-  await r.controller.dispose();
+  await expect(r.controller.dispose()).rejects.toThrow("resource cleanup failed");
   expect(r.controller.state.reason).toBe("resource cleanup failed");
   expect(r.controller.start()).rejects.toThrow("disposed");
   fails = false;
@@ -477,4 +477,99 @@ test("capture overflow during connecting fails visibly and releases capture", as
   await r.controller.end();
   expect(r.calls.tracks).toBe(1);
   expect(r.calls.closes).toBe(1);
+});
+
+
+test("immediate start/end and dispose prevent acquisition before startup resumes", async () => {
+  for (const stop of ["end", "dispose"] as const) {
+    const r = rig();
+    const starting = r.controller.start();
+    const ending = r.controller[stop]();
+    r.mic.resolve(r.capture);
+    await Promise.all([starting, ending]);
+    expect(r.calls.tracks).toBe(1);
+    expect(r.calls.closes).toBe(0);
+    expect(r.controller.state.phase).toBe("ended");
+  }
+});
+
+test("end/dispose during deferred failed-release retry cannot start a new mic", async () => {
+  for (const stop of ["end", "dispose"] as const) {
+    const r = rig();
+    await r.connect();
+    r.capture.stop = () => { throw new Error("track busy"); };
+    await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
+    const retry = deferred<void>();
+    r.capture.stop = () => retry.promise;
+    const starting = r.controller.start();
+    const ending = r.controller[stop]();
+    retry.resolve();
+    await Promise.all([starting, ending]);
+    expect(r.controller.state.phase).toBe("ended");
+    expect(r.calls.tracks).toBe(0); // replaced stop did not increment fixture's counter
+    expect(r.calls.closes).toBe(1);
+    if (stop === "dispose") await expect(r.controller.start()).rejects.toThrow("disposed");
+  }
+});
+
+test("concurrent end/dispose callers wait for the same asynchronous teardown", async () => {
+  const r = rig();
+  await r.connect();
+  const gate = deferred<void>();
+  r.capture.stop = () => gate.promise;
+  const first = r.controller.end();
+  const second = r.controller.end();
+  const disposed = r.controller.dispose();
+  expect(second).toBe(first);
+  expect(disposed).toBe(first);
+  let done = false;
+  void Promise.all([first, second, disposed]).then(() => { done = true; });
+  await r.tick();
+  expect(done).toBe(false);
+  gate.resolve();
+  await Promise.all([first, second, disposed]);
+  expect(r.controller.state.phase).toBe("ended");
+});
+
+test("async teardown failures reject every concurrent waiter and remain retryable", async () => {
+  const r = rig();
+  await r.connect();
+  const gate = deferred<void>();
+  let failing = true;
+  r.transport.close = async () => {
+    await gate.promise;
+    if (failing) throw new Error("socket busy");
+    r.calls.closes++;
+  };
+  const first = r.controller.end();
+  const second = r.controller.dispose();
+  gate.resolve();
+  const results = await Promise.allSettled([first, second]);
+  expect(results.map((result) => result.status)).toEqual(["rejected", "rejected"]);
+  expect(r.controller.state.phase).toBe("error");
+  failing = false;
+  await r.controller.dispose();
+  expect(r.controller.state.phase).toBe("ended");
+  expect(r.calls.closes).toBe(1);
+});
+
+test("late asynchronous stop failure rejects awaited end, then retries", async () => {
+  const r = rig();
+  const starting = r.controller.start();
+  const ending = r.controller.end();
+  const gate = deferred<void>();
+  let failing = true;
+  r.capture.stop = async () => {
+    await gate.promise;
+    if (failing) throw new Error("track busy");
+    r.calls.tracks++;
+  };
+  r.mic.resolve(r.capture);
+  gate.resolve();
+  await starting;
+  await expect(ending).rejects.toThrow("resource cleanup failed");
+  expect(r.controller.state.phase).toBe("error");
+  failing = false;
+  await r.controller.end();
+  expect(r.calls.tracks).toBe(1);
 });
