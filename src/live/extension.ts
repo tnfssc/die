@@ -302,6 +302,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         const errors: string[] = audioLaunchPending
           ? ["Audio startup has not finished; teardown is not yet observed"]
           : [];
+        let providerFinalized = true;
         await Promise.all([
           (async () => {
             if (!audio) return;
@@ -320,19 +321,27 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           (async () => {
             try {
               await voice?.close();
-              if (voice && "closeError" in voice && typeof voice.closeError === "string") errors.push(voice.closeError);
+              if (voice && "closeError" in voice && typeof voice.closeError === "string") {
+                errors.push(voice.closeError);
+                providerFinalized = false;
+              }
             } catch {
               errors.push("Provider socket close failed");
+              providerFinalized = false;
             }
             try {
               await liveVoice?.close();
-              if (liveVoice?.closeError) errors.push(liveVoice.closeError);
+              if (liveVoice?.closeError) {
+                errors.push(liveVoice.closeError);
+                providerFinalized = false;
+              }
             } catch {
               errors.push("Live provider socket close failed");
+              providerFinalized = false;
             }
           })(),
         ]);
-        this.cost.close(!liveVoice || !liveVoice.closeError);
+        this.cost.close(providerFinalized);
         this.ctx.ui.setStatus("die-live-cost", undefined);
         return { stopped: errors.length === 0, errors, jobsUnchanged: true as const };
       })().finally(() => {

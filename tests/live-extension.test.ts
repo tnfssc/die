@@ -139,7 +139,8 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
       notify: (value: string) => {
         notices.push(value);
       },
-      setStatus: (_: string, value?: string) => {
+      setStatus: (key: string, value?: string) => {
+        if (key === "die-live-cost") return;
         status.push(value);
       },
       setWidget: (_: string, value?: string[]) => {
@@ -246,6 +247,40 @@ describe("Live voice", () => {
     expect(stopped).toBe(true);
     expect((await t.stop()).stopped).toBe(false);
   });
+  for (const failure of ["reported", "thrown"] as const) {
+    test("Gemini provider " + failure + " close failure persists incomplete cost after valid usage", async () => {
+      let capturedUsage: VoiceCallbacks["onUsage"];
+      const t = setup({
+        voice: (callbacks) => {
+          // Use the real extension callback and stop path, without a provider call.
+          capturedUsage = callbacks.onUsage;
+          return {
+            state: "ready",
+            generation: 0,
+            sendAudio: () => {},
+            connect: async () => {},
+            close: () => {
+              if (failure === "thrown") throw new Error("offline close failure");
+            },
+            ...(failure === "reported" ? { closeError: "offline close failed" } : {}),
+          } as any;
+        },
+      });
+      await t.run("start");
+      capturedUsage?.({
+        promptTokensDetails: [{ modality: "AUDIO", tokenCount: 100 }],
+        candidatesTokensDetails: [{ modality: "TEXT", tokenCount: 20 }],
+      });
+      expect(t.transcriptEntries.filter((entry) => entry.type === "die-live-cost").map((entry) => entry.data)).toEqual([
+        { cost: (100 * 3 + 20 * 4.5) / 1e6 },
+      ]);
+      expect((await t.stop()).stopped).toBe(false);
+      expect(t.transcriptEntries.filter((entry) => entry.type === "die-live-cost").at(-1)?.data).toEqual({
+        cost: 0,
+        unknown: true,
+      });
+    });
+  }
   test("self-stop does not claim teardown of a still-pending audio launch", async () => {
     const t = setup();
     t.defer();
@@ -321,9 +356,13 @@ describe("Live voice", () => {
     expect(t.transcriptEntries.every((e) => e.type === "die-live-transcript")).toBe(true);
     t.voice.onOutputTranscript?.({ text: "Unfinished reply" }, 0);
     await t.run("stop");
-    expect(t.transcriptEntries.at(-1)?.data).toEqual({ speaker: "Voice", text: "Unfinished reply", status: "partial" });
+    expect(t.transcriptEntries.filter((e) => e.type === "die-live-transcript").at(-1)?.data).toEqual({
+      speaker: "Voice",
+      text: "Unfinished reply",
+      status: "partial",
+    });
     t.voice.onOutputTranscript?.({ text: "stale" }, 0);
-    expect(t.transcriptEntries).toHaveLength(4);
+    expect(t.transcriptEntries.filter((e) => e.type === "die-live-transcript")).toHaveLength(4);
   });
 
   test("autocomplete lists only Live actions and filters prefixes without side effects", () => {

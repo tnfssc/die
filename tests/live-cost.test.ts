@@ -62,6 +62,34 @@ describe("provider-reported CLI voice cost", () => {
     );
     expect(voiceCost("google", "gemini-3.8-live", { promptTokenCount: 100, candidatesTokenCount: 20 })).toBeUndefined();
   });
+  test("Gemini cached counts and both SDK detail spellings are unknown, not full-rate", () => {
+    const base = {
+      promptTokensDetails: [{ modality: "AUDIO", tokenCount: 100 }],
+      candidatesTokensDetails: [{ modality: "TEXT", tokenCount: 20 }],
+    };
+    for (const cached of [
+      { cachedContentTokenCount: 25 },
+      { cachedTokensDetails: [{ modality: "AUDIO", tokenCount: 25 }] },
+      { cacheTokensDetails: [{ modality: "TEXT", tokenCount: 25 }] },
+      { cachedContentTokenCount: -1 },
+      { cachedContentTokenCount: 1.5 },
+      { cachedTokensDetails: [{ modality: "AUDIO", tokenCount: -1 }] },
+      { cacheTokensDetails: [{ modality: "TEXT", tokenCount: "12" }] },
+      { promptTokensDetails: [{ modality: "TEXT", tokenCount: NaN }] },
+      { candidatesTokensDetails: [{ modality: "AUDIO", tokenCount: 1.2 }] },
+    ])
+      expect(voiceCost("google", "gemini-3.8-live", { ...base, ...cached })).toBeUndefined();
+    expect(voiceCost("google", "gemini-3.8-live", { ...base, cachedContentTokenCount: 0 })).toBeCloseTo(
+      (100 * 3 + 20 * 4.5) / 1e6,
+    );
+    const entries: { cost: number; unknown?: boolean }[] = [];
+    const tracker = new VoiceCostTracker("google", "gemini-3.8-live", (entry) => entries.push(entry));
+    tracker.gemini(base);
+    tracker.gemini({ ...base, cachedContentTokenCount: 25 });
+    expect(entries).toEqual([{ cost: (100 * 3 + 20 * 4.5) / 1e6 }, { cost: 0, unknown: true }]);
+    tracker.close();
+    expect(entries).toHaveLength(2);
+  });
   test("unknown usage/pricing is never recorded as zero", () => {
     const entries: { cost: number; unknown?: boolean }[] = [];
     const tracker = new VoiceCostTracker("google", "unpriced", (e) => entries.push(e));
