@@ -1,39 +1,20 @@
-# Isolated memory/resource audit probes
+# Offline resource investigation probes
 
-See [the audit report](../../wisdom/resources/memory-resource-audit.md) for results and limitations. These harnesses help with manual investigation. They do not fix the product automatically. Run from repository root on Linux with Bun 1.4.1 / Node 24 and the repository dependencies installed. Native/backend probes need the existing current patched web checkout/dependencies. Bundled probes require a built `dist/die`.
+See [the historical audit report](../../wisdom/resources/memory-resource-audit.md) for results and limitations. These are manual investigation harnesses, not release gates. No API/device/live probe is part of this move.
 
-## CLI / execute
+## Maintained offline entry points (left under scripts)
 
-- `bun scripts/leak-audit/session-journal.ts`: 32 MiB synthetic original-history retention across compaction, then reset/GC.
-- `bun scripts/leak-audit/bridge-retention.ts`: 10,000 real in-memory bridge requests. Listener and heap counts before/after closure.
-- `bun scripts/leak-audit/execution-runtime.ts`: execute success, spill, timeout, abort, and owned-descendant cleanup.
-- `bun scripts/leak-audit/web-launcher-runtime.ts`: repeated normal launcher exits plus intentionally stubborn/orphaning **test backends**. Exact owned PID cleanup.
-- `DIE_SOAK_CYCLES=2000 bun scripts/leak-audit/cli-rpc-soak.ts`: real CLI with local fake model. Add `DIE_SOAK_NEW_ONLY=1` for session-replacement isolation.
+- `session-journal.ts`: synthetic history retention and reset/GC.
+- `bridge-retention.ts`: in-memory bridge requests and listener/heap counts.
+- `execution-runtime.ts`: execute success, spill, timeout, abort, owned-descendant cleanup.
+- `web-launcher-runtime.ts`: normal launcher exits and intentionally stubborn local test backends.
+- `cli-rpc-soak.ts`: CLI using a local fake model; optional `DIE_SOAK_CYCLES` and `DIE_SOAK_NEW_ONLY`.
+- `scripts/die-web-rpc-smoke.ts`: local loopback OpenAI-compatible model RPC smoke, not a historical T3 pin check.
 
-## Web investigation harnesses
+These probes do not assert an old web source pin. Keep the generic CLI probes in place. The web-launcher probe (and, if desired, the offline die-web RPC smoke) may be moved/adapted by the integrations/t3/gates owner after preserving their local-process cleanup and test discovery; they are not historical pin evidence. Do not move them as-is into an excluded tree and silently lose TypeScript coverage.
 
-**Historical assertion warning:** `current-web-provider.mjs` and the custom missing-recording-trigger case were written to show the v0.3.4 findings, not to assert v0.4.0 fixed behavior. The copied-provider instrumentation may no longer match after the fix. Do not use its old retention assertions as release gates. Use the product regression suites (TaskManager/capture/history plus backend logger/PiAdapter/SubscriberStream and client RPC tests) for fixed behavior. The server runtime probes still give useful lifecycle measurements.
+## Historical web evidence (moved without rewriting)
 
-These source probes verify pin `719a76ca1dbf5490f1aa33ffb9966301e02be9a9` and the canonical patch in `.cache/die-t3code-v0042`.
+The historical `current-web-*`, `bundled-web-runtime.mjs`, `web-runtime-probe.mjs`, and `server-shutdown-probe.mjs` now reside in [the production-v2 archive](../../experiments/t3/production-v2/archive/scripts/leak-audit/). The first group hardcodes old pin `719a76ca1dbf5490f1aa33ffb9966301e02be9a9` and/or its `.cache/die-t3code-v0042` checkout and `web/t3.patch`; “current” was historical, not a claim about today's canonical pin. The last two use the older `.cache/die-t3code` checkout. The old `scripts/die-web-{mode,model,smoke,stop}-smoke.ts` are archived alongside them because they also use `.cache/die-t3code`. Embedded source-relative paths and evidence remain unchanged; do not invoke them from the new location without porting and revalidating against the current source. Prior measurements remain historical, not current-release assertions.
 
-- `node scripts/leak-audit/current-web-provider.mjs`: temporary current-source-copy retention tests with read-only private-state observers.
-- `bash scripts/leak-audit/current-web-provider-tests.sh`: provider cleanup regression suites.
-- `node scripts/leak-audit/current-web-client-tests.mjs`: browser/client lifecycle suites plus native recording timeout reproduction (not a full browser heap soak).
-- `bash scripts/leak-audit/current-web-server-check.sh`: current-source checks, focused suites, rebuild and Node-instrumented server probe.
-- `node scripts/leak-audit/current-web-server-runtime.mjs`: isolated current backend under Node/V8 with explicit GC/handle measurements. `LEAK_SEQUENTIAL=3000` selects a longer sequential run. See companion note for other options.
-- `node scripts/leak-audit/bundled-web-runtime.mjs`: **actual compiled Bun** `dist/die web`, separate temporary HOME/cache/state, real subscription churn, /proc measurements, owned-process shutdown.
-
-Tests use temporary state and exact owned PIDs. Do not replace cleanup with process-name matching, pkill, or killall. Some native child commands deliberately ignore termination. Keep each harness's finally cleanup. RSS alone is not proof of a live-object leak.
-
-## Historical only
-
-`web-runtime-probe.mjs` and `server-shutdown-probe.mjs` target the **stale** `.cache/die-t3code` checkout. Their archived measurements do not show current-release behavior. Use `current-web-*` and `bundled-web-runtime.mjs` instead.
-
-## v0.4.0 history and core regression entry points
-
-- `TMPDIR=/var/tmp bun scripts/history-sdk-probe.ts`: real offline SDK compaction/resume soak.
-- `TMPDIR=/var/tmp bun scripts/history-storage-probe.ts`: native/adapted retained-memory comparison.
-- `TMPDIR=/var/tmp bun test tests/history-storage.test.ts tests/history-storage-io.test.ts tests/history-storage-lifecycle.test.ts tests/history-disk-retrieval.test.ts`: history compatibility/fault tests.
-- After rebuilding `dist/die`, `TMPDIR=/var/tmp bun test ./tests`: full deterministic core suite (live API tests stay opt-in).
-
-`TMPDIR=/var/tmp` avoids small/full tmpfs mounts on Linux. These paths still use uniquely owned temporary directories and cleanup.
+Use the maintained product tests and current T3 gate owners for production behavior. Preserve exact owned-PID cleanup in any adapted harness; do not replace it with process-name matching, pkill, or killall. RSS alone is not proof of a live-object leak.
