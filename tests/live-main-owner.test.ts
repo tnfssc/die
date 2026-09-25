@@ -21,6 +21,7 @@ function fixture() {
   let active = false;
   let deny = false;
   const hooks: string[] = [];
+  const events: any[] = [];
   const manager = {
     getSessionId: () => "s1",
     getLeafId: () => String(leaf),
@@ -55,6 +56,7 @@ function fixture() {
   ]);
   const session = {
     sessionManager: manager,
+    _emit: (event: any) => events.push(event),
     _toolRegistry: tools,
     _isAgentRunActive: active,
     getActiveToolNames: () => ["execute"],
@@ -92,6 +94,7 @@ function fixture() {
     messages,
     entries,
     hooks,
+    events,
     deny: () => {
       deny = true;
     },
@@ -141,6 +144,10 @@ describe("direct Live main owner", () => {
         sessionManager: SessionManager.inMemory(dir),
         tools: ["execute"],
       }));
+      const toolEvents: any[] = [];
+      const unsubscribe = session.subscribe((event) => {
+        if (event.type === "tool_execution_start" || event.type === "tool_execution_end") toolEvents.push(event);
+      });
       let streamed = false;
       session.agent.streamFunction = (() => {
         streamed = true;
@@ -154,6 +161,10 @@ describe("direct Live main owner", () => {
       expect((owner.orchestration as any).instructions).toContain("POST_HOOK_FOR_VOICE");
       expect(owner.orchestration.tools.map((t) => t.name)).toEqual(["execute"]);
       expect(await owner.orchestration.execute({ name: "execute", args: {} })).toHaveProperty("isError", true);
+      expect(toolEvents.map((event) => event.type)).toEqual(["tool_execution_start", "tool_execution_end"]);
+      expect(toolEvents[0].args).toEqual({ code: "" });
+      expect(toolEvents[1].isError).toBe(true);
+      unsubscribe();
       await session.prompt("typed to active live owner");
       expect(
         session.sessionManager
@@ -219,6 +230,10 @@ describe("direct Live main owner", () => {
     expect(f.hooks).toEqual(["context", "context", "before", "execute:1+1", "after"]);
     expect(f.messages.map((x) => x.role)).toEqual(["user", "assistant", "assistant", "toolResult"]);
     expect(f.entries.map((x) => x.role)).toEqual(f.messages.map((x) => x.role));
+    expect(f.events.map((e) => e.type)).toEqual(["tool_execution_start", "tool_execution_end"]);
+    expect(f.events[0].args).toEqual({ code: "" });
+    expect(f.events[1].result.content).toEqual([{ type: "text", text: "result" }]);
+    expect(f.events[1].isError).toBe(false);
     await expect(beforeOrdinaryPrompt(f.manager)).rejects.toThrow("Live owns");
     owner.close();
     await owner.released;
@@ -238,7 +253,24 @@ describe("direct Live main owner", () => {
     });
     expect(f.hooks).toEqual(["context", "before", "after"]);
     expect(f.messages.at(-1).role).toBe("toolResult");
+    expect(f.events[1].isError).toBe(true);
+    expect(f.events[1].result.content[0].text).toBe("permission denied");
     expect(await owner.orchestration.execute({ name: "execute", args: {} })).toHaveProperty("isError", true);
+    owner.close();
+    await owner.released;
+  });
+  test("terminal preview bounds output without changing canonical result or exposing code", async () => {
+    const f = fixture();
+    (f.session._toolRegistry.get("execute") as any).execute = async () => ({
+      content: [{ type: "text", text: "x".repeat(10000) }],
+    });
+    const owner = await acquireMainOwner({} as any, f.ctx);
+    const result = await owner.orchestration.execute({ name: "execute", args: { code: "private token" } });
+    expect((result as any).content[0].text).toHaveLength(10000);
+    expect(f.messages.at(-1).content[0].text).toHaveLength(10000);
+    expect(f.events[0].args).toEqual({ code: "" });
+    expect(f.events[1].result.content[0].text).toContain("[output truncated in terminal]");
+    expect(f.events[1].result.content[0].text.length).toBeLessThan(4200);
     owner.close();
     await owner.released;
   });

@@ -112,6 +112,51 @@ function record(session: OwnerSession, message: AgentMessage): void {
   const owner = owners.get(session.sessionManager);
   if (owner) owner.identity = identity(session.sessionManager);
 }
+/** Pi's external Live owner appends history directly, so its ordinary agent event
+ * stream never fires. Feed only the terminal subscriber path (not extension hooks
+ * or agent execution) for the already-admitted tool pair. This is the pinned
+ * Pi 0.87 private UI seam; replace when Pi exposes external tool events. */
+function showLiveTool(session: OwnerSession, event: unknown): void {
+  try {
+    (session as OwnerSession & { _emit?: (event: any) => void })._emit?.(event);
+  } catch {
+    // A failed terminal subscriber must not block or retry a real tool call.
+  }
+}
+const LIVE_DISPLAY_CHARS = 4096;
+function liveDisplayResult(result: { content?: Array<{ type: string; text?: string }>; details?: unknown }) {
+  let text = "";
+  let truncated = false;
+  for (const part of result.content ?? []) {
+    if (part.type !== "text") continue;
+    const addition = (text ? "\n" : "") + (part.text ?? "");
+    const left = LIVE_DISPLAY_CHARS - text.length;
+    if (addition.length > left) {
+      text += addition.slice(0, Math.max(0, left));
+      truncated = true;
+      break;
+    }
+    text += addition;
+  }
+  const raw = result.details as Record<string, unknown> | undefined;
+  // Only fields consumed by the ordinary execute renderer, never arbitrary details.
+  const details = raw && {
+    exitCode: raw.exitCode,
+    timedOut: raw.timedOut,
+    cancelled: raw.cancelled,
+    imageError: raw.imageError === undefined ? undefined : true,
+    stdoutLost: raw.stdoutLost,
+    stderrLost: raw.stderrLost,
+    outputArtifactErrors: raw.outputArtifactErrors === undefined ? undefined : true,
+    backgroundJobs: Array.isArray(raw.backgroundJobs) ? raw.backgroundJobs.slice(0, 10).map(() => "job") : undefined,
+    images: Array.isArray(raw.images) ? raw.images.slice(0, 10).map(() => "image") : undefined,
+    handoff: typeof raw.handoff === "string" ? raw.handoff.slice(0, LIVE_DISPLAY_CHARS) : undefined,
+  };
+  return {
+    content: [{ type: "text" as const, text: text + (truncated ? "… [output truncated in terminal]" : "") }],
+    details,
+  };
+}
 async function acquire(
   _pi: ExtensionAPI,
   ctx: ExtensionContext,
@@ -499,6 +544,13 @@ async function acquire(
               timestamp: Date.now(),
             } as Extract<AgentMessage, { role: "assistant" }>;
             record(session, assistantMessage);
+            // Never expose raw voice-provided code in the terminal preview.
+            showLiveTool(session, {
+              type: "tool_execution_start",
+              toolCallId: id,
+              toolName: "execute",
+              args: { code: "" },
+            });
             args = validateToolArguments(tool, toolCall);
             const decision = await session.agent.beforeToolCall?.({
               assistantMessage,
@@ -564,6 +616,13 @@ async function acquire(
                 isError,
                 timestamp: Date.now(),
               } as AgentMessage);
+            showLiveTool(session, {
+              type: "tool_execution_end",
+              toolCallId: id,
+              toolName: "execute",
+              result: liveDisplayResult(result),
+              isError,
+            });
             retainedToolBytes += Buffer.byteLength(JSON.stringify(result));
             if (retainedToolBytes > 32 * 1024 * 1024) {
               owner.close();
