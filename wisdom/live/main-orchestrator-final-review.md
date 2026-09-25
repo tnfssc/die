@@ -11,3 +11,12 @@ Read-only review on 2026-09-25. Draft source, not final release verdict.
 I found no additional substantiated blocker in the first-turn prompt comparison, hook denial, typed-input routing, `live.stop` self-call persistence, stop-work result handling, or branch-switch guards. Those paths have targeted integration coverage; I did not invoke a provider or microphone or edit files.
 
 Reviewed HEAD **`38cdffb247354caa9886c9b5399483bfe4d488c3`**. All four requested source files were **uncommitted modifications** at review time; tests and several other files were also modified. `LIVE-COORDINATION.md` was untracked.
+
+## Fix integration
+
+Fix 8e03bb7 (integrated as 2decd0a) addresses both reviewed cases. Parent read
+the changes and regression assertions. Tool pairs are serialized and owner
+conversation/completion records deferred until result persistence. Waiting
+ASR admission gets an explicit false outcome on missing-final turn end,
+interruption or close; no partial transcript is promoted to final. Focused
+worker tests passed (13 integration, 24 unit); final candidate full gate pending.

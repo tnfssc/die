@@ -129,3 +129,37 @@ will commit the snapshot separately, then fixes. Cherry-pick only the fix
 commit after the implementation handoff, not the duplicate snapshot baseline.
 Implementation orchestrator was told through LIVE-COORDINATION.md that parent
 owns those fixes and final release.
+
+## Integrated candidate
+
+Implementation squash 8f05c42 integrated as 4e7060f. Parent narrow fix 8e03bb7
+integrated as 2decd0a. The snapshot baseline d5e3d91 was not cherry-picked.
+The temporary snapshot patch was removed after its durable worktree commit.
+Fixes serialize canonical tool pairs, defer owner records between each call
+and result, and revoke already-waiting calls when ASR ends without final text.
+Tests include true overlap, typed/final speech and host updates, both persisted
+and in-memory ordering, duplicate calls and ASR turn/interruption/close cases.
+Unrelated code writing directly to SessionManager is outside this owner queue;
+normal metadata entries do not become model messages.
+
+Current candidate version: 0.13.0. Remote develop has no new commits beyond
+our base, and tag v0.13.0 was absent at preflight. Release notes are in
+support/release-v0.13.0.md and state policy-change/image/provider limitations.
+
+Parent typecheck and diff check passed after integration. Full local shared CI
+job task_5fbf6d84 started with pinned Node 24.21.0, pnpm 11.27.1, Bun 1.4.2 and
+SHELL=/bin/sh. Log: artifacts/live-main-release-ci.log. This is the full fresh
+CLI/web build and shared gate, not the earlier reused-web investigation build.
+Next: inspect gate result; fix actual failures, rerun; commit exact candidate,
+push develop and wait hosted CI + Release dry run on same SHA, then tag.
+
+## Local release gate passed
+
+Full pinned local CI task_5fbf6d84 passed on the integrated v0.13.0 candidate.
+Root: 1098 passed, 17 existing opt-in skips, 0 failed, 27301 assertions.
+Web: 260 backend, 158 model, 26 contracts, 9 client projection tests passed.
+Format/lint/typecheck, fresh production CLI/web build, offline default OpenAI
+transport and standalone smoke passed. Logs: artifacts/ci/ and
+artifacts/live-main-release-ci.log. No paid provider/device call occurred.
+Parent formatting after the narrow fix changed no source behavior. Next step
+is commit/push candidate and wait hosted CI + release dry run on exact SHA.

@@ -197,11 +197,12 @@ async function acquire(
     const previous = pairTail;
     const immediate = reservedPairs++ === 0;
     let unlock!: () => void;
-    pairTail = new Promise<void>((resolve) => { unlock = resolve; });
+    pairTail = new Promise<void>((resolve) => {
+      unlock = resolve;
+    });
     const release = () => {
       pairActive = false;
-      for (const message of deferredRecords.splice(0))
-        if (sameBranch(owner, manager)) record(session, message);
+      for (const message of deferredRecords.splice(0)) if (sameBranch(owner, manager)) record(session, message);
       reservedPairs--;
       unlock();
     };
@@ -362,7 +363,9 @@ async function acquire(
     beginInput() {
       if (!valid() || pendingTranscript) return;
       let settle!: (final: boolean) => void;
-      const result = new Promise<boolean>((resolve) => { settle = resolve; });
+      const result = new Promise<boolean>((resolve) => {
+        settle = resolve;
+      });
       pendingTranscript = { result, settle };
     },
     inputTranscript(text, final = true) {

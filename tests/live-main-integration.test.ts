@@ -346,11 +346,18 @@ test("overlapping executes keep canonical pairs contiguous while deferring every
   const tool = (f.session as any)._toolRegistry.get("execute");
   const execute = tool.execute.bind(tool);
   let entered!: () => void;
-  const started = new Promise<void>((resolve) => { entered = resolve; });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
   let resume!: () => void;
-  const gate = new Promise<void>((resolve) => { resume = resolve; });
+  const gate = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
   tool.execute = async (id: string, ...args: any[]) => {
-    if (id === "overlap-a") { entered(); await gate; }
+    if (id === "overlap-a") {
+      entered();
+      await gate;
+    }
     return execute(id, ...args);
   };
   const a = { id: "overlap-a", name: "execute", args: { code: 'console.log("A")' } };
@@ -363,45 +370,87 @@ test("overlapping executes keep canonical pairs contiguous while deferring every
   const typed = f.owner.typedInput("typed while tool runs");
   f.owner.sendContext("host completion while tool runs");
   expect(f.observed.calls).toEqual(["overlap-a"]);
-  expect(f.manager.getBranch().filter((e: any) => e.type === "message").map((e: any) => e.message.role).at(-1)).toBe("assistant");
+  expect(
+    f.manager
+      .getBranch()
+      .filter((e: any) => e.type === "message")
+      .map((e: any) => e.message.role)
+      .at(-1),
+  ).toBe("assistant");
   resume();
   await Promise.all([first, second, typed]);
   expect(await f.owner.orchestration.execute(b)).toEqual(await second);
-  const persisted = f.manager.getBranch().filter((e: any) => e.type === "message").map((e: any) => e.message);
-  const fromCall = persisted.findIndex((m: any) => m.role === "assistant" && m.content.some((c: any) => c.type === "toolCall" && c.id === "overlap-a"));
-  const inMemory = f.session.agent.state.messages.filter((m: any) => m.role !== "custom").slice(-persisted.slice(fromCall).length);
+  const persisted = f.manager
+    .getBranch()
+    .filter((e: any) => e.type === "message")
+    .map((e: any) => e.message);
+  const fromCall = persisted.findIndex(
+    (m: any) => m.role === "assistant" && m.content.some((c: any) => c.type === "toolCall" && c.id === "overlap-a"),
+  );
+  const inMemory = f.session.agent.state.messages
+    .filter((m: any) => m.role !== "custom")
+    .slice(-persisted.slice(fromCall).length);
   expect(inMemory).toEqual(persisted.slice(fromCall));
-  const calls = persisted.map((m: any, i: number) => m.role === "assistant" && m.content.some((part: any) => part.type === "toolCall") ? i : -1).filter((i: number) => i !== -1);
+  const calls = persisted
+    .map((m: any, i: number) =>
+      m.role === "assistant" && m.content.some((part: any) => part.type === "toolCall") ? i : -1,
+    )
+    .filter((i: number) => i !== -1);
   expect(calls).toHaveLength(2);
-  for (const i of calls) expect(persisted[i + 1]).toMatchObject({ role: "toolResult", toolCallId: persisted[i].content[0].id });
+  for (const i of calls)
+    expect(persisted[i + 1]).toMatchObject({ role: "toolResult", toolCallId: persisted[i].content[0].id });
   const branch = f.manager.getBranch();
   for (const id of ["overlap-a", "overlap-b"]) {
-    const i = branch.findIndex((e: any) => e.type === "message" && e.message.role === "assistant" && e.message.content[0]?.id === id);
+    const i = branch.findIndex(
+      (e: any) => e.type === "message" && e.message.role === "assistant" && e.message.content[0]?.id === id,
+    );
     expect(branch[i + 1]).toMatchObject({ type: "message", message: { role: "toolResult", toolCallId: id } });
   }
-  expect(persisted.some((m: any) => m.role === "user" && m.content[0].text === "final user while tool runs")).toBe(true);
+  expect(persisted.some((m: any) => m.role === "user" && m.content[0].text === "final user while tool runs")).toBe(
+    true,
+  );
   expect(persisted.some((m: any) => m.role === "user" && m.content[0].text === "typed while tool runs")).toBe(true);
-  expect(f.manager.getBranch().some((e: any) => e.type === "custom_message" && e.content?.[0]?.text === "host completion while tool runs")).toBe(true);
+  expect(
+    f.manager
+      .getBranch()
+      .some((e: any) => e.type === "custom_message" && e.content?.[0]?.text === "host completion while tool runs"),
+  ).toBe(true);
 });
 
 test("unfinished ASR is revoked at turn boundary, interruption and close; a new final utterance admits tools", async () => {
   const f = await fixture();
   f.owner.beginInput?.();
   f.owner.inputTranscript("not final", false);
-  const missing = f.owner.orchestration.execute({ id: "no-final", name: "execute", args: { code: 'console.log("UNSAFE")' } });
+  const missing = f.owner.orchestration.execute({
+    id: "no-final",
+    name: "execute",
+    args: { code: 'console.log("UNSAFE")' },
+  });
   f.owner.turnComplete();
   await expect(missing).rejects.toThrow("without a final transcript");
   f.owner.beginInput?.();
   f.owner.inputTranscript("interrupted draft", false);
-  const interrupted = f.owner.orchestration.execute({ id: "interrupted", name: "execute", args: { code: 'console.log("UNSAFE")' } });
+  const interrupted = f.owner.orchestration.execute({
+    id: "interrupted",
+    name: "execute",
+    args: { code: 'console.log("UNSAFE")' },
+  });
   f.owner.interrupt();
   await expect(interrupted).rejects.toThrow("without a final transcript");
   expect(f.observed.calls).toEqual([]);
   f.owner.inputTranscript("valid new input", true);
-  const valid = await f.owner.orchestration.execute({ id: "after-revocation", name: "execute", args: { code: 'console.log("SAFE")' } });
+  const valid = await f.owner.orchestration.execute({
+    id: "after-revocation",
+    name: "execute",
+    args: { code: 'console.log("SAFE")' },
+  });
   expect(JSON.stringify(valid)).toContain("SAFE");
   f.owner.beginInput?.();
-  const closing = f.owner.orchestration.execute({ id: "closed-pending", name: "execute", args: { code: 'console.log("UNSAFE")' } });
+  const closing = f.owner.orchestration.execute({
+    id: "closed-pending",
+    name: "execute",
+    args: { code: 'console.log("UNSAFE")' },
+  });
   f.owner.close();
   await expect(closing).rejects.toThrow("without a final transcript");
   await f.owner.released;
