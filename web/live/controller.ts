@@ -82,6 +82,9 @@ export class BrowserLiveController {
   }
   /** Resolves after setup; only the server's ready message makes the session ready. */
   start(): Promise<void> {
+    // A rejected duplicate must not replace the acquisition that end() must await.
+    if (this.pending || this.cleanupTask || this.endTask)
+      return Promise.reject(new Error("previous resources not released"));
     const task = this.startInternal();
     this.pending = task;
     void task.finally(() => { if (this.pending === task) this.pending = undefined; }).catch(() => {});
@@ -89,7 +92,7 @@ export class BrowserLiveController {
   }
   private async startInternal(): Promise<void> {
     if (this.disposed) throw new Error("disposed");
-    if (this.pending || this.cleanupTask) throw new Error("previous resources not released");
+    if (this.pending || this.cleanupTask || this.endTask) throw new Error("previous resources not released");
     if (!["idle", "ended", "error"].includes(this.value.phase)) throw new Error("already started");
     const id = ++this.generation;
     if (this.failedReleases.length > 0) {

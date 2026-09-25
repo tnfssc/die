@@ -573,3 +573,33 @@ test("late asynchronous stop failure rejects awaited end, then retries", async (
   await r.controller.end();
   expect(r.calls.tracks).toBe(1);
 });
+
+
+test("duplicate start preserves pending acquisition for awaited end", async () => {
+  const r = rig();
+  const starting = r.controller.start();
+  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
+  let ended = false;
+  const ending = r.controller.end().then(() => { ended = true; });
+  await r.tick();
+  expect(ended).toBe(false);
+  r.mic.resolve(r.capture);
+  await Promise.all([starting, ending]);
+  expect(r.calls.tracks).toBe(1);
+  expect(r.calls.closes).toBe(0);
+});
+
+test("start cannot overlap an end retry after failed cleanup", async () => {
+  const r = rig();
+  await r.connect();
+  r.capture.stop = () => { throw new Error("busy"); };
+  await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
+  const released = deferred<void>();
+  r.capture.stop = () => released.promise;
+  const ending = r.controller.end();
+  for (let i = 0; i < 10; i++) await r.tick();
+  await expect(r.controller.start()).rejects.toThrow("previous resources not released");
+  released.resolve();
+  await ending;
+  expect(r.controller.state.phase).toBe("ended");
+});
