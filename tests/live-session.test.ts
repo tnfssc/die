@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { VoiceSession } from "../src/live/session.js";
-import { liveSystemInstruction } from "../src/live/prompt.js";
+import liveSystemInstruction from "../src/prompts/live.md" with { type: "text" };
 import type { LiveAdapter, LiveParams, LiveConnection } from "../src/live/types.js";
 
 function harness() {

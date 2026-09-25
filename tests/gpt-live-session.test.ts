@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { GPTLiveSession, type LiveSocket, type GPTLiveCallbacks } from "../src/live/gpt-live-session";
+import gptLiveInstruction from "../src/prompts/gpt-live.md" with { type: "text" };
 
 class Socket implements LiveSocket {
   bufferedAmount = 0;
@@ -55,7 +56,7 @@ test("official primary Live handshake and continuous microphone resampling; no R
       event_id: "live_start",
       session: {
         model: "gpt-live-1",
-        instructions: expect.any(String),
+        instructions: gptLiveInstruction.trimEnd(),
         audio: { format: { type: "audio/pcm", rate: 24000 }, output: { voice: "marin" } },
         delegation: { type: "client" },
       },

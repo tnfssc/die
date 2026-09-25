@@ -1,7 +1,7 @@
 import { connectionFailure } from "./openai-connect-error";
 import { upgradeSocket } from "./openai-upgrade-socket";
 import { providerFailure } from "./openai-errors";
-import { liveSystemInstruction } from "./prompt";
+import liveSystemInstruction from "../prompts/live.md" with { type: "text" };
 import { OPENAI_REALTIME_MODELS } from "./providers";
 import { toolFailureResponse } from "./tool-failure";
 import { InputResampler } from "./openai-resample";

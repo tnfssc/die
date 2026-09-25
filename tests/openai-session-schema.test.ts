@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { z } from "zod";
 import { OpenAIRealtimeSession, type RealtimeSocket } from "../src/live/openai-session";
 import { orchestrationTools } from "../src/live/orchestration";
-import { liveSystemInstruction } from "../src/live/prompt";
+import liveSystemInstruction from "../src/prompts/live.md" with { type: "text" };
 
 // Deliberately strict contract for the subset die sends, not a claim to implement
 // the entire GA API. Source: openai-node/src/resources/realtime/realtime.ts,

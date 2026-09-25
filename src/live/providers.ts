@@ -1,7 +1,6 @@
-import { VOICE_MODEL } from "./types";
-
 import type { LiveProviderId } from "./credentials";
 export type { LiveProviderId } from "./credentials";
+export const VOICE_MODEL = "gemini-3.8-live" as const;
 export const OPENAI_REALTIME_MODELS = ["gpt-realtime-2.1", "gpt-realtime-2.1-mini"] as const;
 export const OPENAI_LIVE_MODEL = "gpt-live-1";
 export type LiveModelId = typeof VOICE_MODEL | (typeof OPENAI_REALTIME_MODELS)[number] | typeof OPENAI_LIVE_MODEL;

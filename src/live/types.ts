@@ -1,6 +1,5 @@
 import type { FunctionDeclaration, GoogleGenAI } from "@google/genai";
 
-export const VOICE_MODEL = "gemini-3.8-live" as const;
 export type VoiceState = "idle" | "connecting" | "ready" | "closed";
 export type VoiceError = {
   code:

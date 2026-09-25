@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { orchestrationTools } from "../src/live/orchestration.js";
-import { liveSystemInstruction } from "../src/live/prompt.js";
+import liveSystemInstruction from "../src/prompts/live.md" with { type: "text" };
 
 describe("Live voice instruction", () => {
   test("supports noncoding requests through the configured agent without promising access", () => {

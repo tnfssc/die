@@ -1,4 +1,5 @@
 import * as z from "zod/mini";
+import { SUBAGENT_TYPES } from "./subagent-profiles";
 import { McpAmbiguousResponseError, type T3McpClient, type T3ToolResult } from "./t3-mcp-client";
 
 export const T3_NATIVE_TASK_TOOLS = {
@@ -8,7 +9,7 @@ export const T3_NATIVE_TASK_TOOLS = {
   list: "die_task_list",
 } as const;
 
-export const T3TaskProfileSchema = z.enum(["fast", "normal", "orchestrator"]);
+export const T3TaskProfileSchema = z.enum(SUBAGENT_TYPES);
 export const T3TaskStatusSchema = z.enum(["running", "completed", "failed", "cancelled"]);
 export const T3WorkspaceResultSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("inherit"), preparationStatus: z.literal("ready") }),

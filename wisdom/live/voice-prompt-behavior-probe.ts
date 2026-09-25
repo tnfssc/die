@@ -7,7 +7,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { liveSystemInstruction } from "../../src/live/prompt";
+import liveSystemInstruction from "../../src/prompts/live.md" with { type: "text" };
 import { VoiceSession } from "../../src/live/session";
 import { createOrchestration, boundedHostContext } from "../../src/live/orchestration";
 import { createDefaultLiveCredentialService } from "../../src/live/credentials";

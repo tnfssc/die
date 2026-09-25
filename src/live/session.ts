@@ -1,8 +1,8 @@
 import { Behavior, FunctionResponseScheduling, GoogleGenAI, Modality } from "@google/genai";
 import { toolFailureResponse } from "./tool-failure";
-import { liveSystemInstruction } from "./prompt";
+import liveSystemInstruction from "../prompts/live.md" with { type: "text" };
+import { VOICE_MODEL } from "./providers";
 import {
-  VOICE_MODEL,
   type LiveAdapter,
   type LiveConnection,
   type LiveParams,
