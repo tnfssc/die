@@ -116,6 +116,8 @@ async function retainSnapshot(content: string): Promise<{ path: string; created:
 
 /** Voice-owner capability; revoke on disconnect, switch or end. Revocation does not close the host or stop jobs. */
 export interface SessionHostLease extends SessionOperations {
+  valid(): boolean;
+  onRevoke(listener: () => void): () => void;
   revoke(): void;
 }
 
@@ -125,6 +127,7 @@ export class SessionHost implements SessionOperations {
     { hash: string; result: Promise<unknown>; operation: string; state: "pending" | "dispatched" | "failed" }
   >();
   private readonly listeners = new Set<(update: SessionUpdate) => void>();
+  private readonly leaseRevokers = new Set<() => void>();
   private readonly unsubscribe: () => void;
   private readonly owner: object;
   private readonly sessionId: string | undefined;
@@ -474,8 +477,29 @@ export class SessionHost implements SessionOperations {
     const prefix = "lease-" + randomUUID() + ":";
     let revoked = false;
     const unsubscribers = new Set<() => void>();
+    const revocationListeners = new Set<() => void>();
+    const revoke = () => {
+      if (revoked) return;
+      revoked = true;
+      this.leaseRevokers.delete(revoke);
+      for (const unsubscribe of unsubscribers) unsubscribe();
+      unsubscribers.clear();
+      for (const listener of revocationListeners) {
+        try {
+          listener();
+        } catch {
+          /* Revocation must reach every owner. */
+        }
+      }
+      revocationListeners.clear();
+    };
+    this.leaseRevokers.add(revoke);
+    const valid = () => {
+      if (!this.active()) revoke();
+      return !revoked;
+    };
     const check = () => {
-      if (revoked) throw new Error("Voice lease revoked");
+      if (!valid()) throw new Error("Voice lease revoked");
       this.assertActive();
     };
     const requestId = (id: string) => {
@@ -515,16 +539,23 @@ export class SessionHost implements SessionOperations {
           unsubscribe();
         };
       },
-      revoke: () => {
-        if (revoked) return;
-        revoked = true;
-        for (const unsubscribe of unsubscribers) unsubscribe();
-        unsubscribers.clear();
+      valid,
+      onRevoke: (listener) => {
+        if (!valid()) {
+          listener();
+          return () => {};
+        }
+        revocationListeners.add(listener);
+        return () => {
+          revocationListeners.delete(listener);
+        };
       },
+      revoke,
     };
   }
   close(): void {
     this.closed = true;
+    for (const revoke of this.leaseRevokers) revoke();
     if (this.watcher) clearInterval(this.watcher);
     this.watcher = undefined;
     this.nativeActive.clear();

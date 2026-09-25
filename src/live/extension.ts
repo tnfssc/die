@@ -622,7 +622,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       run.ctx.sessionManager !== request.sessionManager ||
       run.ctx.sessionManager?.getSessionFile?.() !== request.sessionManager?.getSessionFile?.()
     )
-      return { stopped: false, errors: ["No Live voice session belongs to this agent session"], jobsUnchanged: true };
+      return undefined;
     return run.stopObserved();
   });
   pi.registerCommand("live", {

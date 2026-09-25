@@ -141,3 +141,41 @@ test("lease preserves the 128-character request identity contract", async () => 
   await expect(lease.send("r".repeat(129), "work")).rejects.toThrow("Invalid request ID");
   f.host.close();
 });
+
+test("host shutdown and stale identity notify lease revocation once without stopping jobs", () => {
+  const f = fixture();
+  const first = f.host.lease(),
+    second = f.host.lease();
+  let calls = 0;
+  first.onRevoke(() => {
+    calls++;
+  });
+  second.onRevoke(() => {
+    calls++;
+  });
+  const remove = second.onRevoke(() => {
+    calls += 100;
+  });
+  remove();
+  expect(first.valid()).toBe(true);
+  f.host.close();
+  f.host.close();
+  first.revoke();
+  expect(calls).toBe(2);
+  expect(first.valid()).toBe(false);
+  first.onRevoke(() => {
+    calls++;
+  });
+  expect(calls).toBe(3);
+  expect(f.stopped).toEqual([]);
+  const other = fixture();
+  const stale = other.host.lease();
+  let revoked = false;
+  stale.onRevoke(() => {
+    revoked = true;
+  });
+  other.manager.getSessionId = () => "replacement";
+  expect(stale.valid()).toBe(false);
+  expect(revoked).toBe(true);
+  other.host.close();
+});
