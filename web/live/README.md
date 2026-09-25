@@ -1,0 +1,5 @@
+# Browser Live foundation (not shipped)
+
+First-party lifecycle source only. No UI button, route, host authority integration, browser adapters, credential exchange, or live connection is shipped. A trusted host must provide an authorized transport without exposing provider secrets in browser code.
+
+Inject media acquisition (16 kHz mono PCM16 little-endian), transport, and audio output (24 kHz mono PCM16 little-endian). Transport emits `ready` after server session acceptance, `audio` with binary `pcm16`, `interrupted` to clear playback and pause capture until the next `ready`, and `closed`/`error` with optional reason. `send16k` takes binary PCM16. Queued-byte getters report unsent input/buffered output, not lifetime totals. Adapters must bound their queues, copy retained frames, and make stop/close idempotent. Controller fails visibly above 256 KiB input backlog, 512 KiB output buffer, or 64 KiB frame size. `start()` resolves after setup, not readiness. End/dispose invalidate pending acquisition/connection; late results are stopped/closed. Subscribe to coarse states only, never per-frame React state or idle loops.
