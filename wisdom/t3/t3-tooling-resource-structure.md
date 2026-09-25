@@ -1,0 +1,13 @@
+# T3 tooling/resource ownership
+
+2026-09-25 consolidation. Canonical inputs are now `integrations/t3/upstream/{source.json,die.patch,bootstrap.mjs}`; moved byte-identically. `integrations/t3/build/build.ts` and `verify-source.ts` own web packaging/source verification; `scripts/build.ts` still orchestrates the complete CLI build. CI and release metadata use the canonical paths. `.gitattributes` follows the patch.
+
+Maintained acceptance scripts, migration templates, and offline launcher/RPC probes live in `integrations/t3/gates/`; shared contract fixture in `integrations/t3/fixtures/`. tsconfig includes the whole integration TypeScript tree. Gate roots account for the deeper location; runtime imports target `src/t3/web` and `src/t3/tasks`. Manual browser/provider/native gates retain opt-ins, exact binary/hash checks, isolation, and owned cleanup. Historical migration `git show <commit>:web/t3.patch` is deliberately unchanged.
+
+Tracked preview evidence is archived under `experiments/t3/preview-v2`; candidate exporters, tracked .agents inputs/rollback and old-pin probes under `experiments/t3/production-v2/archive`. Verified 79 byte-identical archival renames. Archive scripts preserve historical embedded paths and are not runnable current gates. Do not include archives in automated tests, typecheck, or builds. Generic CLI probes, native helper sources, and support release notes retain role-based ownership. No private ignored files were moved.
+
+Workspace: `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_0542e553`; branch `die/consolidate-t3-inputs-tooling-and-resear-0542e553`. Archive worker: `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_0542e553-a86675007a5e-task_7912b260`, branch `die/archive-t3-research-resources-7912b260`, commit `8a33f19320710840e902a3cf19c95fd38ee594ce`, integrated as `3c8e202`. Canonical tranche `e9e861b`.
+
+Verification: four focused CI/source tests passed; bootstrap source guard passed; 11 maintained TS files parse; git diff --check clean. Broader four-file run: 21 pass, 3 unavailable-prerequisite failures (two attribution tests require absent node_modules; standalone runtime requires absent dist/die). `bun run check` stopped at prepare-assets because this fresh worktree has no node_modules. Full parent integration must rerun typecheck/full gates and canonical fresh-source verification after sibling runtime/tests moves merge. No live, API, device, push, tag, or release execution.
+
+Values reviewed and unchanged: this applies existing single ownership, preserve user history, explicit execution authority, and truthful verification principles rather than adding a new value.

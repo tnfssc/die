@@ -118,7 +118,7 @@ try {
   );
 
   // Subagents re-exec process.execPath, so this must be compiled die, not Bun running src/cli.ts.
-  const binary = resolve(import.meta.dir, "../dist/die");
+  const binary = resolve(import.meta.dir, "../../../dist/die");
   assert(await Bun.file(binary).exists(), "dist/die is missing; run 'bun run build' first");
   // Leave the same isolated loopback model running for the browser smoke.
   if (process.argv.includes("--serve")) {

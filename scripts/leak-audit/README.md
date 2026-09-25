@@ -7,11 +7,11 @@ See [the historical audit report](../../wisdom/resources/memory-resource-audit.m
 - `session-journal.ts`: synthetic history retention and reset/GC.
 - `bridge-retention.ts`: in-memory bridge requests and listener/heap counts.
 - `execution-runtime.ts`: execute success, spill, timeout, abort, owned-descendant cleanup.
-- `web-launcher-runtime.ts`: normal launcher exits and intentionally stubborn local test backends.
 - `cli-rpc-soak.ts`: CLI using a local fake model; optional `DIE_SOAK_CYCLES` and `DIE_SOAK_NEW_ONLY`.
-- `scripts/die-web-rpc-smoke.ts`: local loopback OpenAI-compatible model RPC smoke, not a historical T3 pin check.
 
-These probes do not assert an old web source pin. Keep the generic CLI probes in place. The web-launcher probe (and, if desired, the offline die-web RPC smoke) may be moved/adapted by the integrations/t3/gates owner after preserving their local-process cleanup and test discovery; they are not historical pin evidence. Do not move them as-is into an excluded tree and silently lose TypeScript coverage.
+These probes do not assert an old web source pin. The maintained T3 offline
+[launcher and RPC probes](../../integrations/t3/gates/README.md) live with T3 gates
+and retain TypeScript coverage. Generic CLI probes remain here.
 
 ## Historical web evidence (moved without rewriting)
 

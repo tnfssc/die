@@ -11,6 +11,17 @@ All live harnesses use private temporary state beneath `TMPDIR`, or the platform
 `os.tmpdir()` when `TMPDIR` is unset. An explicit reviewed binary and SHA-256 are
 required where noted.
 
+## Manual offline probes
+
+- `bun integrations/t3/gates/launcher-runtime.ts`: Linux local fake-backend lifecycle
+  and exact owned-PID cleanup; requires a built `dist/die`.
+- `bun integrations/t3/gates/rpc-smoke.ts`: compiled CLI RPC with a loopback fake
+  model and T3 task events, no provider API. `--serve` intentionally keeps the fixture
+  server running for manual browser work.
+
+Neither probe uses a source checkout or a hardcoded upstream pin. They are manual
+resource investigations, not automatically discovered release tests.
+
 ## Canonical checkout identity
 
 ```bash

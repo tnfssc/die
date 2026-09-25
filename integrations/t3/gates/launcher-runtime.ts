@@ -2,12 +2,12 @@ import { chmod, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn } from "node:child_process";
-import { runWeb } from "../../src/t3/web/launcher";
+import { runWeb } from "../../../src/t3/web/launcher";
 const root = await mkdtemp(join(tmpdir(), "die-leak-web-")),
   quick = join(root, "quick.sh"),
   stubborn = join(root, "stubborn.sh"),
   graceful = join(root, "graceful.sh"),
-  binary = resolve(import.meta.dir, "../../dist/die"),
+  binary = resolve(import.meta.dir, "../../../dist/die"),
   owned = new Set<number>();
 const alive = (pid: number) => {
   try {
