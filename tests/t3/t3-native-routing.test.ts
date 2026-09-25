@@ -4,15 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Duplex } from "node:stream";
 import * as z from "zod/mini";
-import { JobService } from "../src/tasks/job-service";
-import { T3LaunchIdentityLedger } from "../src/tasks/t3-launch-identity";
-import { McpAmbiguousResponseError } from "../src/tasks/t3-mcp-client";
-import { T3NativeTaskAdapter, T3TaskResultSchema } from "../src/tasks/t3-native-task";
-import { TaskManager } from "../src/tasks/task-manager";
-import { serveJobBridge } from "../src/typescript/job-bridge";
-import { withJobRequestIdentity } from "../src/job-delivery";
+import { JobService } from "../../src/tasks/job-service";
+import { T3LaunchIdentityLedger } from "../../src/t3/tasks/launch-identity";
+import { McpAmbiguousResponseError } from "../../src/t3/tasks/mcp-client";
+import { T3NativeTaskAdapter, T3TaskResultSchema } from "../../src/t3/tasks/native-task";
+import { TaskManager } from "../../src/tasks/task-manager";
+import { serveJobBridge } from "../../src/typescript/job-bridge";
+import { withJobRequestIdentity } from "../../src/job-delivery";
 
-const fixture = JSON.parse(await readFile(new URL("./fixtures/t3-native-task-contract.json", import.meta.url), "utf8"));
+const fixture = JSON.parse(
+  await readFile(new URL("../../integrations/t3/fixtures/native-task-contract.json", import.meta.url), "utf8"),
+);
 const servers: Bun.Server<unknown>[] = [];
 afterEach(() => {
   for (const server of servers.splice(0)) server.stop(true);

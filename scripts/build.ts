@@ -1,7 +1,7 @@
 import { nativeHelperPlugin } from "./live-helper-bundle";
 import { access, cp } from "node:fs/promises";
 import { resolve } from "node:path";
-import { packWebArchive } from "../src/web/archive";
+import { packWebArchive } from "../src/t3/web/archive";
 import { buildWeb } from "./build-web";
 
 const root = resolve(import.meta.dir, "..");

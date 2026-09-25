@@ -64,7 +64,7 @@ if (cliArgs[0] === "update") {
   }
 }
 if (cliArgs[0] === "web") {
-  const { runWeb } = await import("./web/launcher");
+  const { runWeb } = await import("./t3/web/launcher");
   process.exit(await runWeb(cliArgs.slice(1)));
 }
 if (cliArgs[0] === INTERNAL_TYPESCRIPT_RUNNER_ARG) {

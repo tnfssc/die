@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { verifyWebSource } from "../scripts/web-source";
+import { verifyWebSource } from "../../integrations/t3/build/web-source";
 
 test("web source verification requires the exact canonical patch without changing the real index", async () => {
   const root = await mkdtemp(join(tmpdir(), "die-web-source-test-"));

@@ -5,9 +5,9 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { run } from "./helpers";
+import { run } from "../helpers";
 
-const binary = resolve(process.env.DIE_WEB_BINARY ?? resolve(import.meta.dir, "../dist/die"));
+const binary = resolve(process.env.DIE_WEB_BINARY ?? resolve(import.meta.dir, "../../dist/die"));
 
 async function waitForPid(path: string): Promise<number> {
   for (let attempt = 0; attempt < 200; attempt++) {
@@ -153,7 +153,7 @@ test.skipIf(process.platform !== "linux")(
     const root = await mkdtemp(join(tmpdir(), "die-web-clean-exit-"));
     try {
       const probe = join(root, "probe.ts");
-      const launcherUrl = pathToFileURL(resolve(import.meta.dir, "../src/web/launcher.ts")).href;
+      const launcherUrl = pathToFileURL(resolve(import.meta.dir, "../../src/t3/web/launcher.ts")).href;
       await writeFile(
         probe,
         `import { readdirSync } from "node:fs";

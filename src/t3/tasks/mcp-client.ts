@@ -1,4 +1,4 @@
-import { T3_MCP_BEARER_ENV, T3_MCP_URL_ENV } from "../delegation-environment";
+import { T3_MCP_BEARER_ENV, T3_MCP_URL_ENV } from "../../delegation-environment";
 import { randomUUID } from "node:crypto";
 
 export const T3_MCP_PROTOCOL_VERSION = "2025-06-18";

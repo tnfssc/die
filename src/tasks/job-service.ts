@@ -11,16 +11,16 @@ import { prepareAgentSession } from "./agent-session";
 import { type JobAttentionScheduler, MAX_SNOOZE_MINUTES } from "./job-attention";
 import { sessionIdentity } from "../session/identity";
 import { canDelegate, loadProfiles, resolveProfile, SUBAGENT_TYPES } from "./subagent-profiles";
-import { T3LaunchIdentityLedger } from "./t3-launch-identity";
+import { T3LaunchIdentityLedger } from "../t3/tasks/launch-identity";
 import { scrubT3BridgeEnvironment } from "../delegation-environment";
-import { type T3BridgeEnvironment, T3McpClient, t3BridgeEnvironment } from "./t3-mcp-client";
+import { type T3BridgeEnvironment, T3McpClient, t3BridgeEnvironment } from "../t3/tasks/mcp-client";
 import {
   T3NativeTaskAdapter,
   type T3TaskAdapter,
   type T3TaskProfile,
   type T3TaskResult,
   T3TaskResultSchema,
-} from "./t3-native-task";
+} from "../t3/tasks/native-task";
 import { type TaskManager, type TaskSummary, utf8SafeSlice } from "./task-manager";
 import { boundedMiddlePreview } from "./text-preview";
 import { createWorktree, resolveWorktreeSource, setupShell, type WorkspaceRequest } from "./worktree-workspace";

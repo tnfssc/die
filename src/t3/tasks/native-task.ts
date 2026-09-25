@@ -1,6 +1,6 @@
 import * as z from "zod/mini";
-import { SUBAGENT_TYPES } from "./subagent-profiles";
-import { McpAmbiguousResponseError, type T3McpClient, type T3ToolResult } from "./t3-mcp-client";
+import { SUBAGENT_TYPES } from "../../tasks/subagent-profiles";
+import { McpAmbiguousResponseError, type T3McpClient, type T3ToolResult } from "./mcp-client";
 
 export const T3_NATIVE_TASK_TOOLS = {
   launch: "die_task_launch",

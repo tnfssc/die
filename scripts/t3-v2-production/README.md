@@ -32,8 +32,8 @@ the real candidate Effect schemas:
 bun scripts/t3-v2-production/contract-conformance.ts
 ```
 
-Keep `tests/fixtures/t3-native-task-contract.json` with this harness and its root
-consumer, `tests/t3-native-routing.test.ts`.
+Keep `integrations/t3/fixtures/native-task-contract.json` with this harness and its root
+consumer, `tests/t3/t3-native-routing.test.ts`.
 
 ## Browser and native acceptance
 

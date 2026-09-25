@@ -1,4 +1,4 @@
-import archivePath from "../../dist/die-web.archive.gz" with { type: "file" };
+import archivePath from "../../../dist/die-web.archive.gz" with { type: "file" };
 import { join } from "node:path";
 import { extractWebArchive } from "./archive";
 

@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { dirname } from "node:path";
 
-import { type T3BridgeEnvironment, T3McpClient } from "./t3-mcp-client";
+import { type T3BridgeEnvironment, T3McpClient } from "./mcp-client";
 
 export type T3LocalNotificationKind = "completion" | "attention";
 export interface T3LocalNotification {

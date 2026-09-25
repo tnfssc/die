@@ -1,8 +1,8 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { JobService } from "../src/tasks/job-service";
-import { T3_MCP_PROTOCOL_VERSION, T3McpClient, t3BridgeEnvironment } from "../src/tasks/t3-mcp-client";
-import { T3NativeTaskAdapter } from "../src/tasks/t3-native-task";
-import { TaskManager } from "../src/tasks/task-manager";
+import { JobService } from "../../src/tasks/job-service";
+import { T3_MCP_PROTOCOL_VERSION, T3McpClient, t3BridgeEnvironment } from "../../src/t3/tasks/mcp-client";
+import { T3NativeTaskAdapter } from "../../src/t3/tasks/native-task";
+import { TaskManager } from "../../src/tasks/task-manager";
 
 const servers: Bun.Server<unknown>[] = [];
 afterEach(() => {

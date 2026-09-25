@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { TaskEvent, TaskSummary } from "../src/tasks/task-manager";
-import { createWebTaskEventEmitter, webTaskEvent } from "../src/tasks/web-events";
+import type { TaskEvent, TaskSummary } from "../../src/tasks/task-manager";
+import { createWebTaskEventEmitter, webTaskEvent } from "../../src/t3/tasks/events";
 
 function summary(overrides: Partial<TaskSummary> = {}): TaskSummary {
   return {

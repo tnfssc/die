@@ -1,5 +1,5 @@
 import { writeSync } from "node:fs";
-import type { TaskEvent } from "./task-manager";
+import type { TaskEvent } from "../../tasks/task-manager";
 
 const COMMAND_LIMIT = 240;
 const AGENT_TYPE_LIMIT = 80;

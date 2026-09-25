@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { T3LocalNotificationDelivery, T3LocalNotificationOutbox } from "../src/tasks/t3-local-notifications";
-import type { T3McpClient } from "../src/tasks/t3-mcp-client";
+import { T3LocalNotificationDelivery, T3LocalNotificationOutbox } from "../../src/t3/tasks/local-notifications";
+import type { T3McpClient } from "../../src/t3/tasks/mcp-client";
 
 const directories: string[] = [];
 function fixture() {

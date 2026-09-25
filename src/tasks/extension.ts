@@ -32,13 +32,13 @@ import { registerNativeFastMode } from "./native-fast-mode";
 import { registerResumeSafeguards } from "./resume-safeguards";
 import { SUBAGENT_TYPES } from "./subagent-profiles";
 import { registerSubagentSettings } from "./subagent-settings-ui";
-import { T3LocalNotificationDelivery, T3LocalNotificationOutbox } from "./t3-local-notifications";
+import { T3LocalNotificationDelivery, T3LocalNotificationOutbox } from "../t3/tasks/local-notifications";
 import { T3_MCP_BEARER_ENV, T3_MCP_URL_ENV } from "../delegation-environment";
-import { t3BridgeEnvironment } from "./t3-mcp-client";
+import { t3BridgeEnvironment } from "../t3/tasks/mcp-client";
 import { createTaskLifecycleRecorder } from "./task-lifecycle";
 import { type TaskInspection, TaskManager } from "./task-manager";
 import { registerTaskMonitor } from "./task-monitor";
-import { createWebTaskEventEmitter } from "./web-events";
+import { createWebTaskEventEmitter } from "../t3/tasks/events";
 
 export function completionDiagnosticDetails(tasks: TaskInspection[], notices: AttentionNotice[]) {
   const taskStatusCounts = {

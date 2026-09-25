@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { access, cp, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
 import { resolve } from "node:path";
-import { packWebArchive } from "../src/web/archive";
+import { packWebArchive } from "../src/t3/web/archive";
 import sourcePin from "../web/t3-source.json";
 import { verifyWebSource } from "./web-source";
 

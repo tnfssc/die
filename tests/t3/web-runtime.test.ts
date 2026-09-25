@@ -2,12 +2,16 @@ import { expect, test } from "bun:test";
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readlink, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { extractWebArchive, packWebArchive } from "../src/web/archive";
+import { extractWebArchive, packWebArchive } from "../../src/t3/web/archive";
 
 test("all web builders copy the maintained bootstrap to the same packaged filename", async () => {
-  const root = resolve(import.meta.dir, "..");
+  const root = resolve(import.meta.dir, "../..");
   expect(await Bun.file(join(root, "web/die-web-bootstrap.mjs")).exists()).toBe(true);
-  for (const script of ["scripts/build-web.ts", "scripts/build.ts", "scripts/t3-v2-production/build-candidate.ts"]) {
+  for (const script of [
+    "integrations/t3/build/build-web.ts",
+    "scripts/build.ts",
+    "scripts/t3-v2-production/build-candidate.ts",
+  ]) {
     const contents = await Bun.file(join(root, script)).text();
     expect(contents).toContain("web/die-web-bootstrap.mjs");
     expect(contents).toContain("bootstrap.mjs");
@@ -93,7 +97,7 @@ test("web extraction refuses a symlinked content-addressed target", async () => 
 test("standalone executable opens embedded web CLI without Node, Bun, or sidecar on PATH", async () => {
   const temporary = await mkdtemp(join(tmpdir(), "die-web-standalone-"));
   try {
-    const sourceBinary = resolve(process.env.DIE_WEB_BINARY ?? resolve(import.meta.dir, "../dist/die"));
+    const sourceBinary = resolve(process.env.DIE_WEB_BINARY ?? resolve(import.meta.dir, "../../dist/die"));
     const binary = join(temporary, "die");
     await copyFile(sourceBinary, binary);
     await chmod(binary, 0o700);

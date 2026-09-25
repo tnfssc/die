@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { run } from "./helpers";
-import { seedWebSettings, webLaunch } from "../src/web/launcher";
+import { run } from "../helpers";
+import { seedWebSettings, webLaunch } from "../../src/t3/web/launcher";
 
 test("web configures the embedded backend on loopback with separate T3 state", () => {
   const launch = webLaunch([], { HOME: "/fixture", PATH: "/bin" }, "/tools/die");
@@ -31,7 +31,7 @@ test("compiled die web dispatches directly to the backend and preserves its exit
       "#!/usr/bin/env node\nconsole.log(JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),binary:process.env.DIE_WEB_DIE_BINARY})); process.exit(7);\n",
     );
     await chmod(server, 0o755);
-    const binary = resolve(process.env.DIE_WEB_BINARY ?? resolve(import.meta.dir, "../dist/die"));
+    const binary = resolve(process.env.DIE_WEB_BINARY ?? resolve(import.meta.dir, "../../dist/die"));
     const result = await run([binary, "web", "--no-browser"], {
       cwd: home,
       env: { HOME: home, PATH: process.env.PATH, DIE_WEB_SERVER: server },
@@ -49,7 +49,7 @@ test("compiled die web dispatches directly to the backend and preserves its exit
 });
 
 test("compiled die web reports a missing backend without entering the agent", async () => {
-  const result = await run([resolve(process.env.DIE_WEB_BINARY ?? resolve(import.meta.dir, "../dist/die")), "web"], {
+  const result = await run([resolve(process.env.DIE_WEB_BINARY ?? resolve(import.meta.dir, "../../dist/die")), "web"], {
     env: { PATH: process.env.PATH, DIE_WEB_SERVER: "/nonexistent/die-web-fixture" },
   });
   expect(result.code).toBe(1);
