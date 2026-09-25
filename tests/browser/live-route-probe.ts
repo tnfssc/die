@@ -19,8 +19,15 @@ export type VoiceProbe = {
 export async function instrumentVoicePage(page: any, canonicalWsPath: string): Promise<VoiceProbe> {
   assert(canonicalWsPath.startsWith("/") && canonicalWsPath !== "/relay", "must target the shipped voice route");
   const probe: VoiceProbe = {
-    mediaRequests: 0, mediaTracks: 0, tracksStopped: 0, socketOpens: 0, socketCloses: 0,
-    uploadFrames: 0, uploadPayloadBytes: 0, downloadFrames: 0, downloadPayloadBytes: 0,
+    mediaRequests: 0,
+    mediaTracks: 0,
+    tracksStopped: 0,
+    socketOpens: 0,
+    socketCloses: 0,
+    uploadFrames: 0,
+    uploadPayloadBytes: 0,
+    downloadFrames: 0,
+    downloadPayloadBytes: 0,
   };
   await page.exposeFunction("__dieVoiceObserveMedia", (kind: "request" | "track" | "stop") => {
     if (kind === "request") probe.mediaRequests++;
