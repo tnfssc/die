@@ -248,3 +248,13 @@ test("connection and session deadlines close once; no ready on timed-out connect
   expect(controls(ready.sent).at(-2)).toEqual({ type: "error", code: "timeout" });
   expect(ready.cleaned).toEqual([1, 1, 1]);
 });
+
+test("server cleanup failure does not claim successful teardown", async () => {
+  const h = harness();
+  await h.relay.start();
+  h.transport.close = () => {
+    throw new Error("socket teardown failed");
+  };
+  expect(h.relay.close()).toEqual({ stopped: false });
+  expect(h.cleaned.slice(0, 2)).toEqual([1, 1]);
+});

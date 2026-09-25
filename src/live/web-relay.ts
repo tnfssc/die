@@ -6,6 +6,8 @@ import type { VoiceCallbacks, VoiceOrchestration, VoiceProvider } from "./types"
  * socket, resolve its owning session, and supply that session's SessionOperations and server-side
  * provider key. Never derive SessionOperations from client messages or expose the key to the socket.
  * Route/socket admission, origin/CSRF checks and browser capture/playback are NOT integrated here.
+ * Transcript authority in this foundation follows Gemini semantics only; OpenAI Realtime
+ * item correlation and GPT-Live provisional delegation need dedicated bridges before use.
  * One relay per socket; no reconnect/reuse. PCM is mono signed little-endian 16-bit: input 16 kHz,
  * output 24 kHz. Binary frames are audio; JSON controls are mute/end. No job is stopped on end.
  */
@@ -18,7 +20,7 @@ export interface WebRelayTransport {
 }
 export type WebRelayProviderFactory = (callbacks: VoiceCallbacks, orchestration: VoiceOrchestration) => VoiceProvider;
 
-const MAX_BUFFERED = 256_000;
+const MAX_BUFFERED = 12_000; // 250 ms of 24 kHz PCM; fail rather than build seconds of latency.
 const CONNECT_MS = 10_000;
 const SESSION_MS = 30 * 60_000;
 
@@ -31,12 +33,20 @@ export function createWebLiveRelay(options: {
   providerFactory: WebRelayProviderFactory;
   connectDeadlineMs?: number;
   sessionDeadlineMs?: number;
-}): { start(): Promise<void>; close(): void } {
+}): { start(): Promise<void>; close(): { stopped: boolean } } {
   const { host, apiKey, transport, providerFactory } = options;
   const orchestration = createOrchestration(host);
   let provider: VoiceProvider | undefined;
   let started = false;
   let ended = false;
+  let finishing = false;
+  let cleanupFailed = false;
+  let inputUtterance = "";
+  const execute = orchestration.execute.bind(orchestration);
+  orchestration.execute = async (call) => {
+    if (ended || finishing) throw new Error("Voice session ended");
+    return execute(call);
+  };
   let ready = false;
   let muted = false;
   let epoch = 0;
@@ -59,7 +69,10 @@ export function createWebLiveRelay(options: {
     send(JSON.stringify(value));
   }
   function finish(code?: "invalid_input" | "not_ready" | "provider_error" | "transport_error" | "timeout"): void {
-    if (ended) return;
+    if (ended || finishing) return;
+    finishing = true;
+    orchestration.beginUserTurn?.();
+    inputUtterance = "";
     // Do not expose provider errors (or keys) to the browser.
     if (code) {
       try {
@@ -79,27 +92,27 @@ export function createWebLiveRelay(options: {
     try {
       unsubscribeMessage?.();
     } catch {
-      /* cleanup */
+      cleanupFailed = true;
     }
     try {
       unsubscribeClose?.();
     } catch {
-      /* cleanup */
+      cleanupFailed = true;
     }
     try {
       unsubscribeHost?.();
     } catch {
-      /* cleanup */
+      cleanupFailed = true;
     }
     try {
       provider?.close();
     } catch {
-      /* cleanup */
+      cleanupFailed = true;
     }
     try {
       transport.close();
     } catch {
-      /* cleanup */
+      cleanupFailed = true;
     }
   }
   function deadline(ms: number): void {
@@ -151,7 +164,7 @@ export function createWebLiveRelay(options: {
       if (!ready || ended || audioEpoch !== epoch) return;
       // Avoid unbounded provider output and invalid base64 crossing the socket boundary.
       if (
-        base64.length > 262_144 ||
+        base64.length > 128_000 ||
         base64.length % 4 ||
         !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64)
       ) {
@@ -177,6 +190,7 @@ export function createWebLiveRelay(options: {
       }
       epoch = nextEpoch;
       orchestration.beginUserTurn?.();
+      inputUtterance = "";
       try {
         control({ type: "interrupted", epoch });
       } catch {
@@ -184,10 +198,26 @@ export function createWebLiveRelay(options: {
       }
     },
     onInputActivity() {
-      if (!ended) orchestration.beginUserTurn?.();
+      if (!ended) {
+        orchestration.beginUserTurn?.();
+        inputUtterance = "";
+      }
     },
     onInputTranscript(t) {
-      if (!ended && t.finished && t.text) orchestration.userTranscript(t.text);
+      if (ended) return;
+      // Gemini transcript semantics, matching CLI. Realtime item correlation and
+      // GPT-Live provisional delegation require their own authority bridge.
+      if (t.finalitySource === "model_contract") inputUtterance = "";
+      if (!inputUtterance && t.text) orchestration.beginUserTurn?.();
+      if (inputUtterance.length + t.text.length > 4000) {
+        finish("provider_error");
+        return;
+      }
+      inputUtterance += t.text;
+      if (t.finished) {
+        orchestration.userTranscript(inputUtterance);
+        inputUtterance = "";
+      }
     },
     onError() {
       finish("provider_error");
@@ -202,8 +232,15 @@ export function createWebLiveRelay(options: {
       started = true;
       try {
         unsubscribeMessage = transport.onMessage(message);
+        if (ended) {
+          unsubscribeMessage();
+          return;
+        }
         unsubscribeClose = transport.onClose(() => finish());
-        if (ended) return;
+        if (ended) {
+          unsubscribeClose();
+          return;
+        }
         provider = providerFactory(callbacks, orchestration);
         if (ended) {
           provider.close();
@@ -235,8 +272,9 @@ export function createWebLiveRelay(options: {
           finish("provider_error");
           return;
         }
-        control({ type: "ready" });
         ready = true;
+        control({ type: "ready" });
+        if (ended) return;
         deadline(options.sessionDeadlineMs ?? SESSION_MS);
       } catch {
         finish("provider_error");
@@ -244,6 +282,7 @@ export function createWebLiveRelay(options: {
     },
     close() {
       finish();
+      return { stopped: ended && !cleanupFailed };
     },
   };
 }
