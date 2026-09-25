@@ -16,9 +16,9 @@ From: [resource judgment](resources/memory-resource-judgment.md), [harness corre
 
 ## 3. One thing, one clear owner
 
-Know who starts work, changes it, finishes it, stops it, and cleans up. Know who cleans up when start fails halfway. Other parts can show or pass state, not do same work again. Keep one source of truth. Can rebuild indexes and caches from it. Work shared? Make ownership clear. Two owners fighting is not a backup plan. Keep shared rules with their real owner. Use the existing home before making another. Keep feature-local code local; matching names do not mean matching jobs.
+Know who starts work, changes it, finishes it, stops it, and cleans up. Know who cleans up when start fails halfway. Other parts can show or pass state, not do same work again. Keep one source of truth. Can rebuild indexes and caches from it. Work shared? Make ownership clear. Two owners fighting is not a backup plan. Keep shared rules with their real owner. Use the existing home before making another. Keep feature-local code local; matching names do not mean matching jobs. For a structural cleanup, trace the whole subsystem and its callers, builds, tests and old experiments before moving examples.
 
-From: [code placement audit](quality/code-placement-audit.md), [execution ownership](t3/t3-thread-execution-research.md), [continuation ownership](t3/t3-v2-production-lifecycle-final.md), [cancellation](t3/t3-v2-production-cancellation.md), [authoritative history](history/disk-backed-history.md).
+From: [structural review](quality/structural-review-2026-09-25.md), [code placement audit](quality/code-placement-audit.md), [execution ownership](t3/t3-thread-execution-research.md), [continuation ownership](t3/t3-v2-production-lifecycle-final.md), [cancellation](t3/t3-v2-production-cancellation.md), [authoritative history](history/disk-backed-history.md).
 
 ## 4. Make stopped work safe to pick up
 

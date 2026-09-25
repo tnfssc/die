@@ -12,3 +12,6 @@ artifacts/
 
 # Local voice credentials must never enter a worktree.
 live.env
+
+# Keep pre-move private browser/cache state ignored; tracked research moved to experiments/t3/.
+/experiments/t3-v2/.runtime/

@@ -44,7 +44,7 @@ bun integrations/t3/gates/contract-conformance.ts
 ```
 
 Keep `integrations/t3/fixtures/native-task-contract.json` with this harness and its root
-consumer, `tests/t3/t3-native-routing.test.ts`.
+consumer, `tests/t3/native-routing.test.ts`.
 
 ## Browser and native acceptance
 

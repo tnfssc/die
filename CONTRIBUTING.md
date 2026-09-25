@@ -12,7 +12,7 @@ messages are easiest to review.
    cd die
    ```
 
-2. Install `tmux` (required by real-PTY tests) and [Bun 1.4.1](https://bun.sh/) and restore the exact lockfile:
+2. Install `tmux` (required by real-PTY tests), [Bun 1.4.2](https://bun.sh/), Node 24.21.0 and pnpm 11.27.1. Restore the exact lockfile:
 
    ```sh
    bun install --frozen-lockfile
@@ -21,12 +21,10 @@ messages are easiest to review.
 3. Run the deterministic checks:
 
    ```sh
-   bun run format:check
-   bun run check
-   bun run build
-   bun test ./tests
-   bun run smoke
+   bun run ci
    ```
+
+The Linux CI workflow calls the same command. It includes formatting, lint, typecheck, the full build, offline transport checks, selected upstream tests, the deterministic suite and standalone smoke. It gives each run an isolated temporary directory. A Linux run does not prove macOS behavior; `bun run ci:macos` is the separate device-free macOS lane. See [local CI prerequisites](wisdom/ci/shared-local-ci-runner.md).
 
 Both pull-request CI and the release workflow run the formatting check. When you format changes, use the pinned Biome version in `devDependencies`.
 
@@ -48,23 +46,13 @@ ignored `artifacts/goals/`. Do not describe a mocked SDK stream as live-model ev
 
 ## Architecture
 
-- `src/cli.ts` owns startup, the standalone runtime, and Pi integration.
-- `src/typescript/` implements the single `execute` tool and its process/job bridge.
-- `src/tasks/` implements durable jobs, sub-agents, completion delivery, and
-  persisted session diagnostics.
-- `src/goals/` implements branch-scoped durable goal state and continuation policy;
-  user-facing behavior is documented in `wisdom/goals/goals.md`.
-- `src/ui/` contains TUI behavior.
-- `src/prompts/*.md` are the source prompts imported by `src/prompts.ts`.
-  Start with [Editing prompts](./wisdom/prompts/prompts.md) and the assembled input, not an isolated
-  sentence. Edit Markdown rather than generated representations, and preserve explicit
-  custom prompts and instruction continuity.
-- `scripts/prepare-assets.ts` copies the Pi runtime assets embedded by the build.
-  Preserve upstream license banners and update `THIRD_PARTY_NOTICES.md` and the
-  curated inputs under `third_party/` when the packaged asset set or licensing changes.
-  Run `bun run generate:notices` to verify the production attribution bundle.
+Read [the code map](ARCHITECTURE.md) before choosing a home for new code. It names runtime owners, shared boundaries, the canonical T3 integration, research archives and test/build discovery rules. Keep code with its real owner, not in whichever file already imports a similar type.
 
-Background work belongs to the session. Do not let an execute worker exit kill jobs by accident. Keep history durable, handoffs cooperative, and failure diagnostics bounded.
+Prompt text belongs in `src/prompts/`. Start with [Editing prompts](wisdom/prompts/prompts.md) and the assembled input, not an isolated sentence. Preserve explicit custom prompts and instruction continuity.
+
+`scripts/prepare-assets.ts` copies embedded Pi assets. Preserve license banners and update `THIRD_PARTY_NOTICES.md` and `third_party/` inputs when packaged assets or licensing change. Run `bun run generate:notices` to check attribution.
+
+Background work belongs to the session. Execute worker exit must not kill jobs by accident. Keep history durable, handoffs cooperative and diagnostics bounded.
 
 ## Documentation and pull requests
 
