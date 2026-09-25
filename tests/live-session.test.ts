@@ -53,6 +53,19 @@ const audio = (data = "AAAAAA==", mimeType = "audio/pcm;rate=24000") => ({
 });
 
 describe("voice-only SDK session", () => {
+  test("Gemini SDK usageMetadata reaches billing without audio render", async () => {
+    const h = harness();
+    const usage: unknown[] = [];
+    const s = new VoiceSession({ onUsage: (u) => usage.push(u) }, h.adapter);
+    const pending = s.connect("fake");
+    h.ready();
+    await pending;
+    h.params.callbacks.onmessage(
+      msg({ usageMetadata: { promptTokensDetails: [{ modality: "AUDIO", tokenCount: 100 }] } }),
+    );
+    expect(usage).toEqual([{ promptTokensDetails: [{ modality: "AUDIO", tokenCount: 100 }] }]);
+    s.close();
+  });
   test("ready only after SDK setup-accepted promise, VAD, mic and end idempotence", async () => {
     const h = harness();
     const events: string[] = [];

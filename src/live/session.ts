@@ -377,6 +377,7 @@ export class VoiceSession {
     }
   }
   private receive(message: Message): void {
+    if (message.usageMetadata) this.emit(() => this.callbacks.onUsage?.(message.usageMetadata));
     // Cancel only undispatched calls, never already accepted agent work.
     for (const id of message.toolCallCancellation?.ids ?? []) {
       const entry = this.seenCalls.get(id);

@@ -10,6 +10,7 @@ import {
   type LiveModelId,
 } from "./providers";
 import { loadLiveConfig, saveLiveConfig, type LiveConfig } from "./config";
+import { VoiceCostTracker, VOICE_COST_ENTRY } from "./cost";
 import { GPTLiveSession, type GPTLiveCallbacks } from "./gpt-live-session";
 import { GptLiveDelegationBridge } from "./gpt-live-delegation";
 import { GptLivePlaybackRecovery } from "./gpt-live-playback";
@@ -106,6 +107,13 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     readonly provider = selected.provider;
     readonly model = selected.model;
     readonly controller = new AbortController();
+    readonly cost = new VoiceCostTracker(this.provider, this.model, (entry) => {
+      // A late close must never write the old provider bill into a resumed/new session.
+      if (this.sessionId !== this.ctx.sessionManager?.getSessionId?.()) return;
+      pi.appendEntry(VOICE_COST_ENTRY, entry);
+      // Footer reads persisted usage; request a redraw only on provider events.
+      this.ctx.ui.setStatus("die-live-cost", entry.unknown ? "unknown" : "updated");
+    });
     readonly sessionId: string | undefined;
     readonly leafId: string | undefined;
     private stopping?: Promise<LiveStopResult>;
@@ -288,6 +296,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       const audioLaunchPending = this.audioLaunchPending;
       this.audio = undefined;
       this.ctx.ui.setStatus(ID, undefined);
+
       this.ctx.ui.setWidget(ID, undefined);
       this.stopping = (async () => {
         const errors: string[] = audioLaunchPending
@@ -323,6 +332,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             }
           })(),
         ]);
+        this.cost.close(!liveVoice || !liveVoice.closeError);
+        this.ctx.ui.setStatus("die-live-cost", undefined);
         return { stopped: errors.length === 0, errors, jobsUnchanged: true as const };
       })().finally(() => {
         if (stoppingRun === this) stoppingRun = undefined;
@@ -419,7 +430,10 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             });
         },
         onError: (reason) => this.fail(reason),
-        onClosed: () => {
+        onUsage: (usage) => this.cost.cumulative(usage),
+        onClosed: (finalized, usage) => {
+          if (usage) this.cost.cumulative(usage);
+          if (!finalized) this.cost.close(false);
           if (this.alive) this.fail("GPT-Live session closed");
         },
       });
@@ -477,9 +491,14 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           this.voice = deps.voice(
             {
               onAudio: (pcm, epoch) => this.output(pcm, epoch),
+              onUsage: (usage, id) => {
+                if (this.provider === "google") this.cost.gemini(usage);
+                else this.cost.usage(usage, id);
+              },
               getPlayedAudioMs: () => this.playback.playedMs,
               onInterrupted: (epoch) => this.interrupt(epoch),
               onTurnComplete: () => {
+                if (this.provider === "google") this.cost.turnComplete();
                 if (this.alive) {
                   this.transcriptLog.finish("Voice", "turn-boundary");
                   this.transcriptLog.finish("You", "partial");

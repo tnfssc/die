@@ -24,6 +24,7 @@ export interface GPTLiveCallbacks {
   onError?: (reason: string) => void;
   /** False: terminal event absent; final usage unknown. */
   onClosed?: (finalized: boolean, usage?: unknown) => void;
+  onUsage?: (usage: unknown) => void;
 }
 const URL = "wss://api.openai.com/v1/live/sessions";
 const MAX_EVENT = 150_000,
@@ -211,6 +212,10 @@ export class GPTLiveSession {
       this.finishConnect?.();
       this.finishConnect = undefined;
       this.emit(() => this.callbacks.onReady?.(event.session.id));
+      return;
+    }
+    if (event.type === "session.usage.updated") {
+      this.emit(() => this.callbacks.onUsage?.(event.usage));
       return;
     }
     if (event.type === "session.closed") {

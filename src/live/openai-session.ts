@@ -769,6 +769,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
         const response = typeof id === "string" ? this.responses.get(id) : undefined;
         if (!response || response.done) break;
         response.done = true;
+        if (m.response.usage) this.emit(() => this.callbacks.onUsage?.(m.response.usage, id));
         if (m.response.status === "cancelled") {
           response.cancelled = true;
           for (const callId of response.calls) {

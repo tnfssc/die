@@ -897,3 +897,18 @@ test("transport initialization failures identify the safe stage, never exception
     expect(errors).toEqual(["OpenAI transport setup failed [" + stage + "]; details withheld."]);
   }
 });
+
+test("Realtime response.done usage is emitted once per response ID", async () => {
+  const updates: unknown[] = [];
+  const f = fixture({ onUsage: (usage, id) => updates.push([id, usage]) });
+  await f.connect();
+  f.socket.message({ type: "response.created", response: { id: "resp-cost", status: "in_progress" } });
+  const event = {
+    type: "response.done",
+    response: { id: "resp-cost", status: "cancelled", usage: { input_tokens: 10, output_tokens: 20 } },
+  };
+  f.socket.message(event);
+  f.socket.message(event);
+  expect(updates).toEqual([["resp-cost", { input_tokens: 10, output_tokens: 20 }]]);
+  f.session.close();
+});

@@ -147,6 +147,22 @@ describe("compact extension footer", () => {
     expect(plain(renderDetailedFooter(ctx, data, theme, 150))[1]).toContain("$? (fast billing)");
   });
 
+  test("persisted voice increments survive resume and incomplete billing is explicit", () => {
+    const { ctx, data, statuses } = fixture();
+    const base = ctx.sessionManager.getEntries();
+    ctx.sessionManager.getEntries = () =>
+      [
+        ...base,
+        { type: "custom", customType: "die-live-cost", data: { cost: 0.004 } },
+        { type: "custom", customType: "die-live-cost", data: { cost: 0.006 } },
+        { type: "custom", customType: "die-live-cost", data: { cost: 0, unknown: true } },
+      ] as ReturnType<ExtensionContext["sessionManager"]["getEntries"]>;
+    expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).toContain("$0.012+?");
+    expect(plain(renderDetailedFooter(ctx, data, theme, 150))[1]).toContain("$0.012+? (voice usage incomplete)");
+    statuses.set("die-live-cost", "updated");
+    expect(plain(renderSingleRowFooter(ctx, data, theme, 120))[0]).not.toContain("+1 status");
+  });
+
   test("caches reduced history until session position changes", () => {
     const { ctx, data, statuses } = fixture();
     const manager = ctx.sessionManager;

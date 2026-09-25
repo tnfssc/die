@@ -1,3 +1,4 @@
+import { VOICE_COST_ENTRY } from "../live/cost";
 import { SessionCostTracker } from "../tasks/session-costs";
 import { sessionIdentity } from "../session/identity";
 import { homedir } from "node:os";
@@ -66,6 +67,7 @@ type FooterHistory = {
   cost: number;
   cacheHit: number | undefined;
   unavailableFastCost: boolean;
+  unknownVoiceCost: boolean;
 };
 
 type FooterHistoryCache = {
@@ -114,6 +116,7 @@ function readFooterHistory(ctx: ExtensionContext): FooterHistory {
     cost = 0;
   let cacheHit: number | undefined;
   let unavailableFastCost = false;
+  let unknownVoiceCost = false;
   // Include pre-compaction usage, nested tool usage, and summaries, like Pi.
   for (const entry of manager.getEntries()) {
     let usage: Usage | undefined;
@@ -137,6 +140,11 @@ function readFooterHistory(ctx: ExtensionContext): FooterHistory {
     ) {
       unavailableFastCost = true;
     }
+    if (entry.type === "custom" && entry.customType === VOICE_COST_ENTRY) {
+      const data = entry.data as { cost?: number; unknown?: boolean } | undefined;
+      if (typeof data?.cost === "number" && Number.isFinite(data.cost) && data.cost >= 0) cost += data.cost;
+      if (data?.unknown) unknownVoiceCost = true;
+    }
     if (usage) {
       input += usage.input;
       output += usage.output;
@@ -145,7 +153,7 @@ function readFooterHistory(ctx: ExtensionContext): FooterHistory {
       cost += usage.cost.total;
     }
   }
-  const value = { input, output, read, write, cost, cacheHit, unavailableFastCost };
+  const value = { input, output, read, write, cost, cacheHit, unavailableFastCost, unknownVoiceCost };
   if (cacheable) {
     // This is deliberately a single current-position entry, not a map by leaf. A
     // branch can revisit an old leaf after more entries were appended, so reusing an
@@ -204,8 +212,20 @@ export function renderDetailedFooter(
   const fastCostUnavailable = hasUnavailableFastCost(history, statuses);
   const subscription = model && (model.provider === "kimi-coding" || ctx.modelRegistry.isUsingOAuth(model));
   if (fastCostUnavailable) stats.push("$? (fast billing)");
-  else if (cost || descendantCost || subscription)
-    stats.push("$" + (cost + descendantCost).toFixed(3) + (descendantCost ? " total" : subscription ? " (sub)" : ""));
+  else if (cost || descendantCost || subscription || history.unknownVoiceCost || statuses.get("die-live"))
+    stats.push(
+      "$" +
+        (cost + descendantCost).toFixed(3) +
+        (history.unknownVoiceCost
+          ? "+? (voice usage incomplete)"
+          : statuses.get("die-live")
+            ? "~ (live voice pending)"
+            : descendantCost
+              ? " total"
+              : subscription
+                ? " (sub)"
+                : ""),
+    );
   const context = ctx.getContextUsage();
   const percent = context?.percent;
   const contextText = `${percent == null ? "?" : `${percent.toFixed(1)}%`}/${tokens(context?.contextWindow ?? model?.contextWindow ?? 0)}`;
@@ -230,7 +250,9 @@ export function renderDetailedFooter(
     columns(theme.fg("dim", stats.join(" ")), theme.fg("dim", singleLine(modelText)), width),
   ];
   // Keep statuses owned by other extensions visible on their own row.
-  const others = [...statuses].filter(([key]) => key !== "die-tasks").sort(([a], [b]) => a.localeCompare(b));
+  const others = [...statuses]
+    .filter(([key]) => key !== "die-tasks" && key !== "die-live-cost")
+    .sort(([a], [b]) => a.localeCompare(b));
   if (others.length) lines.push(truncateToWidth(others.map(([, value]) => singleLine(value)).join(" "), width));
   return lines;
 }
@@ -263,11 +285,23 @@ export function renderCompactFooter(
           : "";
   const live = singleLine(statuses.get("die-live") ?? "");
   const otherCount = [...statuses.keys()].filter(
-    (key) => key !== "die-tasks" && key !== "die-mode" && key !== "die-native-fast" && key !== "die-live",
+    (key) =>
+      key !== "die-tasks" &&
+      key !== "die-mode" &&
+      key !== "die-native-fast" &&
+      key !== "die-live" &&
+      key !== "die-live-cost",
   ).length;
   const extra = otherCount ? `+${otherCount} status` : "";
   const history = readFooterHistory(ctx);
-  const cost = hasUnavailableFastCost(history, statuses) ? "$?" : "$" + (history.cost + descendantCost).toFixed(3);
+  const knownCost = "$" + (history.cost + descendantCost).toFixed(3);
+  const cost = hasUnavailableFastCost(history, statuses)
+    ? "$?"
+    : history.unknownVoiceCost
+      ? knownCost + "+?"
+      : statuses.get("die-live")
+        ? knownCost + "~"
+        : knownCost;
   const percent = ctx.getContextUsage()?.percent;
   const percentText = percent == null ? "?" : `${percent.toFixed(1).replace(/\.0$/, "")}%`;
   const context = (label: string) =>

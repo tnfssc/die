@@ -25,6 +25,7 @@ export type VoiceTranscript = {
 };
 export interface VoiceCallbacks {
   onReady?: () => void;
+  onUsage?: (usage: unknown, id?: string) => void;
   /** Cumulative PCM milliseconds actually played in the current playback epoch. */
   getPlayedAudioMs?: () => number;
   /** Base64 PCM16 mono 24 kHz. playbackEpoch changes ONLY on interruption; flush queued playback on onInterrupted. */

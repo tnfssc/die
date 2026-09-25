@@ -277,3 +277,16 @@ test("explicit quota and model errors are classified without leaking raw content
     expect(f.endpoints).toHaveLength(1);
   }
 });
+
+test("GPT-Live cumulative usage and final billing event reach cost callback", async () => {
+  const updates: unknown[] = [],
+    closes: unknown[] = [];
+  const { socket, session } = fixture({ onUsage: (u) => updates.push(u), onClosed: (ok, u) => closes.push([ok, u]) });
+  const pending = session.connect("fake");
+  socket.ready();
+  await pending;
+  socket.event({ type: "session.usage.updated", usage: { seconds: 12 } });
+  socket.event({ type: "session.closed", usage: { seconds: 15 } });
+  expect(updates).toEqual([{ seconds: 12 }]);
+  expect(closes).toEqual([[true, { seconds: 15 }]]);
+});
