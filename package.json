@@ -7,6 +7,8 @@
     "die": "dist/die"
   },
   "scripts": {
+    "ci": "bash ./scripts/ci.sh linux",
+    "ci:macos": "bash ./scripts/ci.sh macos",
     "prepare:assets": "bun ./scripts/prepare-assets.ts",
     "build": "bun run prepare:assets && bun ./scripts/build.ts",
     "check": "bun run prepare:assets && tsc --noEmit",
