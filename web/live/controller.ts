@@ -40,6 +40,8 @@ export class BrowserLiveController {
   private abort?: AbortController;
   private deadline?: ReturnType<typeof setTimeout>;
   private muted = false;
+  private pending = false;
+  private failedReleases: Array<() => void> = [];
   private capture?: Capture;
   private transport?: Transport;
   private output?: AudioOutput;
@@ -78,6 +80,8 @@ export class BrowserLiveController {
   async start(): Promise<void> {
     if (this.disposed) throw new Error("disposed");
     if (!["idle", "ended", "error"].includes(this.value.phase)) throw new Error("already started");
+    if (this.pending || !this.retryReleases()) throw new Error("previous resources not released");
+    this.pending = true;
     const id = ++this.generation;
     this.muted = false;
     this.abort = new AbortController();
@@ -86,7 +90,7 @@ export class BrowserLiveController {
     try {
       const capture = await this.media.acquire16k(this.abort!.signal);
       if (!this.active(id)) {
-        capture.stop();
+        this.releaseLate(() => capture.stop());
         return;
       }
       this.capture = capture;
@@ -99,7 +103,7 @@ export class BrowserLiveController {
       }, 15000);
       const transport = await this.network.connect(this.abort!.signal);
       if (!this.active(id)) {
-        transport.close();
+        this.releaseLate(() => transport.close());
         return;
       }
       this.transport = transport;
@@ -117,7 +121,29 @@ export class BrowserLiveController {
       this.offCapture = offCapture;
     } catch (error) {
       if (this.active(id)) this.fail(error);
+    } finally {
+      this.pending = false;
     }
+  }
+  private releaseLate(release: () => void): void {
+    try {
+      release();
+    } catch {
+      this.failedReleases.push(release);
+      this.setState("error", "late resource cleanup failed");
+    }
+  }
+  private retryReleases(): boolean {
+    const pending = this.failedReleases;
+    this.failedReleases = [];
+    for (const release of pending) {
+      try {
+        release();
+      } catch {
+        this.failedReleases.push(release);
+      }
+    }
+    return this.failedReleases.length === 0;
   }
   setMuted(muted: boolean): void {
     if (!["ready", "muted"].includes(this.value.phase)) return;
@@ -206,23 +232,25 @@ export class BrowserLiveController {
     this.capture = undefined;
     this.output = undefined;
     this.transport = undefined;
-    // Snapshot resources before clearing ownership (above).
+    // Retain failed closures so a later end/start can verify release.
     for (const release of releases) {
       try {
         release?.();
       } catch {
-        clean = false; // Continue releasing remaining resources, but do not claim success.
+        clean = false;
+        if (release) this.failedReleases.push(release);
       }
     }
-    return clean;
+    return clean && this.failedReleases.length === 0;
   }
   end(): void {
-    if (this.disposed || this.value.phase === "ended") return;
+    if (this.disposed || (this.value.phase === "ended" && !this.failedReleases.length)) return;
     ++this.generation;
     try {
       this.transport?.sendControl({ type: "end" });
     } catch {}
-    const clean = this.cleanup();
+    const retried = this.retryReleases();
+    const clean = this.cleanup() && retried;
     this.setState(clean ? "ended" : "error", clean ? undefined : "resource cleanup failed");
   }
   dispose(): void {

@@ -244,3 +244,59 @@ test("dispose aborts a pending transport handshake", async () => {
   expect(r.calls.tracks).toBe(1);
   expect(r.calls.closes).toBe(1);
 });
+
+test("failed resource release blocks restart until retry succeeds", async () => {
+  const r = rig();
+  await r.connect();
+  let fail = true;
+  r.transport.close = () => {
+    if (fail) throw new Error("socket still open");
+    r.calls.closes++;
+  };
+  r.controller.end();
+  expect(r.controller.state.phase).toBe("error");
+  expect(r.controller.start()).rejects.toThrow("previous resources not released");
+  fail = false;
+  r.controller.end();
+  expect(r.controller.state.phase).toBe("ended");
+  expect(r.calls.closes).toBe(1);
+});
+
+test("late acquisition release failure is reported and retried before next start", async () => {
+  const r = rig();
+  const pending = r.controller.start();
+  r.controller.end();
+  expect(r.controller.start()).rejects.toThrow("previous resources not released");
+  let fail = true;
+  r.capture.stop = () => {
+    if (fail) throw new Error("track still live");
+    r.calls.tracks++;
+  };
+  r.mic.resolve(r.capture);
+  await pending;
+  expect(r.controller.state).toEqual({ phase: "error", reason: "late resource cleanup failed" });
+  expect(r.controller.start()).rejects.toThrow("previous resources not released");
+  fail = false;
+  r.controller.end();
+  expect(r.calls.tracks).toBe(1);
+});
+
+test("late socket close failure is visible and blocks a new capture", async () => {
+  const r = rig();
+  const pending = r.controller.start();
+  r.mic.resolve(r.capture);
+  await r.tick();
+  r.controller.end();
+  let fail = true;
+  r.transport.close = () => {
+    if (fail) throw new Error("socket live");
+    r.calls.closes++;
+  };
+  r.socket.resolve(r.transport);
+  await pending;
+  expect(r.controller.state.reason).toBe("late resource cleanup failed");
+  expect(r.controller.start()).rejects.toThrow("previous resources not released");
+  fail = false;
+  r.controller.end();
+  expect(r.calls.closes).toBe(1);
+});

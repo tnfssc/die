@@ -21,6 +21,8 @@ export interface WebRelayTransport {
 export type WebRelayProviderFactory = (callbacks: VoiceCallbacks, orchestration: VoiceOrchestration) => VoiceProvider;
 
 const MAX_BUFFERED = 12_000; // 250 ms of 24 kHz PCM; fail rather than build seconds of latency.
+const INPUT_BURST = 6400; // 200 ms of 16 kHz PCM; no provider queue is owned here.
+const INPUT_RATE = 32; // bytes/ms, PCM16 at 16 kHz.
 const CONNECT_MS = 10_000;
 const SESSION_MS = 30 * 60_000;
 
@@ -31,6 +33,8 @@ export function createWebLiveRelay(options: {
   apiKey: string;
   transport: WebRelayTransport;
   providerFactory: WebRelayProviderFactory;
+  /** Future route supplies a revocable owner capability; false denies tool calls and closes relay. */
+  authority?: { valid(): boolean; onRevoke(close: () => void): () => void };
   connectDeadlineMs?: number;
   sessionDeadlineMs?: number;
 }): { start(): Promise<void>; close(): { stopped: boolean } } {
@@ -41,10 +45,14 @@ export function createWebLiveRelay(options: {
   let ended = false;
   let finishing = false;
   let cleanupFailed = false;
+  let transportReleased = false;
+  let credit = INPUT_BURST;
+  let lastInput = performance.now();
+  let unsubscribeAuthority: (() => void) | undefined;
   let inputUtterance = "";
   const execute = orchestration.execute.bind(orchestration);
   orchestration.execute = async (call) => {
-    if (ended || finishing) throw new Error("Voice session ended");
+    if (ended || finishing || (options.authority && !options.authority.valid())) throw new Error("Voice session ended");
     return execute(call);
   };
   let ready = false;
@@ -68,7 +76,9 @@ export function createWebLiveRelay(options: {
   function control(value: object): void {
     send(JSON.stringify(value));
   }
-  function finish(code?: "invalid_input" | "not_ready" | "provider_error" | "transport_error" | "timeout"): void {
+  function finish(
+    code?: "invalid_input" | "not_ready" | "provider_error" | "transport_error" | "timeout" | "input_overflow",
+  ): void {
     if (ended || finishing) return;
     finishing = true;
     orchestration.beginUserTurn?.();
@@ -89,30 +99,57 @@ export function createWebLiveRelay(options: {
     ended = true;
     ready = false;
     if (timer) clearTimeout(timer);
-    try {
-      unsubscribeMessage?.();
-    } catch {
-      cleanupFailed = true;
-    }
-    try {
-      unsubscribeClose?.();
-    } catch {
-      cleanupFailed = true;
-    }
-    try {
-      unsubscribeHost?.();
-    } catch {
-      cleanupFailed = true;
-    }
-    try {
-      provider?.close();
-    } catch {
-      cleanupFailed = true;
-    }
-    try {
-      transport.close();
-    } catch {
-      cleanupFailed = true;
+    releaseAll();
+  }
+  function releaseAll(): void {
+    // Only clear references after success. A failed close is retried by close().
+    const releases: Array<[() => void, () => void]> = [
+      [
+        () => unsubscribeMessage?.(),
+        () => {
+          unsubscribeMessage = undefined;
+        },
+      ],
+      [
+        () => unsubscribeClose?.(),
+        () => {
+          unsubscribeClose = undefined;
+        },
+      ],
+      [
+        () => unsubscribeHost?.(),
+        () => {
+          unsubscribeHost = undefined;
+        },
+      ],
+      [
+        () => unsubscribeAuthority?.(),
+        () => {
+          unsubscribeAuthority = undefined;
+        },
+      ],
+      [
+        () => provider?.close(),
+        () => {
+          provider = undefined;
+        },
+      ],
+      [
+        () => transport.close(),
+        () => {
+          transportReleased = true;
+        },
+      ],
+    ];
+    cleanupFailed = false;
+    for (const [index, [release, clear]] of releases.entries()) {
+      if (index === 5 && transportReleased) continue;
+      try {
+        release();
+        clear();
+      } catch {
+        cleanupFailed = true;
+      }
     }
   }
   function deadline(ms: number): void {
@@ -122,6 +159,10 @@ export function createWebLiveRelay(options: {
   }
   function message(value: unknown): void {
     if (ended) return;
+    if (options.authority && !options.authority.valid()) {
+      finish();
+      return;
+    }
     try {
       if (value instanceof ArrayBuffer || value instanceof Uint8Array) {
         if (!ready) {
@@ -133,7 +174,17 @@ export function createWebLiveRelay(options: {
           finish("invalid_input");
           return;
         }
-        if (!muted) provider!.sendAudio(Buffer.from(pcm).toString("base64"));
+        if (!muted) {
+          const now = performance.now();
+          credit = Math.min(INPUT_BURST, credit + Math.max(0, now - lastInput) * INPUT_RATE);
+          lastInput = now;
+          if (pcm.byteLength > credit) {
+            finish("input_overflow");
+            return;
+          }
+          credit -= pcm.byteLength;
+          provider!.sendAudio(Buffer.from(pcm).toString("base64"));
+        }
         return;
       }
       if (typeof value !== "string" || value.length > 128) {
@@ -231,19 +282,31 @@ export function createWebLiveRelay(options: {
       if (started) throw new Error("Relay is single-use");
       started = true;
       try {
+        if (options.authority) {
+          if (!options.authority.valid()) {
+            finish();
+            return;
+          }
+          unsubscribeAuthority = options.authority.onRevoke(() => finish());
+          if (!options.authority.valid() || ended) {
+            finish();
+            releaseAll();
+            return;
+          }
+        }
         unsubscribeMessage = transport.onMessage(message);
         if (ended) {
-          unsubscribeMessage();
+          releaseAll();
           return;
         }
         unsubscribeClose = transport.onClose(() => finish());
         if (ended) {
-          unsubscribeClose();
+          releaseAll();
           return;
         }
         provider = providerFactory(callbacks, orchestration);
         if (ended) {
-          provider.close();
+          releaseAll();
           return;
         }
         deadline(options.connectDeadlineMs ?? CONNECT_MS);
@@ -263,7 +326,7 @@ export function createWebLiveRelay(options: {
           }
         });
         if (ended) {
-          unsubscribeHost();
+          releaseAll();
           return;
         }
         // Initial context and subscription must succeed before ready is claimed.
@@ -282,6 +345,7 @@ export function createWebLiveRelay(options: {
     },
     close() {
       finish();
+      if (cleanupFailed) releaseAll();
       return { stopped: ended && !cleanupFailed };
     },
   };

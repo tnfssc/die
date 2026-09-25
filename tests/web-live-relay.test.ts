@@ -3,7 +3,9 @@ import { createWebLiveRelay, type WebRelayTransport } from "../src/live/web-rela
 import type { SessionOperations } from "../src/session/operations";
 import type { VoiceCallbacks, VoiceOrchestration, VoiceProvider, VoiceState } from "../src/live/types";
 
-function harness() {
+function harness(withAuthority = false) {
+  let owned = true;
+  let revoke = () => {};
   const sent: (string | Uint8Array)[] = [];
   let message: (data: unknown) => void = () => {};
   let disconnect: () => void = () => {};
@@ -11,6 +13,7 @@ function harness() {
   let unsubscribed = 0;
   let socketClosed = 0;
   let providerClosed = 0;
+  let providerCloseFails = false;
   let buffer = 0;
   let state: VoiceState = "idle";
   let callbacks!: VoiceCallbacks;
@@ -63,6 +66,19 @@ function harness() {
   const relay = createWebLiveRelay({
     host,
     transport,
+    ...(withAuthority
+      ? {
+          authority: {
+            valid: () => owned,
+            onRevoke: (fn: () => void) => {
+              revoke = fn;
+              return () => {
+                revoke = () => {};
+              };
+            },
+          },
+        }
+      : {}),
     connectDeadlineMs: 20,
     sessionDeadlineMs: 30,
     apiKey: "SERVER_SECRET",
@@ -87,6 +103,7 @@ function harness() {
           contexts.push(value);
         },
         close() {
+          if (providerCloseFails) throw new Error("provider still live");
           providerClosed++;
           state = "closed";
         },
@@ -95,6 +112,13 @@ function harness() {
   });
   return {
     relay,
+    setProviderCloseFails(value: boolean) {
+      providerCloseFails = value;
+    },
+    revoke() {
+      owned = false;
+      revoke();
+    },
     sent,
     input,
     contexts,
@@ -257,4 +281,47 @@ test("server cleanup failure does not claim successful teardown", async () => {
   };
   expect(h.relay.close()).toEqual({ stopped: false });
   expect(h.cleaned.slice(0, 2)).toEqual([1, 1]);
+});
+
+test("aggregate input exceeds 200ms burst even with individually valid frames", async () => {
+  const h = harness();
+  await h.relay.start();
+  for (let i = 0; i < 3; i++) h.receive(new Uint8Array(3200));
+  expect(h.input).toHaveLength(2);
+  expect(controls(h.sent).at(-2)).toEqual({ type: "error", code: "input_overflow" });
+  expect(h.cleaned).toEqual([1, 1, 1]);
+});
+
+test("failed relay close retains socket for retry, not a false stopped report", async () => {
+  const h = harness();
+  await h.relay.start();
+  let fail = true;
+  h.transport.close = () => {
+    if (fail) throw new Error("still open");
+  };
+  expect(h.relay.close()).toEqual({ stopped: false });
+  fail = false;
+  expect(h.relay.close()).toEqual({ stopped: true });
+});
+
+test("revoked owner closes relay and denies stale or replayed tool calls", async () => {
+  const h = harness(true);
+  await h.relay.start();
+  h.revoke();
+  expect(h.cleaned).toEqual([1, 1, 1]);
+  expect(h.orchestration.execute({ name: "agent_send", args: { requestId: "stale" } })).rejects.toThrow(
+    "Voice session ended",
+  );
+  h.receive(new Uint8Array([1, 0]));
+  expect(h.input).toHaveLength(0);
+});
+
+test("failed provider close retains provider and retries on later close", async () => {
+  const h = harness();
+  await h.relay.start();
+  h.setProviderCloseFails(true);
+  expect(h.relay.close()).toEqual({ stopped: false });
+  h.setProviderCloseFails(false);
+  expect(h.relay.close()).toEqual({ stopped: true });
+  expect(h.cleaned).toEqual([1, 1, 1]);
 });
