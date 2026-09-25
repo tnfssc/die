@@ -1,9 +1,6 @@
 {
   "success": {
-    "providers": [
-      "gemini",
-      "openai"
-    ],
+    "providers": ["gemini", "openai"],
     "paidCalls": 0,
     "uploadBytes": 7680,
     "stops": 4,
