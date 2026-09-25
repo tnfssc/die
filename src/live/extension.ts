@@ -19,6 +19,7 @@ import { liveLocalOnly } from "./status";
 import { runLiveSetup } from "./setup";
 import { LiveAudio, type AudioCallbacks, type AudioSetupError } from "./audio";
 import { getSessionHost } from "../session/host-access";
+import { attachSpawnWebVoiceIpc } from "./web-ipc-bridge";
 import { registerLiveStop, type LiveStopResult } from "./lifecycle-access";
 import { boundedHostContext, createOrchestration } from "./orchestration";
 import type { SessionOperations } from "../session/operations";
@@ -91,6 +92,29 @@ type NativeVoice = ReturnType<LiveDependencies["voice"]>;
 /** Native full-duplex voice; configured agent work has an independent lifecycle. */
 export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDependencies> = {}): void {
   const deps = { ...defaults, ...injected };
+  let owningContext: ExtensionContext | undefined;
+  // Attach before session_start; consume the private-FD markers before spawning children.
+  const child = Number.parseInt(process.env.DIE_SUBAGENT_DEPTH ?? "0", 10) > 0;
+  if (child) {
+    delete process.env.DIE_WEB_VOICE_FD;
+    delete process.env.DIE_WEB_VOICE_OUTPUT_FD;
+  }
+  const webVoiceIpc = child
+    ? undefined
+    : attachSpawnWebVoiceIpc(() => (owningContext ? getSessionHost(pi, owningContext) : undefined));
+  if (webVoiceIpc)
+    registerLiveStop(pi, async (request) => {
+      if (
+        !owningContext ||
+        request.sessionManager !== owningContext.sessionManager ||
+        request.sessionManager.getSessionId() !== owningContext.sessionManager.getSessionId() ||
+        request.sessionManager.getSessionFile() !== owningContext.sessionManager.getSessionFile() ||
+        !webVoiceIpc.hasVoice()
+      )
+        return undefined;
+      const result = await webVoiceIpc.stop();
+      return { ...result, errors: result.stopped ? [] : ["Voice provider teardown failed"], jobsUnchanged: true };
+    });
   let selected: LiveConfig = { provider: "google", model: LIVE_PROVIDERS.google.models[0] };
   let loaded = false;
   let loading: Promise<LiveConfig> | undefined;
@@ -990,7 +1014,11 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         ctx.ui.notify("Usage: /live [start|setup|stop|status|provider|model|mic-check|speaker-check]", "info");
     },
   });
-  pi.on("session_shutdown", () => {
+  pi.on("session_tree", async () => {
+    await webVoiceIpc?.stop();
+  });
+  pi.on("session_shutdown", async () => {
+    owningContext = undefined;
     sequence++;
     entry?.abort();
     entry = undefined;
@@ -998,8 +1026,10 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     probe?.abort();
     speakerProbe?.abort();
     current?.stop();
+    await webVoiceIpc?.stop();
   });
-  pi.on("session_start", () => {
+  pi.on("session_start", (_event, ctx) => {
+    owningContext = ctx;
     sequence++;
     entry?.abort();
     entry = undefined;

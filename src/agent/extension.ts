@@ -1,8 +1,6 @@
 import { requestForegroundStop } from "../tasks/foreground-stop";
 import { SessionHost, type SessionTaskPort } from "../session/host";
-import { attachSpawnWebVoiceIpc } from "../live/web-ipc-bridge";
-import { registerLiveStop } from "../live/lifecycle-access";
-import { getSessionHost, registerSessionHost } from "../session/host-access";
+import { registerSessionHost } from "../session/host-access";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { attachDiagnosticSink, diagnosticRecorder, recordDiagnostic } from "../diagnostics";
 import { registerOperationDiagnostics } from "../diagnostics-extension";
@@ -468,23 +466,6 @@ export default function asynchronousTasksExtension(
     return service;
   };
   let sessionHost: SessionHost | undefined;
-  const webVoiceIpc =
-    subagentDepth === 0
-      ? attachSpawnWebVoiceIpc(() => (owningContext ? getSessionHost(pi, owningContext) : undefined))
-      : undefined;
-  if (webVoiceIpc)
-    registerLiveStop(pi, async (request) => {
-      if (
-        !owningContext ||
-        request.sessionManager !== owningContext.sessionManager ||
-        request.sessionManager.getSessionId() !== owningContext.sessionManager.getSessionId() ||
-        request.sessionManager.getSessionFile() !== owningContext.sessionManager.getSessionFile() ||
-        !webVoiceIpc.hasVoice()
-      )
-        return undefined;
-      const result = await webVoiceIpc.stop();
-      return { ...result, errors: result.stopped ? [] : ["Voice provider teardown failed"], jobsUnchanged: true };
-    });
   registerSessionHost(pi, (ctx) => {
     if (ctx.sessionManager !== owningContext?.sessionManager) return undefined;
     if (!sessionHost)
@@ -724,12 +705,10 @@ export default function asynchronousTasksExtension(
     // before awaiting teardown; ordinary appended entries never emit this event.
     sessionHost?.close();
     sessionHost = undefined;
-    await webVoiceIpc?.stop();
   });
 
   pi.on("session_shutdown", async (_event, ctx) => {
     // Pi emits this before reload/new/resume/fork as well as final quit.
-    await webVoiceIpc?.stop();
     sessionHost?.close();
     sessionHost = undefined;
     clearInstructionContinuity(ctx.sessionManager as object);
