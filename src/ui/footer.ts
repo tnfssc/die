@@ -1,5 +1,5 @@
 import { SessionCostTracker } from "../tasks/session-costs";
-import { sessionCostRoot } from "../tasks/session-cost-root";
+import { sessionIdentity } from "../session/identity";
 import { homedir } from "node:os";
 import { basename, isAbsolute, relative, sep } from "node:path";
 import type { Usage } from "@earendil-works/pi-ai";
@@ -322,7 +322,7 @@ export function createCompactUI(pi: ExtensionAPI, cache?: CacheCountdown): (ctx:
   let tracker: SessionCostTracker | undefined;
   let disposeFooter: (() => void) | undefined;
   const install = (ctx: ExtensionContext) => {
-    const root = sessionCostRoot(ctx.sessionManager);
+    const root = sessionIdentity(ctx.sessionManager);
     if (!root) tracker = undefined;
     else if (tracker?.rootFile !== root.file) tracker = new SessionCostTracker(root.file, root.directory);
     disposeFooter?.();
@@ -361,7 +361,7 @@ export function installCompactFooter(
 ): () => void {
   if (ctx.mode !== "tui") return () => {};
   if (!tracker) {
-    const root = sessionCostRoot(ctx.sessionManager);
+    const root = sessionIdentity(ctx.sessionManager);
     if (root) tracker = new SessionCostTracker(root.file, root.directory);
   }
   let dispose = () => {};

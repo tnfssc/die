@@ -4,9 +4,9 @@ import {
   getJobResponseDeliverySignal,
   JOB_RESPONSE_ACK_EVENT,
   supportsJobResponseAcknowledgement,
-} from "../typescript/job-bridge";
+} from "../job-delivery";
 import { type AgentInfo, AgentProgress } from "./agent-progress";
-import { BoundedOutputBuffer } from "./output-buffer";
+import { BoundedOutputBuffer } from "../output-buffer";
 import type { WorkspaceSummary } from "./worktree-workspace";
 
 const MAX_CAPTURE_BYTES = 1_000_000;

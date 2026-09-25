@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { requestForegroundStop } from "../src/tasks/foreground-stop";
-import { JOB_RESPONSE_ACK_EVENT } from "../src/typescript/job-bridge";
+import { JOB_RESPONSE_ACK_EVENT } from "../src/job-delivery";
 function fixture() {
   let idle = false,
     session = "owned",

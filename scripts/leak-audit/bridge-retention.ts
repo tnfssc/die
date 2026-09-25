@@ -1,7 +1,8 @@
 /** Real bridge over owned in-memory streams; no child processes or session files. */
 import { PassThrough, Duplex } from "node:stream";
 import { getEventListeners } from "node:events";
-import { installJobGlobals, serveJobBridge, withJobCancellation } from "../../src/typescript/job-bridge";
+import { installJobGlobals, serveJobBridge } from "../../src/typescript/job-bridge";
+import { withJobCancellation } from "../../src/job-delivery";
 const a = new PassThrough(),
   b = new PassThrough();
 // Bun types omit Node's supported Node-stream pair overload.

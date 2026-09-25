@@ -1,19 +1,11 @@
+import { T3_MCP_BEARER_ENV, T3_MCP_URL_ENV } from "../delegation-environment";
 import { randomUUID } from "node:crypto";
 
-export const T3_MCP_URL_ENV = "T3_MCP_URL";
-export const T3_MCP_BEARER_ENV = "T3_MCP_BEARER_TOKEN";
 export const T3_MCP_PROTOCOL_VERSION = "2025-06-18";
 const MAX_RESPONSE_BYTES = 1_000_000;
 const MAX_CLIENT_REQUEST_ID_LENGTH = 128;
 const REQUEST_TIMEOUT_MS = 30_000;
 
-/** Copy an environment for model-directed code without delegation credentials. */
-export function scrubT3BridgeEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const scrubbed = { ...env };
-  delete scrubbed[T3_MCP_URL_ENV];
-  delete scrubbed[T3_MCP_BEARER_ENV];
-  return scrubbed;
-}
 const CLOSE_TIMEOUT_MS = 3_000;
 const ALLOWED_TOOLS = new Set([
   "die_task_launch",

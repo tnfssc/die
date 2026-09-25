@@ -2,12 +2,8 @@ import { expect, spyOn, test } from "bun:test";
 import { getEventListeners } from "node:events";
 import { Duplex, PassThrough } from "node:stream";
 import { inspectDiagnostics } from "../src/diagnostics";
-import {
-  installJobGlobals,
-  MAX_JOB_BRIDGE_FRAME_BYTES,
-  serveJobBridge,
-  withJobCancellation,
-} from "../src/typescript/job-bridge";
+import { installJobGlobals, MAX_JOB_BRIDGE_FRAME_BYTES, serveJobBridge } from "../src/typescript/job-bridge";
+import { withJobCancellation } from "../src/job-delivery";
 
 function socket() {
   return new Duplex({

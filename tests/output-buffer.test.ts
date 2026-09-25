@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { BoundedOutputBuffer } from "../src/tasks/output-buffer";
+import { BoundedOutputBuffer } from "../src/output-buffer";
 
 describe("bounded task output buffer", () => {
   test("retains only the configured tail without whole-buffer concatenation", () => {

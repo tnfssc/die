@@ -2,8 +2,8 @@ import { spawn } from "node:child_process";
 import type { Readable } from "node:stream";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { inspectDiagnostics, recordDiagnostic } from "../diagnostics";
-import { BoundedOutputBuffer } from "../tasks/output-buffer";
-import { scrubT3BridgeEnvironment } from "../tasks/t3-mcp-client";
+import { BoundedOutputBuffer } from "../output-buffer";
+import { scrubT3BridgeEnvironment } from "../delegation-environment";
 import { decodeImageChannel, IMAGE_CHANNEL_ENV, MAX_IMAGE_CHANNEL_BYTES } from "./images";
 import { JOB_BRIDGE_ENV, openParentJobBridge, serveJobBridge } from "./job-bridge";
 import {

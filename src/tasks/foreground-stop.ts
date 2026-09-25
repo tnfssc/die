@@ -3,7 +3,7 @@ import {
   getJobResponseDeliverySignal,
   JOB_RESPONSE_ACK_EVENT,
   supportsJobResponseAcknowledgement,
-} from "../typescript/job-bridge";
+} from "../job-delivery";
 
 export type ForegroundStopResult = { outcome: "pending" | "idle" | "error"; detail?: string };
 /** Do not abort the execute bridge before its stop-work result reaches the caller.

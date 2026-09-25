@@ -1,5 +1,5 @@
 import { StringDecoder } from "node:string_decoder";
-import { BoundedOutputBuffer } from "./output-buffer";
+import { BoundedOutputBuffer } from "../output-buffer";
 
 export interface AgentInfo {
   type: string;

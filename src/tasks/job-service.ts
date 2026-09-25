@@ -6,13 +6,14 @@ import {
   getJobResponseDeliverySignal,
   JOB_RESPONSE_ACK_EVENT,
   supportsJobResponseAcknowledgement,
-} from "../typescript/job-bridge";
+} from "../job-delivery";
 import { prepareAgentSession } from "./agent-session";
 import { type JobAttentionScheduler, MAX_SNOOZE_MINUTES } from "./job-attention";
-import { sessionCostRoot } from "./session-cost-root";
+import { sessionIdentity } from "../session/identity";
 import { canDelegate, loadProfiles, resolveProfile, SUBAGENT_TYPES } from "./subagent-profiles";
 import { T3LaunchIdentityLedger } from "./t3-launch-identity";
-import { scrubT3BridgeEnvironment, type T3BridgeEnvironment, T3McpClient, t3BridgeEnvironment } from "./t3-mcp-client";
+import { scrubT3BridgeEnvironment } from "../delegation-environment";
+import { type T3BridgeEnvironment, T3McpClient, t3BridgeEnvironment } from "./t3-mcp-client";
 import {
   T3NativeTaskAdapter,
   type T3TaskAdapter,
@@ -412,7 +413,7 @@ export class JobService {
                   model,
                   thinking,
                   depth: depth + 1,
-                  parentSessionFile: ctx.sessionManager ? sessionCostRoot(ctx.sessionManager)?.file : undefined,
+                  parentSessionFile: ctx.sessionManager ? sessionIdentity(ctx.sessionManager)?.file : undefined,
                 },
                 undefined,
                 params.title,
@@ -604,7 +605,7 @@ export class JobService {
                 model,
                 thinking,
                 depth: depth + 1,
-                parentSessionFile: ctx.sessionManager ? sessionCostRoot(ctx.sessionManager)?.file : undefined,
+                parentSessionFile: ctx.sessionManager ? sessionIdentity(ctx.sessionManager)?.file : undefined,
               },
               task.id,
               params.title,

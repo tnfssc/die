@@ -6,7 +6,7 @@ import executeDescription from "../prompts/execute-description.md" with { type: 
 import { toolParameters } from "../tool-schema";
 import { executeInputPreview, executeOutputPreview } from "../ui/execution-previews";
 import { executeIsolated, formatResult } from "./execution";
-import { withJobCancellation } from "./job-bridge";
+import { withJobCancellation } from "../job-delivery";
 import { stopCurrentLive } from "../live/lifecycle-access";
 
 const HandoffParameters = z.object({ message: z.string().check(z.minLength(1), z.maxLength(2000)) });

@@ -38,3 +38,9 @@ Do not merge branch-identity validation, resume metadata readers, and cost paren
 5. Decide whether old candidate tooling is still needed before sharing its packager. Treat versioned release-note selection as a separate correctness fix.
 
 Values: clarified value 3 with this recurring lesson. Shared rules belong with their real owner; feature-local code and separate trust boundaries need not be merged.
+
+## Runtime placement completed
+
+`src/output-buffer.ts` owns the unchanged bounded byte buffer for task output and execute image capture. `src/job-delivery.ts` owns shared acknowledgement, request identity and cancellation signal metadata; `src/typescript/job-bridge.ts` retains the IPC transport and execute globals. `src/delegation-environment.ts` owns the T3 credential names and child-environment scrub rule; MCP configuration and HTTP remain in the client. `src/session/identity.ts` provides `sessionIdentity` for cost attribution and parent links, preserving Pi per-cwd paths and ephemeral synthetic IDs. No compatibility reexports: call sites, tests and leak-audit script import the owning modules directly. Historical resource audit paths remain historical evidence.
+
+Proof (runtime placement): `bun run check` and targeted Biome format pass. Focused suites passed: 132 tests across buffer, session identity, bridge/protocol, foreground stop, execute, task manager, T3 routing/production and stop-work; 66 tests across job service, session costs, notifications, routing and manager. The execute tests used a locally compiled CLI with a placeholder web archive because the full web build requires `pnpm` (not available in this worktree). That substitute does not validate web packaging; the separate packaging worker owns that gate. Values unchanged: the existing shared-rule ownership guidance already covers this move.

@@ -9,7 +9,8 @@ import { T3LaunchIdentityLedger } from "../src/tasks/t3-launch-identity";
 import { McpAmbiguousResponseError } from "../src/tasks/t3-mcp-client";
 import { T3NativeTaskAdapter, T3TaskResultSchema } from "../src/tasks/t3-native-task";
 import { TaskManager } from "../src/tasks/task-manager";
-import { serveJobBridge, withJobRequestIdentity } from "../src/typescript/job-bridge";
+import { serveJobBridge } from "../src/typescript/job-bridge";
+import { withJobRequestIdentity } from "../src/job-delivery";
 
 const fixture = JSON.parse(await readFile(new URL("./fixtures/t3-native-task-contract.json", import.meta.url), "utf8"));
 const servers: Bun.Server<unknown>[] = [];
