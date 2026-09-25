@@ -211,6 +211,23 @@ export function browserTransportFactory(path: string): TransportFactory {
         let opened = false;
         let callback: ((message: TransportMessage) => void) | undefined;
         let closing: Promise<void> | undefined;
+        // A ready/error/audio frame can arrive before the connect Promise's caller
+        // installs its listener. Preserve that order with a small, byte-bounded queue.
+        let subscribed = false;
+        let earlyBytes = 0;
+        const early: TransportMessage[] = [];
+        const deliver = (message: TransportMessage) => {
+          if (callback) { callback(message); return; }
+          if (subscribed) return; // Listener removed during teardown; never accumulate.
+          const bytes = message.type === "audio" ? message.pcm16.byteLength : 1024;
+          if (early.length >= 16 || earlyBytes + bytes > 32768) {
+            early.splice(0, early.length, { type: "error", reason: "Voice startup buffer full" });
+            earlyBytes = 1024;
+            void close().catch(() => {});
+            return;
+          }
+          early.push(message); earlyBytes += bytes;
+        };
         const close = (): Promise<void> => {
           if (closing) return closing;
           active = false;
@@ -240,14 +257,14 @@ export function browserTransportFactory(path: string): TransportFactory {
           if (!active) return;
           if (!opened) {
             void close().then(() => reject(new Error("Voice socket failed")), reject);
-          } else callback?.({ type: "error", reason: "Voice socket failed" });
+          } else deliver({ type: "error", reason: "Voice socket failed" });
         };
         socket.onclose = () => {
           if (!active) return;
           if (!opened) {
             void close().then(() => reject(new Error("Voice socket closed")), reject);
           } else {
-            callback?.({ type: "closed" });
+            deliver({ type: "closed" });
             void close();
           }
         };
@@ -260,6 +277,9 @@ export function browserTransportFactory(path: string): TransportFactory {
             },
             onMessage(cb) {
               callback = cb;
+              subscribed = true;
+              const queued = early.splice(0); earlyBytes = 0;
+              for (const message of queued) { if (callback !== cb) break; cb(message); }
               return () => {
                 if (callback === cb) callback = undefined;
               };
@@ -285,9 +305,9 @@ export function browserTransportFactory(path: string): TransportFactory {
         socket.onmessage = (event) => {
           if (!active) return;
           try {
-            callback?.(decodeRelayMessage(event.data));
+            deliver(decodeRelayMessage(event.data));
           } catch {
-            callback?.({ type: "error", reason: "Invalid voice message" });
+            deliver({ type: "error", reason: "Invalid voice message" });
           }
         };
       });

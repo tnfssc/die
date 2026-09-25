@@ -192,11 +192,12 @@ test("socket sends copied binary, decodes relay controls, bounds backlog, aborts
   expect(socket.url).toBe("wss://example.test/voice");
   socket.readyState = 1;
   socket.onopen();
+  // Same network turn: ready/audio arrive before connect() continuation registers.
+  socket.onmessage({ data: JSON.stringify({ type: "ready" }) });
+  socket.onmessage({ data: new Uint8Array([1, 0]).buffer });
   const transport = await connecting;
   const seen: string[] = [];
   transport.onMessage((message) => seen.push(message.type));
-  socket.onmessage({ data: JSON.stringify({ type: "ready" }) });
-  socket.onmessage({ data: new Uint8Array([1, 0]).buffer });
   socket.onmessage({ data: "not json" });
   expect(seen).toEqual(["ready", "audio", "error"]);
   const frame = new Uint8Array([4, 5]);
@@ -210,6 +211,15 @@ test("socket sends copied binary, decodes relay controls, bounds backlog, aborts
   await transport.close();
   await transport.close();
   expect(socket.closed).toBe(true);
+  const overflowing = browserTransportFactory("/voice").connect(new AbortController().signal);
+  const crowded = Socket.instances[2]; crowded.readyState = 1; crowded.onopen();
+  for (let i = 0; i < 4; i++) crowded.onmessage?.({ data: new Uint8Array(9600).buffer });
+  const bounded = await overflowing;
+  const overflowMessages: any[] = [];
+  bounded.onMessage((message) => overflowMessages.push(message));
+  expect(overflowMessages).toEqual([{ type: "error", reason: "Voice startup buffer full" }]);
+  expect(crowded.closed).toBe(true);
+  await bounded.close();
 });
 
 test("worklet resamples one hardware second to exactly 16k PCM samples at common rates", () => {
