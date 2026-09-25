@@ -100,8 +100,8 @@ jobs:
         with:
           bun-version: 1.4.2
       - run: bun install --frozen-lockfile
-      # Live execute-control tests spawn the compiled CLI (dist/die).
-      - run: bun run build
+      # Execute-control tests spawn the source CLI via a Bun wrapper; no web build needed.
+      - run: bun run prepare:assets
       - name: Offline OpenAI transport source probe (macOS)
         run: bun scripts/offline-openai-default-transport.ts --source-only
       - name: Deterministic Live tests (fake audio and provider)

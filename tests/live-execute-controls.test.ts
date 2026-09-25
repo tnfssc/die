@@ -1,11 +1,12 @@
 import { expect, test } from "bun:test";
-import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { resolve } from "node:path";
+import { createEventBus } from "@earendil-works/pi-coding-agent";
 import { registerLiveStop } from "../src/live/lifecycle-access";
-import { registerExecuteTool } from "../src/typescript/extension";
 import { requestForegroundStop } from "../src/tasks/foreground-stop";
+import { registerExecuteTool } from "../src/typescript/extension";
 
-const binary = resolve(import.meta.dir, "../dist/die");
+// Spawn the real CLI execute route without requiring a full web/packaging build.
+const binary = resolve(import.meta.dir, "fixtures/live-execute-cli.sh");
 function fixture(handler: (ctx: any, method: string, params: any, signal: AbortSignal) => Promise<unknown>) {
   let tool: any;
   const bus = createEventBus();
