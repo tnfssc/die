@@ -24,10 +24,10 @@ class Socket implements RealtimeSocket {
 }
 
 describe("web provider selection", () => {
-  test("rejects GPT-Live, unknown models and Gemini while upstream queue is unbounded", () => {
+  test("rejects GPT-Live and unknown models but allows bounded Gemini", () => {
     expect(() => createWebProviderFactory("openai", "gpt-live-1")).toThrow();
     expect(() => createWebProviderFactory("openai", "gpt-realtime-fake")).toThrow();
-    expect(() => createWebProviderFactory("google", "gemini-3.8-live")).toThrow(/upstream audio buffering/);
+    expect(createWebProviderFactory("google", "gemini-3.8-live")).toBeFunction();
   });
 
   test("OpenAI GA authorizes once by input item, never via relay display accumulator", async () => {

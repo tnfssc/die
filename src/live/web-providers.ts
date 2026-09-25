@@ -1,16 +1,9 @@
+import { VoiceSession } from "./session";
+import { webGeminiAdapter } from "./web-gemini-adapter";
 import { OpenAIRealtimeSession, type RealtimeSocketFactory } from "./openai-session";
 import { OPENAI_REALTIME_MODELS, VOICE_MODEL } from "./providers";
 import type { WebRelayProviderFactory } from "./web-relay";
 
-/**
- * Server-side provider selection for the web PCM relay. No key is captured here: the
- * relay supplies its server-side key directly to VoiceProvider.connect().
- *
- * Do not expose Gemini through this relay yet. VoiceSession.sendAudio() calls the
- * Google SDK's sendRealtimeInput() synchronously without a bufferedAmount, drain,
- * or other backpressure signal. The relay's bounded browser socket does not bound
- * that upstream SDK queue. Nor does GPT-Live implement the GA Realtime protocol.
- */
 export function createWebProviderFactory(
   provider: "google" | "openai",
   model: string,
@@ -18,7 +11,7 @@ export function createWebProviderFactory(
 ): WebRelayProviderFactory {
   if (provider === "google") {
     if (model !== VOICE_MODEL) throw new Error("Unsupported Gemini live model");
-    throw new Error("Gemini web relay unavailable: SDK upstream audio buffering has no observable bound");
+    return (callbacks, orchestration) => new VoiceSession(callbacks, webGeminiAdapter(), orchestration, model);
   }
   if (provider !== "openai" || !(OPENAI_REALTIME_MODELS as readonly string[]).includes(model))
     throw new Error("Unsupported OpenAI Realtime model");
