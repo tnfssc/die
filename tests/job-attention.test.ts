@@ -195,21 +195,33 @@ test("TaskManager pending/event contracts are snapshot-based and attention text 
   expect(text).not.toMatch(/kill(ed)? automatically/i);
 });
 
-test("noisy activity is O(events), not O(jobs times events), in scheduler CPU and memory state", async () => {
+test("noisy activity keeps scheduler work and retained state bounded by active jobs", async () => {
   const clock = new FakeClock(),
+    batches: AttentionNotice[][] = [],
     manager = new TaskManager(() => {}, 10);
   managers.push(manager);
   const tasks = Array.from({ length: 60 }, (_, index) => manager.spawn(launch("stress " + index)));
-  const scheduler = new JobAttentionScheduler(manager, () => {}, { clock });
-  const before = scheduler.diagnostics(),
-    heapBefore = process.memoryUsage().heapUsed;
+  const scheduler = new JobAttentionScheduler(manager, (items) => batches.push(items), { clock });
+  const before = scheduler.diagnostics();
   for (let index = 0; index < 5_000; index++) await manager.write(tasks[index % tasks.length]!.id, "x");
-  const after = scheduler.diagnostics(),
-    heapGrowth = process.memoryUsage().heapUsed - heapBefore;
-  expect(after.stateVisits).toBe(before.stateVisits);
-  expect(after.timerSchedules).toBe(before.timerSchedules);
-  expect(heapGrowth).toBeLessThan(20 * 1024 * 1024);
+  const after = scheduler.diagnostics();
+  // Input events allocate transient TaskManager summaries and write callbacks.
+  // Heap-used deltas include unrelated GC timing; retained scheduler state is
+  // instead accounted for by jobs, timers, scans, and actual deadline delivery.
+  expect(after).toMatchObject({
+    activeJobs: tasks.length,
+    timerArmed: true,
+    timerCallbacks: before.timerCallbacks,
+    timerSchedules: before.timerSchedules,
+    stateVisits: before.stateVisits,
+  });
+  expect(clock.timers.size).toBe(1);
+  clock.advance(5 * 60_000);
+  expect(batches).toHaveLength(1);
+  expect(batches[0]).toHaveLength(tasks.length);
   scheduler.dispose();
+  expect(scheduler.diagnostics().activeJobs).toBe(0);
+  expect(clock.timers.size).toBe(0);
 });
 
 test("late attachment uses existing activity and watch grace does not fabricate activity", () => {
