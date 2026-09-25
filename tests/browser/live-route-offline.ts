@@ -53,6 +53,10 @@ try {
       assert(proof.uploadPayloadBytes > 0, "fake mic yielded no PCM on canonical route");
       await page.getByRole("button", { name: "Mute", exact: true }).click();
       await page.getByRole("button", { name: "Unmute", exact: true }).waitFor();
+      await Bun.sleep(30);
+      const mutedFrames = proof.uploadFrames;
+      await Bun.sleep(100);
+      assert.equal(proof.uploadFrames, mutedFrames, "Mute still uploaded microphone PCM");
       await page.getByRole("button", { name: "Unmute", exact: true }).click();
       await page.getByRole("button", { name: "Mute", exact: true }).waitFor();
       // In-session provider switch must revoke old owner and tear down capture.
@@ -109,14 +113,18 @@ try {
     const audioUntil = Date.now() + 3000;
     while (!staleProof.uploadFrames && Date.now() < audioUntil) await Bun.sleep(25);
     const detach = await fetch(target.origin + "/fixture/detach", { method: "POST" });
-    assert(detach.ok); await detach.body?.cancel();
+    assert(detach.ok);
+    await detach.body?.cancel();
     const until = Date.now() + 4000;
     while (staleProof.socketCloses !== staleProof.socketOpens && Date.now() < until) await Bun.sleep(25);
     assertTeardown(staleProof);
     const stale = await fetch(target.origin + route + "?threadId=thread-a", { headers: { origin: target.origin } });
-    assert.equal(stale.status, 409, "detached owner remained attachable"); await stale.body?.cancel();
+    assert.equal(stale.status, 409, "detached owner remained attachable");
+    await stale.body?.cancel();
     results.push({ staleOwnerRevoked: true, proof: staleProof });
-  } finally { await stalePage.close(); }
+  } finally {
+    await stalePage.close();
+  }
   const missingPage = await browser.newPage();
   try {
     const missingProof = await instrumentVoicePage(missingPage, route);

@@ -10733,10 +10733,11 @@ index d42c5b74e..2f0957a08 100644
          const cwd = yield* makeTmpDir();
 diff --git a/apps/server/src/voice/PiVoiceChannels.fd.test.ts b/apps/server/src/voice/PiVoiceChannels.fd.test.ts
 new file mode 100644
-index 000000000..2d4eef696
+index 000000000..dbc4f6a8c
 --- /dev/null
 +++ b/apps/server/src/voice/PiVoiceChannels.fd.test.ts
-@@ -0,0 +1,45 @@
+@@ -0,0 +1,64 @@
++import * as Stream from "effect/Stream";
 +import { expect, it } from "vite-plus/test";
 +import * as Effect from "effect/Effect";
 +import * as Layer from "effect/Layer";
@@ -10782,12 +10783,31 @@ index 000000000..2d4eef696
 +  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.runPromise);
 +  expect(getVoiceChannel("replacement-thread")).toBeUndefined();
 +});
++
++
++it("channel invalidation delivers private FD EOF while coding process stays running", async () => {
++  await Effect.gen(function* () {
++    const spawn = yield* ChildProcessSpawner.ChildProcessSpawner;
++    const child = yield* spawn.spawn(ChildProcess.make(process.execPath, ["-e", "new (require('net').Socket)({fd:3,readable:true,writable:false}).on('end',()=>process.stdout.write('voice-eof')).resume();setInterval(()=>{},1000);"], {
++      additionalFds: {fd3:{type:"input"},fd4:{type:"output"}},
++    }));
++    const channel = yield* attachPiVoiceChannel(child,"eof-thread","eof-session");
++    yield* Effect.sleep("30 millis");
++    yield* channel.close;
++    const output = yield* Stream.runHead(child.stdout).pipe(Effect.timeout("2 seconds"));
++    expect(output._tag).toBe("Some");
++    if (output._tag === "Some") expect(new TextDecoder().decode(output.value)).toBe("voice-eof");
++    expect(yield* child.isRunning).toBe(true);
++    expect(getVoiceChannel("eof-thread")).toBeUndefined();
++  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.runPromise);
++});
 diff --git a/apps/server/src/voice/PiVoiceChannels.ts b/apps/server/src/voice/PiVoiceChannels.ts
 new file mode 100644
-index 000000000..093b79122
+index 000000000..e83f6425c
 --- /dev/null
 +++ b/apps/server/src/voice/PiVoiceChannels.ts
-@@ -0,0 +1,115 @@
+@@ -0,0 +1,122 @@
++import type * as Cause from "effect/Cause";
 +import * as Effect from "effect/Effect";
 +import * as Queue from "effect/Queue";
 +import * as Scope from "effect/Scope";
@@ -10853,7 +10873,7 @@ index 000000000..093b79122
 +  providerSessionId: string,
 +) {
 +  const scope = yield* Effect.scope;
-+  const outgoing = yield* Queue.dropping<Uint8Array>(32);
++  const outgoing = yield* Queue.dropping<Uint8Array, Cause.Done>(32);
 +  const receive = yield* Queue.dropping<{ kind: number; payload: Uint8Array }>(32);
 +  const generation = Symbol("pi-process-generation");
 +  let closed = false;
@@ -10869,10 +10889,16 @@ index 000000000..093b79122
 +          ok ? Effect.void : Effect.die(new Error("Voice output queue overflow")),
 +        ),
 +      ),
-+    close: Effect.sync(() => {
++    close: Effect.gen(function* () {
++      if (closed) return;
 +      closed = true;
 +      if (channels.get(threadId) === channel) channels.delete(threadId);
-+    }).pipe(Effect.andThen(Queue.shutdown(outgoing)), Effect.andThen(Queue.shutdown(receive))),
++      // Queue.shutdown interrupts the sink and leaves FD3 open. End normally so
++      // NodeSink closes ONLY this private pipe; the coding process stays alive.
++      yield* Queue.clear(outgoing);
++      yield* Queue.end(outgoing);
++      yield* Queue.shutdown(receive);
++    }),
 +  };
 +  const previous = channels.get(threadId);
 +  if (previous) yield* previous.close;
