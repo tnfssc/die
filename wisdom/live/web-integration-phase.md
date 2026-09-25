@@ -1,3 +1,5 @@
+> Update 2026-09-25: canonical route/UI/private Pi bridge and built output are now implemented. See [integrated vertical slice](web-integrated-vertical.md) for current source, proof and remaining real-provider/device acceptance limits. The blocked-phase notes below are historical.
+
 # Dual-provider web integration phase — 2026-09-25
 
 **Status: incomplete and not production-ready. No shipped route or UI enabled.** Both provider adapters and actual browser-device loopback proof exist, but this is not the requested complete vertical web feature. No change to canonical integrations/t3/upstream/die.patch was made; no maintained T3 web build or actual T3 route tests were run. Do not claim those from isolated module bundles or the browser loopback test.

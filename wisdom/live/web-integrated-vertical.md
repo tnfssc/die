@@ -1,0 +1,31 @@
+# Web voice: integrated vertical slice (2026-09-25)
+
+Supersedes the activation blockers recorded in web-integration-phase.md at base08b87bc. Maintained source is integrations/t3/upstream/die.patch against pinned upstream b488c57f3f9f1688e31c53daee99e29dd1d0baa2, plus root src/live/web-ipc-bridge.ts and src/agent/extension.ts. No alternate upstream fork is shipped.
+
+## Ownership and trust
+
+PiAdapterV2.openSession/makePiRpcConnection attach private anonymous FD3/FD4 only to the exact Die Pi process. Tools/children receive no bridge token, provider key or sideband path; nonsecret FD markers are deleted at extension init. Bun requires filesystem streams for these pipes: net.Socket FD input failed the actual spawned test. Browser supplies only validated thread ID, provider choice, mute/stop and PCM. Route requires exact Origin, real EnvironmentAuth operate scope, active provider-thread/session projection and owning process generation; detach/archive/replacement is watched even when muted. Entitlement is the existing environment operator scope, not an invented per-tab capability.
+
+Root owning SessionHost resolves provider credentials and owns provider/tool orchestration. No second coding agent, browser tool/result sideband or auto-confirm permission path. Lease revocation gates queued operations and host subscriptions. Same-file tree navigation revokes old host/voice; normal appended ancestry remains valid. Voice teardown never requests jobs.stopWork or closes the coding Pi process.
+
+Both Gemini and OpenAI use SERVER-owned provider connections (see public-docs decision). Browser gets binary16k PCM input/24k output and restricted control events, never provider keys. Gemini setup abort and OpenAI observed socket shutdown are awaited. Browser End waits route stopped:true after root shutdown; provider/thread remount cannot acquire a new microphone while prior owner cleanup is pending or failed. Failed ownership is retained with Retry cleanup. UI includes explicit Start voice, Gemini/OpenAI selector, Mute/Unmute, End and safe credential/setup errors; no animation loop or mic request on mount.
+
+## Bounds / tradeoffs
+
+Browser worklet acknowledgements bound transfers; pre-listener WS events bounded16 messages/32768 estimated bytes; capture/upload and output queues retain existing hard bounds. IPC header5 bytes, JSON controls<=16KiB, PCM<=64KiB wire frame, root input<=3200 bytes and pending root pipe128KiB; upstream queues32 frames and fail closed on overflow. Browser uplink has one-byte PCM kind prefix; downlink raw PCM. Bounds are not a200ms end-to-end latency claim.
+
+PCM16 mono input16k=32,000B/s and output24k=48,000B/s, full duplex4.8MB/min payload before framing/TLS; provider JSON base64 expands roughly4/3. No bandwidth victory over Opus, CPU/paint/latency or acoustic quality claim.
+
+## Evidence
+
+Root typecheck and162 focused tests/911 assertions pass across16 files. Includes actual spawned Bun pipes for both fake providers, pending stop/late ACK, marker scrubbing, coding work preservation, host branch revocation, bounded relay/browser adapters, CLI cost hooks and actual local OpenAI WS closure (normal + pending setup). Snapshot tests use isolated TMPDIR; shared preexisting /tmp budget pollution was not deleted. Upstream61 tests and server/web typechecks pass.
+
+Chromium gate mounts production VoiceControls + production route through actual Effect HTTP, real private pipes, real root bridge/SessionHost/relay and fake provider factory/credentials. Both providers, explicit fake mic, no PCM while muted, switch/end delayed-ACK cleanup, missing credentials, network origin/auth checks, and live-owner detach/reconnect rejection pass. This is NOT full packaged-app active-session acceptance; auth/thread projection is injected for the component gate. No paid provider or physical mic probe. See web-route-browser-acceptance.md for reproducible command and measured bytes (counts vary with scheduling).
+
+Final maintained build:web succeeded. Exact patch SHA256 bc87399d43512eb89eccb644d8e6172ca7e25252a5f38dd7c153a17471af3786; web archive SHA256 0d0c94f9f292d4f13c2fa8b373e7fc54ecf3d9e44e40068c7f2851d2eca49ab4. Final archive/backend rebuilt in integrator dist after EOF correction; root executable built via scripts/build.ts --reuse-web from that attested archive. Ordinary root build attempt lacked pnpm in PATH, not a code failure; maintained upstream build used installed pnpm. Fresh packaged backend smoke passed missing/evil Origin403, real unauth401, and served exact shipped voice JS bytes; authenticated packaged owner409/full active packaged app navigation not tested. Compiled RPC smoke passed both missing keys and successful coding get_state before/after voice teardown.
+
+## Durable work
+
+Integrator: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_6394ca7b, branch die/wire-live-voice-into-real-web-sessions-6394ca7b. Pinned checkout/build: same path plus -a86675007a5e-task_86494437/.cache/die-t3code-b488c57f3f9f1688e31c53daee99e29dd1d0baa2; branch die/canonical-upstream-web-voice-vertical-86494437. Other worker worktrees/branches and exact commit integration are in web-port-parent-handoff.md. CLI cost originals df92281+1b50737 and parent lifecycle fixes retained. Values unchanged: single ownership, bounded resources, truthful UI and whole-path verification already cover these lessons.
+
+Final private-channel invalidation probe found Queue.shutdown interrupted Effect NodeSink without ending FD3. Queue.clear+Queue.end now produces physical EOF, tested with an actual child that keeps coding work alive; reverting to shutdown makes that test fail. Normal stop-ACK coverage alone did not catch it. Compiled Die RPC entrypoint also passed both missing-credential cases and successful get_state before/after private voice stop.
