@@ -20,9 +20,7 @@ const TEST = join(CANDIDATE, TEST_REL);
 const VP = join(CANDIDATE, "node_modules/.bin/vp");
 const requestedDie = process.env.T3_V2_DIE_BINARY ?? "";
 const keep = process.env.T3_V2_KEEP_TEMP === "1";
-const artifacts = resolve(
-  process.env.T3_V2_NATIVE_ARTIFACTS ?? join(ROOT, "artifacts/t3/native"),
-);
+const artifacts = resolve(process.env.T3_V2_NATIVE_ARTIFACTS ?? join(ROOT, "artifacts/t3/native"));
 
 function check(value: unknown, message: string): asserts value {
   if (!value) throw new Error(message);

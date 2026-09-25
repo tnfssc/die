@@ -19,7 +19,9 @@ const PREVIEW = resolve(
     process.env.T3_V2_CANDIDATE ??
     resolve(ROOT, `.cache/die-t3code-${sourcePin.revision}`),
 );
-const PREVIEW_PATCH = resolve(process.env.T3_V2_MIGRATION_PREVIEW_PATCH ?? resolve(ROOT, "integrations/t3/upstream/die.patch"));
+const PREVIEW_PATCH = resolve(
+  process.env.T3_V2_MIGRATION_PREVIEW_PATCH ?? resolve(ROOT, "integrations/t3/upstream/die.patch"),
+);
 const TMP_ROOT = tmpdir();
 
 function git(directory: string, args: string[], encoding: BufferEncoding | null = "utf8"): string | Buffer {
