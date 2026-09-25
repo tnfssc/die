@@ -149,3 +149,11 @@ static parity and fail-closed dynamic instructions.
 Values unchanged. One owner, whole-path proof, bounded output without quiet
 loss, honest evidence, and durable handoff already cover this change.
 Feature notes changed; no new global rule was needed.
+
+## Parent release completion
+
+Integrated and released as v0.13.0. Parent applied overlap/unfinished-ASR fixes
+and corrected the Mac test fixture; final full root gate passed 1098 tests,
+17 opt-in skips, no failures. Hosted Linux/Mac CI, exact-SHA release dry run
+and tag publication all passed. See ../releases/release-v0.13.0.md for proof
+and limits. No paid provider/device acceptance or local install was claimed.

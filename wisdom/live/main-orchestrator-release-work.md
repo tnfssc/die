@@ -1,5 +1,9 @@
 # Live main orchestrator: implementation and release
 
+**Finished:** published v0.13.0 on 2026-09-25. See
+[final release proof](../releases/release-v0.13.0.md). Notes below record the
+work as it happened; their pending statuses are historical.
+
 ## User decision
 
 User said: "not prototype, lets make it". Then: "make a release when done".

@@ -1,0 +1,105 @@
+{
+  "verifiedAt": "2026-09-25T17:15:31.182Z",
+  "release": {
+    "assets": [
+      {
+        "name": "die-android-arm64",
+        "size": 208140032,
+        "state": "uploaded"
+      },
+      {
+        "name": "die-android-arm64.sha256",
+        "size": 84,
+        "state": "uploaded"
+      },
+      {
+        "name": "die-darwin-arm64",
+        "size": 182962674,
+        "state": "uploaded"
+      },
+      {
+        "name": "die-darwin-arm64.sha256",
+        "size": 83,
+        "state": "uploaded"
+      },
+      {
+        "name": "die-linux-arm64",
+        "size": 200919336,
+        "state": "uploaded"
+      },
+      {
+        "name": "die-linux-arm64.sha256",
+        "size": 82,
+        "state": "uploaded"
+      },
+      {
+        "name": "die-linux-x64",
+        "size": 200979936,
+        "state": "uploaded"
+      },
+      {
+        "name": "die-linux-x64.sha256",
+        "size": 80,
+        "state": "uploaded"
+      },
+      {
+        "name": "LICENSE",
+        "size": 1081,
+        "state": "uploaded"
+      },
+      {
+        "name": "SOURCE.txt",
+        "size": 793,
+        "state": "uploaded"
+      },
+      {
+        "name": "THIRD_PARTY_LICENSES.txt",
+        "size": 708007,
+        "state": "uploaded"
+      },
+      {
+        "name": "THIRD_PARTY_NOTICES.md",
+        "size": 1385,
+        "state": "uploaded"
+      }
+    ],
+    "isDraft": false,
+    "isPrerelease": false,
+    "publishedAt": "2026-09-25T17:14:45Z",
+    "tagName": "v0.13.0",
+    "url": "https://github.com/tnfssc/die/releases/tag/v0.13.0"
+  },
+  "workflow": {
+    "conclusion": "success",
+    "headSha": "03496ca01b9e9b30b654176d683727918c26dd27",
+    "jobs": [
+      {
+        "conclusion": "success",
+        "name": "Find successful develop dry run at tag commit"
+      },
+      {
+        "conclusion": "success",
+        "name": "Stage assets from verified develop dry run"
+      },
+      {
+        "conclusion": "skipped",
+        "name": "Native macOS arm64 helper (no devices)"
+      },
+      {
+        "conclusion": "skipped",
+        "name": "Linux, macOS, and Android release"
+      },
+      {
+        "conclusion": "success",
+        "name": "Actual Mac release binary and old updater (no devices)"
+      },
+      {
+        "conclusion": "success",
+        "name": "Publish stable release after native and updater gates"
+      }
+    ],
+    "status": "completed",
+    "url": "https://github.com/tnfssc/die/actions/runs/36165614050"
+  },
+  "verification": "GitHub metadata and nonempty expected assets. No published binaries downloaded; CI performed binary/updater gates."
+}

@@ -1,5 +1,11 @@
 # Live prompt line-by-line review
 
+**Review superseded by implementation:** v0.13.0 uses the ordinary main-agent
+prompt/tool path. The companion prompt and narrow-tool review below is a
+historical snapshot, not the active main-Live contract or a pending rewrite.
+See [release proof](../releases/release-v0.13.0.md). Future prompt review should
+start with the shared normal orchestrator assembly.
+
 Snapshot: 2026-09-25. This is a review sheet, not a loaded prompt.
 The source files stay unchanged until we agree on edits. If source changes,
 check this snapshot before using it. Labels below stay fixed during review.
