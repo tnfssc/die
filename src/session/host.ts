@@ -476,6 +476,7 @@ export class SessionHost implements SessionOperations {
   lease(): SessionHostLease {
     const prefix = "lease-" + randomUUID() + ":";
     let revoked = false;
+    let branchLeaf = this.host.context.sessionManager.getLeafId?.();
     const unsubscribers = new Set<() => void>();
     const revocationListeners = new Set<() => void>();
     const revoke = () => {
@@ -496,6 +497,16 @@ export class SessionHost implements SessionOperations {
     this.leaseRevokers.add(revoke);
     const valid = () => {
       if (!this.active()) revoke();
+      if (!revoked) {
+        const manager = this.host.context.sessionManager;
+        const leaf = manager.getLeafId?.();
+        if (leaf !== branchLeaf) {
+          // Normal append extends ancestry. A sibling/backward branch move does
+          // not; only scan on leaf change, never for every PCM frame.
+          if (branchLeaf != null && !manager.getBranch().some((entry) => entry.id === branchLeaf)) revoke();
+          else branchLeaf = leaf;
+        }
+      }
       return !revoked;
     };
     const check = () => {

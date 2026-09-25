@@ -719,6 +719,14 @@ export default function asynchronousTasksExtension(
     instructionMode.sessionStart(ctx);
   });
 
+  pi.on("session_tree", async () => {
+    // Tree navigation can keep the same manager, session ID and file. Revoke
+    // before awaiting teardown; ordinary appended entries never emit this event.
+    sessionHost?.close();
+    sessionHost = undefined;
+    await webVoiceIpc?.stop();
+  });
+
   pi.on("session_shutdown", async (_event, ctx) => {
     // Pi emits this before reload/new/resume/fork as well as final quit.
     await webVoiceIpc?.stop();

@@ -179,3 +179,21 @@ test("host shutdown and stale identity notify lease revocation once without stop
   expect(revoked).toBe(true);
   other.host.close();
 });
+
+
+test("same-file branch moves revoke leases while normal branch append remains valid", () => {
+  const f = fixture();
+  let leaf = "a";
+  let ancestry = [{ id: "a" }];
+  f.manager.getLeafId = () => leaf;
+  f.manager.getBranch = () => ancestry;
+  const lease = f.host.lease(); let revoked = 0;
+  lease.onRevoke(() => { revoked++; });
+  leaf = "b"; ancestry = [{ id: "a" }, { id: "b" }];
+  expect(lease.valid()).toBe(true); // regular assistant/user append
+  leaf = "sibling"; ancestry = [{ id: "a" }, { id: "sibling" }];
+  expect(lease.valid()).toBe(false); expect(revoked).toBe(1);
+  expect(() => lease.context()).toThrow("revoked");
+  expect(f.stopped).toEqual([]);
+  f.host.close();
+});

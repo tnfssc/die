@@ -180,6 +180,12 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   await expect(tools!.execute({ name: "agent_steer", args: { requestId: "request-2" } })).rejects.toThrow("transcript");
   expect(sent).toHaveLength(2);
   await voiceCommand("stop", ctx);
+  const lease = host.lease();
+  await fire("session_tree", { oldLeafId: "before", newLeafId: "after" });
+  expect(lease.valid()).toBe(false);
+  const newBranchHost = getSessionHost(voicePi, ctx);
+  expect(newBranchHost).toBeDefined();
+  expect(newBranchHost).not.toBe(host);
   await fire("session_shutdown");
   expect(getSessionHost(voicePi, ctx)).toBeUndefined();
   expect(() => host.context()).toThrow("scope changed");
