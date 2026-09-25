@@ -38,7 +38,7 @@ try {
       await providerControl.selectOption({ label: provider });
       await page.getByRole("button", { name: "Start voice" }).click();
       await page.getByRole("status").filter({ hasText: "Voice connected" }).waitFor({ timeout: 20000 });
-            const pcmDeadline = Date.now() + 5000;
+      const pcmDeadline = Date.now() + 5000;
       while (!proof.uploadPayloadBytes && Date.now() < pcmDeadline) await Bun.sleep(50);
       assert(proof.uploadPayloadBytes > 0, "fake mic yielded no PCM on canonical route");
       await page.getByRole("button", { name: "Mute", exact: true }).click();
@@ -56,12 +56,22 @@ try {
       await page.getByRole("button", { name: "Start voice" }).click();
       await page.getByRole("status").filter({ hasText: "Voice connected" }).waitFor({ timeout: 20000 });
       assert(proof.mediaRequests > before, "provider switch did not require a new explicit action");
+      // Switching the selected thread unmounts the live controller; no old Pi owner survives.
+      await page.evaluate(() => { (window as any).__dieShowThread("thread-b"); });
+      await page.getByRole("button", { name: "Start voice" }).waitFor();
+      const switchDeadline = Date.now() + 5000;
+      while (proof.socketCloses !== proof.socketOpens && Date.now() < switchDeadline) await Bun.sleep(50);
+      assertTeardown(proof);
+      await page.evaluate(() => { (window as any).__dieShowThread("thread-a"); });
+      await page.getByRole("button", { name: "Start voice" }).click();
+      await page.getByRole("status").filter({ hasText: "Voice connected" }).waitFor({ timeout: 20000 });
       await page.getByRole("button", { name: "End voice" }).click();
       await page.getByRole("button", { name: "Start voice" }).waitFor();
       const deadline = Date.now() + 5000;
       while (proof.socketCloses !== proof.socketOpens && Date.now() < deadline) await Bun.sleep(50);
       assertTeardown(proof);
       assert(proof.uploadPayloadBytes > 0, "fake microphone did not produce PCM uplink");
+      assert(proof.downloadFrames >= 3 && proof.downloadPayloadBytes >= 2880, "owning Pi raw PCM downlink missing");
       results.push({ provider, proof });
     } finally { await page.close(); }
   }
@@ -80,10 +90,26 @@ try {
     while (missingProof.socketCloses !== missingProof.socketOpens && Date.now() < deadline) await Bun.sleep(50);
     assert(missingProof.socketOpens > 0 && missingProof.socketCloses === missingProof.socketOpens,
       "missing credentials kept route socket open");
-    results.push({ missingCredentialsVisible: true, socketCloses: missingProof.socketCloses });
+    assert.equal(missingProof.tracksStopped, missingProof.mediaTracks, "missing credentials left microphone running");
+    results.push({ missingCredentialsVisible: true, socketCloses: missingProof.socketCloses, tracksStopped: missingProof.tracksStopped });
   } finally { await missingPage.close(); }
+  // Real HTTP requests hit the same Effect NodeHttpServer route, not toWebHandler mocks.
+  for (const [path, headers, expected] of [
+    ["?threadId=thread-a", {}, 403],
+    ["?threadId=thread-a", { origin: "https://evil.example" }, 403],
+    ["?threadId=thread-a", { origin: target.origin, "x-die-fixture-unauthorized": "1" }, 401],
+    ["?threadId=thread-a", { origin: target.origin, "x-die-fixture-read-only": "1" }, 401],
+    ["?threadId=../bad", { origin: target.origin }, 400],
+    ["?threadId=stale-thread", { origin: target.origin }, 409],
+  ] as const) {
+    const response = await fetch(target.origin + route + path, { headers });
+    assert.equal(response.status, expected, "network auth/origin/stale owner rejection: " + path);
+    await response.body?.cancel();
+  }
   const evidence = JSON.parse(await Bun.file(evidencePath).text());
   assert.deepEqual(evidence.providers?.sort(), ["gemini", "openai"], "fake IPC peer did not observe both providers");
   assert.equal(evidence.paidCalls, 0, "a paid provider call was made");
+  assert(evidence.uploadBytes > 0, "actual owning Pi FD3 did not receive microphone PCM");
+  assert(evidence.stops >= 6, "owner did not ACK all provider/thread/end teardown events");
   console.log(JSON.stringify({ gate: "canonical-ui-and-route", results, fakeIpc: evidence }, null, 2));
 } finally { await browser.close(); }

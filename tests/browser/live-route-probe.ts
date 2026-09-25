@@ -56,8 +56,8 @@ export async function instrumentVoicePage(page: any, canonicalWsPath: string): P
       ["framesent", "uploadFrames", "uploadPayloadBytes"],
       ["framereceived", "downloadFrames", "downloadPayloadBytes"],
     ] as const) {
-      socket.on(event, (frame: { opcode: number; payload: string | Buffer }) => {
-        if (frame.opcode !== 2) return; // Only binary PCM; exclude JSON controls/framing.
+      socket.on(event, (frame: { payload: string | Buffer }) => {
+        if (typeof frame.payload === "string") return; // Playwright frames omit opcode; text payloads are strings.
         probe[frames]++;
         const wireBytes = Buffer.byteLength(frame.payload);
         // The shipped uplink prefixes each 16kHz PCM frame with a one-byte kind tag.
