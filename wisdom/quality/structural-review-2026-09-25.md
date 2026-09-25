@@ -50,3 +50,17 @@ Parent found two extra T3 incremental patches whose names did not say T3. Their 
 Canonical three input hashes match exactly after moves. Parent `bun run check` passed. All seven architecture/session boundary tests pass; history no longer imports the command controller. A broader focused run is pending in task `task_825a8395`, log `/tmp/die-structure-focused.log`. Final full gate must use fresh upstream checkout via DIE_T3_SOURCE. No new release requested for this post-v0.11.2 structural work.
 
 Values: refined existing value 3 (no new value) to require whole-subsystem/callers/build/tests/research tracing before a structural cleanup. The earlier example-only audit was insufficient. This applies to broad structure work, not as ceremony for every small fix.
+
+Focused combined verification passed: 94 tests across architecture/session, T3 and workflow/runner suites. Full gate first stopped on formatting in two moved acceptance scripts; fixed in `81ac023` without behavior changes. Full gate now task `task_bde5555a`, log `/tmp/die-structure-full-ci.log`, `DIE_T3_SOURCE=/home/tnfssc/Code/die/.cache/die-t3code-structure-fd424a7` (fresh source checkout). Pinned tools: Bun1.4.2, Node24.21.0, pnpm11.27.1.
+
+Independent review of combined `c075261..fd424a7`: task `task_96a0e5f6`, worktree `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_96a0e5f6`, branch `die/review-complete-structural-consolidation-96a0e5f6`. Only the subsequent formatting fix lies outside its source-review baseline. Await review and full gate before declaring done.
+
+Independent review approved with no concrete blocker. Verified canonical patch/pin/bootstrap/shared fixture bytes unchanged; 86 exact-blob archival copies and 11 moved maintained gates/probes account for removed old paths. No stale active imports/build references found; only intentional historical Git lookup remains. Registration code, launcher and shake validation preserved. Discovery/config points to maintained locations; ignored old private runtime path remains ignored. Review did not execute build/live checks; full fresh-source gate remains necessary.
+
+## Final local proof
+
+Full shared gate passed at `81ac023` (task `task_bde5555a`, exit 0) using a newly initialized dedicated upstream checkout `.cache/die-t3code-structure-fd424a7`, not a reused archive. Root: 1062 passed, 17 existing opt-in skips, 0 failed across 143 files. Web: 260 backend + 158 model + 26 contracts + 9 projection passed. Frozen install, format/lint/typecheck, full production build, offline source/compiled transport and standalone smoke passed. Aggregate `/tmp/die-structure-full-ci.log`; per-step `artifacts/ci/`.
+
+Built `dist/die-web/SOURCE.txt` names canonical `integrations/t3/upstream/die.patch`, upstream b488c57f3f9f1688e31c53daee99e29dd1d0baa2 and unchanged patch SHA256 672bf19d14f1ba9fe3d411855b1cb5d4795aaf80c886eb5307feea80935e5902. Full source verifier ran during build. Independent review approved the combined source changes; only two formatting fixes followed. No API/device/live acceptance claimed.
+
+Implementation complete locally; not pushed or released. Next if requested: push develop and verify hosted CI/release dry run before any new release. v0.11.2 tag remains unchanged. Review guidance is now `ARCHITECTURE.md`; contributor checks use the shared CI command. Value 3 refined for whole-subsystem tracing; no new value. Historical/private local state preserved.
