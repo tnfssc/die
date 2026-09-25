@@ -55,7 +55,7 @@ const roots = ports.map((port, index) => Effect.gen(function* () {
   yield* Layer.build(routes.pipe(Layer.provide(NodeHttpServer.layer(() => createServer(), {host:'127.0.0.1',port})), Layer.provide(NodeServices.layer)));
   return yield* Effect.never;
 }).pipe(Effect.scoped, Effect.provide(NodeServices.layer), Effect.runPromise));
-const pending = roots.map(task => task.catch(err => {console.error(err); process.exitCode=1;}));
+const pending = roots.map(task => task.catch((err: unknown) => {console.error(err); process.exitCode=1;}));
 for (let i=0;i<ports.length;i++) {
   const url = 'http://127.0.0.1:'+ports[i]+'/'+(i ? 'missing':'thread-a');
   let ready = false;

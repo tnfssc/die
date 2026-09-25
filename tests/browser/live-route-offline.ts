@@ -102,7 +102,7 @@ try {
     ["?threadId=../bad", { origin: target.origin }, 400],
     ["?threadId=stale-thread", { origin: target.origin }, 409],
   ] as const) {
-    const response = await fetch(target.origin + route + path, { headers });
+    const response: globalThis.Response = await fetch(target.origin + route + path, { headers });
     assert.equal(response.status, expected, "network auth/origin/stale owner rejection: " + path);
     await response.body?.cancel();
   }
