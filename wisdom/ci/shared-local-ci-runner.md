@@ -9,3 +9,5 @@ Local prerequisites for Linux parity: Bash, Bun 1.4.2 (`mise.toml`), Node 24.21.
 Regression proof: `bun test tests/ci-runner.test.ts` covers ordered Linux/macOS lanes, web working directory, deterministic env, first failure exit status and saved log. `bun run format:check`, `bun run lint`, `bun run check`, and `bash -n scripts/ci.sh` passed locally. Full Linux gate and actual macOS execution remain for integrated PR CI; next step run `bun run ci` with prerequisites / inspect its logs, then verify both workflow lanes.
 
 Values unchanged: existing [one thing, one clear owner](../values.md), [say what proof shows](../values.md), and [finish what user needs](../values.md) cover this change; no new general rule needed.
+
+Each run gets its own temporary directory and removes only that directory on exit. Tests cannot consume a prior run’s or real user’s transient snapshot budget. Step logs stay in `artifacts/ci`, outside that directory. Regression checks cover isolation and cleanup after both success and failure.

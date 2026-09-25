@@ -61,12 +61,17 @@ test("reuse requires an executable binary and invalid arguments cannot trigger a
 });
 
 test("CI and release smoke reuse their preceding build", async () => {
-  for (const name of ["ci", "release"]) {
-    const workflow = await Bun.file(join(import.meta.dir, "..", ".github/workflows", name + ".yml")).text();
-    const build = workflow.indexOf("run: bun run build 2>&1");
-    const smoke = workflow.indexOf("run: bun run smoke -- --reuse-build 2>&1");
-    expect(build).toBeGreaterThan(-1);
-    expect(smoke).toBeGreaterThan(build);
-    expect(workflow.slice(smoke, workflow.indexOf("\n", smoke))).toContain(`artifacts/${name}/smoke.log`);
-  }
+  const ci = await Bun.file(join(import.meta.dir, "..", ".github/workflows/ci.yml")).text();
+  expect(ci).toContain("run: bun run ci");
+  const runner = await Bun.file(join(import.meta.dir, "..", "scripts/ci.sh")).text();
+  const build = runner.indexOf("bun run build");
+  expect(build).toBeGreaterThan(-1);
+  expect(runner.indexOf("bun run smoke -- --reuse-build")).toBeGreaterThan(build);
+  expect(runner).toContain("'Standalone smoke test' smoke.log");
+  const release = await Bun.file(join(import.meta.dir, "..", ".github/workflows/release.yml")).text();
+  const releaseBuild = release.indexOf("run: bun run build 2>&1");
+  const smoke = release.indexOf("run: bun run smoke -- --reuse-build 2>&1");
+  expect(releaseBuild).toBeGreaterThan(-1);
+  expect(smoke).toBeGreaterThan(releaseBuild);
+  expect(release.slice(smoke, release.indexOf("\n", smoke))).toContain("artifacts/release/smoke.log");
 });

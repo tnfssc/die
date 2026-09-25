@@ -10,6 +10,11 @@ if [[ "$lane" != linux && "$lane" != macos || $# -gt 1 ]]; then
   exit 2
 fi
 
+# Isolate transient session files from prior runs and real user sessions.
+run_tmp="$(mktemp -d "${TMPDIR:-/tmp}/die-ci.XXXXXX")"
+export TMPDIR="$run_tmp"
+trap 'rm -rf "$run_tmp"' EXIT
+
 mkdir -p artifacts/ci
 log_dir="$root/artifacts/ci"
 run_step() {

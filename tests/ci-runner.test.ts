@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, copyFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, copyFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -14,6 +14,9 @@ function run(lane: "linux" | "macos", fail = "") {
   fixtures.push(root);
   const bin = join(root, "bin");
   const web = join(root, "web-source");
+  const parentTmp = join(root, "temp");
+  mkdirSync(parentTmp);
+  writeFileSync(join(parentTmp, "user-session"), "leave alone");
   mkdirSync(join(root, "scripts"));
   mkdirSync(bin);
   copyFileSync(resolve(import.meta.dir, "../scripts/ci.sh"), join(root, "scripts/ci.sh"));
@@ -24,6 +27,7 @@ function run(lane: "linux" | "macos", fail = "") {
   }
   const stub = `#!/usr/bin/env bash
 printf '%s|%s|%s\n' "$(basename "$0")" "$PWD" "$*" >> "$CALLS"
+printf '%s\n' "$TMPDIR" >> "$TEMP_CALLS"
 if [[ "$(basename "$0")" == bun && "$1" == -e ]]; then echo pinned-revision; exit 0; fi
 if [[ "$*" == "$FAIL" ]]; then echo intentional-failure; exit 37; fi
 if [[ "$*" == "test ./tests" ]]; then echo "llm=$DIE_RUN_LLM_TESTS"; fi
@@ -36,9 +40,22 @@ echo "completed $*"
   const calls = join(root, "calls");
   const result = spawnSync("bash", [join(root, "scripts/ci.sh"), lane], {
     cwd: root,
-    env: { ...process.env, PATH: bin + ":" + process.env.PATH, DIE_T3_SOURCE: web, CALLS: calls, FAIL: fail },
+    env: {
+      ...process.env,
+      PATH: bin + ":" + process.env.PATH,
+      DIE_T3_SOURCE: web,
+      CALLS: calls,
+      FAIL: fail,
+      TMPDIR: parentTmp,
+      TEMP_CALLS: join(root, "temp-calls"),
+    },
     encoding: "utf8",
   });
+  const temps = readFileSync(join(root, "temp-calls"), "utf8").trim().split("\n");
+  expect(new Set(temps).size).toBe(1);
+  expect(temps[0]).toStartWith(parentTmp + "/die-ci.");
+  expect(existsSync(temps[0]!)).toBe(false);
+  expect(readFileSync(join(parentTmp, "user-session"), "utf8")).toBe("leave alone");
   return { root, result, calls: readFileSync(calls, "utf8").trim().split("\n") };
 }
 
