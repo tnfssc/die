@@ -1,9 +1,9 @@
-# T3-v2 production acceptance harnesses
+# Maintained T3 acceptance harnesses
 
-These scripts check the canonical T3 source pinned by `web/t3-source.json` with
-`web/t3.patch`. Retained harnesses default to the revision-keyed checkout:
+These scripts check the canonical T3 source pinned by `integrations/t3/upstream/source.json` with
+`integrations/t3/upstream/die.patch`. Retained harnesses default to the revision-keyed checkout:
 
-`<repository>/.cache/die-t3code-<web/t3-source.json revision>`
+`<repository>/.cache/die-t3code-<integrations/t3/upstream/source.json revision>`
 
 Set `T3_V2_CANDIDATE` only to review an equivalent checkout elsewhere. Harnesses
 never install dependencies. Prepare the pinned checkout and its dependencies first.
@@ -14,7 +14,7 @@ required where noted.
 ## Canonical checkout identity
 
 ```bash
-REVISION=$(bun -e 'console.log((await Bun.file("web/t3-source.json").json()).revision)')
+REVISION=$(bun -e 'console.log((await Bun.file("integrations/t3/upstream/source.json").json()).revision)')
 CHECKOUT="$PWD/.cache/die-t3code-$REVISION"
 HEAD=$(git -C "$CHECKOUT" rev-parse HEAD)
 test "$HEAD" = "$REVISION"
@@ -29,7 +29,7 @@ pipeline's source verifier decides whether it passes.
 the real candidate Effect schemas:
 
 ```bash
-bun scripts/t3-v2-production/contract-conformance.ts
+bun integrations/t3/gates/contract-conformance.ts
 ```
 
 Keep `integrations/t3/fixtures/native-task-contract.json` with this harness and its root
@@ -47,13 +47,13 @@ T3_V2_ACCEPT_CANDIDATE=1 \
 T3_V2_DIE_BINARY="$BIN" \
 T3_V2_EXPECT_CHECKOUT_HEAD="$HEAD" \
 T3_V2_EXPECT_BINARY_SHA256="$SHA" \
-bun scripts/t3-v2-production/browser-acceptance.ts
+bun integrations/t3/gates/browser-acceptance.ts
 
 T3_V2_ACCEPT_CANDIDATE=1 \
 T3_V2_DIE_BINARY="$BIN" \
 T3_V2_EXPECT_CHECKOUT_HEAD="$HEAD" \
 T3_V2_EXPECT_BINARY_SHA256="$SHA" \
-bun scripts/t3-v2-production/native-acceptance.ts
+bun integrations/t3/gates/native-acceptance.ts
 ```
 
 Browser acceptance also needs Chromium and `playwright-core` already
@@ -63,10 +63,10 @@ of each script. Native acceptance needs the candidate's
 
 ## Migration acceptance
 
-The migration harness tests the actual current-production source
+The migration harness tests the historical pre-adoption production source
 `a9b49a7df0a4261dcc438d4493cc3154a1d9819e`, with the pre-adoption canonical
 patch from `c6fe280`, upgrading in place to the preview revision in
-`web/t3-source.json` plus `web/t3.patch`. Each checkout needs its own prepared dependency tree. Its installed lockfile must exactly match
+`integrations/t3/upstream/source.json` plus `integrations/t3/upstream/die.patch`. Each checkout needs its own prepared dependency tree. Its installed lockfile must exactly match
 `pnpm-lock.yaml`. The harness never clones or installs and never writes package
 caches. Override checkout or patch paths with
 `T3_V2_MIGRATION_PRODUCTION`, `T3_V2_MIGRATION_PREVIEW`,
@@ -86,7 +86,7 @@ migration 54. The gate does not claim that a new numbered migration ran.
 TMPDIR=/var/tmp \
 T3_V2_MIGRATION_PRODUCTION=/absolute/path/to/patched-a9b49a7 \
 T3_V2_MIGRATION_PREVIEW=/absolute/path/to/patched-b488c57 \
-bun scripts/t3-v2-production/migration-acceptance.ts
+bun integrations/t3/gates/migration-acceptance.ts
 ```
 
 The two tracked fixture templates are copied temporarily beneath their matching
@@ -109,11 +109,8 @@ These live gates write proof only to their configured artifact paths. Proof file
 logs, screenshots, browser profiles, generated binaries, and private state are review
 evidence, not source inputs.
 
-## PR inclusion boundary
+## Historical research is not a gate
 
-Include the README, retained acceptance scripts, and both migration fixtures together. Do **not** include `artifacts/`.
-
-`build-candidate.ts`, `export-candidate.ts`, and `export-worktree.ts` are
-research/export utilities, not portable acceptance harnesses. Exclude them from the
-recommended PR stage list. They may refer to local review state or generate files.
-Do not delete those local user files merely to prepare the PR.
+Candidate builders/exporters and their inputs are preserved under
+`experiments/t3/production-v2/archive/`. They are historical, not alternate
+ways to build or update the canonical inputs. No archive is run automatically.

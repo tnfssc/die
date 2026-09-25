@@ -90,7 +90,7 @@ jobs:
           bun-version: 1.4.2
       - name: Resolve pinned T3 source checkout
         shell: bash
-        run: echo "DIE_T3_SOURCE=$GITHUB_WORKSPACE/.cache/die-t3code-$(bun -e 'console.log(require("./web/t3-source.json").revision)')" >> "$GITHUB_ENV"
+        run: echo "DIE_T3_SOURCE=$GITHUB_WORKSPACE/.cache/die-t3code-$(bun -e 'console.log(require("./integrations/t3/upstream/source.json").revision)')" >> "$GITHUB_ENV"
       - name: Install required PTY tooling
         shell: bash
         run: sudo apt-get update && sudo apt-get install -y tmux
@@ -193,14 +193,14 @@ jobs:
           sha256sum die-darwin-arm64 > die-darwin-arm64.sha256
           sha256sum die-android-arm64 > die-android-arm64.sha256
           cp ../../LICENSE ../../THIRD_PARTY_NOTICES.md .
-          t3_revision=$(bun -e 'console.log(require("../../web/t3-source.json").revision)')
-          patch_sha256=$(sha256sum ../../web/t3.patch | awk '{print $1}')
+          t3_revision=$(bun -e 'console.log(require("../../integrations/t3/upstream/source.json").revision)')
+          patch_sha256=$(sha256sum ../../integrations/t3/upstream/die.patch | awk '{print $1}')
           source_ref="$GITHUB_REF_NAME"
           # A develop pretag dry run stages exactly the metadata the tag will publish.
           if [[ "$GITHUB_REF" == refs/heads/develop ]]; then
             source_ref="v$(bun -p 'require("../../package.json").version')"
           fi
-          printf 'Source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\nTargets:\n- bun-linux-x64-baseline -> die-linux-x64\n- bun-linux-arm64 -> die-linux-arm64\n- bun-darwin-arm64 -> die-darwin-arm64\n- bun-android-arm64 -> die-android-arm64\n\nEmbedded T3 Code source: https://github.com/pingdotgg/t3code/tree/%s\nRevision: %s\nPatch: web/t3.patch\nPatch-SHA256: %s\n' \
+          printf 'Source: https://github.com/%s/tree/%s\nCommit: %s\nTag: %s\nTargets:\n- bun-linux-x64-baseline -> die-linux-x64\n- bun-linux-arm64 -> die-linux-arm64\n- bun-darwin-arm64 -> die-darwin-arm64\n- bun-android-arm64 -> die-android-arm64\n\nEmbedded T3 Code source: https://github.com/pingdotgg/t3code/tree/%s\nRevision: %s\nPatch: integrations/t3/upstream/die.patch\nPatch-SHA256: %s\n' \
             "$GITHUB_REPOSITORY" "$GITHUB_SHA" "$GITHUB_SHA" "$source_ref" \
             "$t3_revision" "$t3_revision" "$patch_sha256" > SOURCE.txt
           printf '\nEmbedded macOS arm64 native helper (Apple frameworks; experimental voice-only /live):\n' >> SOURCE.txt

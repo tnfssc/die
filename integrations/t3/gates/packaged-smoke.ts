@@ -12,7 +12,7 @@ import { createServer, request as httpRequest } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-const repo = resolve(import.meta.dirname, "../..");
+const repo = resolve(import.meta.dirname, "../../..");
 const source = resolve(process.env.T3_V2_PACKAGED_BINARY ?? join(repo, "dist/die-t3-v2-candidate"));
 const expectedSha = process.env.T3_V2_EXPECT_BINARY_SHA256;
 const buildManifestPath = resolve(process.env.T3_V2_PACKAGED_MANIFEST ?? join(repo, "dist/t3-v2-candidate-build.json"));

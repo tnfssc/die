@@ -64,7 +64,7 @@ test("Linux runs all ordered gates in the pinned web checkout with deterministic
   expect(result.status).toBe(0);
   expect(calls.map((line) => line.split("|")[2].split(" ").slice(0, 3).join(" "))).toEqual([
     "install --frozen-lockfile",
-    '-e console.log(require("./web/t3-source.json").revision)',
+    '-e console.log(require("./integrations/t3/upstream/source.json").revision)',
     "run format:check",
     "run lint",
     "run check",

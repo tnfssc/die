@@ -6,14 +6,10 @@ import { extractWebArchive, packWebArchive } from "../../src/t3/web/archive";
 
 test("all web builders copy the maintained bootstrap to the same packaged filename", async () => {
   const root = resolve(import.meta.dir, "../..");
-  expect(await Bun.file(join(root, "web/die-web-bootstrap.mjs")).exists()).toBe(true);
-  for (const script of [
-    "integrations/t3/build/build-web.ts",
-    "scripts/build.ts",
-    "scripts/t3-v2-production/build-candidate.ts",
-  ]) {
+  expect(await Bun.file(join(root, "integrations/t3/upstream/bootstrap.mjs")).exists()).toBe(true);
+  for (const script of ["integrations/t3/build/build.ts", "scripts/build.ts"]) {
     const contents = await Bun.file(join(root, script)).text();
-    expect(contents).toContain("web/die-web-bootstrap.mjs");
+    expect(contents).toContain("integrations/t3/upstream/bootstrap.mjs");
     expect(contents).toContain("bootstrap.mjs");
     expect(contents).not.toContain("support/die-web-bootstrap.mjs");
   }

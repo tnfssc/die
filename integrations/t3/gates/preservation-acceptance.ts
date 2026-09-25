@@ -8,8 +8,8 @@ import { access, chmod, copyFile, mkdir, mkdtemp, readFile, readdir, rm, symlink
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import sourcePin from "../../web/t3-source.json";
-const ROOT = resolve(import.meta.dirname, "../..");
+import sourcePin from "../upstream/source.json";
+const ROOT = resolve(import.meta.dirname, "../../..");
 const DIE = resolve(process.env.T3_V2_PACKAGED_BINARY || join(ROOT, "dist/die-t3-v2-candidate"));
 const EXPECT = process.env.T3_V2_EXPECT_BINARY_SHA256 || "";
 const CANDIDATE = resolve(process.env.T3_V2_CANDIDATE || join(ROOT, ".cache/die-t3code-" + sourcePin.revision));

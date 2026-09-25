@@ -4,13 +4,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { copyFile, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import sourcePin from "../../web/t3-source.json";
-import { verifyWebSource } from "../web-source";
+import sourcePin from "../upstream/source.json";
+import { verifyWebSource } from "../build/verify-source";
 
 const PRODUCTION_REVISION = "a9b49a7df0a4261dcc438d4493cc3154a1d9819e";
 const PRODUCTION_PATCH_COMMIT = "c6fe280";
 const PRODUCTION_PATCH_SHA256 = "4d73cc3cdc4ad8962358d61bd31d178d3e47b346819bb2562d0b0d590c85ec02";
-const ROOT = resolve(import.meta.dir, "../..");
+const ROOT = resolve(import.meta.dir, "../../..");
 const PRODUCTION = resolve(
   process.env.T3_V2_MIGRATION_PRODUCTION ?? resolve(ROOT, `.cache/die-t3code-${PRODUCTION_REVISION}`),
 );
@@ -19,7 +19,7 @@ const PREVIEW = resolve(
     process.env.T3_V2_CANDIDATE ??
     resolve(ROOT, `.cache/die-t3code-${sourcePin.revision}`),
 );
-const PREVIEW_PATCH = resolve(process.env.T3_V2_MIGRATION_PREVIEW_PATCH ?? resolve(ROOT, "web/t3.patch"));
+const PREVIEW_PATCH = resolve(process.env.T3_V2_MIGRATION_PREVIEW_PATCH ?? resolve(ROOT, "integrations/t3/upstream/die.patch"));
 const TMP_ROOT = tmpdir();
 
 function git(directory: string, args: string[], encoding: BufferEncoding | null = "utf8"): string | Buffer {
@@ -81,7 +81,7 @@ try {
   }
   if (sha256(await Bun.file(productionPatch).bytes()) !== PRODUCTION_PATCH_SHA256)
     throw new Error("current-production canonical patch hash mismatch");
-  const previewManifest = (await Bun.file(resolve(ROOT, "web/t3-source.json")).json()) as {
+  const previewManifest = (await Bun.file(resolve(ROOT, "integrations/t3/upstream/source.json")).json()) as {
     revision: string;
   };
   if (previewManifest.revision !== sourcePin.revision) throw new Error("preview source manifest import mismatch");

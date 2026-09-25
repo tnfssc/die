@@ -11,9 +11,9 @@ import { createHash } from "node:crypto";
 import { access, lstat, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
-import sourcePin from "../../web/t3-source.json";
+import sourcePin from "../upstream/source.json";
 
-const ROOT = resolve(import.meta.dir, "../..");
+const ROOT = resolve(import.meta.dir, "../../..");
 const CANDIDATE = resolve(process.env.T3_V2_CANDIDATE ?? join(ROOT, ".cache/die-t3code-" + sourcePin.revision));
 const TEST_REL = "apps/server/src/orchestration-v2/NativeDieIntegration.production.test.ts";
 const TEST = join(CANDIDATE, TEST_REL);
@@ -21,7 +21,7 @@ const VP = join(CANDIDATE, "node_modules/.bin/vp");
 const requestedDie = process.env.T3_V2_DIE_BINARY ?? "";
 const keep = process.env.T3_V2_KEEP_TEMP === "1";
 const artifacts = resolve(
-  process.env.T3_V2_NATIVE_ARTIFACTS ?? join(ROOT, "scripts/t3-v2-production/artifacts/native"),
+  process.env.T3_V2_NATIVE_ARTIFACTS ?? join(ROOT, "artifacts/t3/native"),
 );
 
 function check(value: unknown, message: string): asserts value {

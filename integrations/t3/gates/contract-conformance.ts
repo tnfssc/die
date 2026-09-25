@@ -4,17 +4,17 @@ import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { z } from "zod";
-import fixture from "../../integrations/t3/fixtures/native-task-contract.json";
-import sourcePin from "../../web/t3-source.json";
+import fixture from "../fixtures/native-task-contract.json";
+import sourcePin from "../upstream/source.json";
 import {
   T3TaskIdInputSchema,
   T3TaskLaunchInputSchema,
   T3TaskListInputSchema,
   T3TaskListResultSchema,
   T3TaskResultSchema,
-} from "../../src/t3/tasks/native-task";
+} from "../../../src/t3/tasks/native-task";
 
-const root = resolve(import.meta.dir, "../..");
+const root = resolve(import.meta.dir, "../../..");
 const candidate = resolve(process.env.T3_V2_CANDIDATE ?? resolve(root, ".cache/die-t3code-" + sourcePin.revision));
 const requireCandidate = createRequire(candidate + "/packages/contracts/package.json");
 const Schema = await import(pathToFileURL(requireCandidate.resolve("effect/Schema")).href);

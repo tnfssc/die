@@ -25,11 +25,11 @@ import {
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import sourcePin from "../../web/t3-source.json";
+import sourcePin from "../upstream/source.json";
 
 type OwnedProcess = { pid: number; startTime: string };
 
-const ROOT = resolve(import.meta.dirname, "../..");
+const ROOT = resolve(import.meta.dirname, "../../..");
 const CANDIDATE = resolve(process.env.T3_V2_CANDIDATE ?? join(ROOT, ".cache/die-t3code-" + sourcePin.revision));
 const DIE = resolve(process.env.T3_V2_DIE_BINARY ?? "");
 const EXPECT_HEAD = process.env.T3_V2_EXPECT_CHECKOUT_HEAD ?? "";

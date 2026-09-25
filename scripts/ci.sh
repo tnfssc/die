@@ -35,7 +35,7 @@ if [[ "$lane" == macos ]]; then
 fi
 
 # Keep this in sync with the pinned revision used by build-web.ts.
-source_pin="$(bun -e 'console.log(require("./web/t3-source.json").revision)')"
+source_pin="$(bun -e 'console.log(require("./integrations/t3/upstream/source.json").revision)')"
 web_source="${DIE_T3_SOURCE:-$root/.cache/die-t3code-$source_pin}"
 
 run_step 'Format check' format.log "$root" bun run format:check

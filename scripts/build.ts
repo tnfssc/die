@@ -2,7 +2,7 @@ import { nativeHelperPlugin } from "./live-helper-bundle";
 import { access, cp } from "node:fs/promises";
 import { resolve } from "node:path";
 import { packWebArchive } from "../src/t3/web/archive";
-import { buildWeb } from "./build-web";
+import { buildWeb } from "../integrations/t3/build/build";
 
 const root = resolve(import.meta.dir, "..");
 let reuseWeb = false;
@@ -27,7 +27,7 @@ const archive = resolve(root, "dist/die-web.archive.gz");
 
 if (reuseWeb) {
   await access(webDirectory);
-  await cp(resolve(root, "web/die-web-bootstrap.mjs"), resolve(webDirectory, "bootstrap.mjs"));
+  await cp(resolve(root, "integrations/t3/upstream/bootstrap.mjs"), resolve(webDirectory, "bootstrap.mjs"));
   const hash = await packWebArchive(webDirectory, archive, { exclude: ["launcher.mjs", "t3"] });
   console.log("Packed existing web runtime (sha256 " + hash + ")");
 } else await buildWeb();

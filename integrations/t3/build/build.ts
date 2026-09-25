@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { access, cp, mkdir, readdir, readFile, rm, symlink } from "node:fs/promises";
 import { resolve } from "node:path";
-import { packWebArchive } from "../src/t3/web/archive";
-import sourcePin from "../web/t3-source.json";
-import { verifyWebSource } from "./web-source";
+import { packWebArchive } from "../../../src/t3/web/archive";
+import sourcePin from "../upstream/source.json";
+import { verifyWebSource } from "./verify-source";
 
 async function verifyPortableOptionalDependencies(output: string): Promise<void> {
   const pnpmStore = resolve(output, "node_modules/.pnpm");
@@ -36,11 +36,11 @@ async function verifyPortableOptionalDependencies(output: string): Promise<void>
   }
 }
 
-const root = resolve(import.meta.dir, "..");
+const root = resolve(import.meta.dir, "../../..");
 export async function buildWeb(): Promise<void> {
   const source = resolve(process.env.DIE_T3_SOURCE ?? root + "/.cache/die-t3code-" + sourcePin.revision);
   const output = resolve(root, "dist/die-web");
-  const patch = resolve(root, "web/t3.patch");
+  const patch = resolve(root, "integrations/t3/upstream/die.patch");
   async function run(args: string[], cwd = source): Promise<void> {
     const child = Bun.spawn(args, { cwd, stdin: "inherit", stdout: "inherit", stderr: "inherit" });
     const code = await child.exited;
@@ -58,7 +58,7 @@ export async function buildWeb(): Promise<void> {
     await run(["git", "checkout", "--detach", "FETCH_HEAD"]);
   }
   if (git(["rev-parse", "HEAD"]) !== sourcePin.revision) {
-    throw new Error("T3 checkout does not match web/t3-source.json; use a fresh checkout.");
+    throw new Error("T3 checkout does not match integrations/t3/upstream/source.json; use a fresh checkout.");
   }
   try {
     git(["apply", "--reverse", "--check", patch]);
@@ -81,14 +81,14 @@ export async function buildWeb(): Promise<void> {
   await symlink("../../..", selfReference);
   await verifyPortableOptionalDependencies(output);
   await cp(source + "/LICENSE", output + "/LICENSE-T3CODE");
-  await cp(root + "/web/die-web-bootstrap.mjs", output + "/bootstrap.mjs");
+  await cp(root + "/integrations/t3/upstream/bootstrap.mjs", output + "/bootstrap.mjs");
   const patchHash = new Bun.CryptoHasher("sha256").update(await Bun.file(patch).bytes()).digest("hex");
   await Bun.write(
     output + "/SOURCE.txt",
     [
       "T3 source: " + sourcePin.repository,
       "Revision: " + sourcePin.revision,
-      "Die patch: web/t3.patch",
+      "Die patch: integrations/t3/upstream/die.patch",
       "Patch-SHA256: " + patchHash,
       "Bun runtime: " + Bun.version,
       "Native assets: " + process.platform + "-" + process.arch,

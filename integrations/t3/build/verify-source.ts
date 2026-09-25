@@ -23,7 +23,7 @@ export async function verifyWebSource(source: string, patch: string): Promise<vo
     try {
       git(["diff", "--no-ext-diff", "--exit-code"]);
     } catch {
-      throw new Error("T3 checkout differs from HEAD + web/t3.patch; use a fresh checkout.");
+      throw new Error("T3 checkout differs from HEAD + integrations/t3/upstream/die.patch; use a fresh checkout.");
     }
     if (git(["ls-files", "--others", "--exclude-standard", "-z"]).length > 0) {
       throw new Error("T3 checkout contains untracked source; use a fresh checkout.");
