@@ -20,12 +20,19 @@ export function webGeminiAdapter(
   const shutdown = async () => {
     const pending = [...sockets];
     for (const socket of pending) socket.terminate();
-    await Promise.all(pending.map((socket) => socket.readyState === WebSocket.CLOSED
-      ? Promise.resolve()
-      : new Promise<void>((resolve, reject) => {
-          const timer = setTimeout(() => reject(new Error("Gemini socket shutdown timed out")), 3000);
-          socket.once("close", () => { clearTimeout(timer); resolve(); });
-        })));
+    await Promise.all(
+      pending.map((socket) =>
+        socket.readyState === WebSocket.CLOSED
+          ? Promise.resolve()
+          : new Promise<void>((resolve, reject) => {
+              const timer = setTimeout(() => reject(new Error("Gemini socket shutdown timed out")), 3000);
+              socket.once("close", () => {
+                clearTimeout(timer);
+                resolve();
+              });
+            }),
+      ),
+    );
   };
   const adapter: LiveAdapter = (apiKey) =>
     ({

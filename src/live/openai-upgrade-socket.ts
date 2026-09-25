@@ -97,7 +97,9 @@ export function upgradeSocket(url: string, headers: Record<string, string>): Rea
             reject(new Error("OpenAI socket shutdown not observed"));
           }, 1000);
         }, 1500);
-        try { close(); } catch {
+        try {
+          close();
+        } catch {
           ws.terminate();
         }
       });

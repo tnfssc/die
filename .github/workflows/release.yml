@@ -171,13 +171,14 @@ jobs:
         run: |
           cd "$DIE_T3_SOURCE/apps/server"
           ../../node_modules/.bin/tsc --noEmit 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-typecheck.log"
-          ../../node_modules/.bin/vp test run src/provider/Layers/PiProvider.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts src/terminal/NodePtyAdapter.test.ts src/terminal/BunPtyAdapter.test.ts src/device/AgentDeviceTarget.test.ts src/provider/Layers/EventNdjsonLogger.test.ts src/terminal/SubscriberStream.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-tests.log"
+          ../../node_modules/.bin/vp test run src/provider/Layers/PiProvider.test.ts src/auth/EnvironmentAuth.test.ts src/serverRuntimeStartup.test.ts src/terminal/NodePtyAdapter.test.ts src/terminal/BunPtyAdapter.test.ts src/device/AgentDeviceTarget.test.ts src/provider/Layers/EventNdjsonLogger.test.ts src/terminal/SubscriberStream.test.ts src/voice/VoiceRoute.test.ts src/voice/PiVoiceChannels.fd.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-tests.log"
       - name: Validate web cache regressions
         shell: bash
         run: |
           cd "$DIE_T3_SOURCE/apps/web"
           ../../node_modules/.bin/tsc --noEmit 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-client-typecheck.log"
           ../../node_modules/.bin/vp test run src/lib/syntaxHighlighting.test.ts src/components/pullRequest/pullRequestDetail.logic.test.ts src/components/chat/nativeUsageCost.logic.test.ts 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-cache-tests.log"
+          ../../node_modules/.bin/vp test run --project unit src/live/controller.test.ts src/components/VoiceControls.test.tsx 2>&1 | tee "$GITHUB_WORKSPACE/artifacts/release/web-voice-tests.log"
       - name: Validate terminal client recovery
         shell: bash
         run: |

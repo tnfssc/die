@@ -1,6 +1,11 @@
 import { VoiceSession } from "./session";
 import { webGeminiAdapter } from "./web-gemini-adapter";
-import { OpenAIRealtimeSession, defaultSocket, type RealtimeSocket, type RealtimeSocketFactory } from "./openai-session";
+import {
+  OpenAIRealtimeSession,
+  defaultSocket,
+  type RealtimeSocket,
+  type RealtimeSocketFactory,
+} from "./openai-session";
 import { OPENAI_REALTIME_MODELS, VOICE_MODEL } from "./providers";
 import type { WebRelayProviderFactory } from "./web-relay";
 
@@ -14,7 +19,12 @@ export function createWebProviderFactory(
     return (callbacks, orchestration) => {
       const adapter = webGeminiAdapter();
       const session = new VoiceSession(callbacks, adapter, orchestration, model);
-      return Object.assign(session, { shutdown: async () => { session.close(); await adapter.shutdown(); } });
+      return Object.assign(session, {
+        shutdown: async () => {
+          session.close();
+          await adapter.shutdown();
+        },
+      });
     };
   }
   if (provider !== "openai" || !(OPENAI_REALTIME_MODELS as readonly string[]).includes(model))
@@ -52,8 +62,14 @@ export function createWebProviderFactory(
         if (current.readyState === 3) return;
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => reject(new Error("OpenAI socket shutdown not observed")), 2500);
-          current.addEventListener("close", () => { clearTimeout(timer); resolve(); });
-          if (current.readyState === 3) { clearTimeout(timer); resolve(); }
+          current.addEventListener("close", () => {
+            clearTimeout(timer);
+            resolve();
+          });
+          if (current.readyState === 3) {
+            clearTimeout(timer);
+            resolve();
+          }
         });
       },
     });

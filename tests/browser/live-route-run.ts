@@ -30,6 +30,7 @@ const boot = new Promise<{ url: string; missingUrl: string; evidencePath: string
   });
 });
 let timer: ReturnType<typeof setTimeout> | undefined;
+let failure: unknown;
 try {
   const fixture = await Promise.race([
     boot,
@@ -52,6 +53,8 @@ try {
   });
   const exit = await new Promise<number>((done) => gate.on("exit", (code, signal) => done(code ?? (signal ? 1 : 0))));
   if (exit) process.exitCode = exit;
+} catch (error) {
+  failure = error;
 } finally {
   if (timer) clearTimeout(timer);
   if (child.exitCode === null) {
@@ -60,6 +63,11 @@ try {
     const killTimer = setTimeout(() => child.kill("SIGKILL"), 5000);
     await exited;
     clearTimeout(killTimer);
-    if (child.exitCode !== 0) throw new Error("Fixture teardown failed: " + (child.signalCode ?? child.exitCode));
+    if (child.exitCode !== 0) {
+      const cleanupError = new Error("Fixture teardown failed: " + (child.signalCode ?? child.exitCode));
+      failure = failure ? new AggregateError([failure, cleanupError], "Browser gate and cleanup failed") : cleanupError;
+    }
   }
 }
+
+if (failure) throw failure;

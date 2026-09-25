@@ -62,26 +62,45 @@ export function browserMediaSource(): MediaSource {
       const stop = async () => {
         if (!stopped) {
           stopped = true;
-          listener = undefined; errorListener = undefined;
+          listener = undefined;
+          errorListener = undefined;
           if (node) node.port.onmessage = null;
           node?.port.close();
           // A disconnected/closed graph cannot keep capture alive. Always stop tracks
           // even when one track or a graph disconnect throws.
-          for (const disconnect of [() => source?.disconnect(), () => node?.disconnect(), () => silence?.disconnect()]) {
-            try { disconnect(); } catch { /* context.close below releases the graph */ }
+          for (const disconnect of [
+            () => source?.disconnect(),
+            () => node?.disconnect(),
+            () => silence?.disconnect(),
+          ]) {
+            try {
+              disconnect();
+            } catch {
+              /* context.close below releases the graph */
+            }
           }
           failedTracks = stream.getTracks();
         }
         const tracks = failedTracks;
         failedTracks = [];
         for (const track of tracks) {
-          try { track.stop(); } catch { failedTracks.push(track); }
+          try {
+            track.stop();
+          } catch {
+            failedTracks.push(track);
+          }
         }
         if (context && !closeStarted) {
           closeStarted = true;
           try {
-            closed = context.close().catch((error) => { closeStarted = false; throw error; });
-          } catch (error) { closeStarted = false; throw error; }
+            closed = context.close().catch((error) => {
+              closeStarted = false;
+              throw error;
+            });
+          } catch (error) {
+            closeStarted = false;
+            throw error;
+          }
         }
         await closed;
         if (failedTracks.length) throw new Error("microphone track stop failed");
@@ -103,7 +122,11 @@ export function browserMediaSource(): MediaSource {
         node.port.onmessage = (event: MessageEvent<Uint8Array | { type: string }>) => {
           if (stopped) return;
           if (event.data instanceof Uint8Array && event.data.byteLength === 640) {
-            try { listener?.(event.data.slice()); } finally { node?.port.postMessage("ack"); }
+            try {
+              listener?.(event.data.slice());
+            } finally {
+              node?.port.postMessage("ack");
+            }
           } else if (!(event.data instanceof Uint8Array) && event.data?.type === "overflow") {
             captureError = new Error("capture worklet queue overflow");
             errorListener?.(captureError);
@@ -124,7 +147,9 @@ export function browserMediaSource(): MediaSource {
           onError(cb: (error: Error) => void) {
             errorListener = cb;
             if (captureError) cb(captureError);
-            return () => { if (errorListener === cb) errorListener = undefined; };
+            return () => {
+              if (errorListener === cb) errorListener = undefined;
+            };
           },
           stop,
           // Exposed for adapter-only verification; controller awaits stop().
@@ -185,7 +210,10 @@ export function browserAudioOutput(): AudioOutput & { readonly closed: Promise<v
     },
     clear,
     async stop() {
-      if (!stopped) { stopped = true; clear(); }
+      if (!stopped) {
+        stopped = true;
+        clear();
+      }
       if (context.state !== "closed") closed = context.close();
       await closed;
     },
@@ -217,7 +245,10 @@ export function browserTransportFactory(path: string): TransportFactory {
         let earlyBytes = 0;
         const early: TransportMessage[] = [];
         const deliver = (message: TransportMessage) => {
-          if (callback) { callback(message); return; }
+          if (callback) {
+            callback(message);
+            return;
+          }
           if (subscribed) return; // Listener removed during teardown; never accumulate.
           const bytes = message.type === "audio" ? message.pcm16.byteLength : 1024;
           if (early.length >= 16 || earlyBytes + bytes > 32768) {
@@ -226,7 +257,8 @@ export function browserTransportFactory(path: string): TransportFactory {
             void close().catch(() => {});
             return;
           }
-          early.push(message); earlyBytes += bytes;
+          early.push(message);
+          earlyBytes += bytes;
         };
         const close = (): Promise<void> => {
           if (closing) return closing;
@@ -234,19 +266,29 @@ export function browserTransportFactory(path: string): TransportFactory {
           signal.removeEventListener("abort", abort);
           socket.onmessage = socket.onerror = socket.onopen = null;
           closing = new Promise<void>((resolve, reject) => {
-            if (socket.readyState === WebSocket.CLOSED) { resolve(); return; }
+            if (socket.readyState === WebSocket.CLOSED) {
+              resolve();
+              return;
+            }
             const timer = setTimeout(() => reject(new Error("Voice socket close timed out")), 3000);
-            socket.onclose = () => { clearTimeout(timer); resolve(); };
-            try { socket.close(); } catch (error) { clearTimeout(timer); reject(error); }
+            socket.onclose = () => {
+              clearTimeout(timer);
+              resolve();
+            };
+            try {
+              socket.close();
+            } catch (error) {
+              clearTimeout(timer);
+              reject(error);
+            }
           });
-          void closing.catch(() => { closing = undefined; });
+          void closing.catch(() => {
+            closing = undefined;
+          });
           return closing;
         };
         const abort = () => {
-          void close().then(
-            () => reject(new DOMException("Aborted", "AbortError")),
-            reject,
-          );
+          void close().then(() => reject(new DOMException("Aborted", "AbortError")), reject);
         };
         signal.addEventListener("abort", abort, { once: true });
         if (signal.aborted) {
@@ -278,8 +320,12 @@ export function browserTransportFactory(path: string): TransportFactory {
             onMessage(cb) {
               callback = cb;
               subscribed = true;
-              const queued = early.splice(0); earlyBytes = 0;
-              for (const message of queued) { if (callback !== cb) break; cb(message); }
+              const queued = early.splice(0);
+              earlyBytes = 0;
+              for (const message of queued) {
+                if (callback !== cb) break;
+                cb(message);
+              }
               return () => {
                 if (callback === cb) callback = undefined;
               };

@@ -136,12 +136,22 @@ export function createWebLiveRelay(options: {
           if (current?.shutdown) {
             if (!shutdown) {
               shutdownComplete = false;
-              shutdown = current.shutdown().then(() => { shutdownComplete = true; provider = undefined; }, () => { cleanupFailed = true; shutdown = undefined; });
+              shutdown = current.shutdown().then(
+                () => {
+                  shutdownComplete = true;
+                  provider = undefined;
+                },
+                () => {
+                  cleanupFailed = true;
+                  shutdown = undefined;
+                },
+              );
             }
           } else current?.close();
         },
         () => {
-          if (!(provider as (VoiceProvider & { shutdown?: () => Promise<void> }) | undefined)?.shutdown) provider = undefined;
+          if (!(provider as (VoiceProvider & { shutdown?: () => Promise<void> }) | undefined)?.shutdown)
+            provider = undefined;
         },
       ],
       [
@@ -356,7 +366,10 @@ export function createWebLiveRelay(options: {
     async shutdown() {
       finish();
       await shutdown;
-      if (!shutdownComplete) { releaseAll(); await shutdown; }
+      if (!shutdownComplete) {
+        releaseAll();
+        await shutdown;
+      }
       if (cleanupFailed && shutdownComplete) releaseAll();
       return { stopped: ended && !cleanupFailed && shutdownComplete };
     },

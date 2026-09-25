@@ -212,7 +212,9 @@ test("socket sends copied binary, decodes relay controls, bounds backlog, aborts
   await transport.close();
   expect(socket.closed).toBe(true);
   const overflowing = browserTransportFactory("/voice").connect(new AbortController().signal);
-  const crowded = Socket.instances[2]; crowded.readyState = 1; crowded.onopen();
+  const crowded = Socket.instances[2];
+  crowded.readyState = 1;
+  crowded.onopen();
   for (let i = 0; i < 4; i++) crowded.onmessage?.({ data: new Uint8Array(9600).buffer });
   const bounded = await overflowing;
   const overflowMessages: any[] = [];
@@ -241,8 +243,8 @@ test("worklet resamples one hardware second to exactly 16k PCM samples at common
       Uint8Array,
       Number,
       Math,
-      registerProcessor(_name: string, constructor: typeof Processor) {
-        Processor = constructor;
+      registerProcessor(_name: string, processorClass: typeof Processor) {
+        Processor = processorClass;
       },
     });
     const processor = new Processor();
@@ -256,14 +258,25 @@ test("worklet resamples one hardware second to exactly 16k PCM samples at common
   }
 });
 
-
 test("worklet bounds transfers without acknowledgements and signals overflow", () => {
   const messages: (Uint8Array | { type: string })[] = [];
   let Processor!: new () => { process(inputs: Float32Array[][]): boolean };
-  class Base { port = { postMessage(value: Uint8Array | { type: string }) { messages.push(value); } }; }
+  class Base {
+    port = {
+      postMessage(value: Uint8Array | { type: string }) {
+        messages.push(value);
+      },
+    };
+  }
   vm.runInNewContext(CAPTURE_PROCESSOR, {
-    AudioWorkletProcessor: Base, sampleRate: 16000, Uint8Array, Number, Math,
-    registerProcessor(_name: string, constructor: typeof Processor) { Processor = constructor; },
+    AudioWorkletProcessor: Base,
+    sampleRate: 16000,
+    Uint8Array,
+    Number,
+    Math,
+    registerProcessor(_name: string, processorClass: typeof Processor) {
+      Processor = processorClass;
+    },
   });
   const processor = new Processor();
   for (let i = 0; i < 16000; i += 128) processor.process([[new Float32Array(128)]]);

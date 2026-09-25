@@ -122,11 +122,18 @@ const roots = ports
         "/fixture.js",
         Effect.succeed(Response.text(bundle, { headers: { "content-type": "application/javascript" } })),
       ).pipe(Layer.merge(Router.add("GET", "/:threadId", Effect.succeed(Response.html(html)))));
-      const detachRoute = Router.add("POST", "/fixture/detach", Effect.sync(() => { detached = true; return Response.empty(); }));
-      const observedRoute = Route.voiceRouteLayer;
-      const routes = Router.serve(Layer.merge(observedRoute, Layer.merge(staticRoutes, detachRoute)), { disableLogger: true }).pipe(
-        Layer.provide(Layer.merge(authLayer, threadLayer)),
+      const detachRoute = Router.add(
+        "POST",
+        "/fixture/detach",
+        Effect.sync(() => {
+          detached = true;
+          return Response.empty();
+        }),
       );
+      const observedRoute = Route.voiceRouteLayer;
+      const routes = Router.serve(Layer.merge(observedRoute, Layer.merge(staticRoutes, detachRoute)), {
+        disableLogger: true,
+      }).pipe(Layer.provide(Layer.merge(authLayer, threadLayer)));
       yield* Layer.build(
         routes.pipe(
           Layer.provide(NodeHttpServer.layer(() => createServer(), { host: "127.0.0.1", port })),

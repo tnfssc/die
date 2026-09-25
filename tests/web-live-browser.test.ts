@@ -305,7 +305,6 @@ test("late socket close failure is visible and blocks a new capture", async () =
   expect(r.calls.closes).toBe(1);
 });
 
-
 test("synchronous end from requesting-mic clears pending without acquiring", async () => {
   const r = rig();
   let once = true;
@@ -368,7 +367,8 @@ test("late release failure after dispose remains retryable", async () => {
 for (const registration of ["transport", "capture"] as const) {
   test(`synchronous end during ${registration} registration retains failed unsubscribe`, async () => {
     const r = rig();
-    let fails = true, unsubscribed = 0;
+    let fails = true,
+      unsubscribed = 0;
     if (registration === "transport") {
       r.transport.onMessage = () => {
         r.controller.end();
@@ -400,7 +400,6 @@ for (const registration of ["transport", "capture"] as const) {
   });
 }
 
-
 test("synchronous dispose from requesting-mic does not acquire or leave pending", async () => {
   const r = rig();
   let disposing: Promise<void> | undefined;
@@ -415,7 +414,8 @@ test("synchronous dispose from requesting-mic does not acquire or leave pending"
 
 test("dispose during registration retains a late failed unsubscribe for end retry", async () => {
   const r = rig();
-  let fails = true, releases = 0;
+  let fails = true,
+    releases = 0;
   r.transport.onMessage = () => {
     r.controller.dispose();
     return () => {
@@ -436,10 +436,11 @@ test("dispose during registration retains a late failed unsubscribe for end retr
   expect(r.controller.start()).rejects.toThrow("disposed");
 });
 
-
 test("end waits for asynchronous capture, audio and socket teardown", async () => {
   const r = rig();
-  const capture = deferred<void>(), audio = deferred<void>(), socket = deferred<void>();
+  const capture = deferred<void>(),
+    audio = deferred<void>(),
+    socket = deferred<void>();
   r.capture.stop = () => capture.promise;
   r.transport.close = () => socket.promise;
   // A separate controller verifies all three asynchronous resources, including output.
@@ -450,7 +451,9 @@ test("end waits for asynchronous capture, audio and socket teardown", async () =
   );
   await c.start();
   let settled = false;
-  const ending = c.end().then(() => { settled = true; });
+  const ending = c.end().then(() => {
+    settled = true;
+  });
   await r.tick();
   expect(settled).toBe(false);
   capture.resolve();
@@ -467,7 +470,12 @@ test("end waits for asynchronous capture, audio and socket teardown", async () =
 test("capture overflow during connecting fails visibly and releases capture", async () => {
   const r = rig();
   let error: ((e: Error) => void) | undefined;
-  r.capture.onError = (cb) => { error = cb; return () => { error = undefined; }; };
+  r.capture.onError = (cb) => {
+    error = cb;
+    return () => {
+      error = undefined;
+    };
+  };
   const pending = r.controller.start();
   r.mic.resolve(r.capture);
   await r.tick();
@@ -478,7 +486,6 @@ test("capture overflow during connecting fails visibly and releases capture", as
   expect(r.calls.tracks).toBe(1);
   expect(r.calls.closes).toBe(1);
 });
-
 
 test("immediate start/end and dispose prevent acquisition before startup resumes", async () => {
   for (const stop of ["end", "dispose"] as const) {
@@ -497,7 +504,9 @@ test("end/dispose during deferred failed-release retry cannot start a new mic", 
   for (const stop of ["end", "dispose"] as const) {
     const r = rig();
     await r.connect();
-    r.capture.stop = () => { throw new Error("track busy"); };
+    r.capture.stop = () => {
+      throw new Error("track busy");
+    };
     await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
     const retry = deferred<void>();
     r.capture.stop = () => retry.promise;
@@ -523,7 +532,9 @@ test("concurrent end/dispose callers wait for the same asynchronous teardown", a
   expect(second).toBe(first);
   expect(disposed).toBe(first);
   let done = false;
-  void Promise.all([first, second, disposed]).then(() => { done = true; });
+  void Promise.all([first, second, disposed]).then(() => {
+    done = true;
+  });
   await r.tick();
   expect(done).toBe(false);
   gate.resolve();
@@ -574,13 +585,14 @@ test("late asynchronous stop failure rejects awaited end, then retries", async (
   expect(r.calls.tracks).toBe(1);
 });
 
-
 test("duplicate start preserves pending acquisition for awaited end", async () => {
   const r = rig();
   const starting = r.controller.start();
   await expect(r.controller.start()).rejects.toThrow("previous resources not released");
   let ended = false;
-  const ending = r.controller.end().then(() => { ended = true; });
+  const ending = r.controller.end().then(() => {
+    ended = true;
+  });
   await r.tick();
   expect(ended).toBe(false);
   r.mic.resolve(r.capture);
@@ -592,7 +604,9 @@ test("duplicate start preserves pending acquisition for awaited end", async () =
 test("start cannot overlap an end retry after failed cleanup", async () => {
   const r = rig();
   await r.connect();
-  r.capture.stop = () => { throw new Error("busy"); };
+  r.capture.stop = () => {
+    throw new Error("busy");
+  };
   await expect(r.controller.end()).rejects.toThrow("resource cleanup failed");
   const released = deferred<void>();
   r.capture.stop = () => released.promise;

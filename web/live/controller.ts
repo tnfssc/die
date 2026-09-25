@@ -87,7 +87,11 @@ export class BrowserLiveController {
       return Promise.reject(new Error("previous resources not released"));
     const task = this.startInternal();
     this.pending = task;
-    void task.finally(() => { if (this.pending === task) this.pending = undefined; }).catch(() => {});
+    void task
+      .finally(() => {
+        if (this.pending === task) this.pending = undefined;
+      })
+      .catch(() => {});
     return task;
   }
   private async startInternal(): Promise<void> {
@@ -111,7 +115,9 @@ export class BrowserLiveController {
         return;
       }
       this.capture = capture;
-      this.offCaptureError = capture.onError?.((error) => { if (this.active(id)) this.fail(error); });
+      this.offCaptureError = capture.onError?.((error) => {
+        if (this.active(id)) this.fail(error);
+      });
       if (!this.active(id)) return;
       this.output = this.audio();
       if (!this.active(id)) return;
@@ -220,17 +226,23 @@ export class BrowserLiveController {
     const reason = error instanceof Error ? error.message : String(error);
     ++this.generation;
     this.setState("error", reason);
-    void this.cleanup().then((clean) => {
-      if (!clean && this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
-    }).catch(() => {
-      if (this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
-    });
+    void this.cleanup()
+      .then((clean) => {
+        if (!clean && this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
+      })
+      .catch(() => {
+        if (this.value.phase === "error") this.setState("error", reason + "; resource cleanup failed");
+      });
   }
   private cleanup(): Promise<boolean> {
     if (this.cleanupTask) return this.cleanupTask;
     const task = this.cleanupInternal();
     this.cleanupTask = task;
-    void task.finally(() => { if (this.cleanupTask === task) this.cleanupTask = undefined; }).catch(() => {});
+    void task
+      .finally(() => {
+        if (this.cleanupTask === task) this.cleanupTask = undefined;
+      })
+      .catch(() => {});
     return task;
   }
   private async cleanupInternal(): Promise<boolean> {
@@ -238,10 +250,16 @@ export class BrowserLiveController {
     this.deadline = undefined;
     this.abort?.abort();
     this.abort = undefined;
-    const capture = this.capture, output = this.output, transport = this.transport;
+    const capture = this.capture,
+      output = this.output,
+      transport = this.transport;
     const releases: Array<(() => Promise<void> | void) | undefined> = [
-      this.offCapture, this.offCaptureError, this.offTransport,
-      capture && (() => capture.stop()), output && (() => output.stop()), transport && (() => transport.close()),
+      this.offCapture,
+      this.offCaptureError,
+      this.offTransport,
+      capture && (() => capture.stop()),
+      output && (() => output.stop()),
+      transport && (() => transport.close()),
     ];
     this.offCapture = this.offCaptureError = this.offTransport = undefined;
     this.capture = undefined;
@@ -255,14 +273,21 @@ export class BrowserLiveController {
     if (this.endTask) return this.endTask;
     const task = this.endInternal();
     this.endTask = task;
-    void task.then(() => { if (this.endTask === task) this.endTask = undefined; }, () => {
-      if (this.endTask === task) this.endTask = undefined;
-    });
+    void task.then(
+      () => {
+        if (this.endTask === task) this.endTask = undefined;
+      },
+      () => {
+        if (this.endTask === task) this.endTask = undefined;
+      },
+    );
     return task;
   }
   private async endInternal(): Promise<void> {
     ++this.generation;
-    try { this.transport?.sendControl({ type: "end" }); } catch {}
+    try {
+      this.transport?.sendControl({ type: "end" });
+    } catch {}
     const cleanup = this.cleanup();
     // An uncancellable getUserMedia may resolve after end; do not claim release before
     // its late capture has actually been stopped.
