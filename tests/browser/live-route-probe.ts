@@ -59,7 +59,13 @@ export async function instrumentVoicePage(page: any, canonicalWsPath: string): P
       socket.on(event, (frame: { opcode: number; payload: string | Buffer }) => {
         if (frame.opcode !== 2) return; // Only binary PCM; exclude JSON controls/framing.
         probe[frames]++;
-        probe[bytes] += Buffer.byteLength(frame.payload);
+        const wireBytes = Buffer.byteLength(frame.payload);
+        // The shipped uplink prefixes each 16kHz PCM frame with a one-byte kind tag.
+        // Report PCM payload, not the wire header. Downlink is raw 24kHz PCM.
+        if (event === "framesent") {
+          assert(wireBytes > 1 && Buffer.from(frame.payload).at(0) === 1, "invalid canonical PCM uplink tag");
+          probe[bytes] += wireBytes - 1;
+        } else probe[bytes] += wireBytes;
       });
     }
   });

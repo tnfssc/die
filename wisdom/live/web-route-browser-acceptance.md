@@ -11,3 +11,7 @@ The canonical route, controls, provider fake dependency seam and FD3/FD4 upstrea
 `DIE_CHROMIUM=/home/tnfssc/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome DIE_PLAYWRIGHT_CORE=/home/tnfssc/Code/manuscript-review/node_modules/playwright-core DIE_LIVE_BROWSER_URL=http://127.0.0.1:<port>/<active-thread> DIE_LIVE_BROWSER_MISSING_URL=http://127.0.0.1:<no-key-port>/<active-thread> DIE_LIVE_BROWSER_WS_PATH=/api/voice/ws DIE_LIVE_BROWSER_FAKE_IPC_EVIDENCE=/tmp/<fixture-evidence>.json bun run test:browser:live-route`
 
 The fixture must run the **canonical patched server and UI** with an already created thread, fake root private FD channel that counts provider starts and reports `{ "providers": ["gemini", "openai"], "paidCalls": 0 }`, plus an isolated missing-credentials instance. The browser test refuses any substitute WS route. Until that setup exists, a syntax/typecheck pass is **not** browser acceptance.
+
+**Bootstrap scope caveat:** The current offline bootstrap mounts the actual production `VoiceControls` inside fixture HTML, bundled from pinned web source, and serves the actual `VoiceRoute` through Effect HTTP; it does not serve the complete packaged T3 web app. Do not describe a passing gate as full packaged-web-app acceptance.
+
+Payload accounting: browser WebSocket `framesent` binary has 1-byte protocol kind prefix per frame; the probe subtracts it to report only PCM input bytes. Downstream binary is raw PCM16. Captured actual bytes will be added after a passing fake-root browser run; no animation/CPU measurement is implied.
