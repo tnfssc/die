@@ -1,12 +1,13 @@
 import { test, expect } from "bun:test";
-import { mkdir, rm, readdir, readFile } from "node:fs/promises";
-import { SNAPSHOT_DIR, SessionHost, type SessionAuthority } from "../src/session/host";
+import { SessionHost, type SessionAuthority } from "../src/session/host";
 
 function fixture() {
   const sent: string[] = [];
   const stopped: string[] = [];
   let confirm!: (value: boolean) => void;
-  const confirmation = new Promise<boolean>((resolve) => { confirm = resolve; });
+  const confirmation = new Promise<boolean>((resolve) => {
+    confirm = resolve;
+  });
   let events!: (event: any) => void;
   const manager = {
     getSessionId: () => "same-session",
@@ -19,14 +20,29 @@ function fixture() {
     tasks: {
       list: async () => ({ jobs: [] }),
       inspect: async (id) => ({ id }),
-      stop: async (id) => { stopped.push(id); return { id }; },
+      stop: async (id) => {
+        stopped.push(id);
+        return { id };
+      },
       localJobs: () => [],
-      subscribe: (fn) => { events = fn; return () => {}; },
+      subscribe: (fn) => {
+        events = fn;
+        return () => {};
+      },
     },
-    sendUserMessage: (message) => { sent.push(message); },
+    sendUserMessage: (message) => {
+      sent.push(message);
+    },
     confirmStop: () => confirmation,
   } satisfies SessionAuthority);
-  return { host, manager, sent, stopped, confirm, emit: () => events({ type: "spawned", task: { id: "job", status: "running" } }) };
+  return {
+    host,
+    manager,
+    sent,
+    stopped,
+    confirm,
+    emit: () => events({ type: "spawned", task: { id: "job", status: "running" } }),
+  };
 }
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -74,46 +90,28 @@ test("revocation after stop confirmation prevents cancellation", async () => {
   f.host.close();
 });
 
-test("revocation during transcript snapshot prevents send and steer", async () => {
+test("revocation during asynchronous transcript preparation prevents send and steer", async () => {
   const f = fixture();
-  let entries = Array.from({ length: 150 }, (_, i) => ({
-    type: "custom", customType: "die:voice-transcript", data: { speaker: "You", text: String(i).padEnd(300, "x"), status: "final" },
-  }));
-  // Use the actual entry name from the host's transcript contract.
-  const { VOICE_ENTRY } = await import("../src/session/transcript");
-  for (const entry of entries) entry.customType = VOICE_ENTRY;
-  // Shared snapshot storage may be full; reuse existing content without deleting it.
-  for (const name of await readdir(SNAPSHOT_DIR).catch(() => [] as string[])) {
-    if (!/^[a-f0-9]{64}\.json$/.test(name)) continue;
-    try {
-      const saved = JSON.parse(await readFile(SNAPSHOT_DIR + "/" + name, "utf8"));
-      if (saved.source === "received live transcription (not agent dialogue or verified heard audio)" &&
-          saved.entries?.length && JSON.stringify(saved.entries).length > 24000 && !saved.unreadableEntries) {
-        entries = saved.entries.map((data: any) => ({ type: "custom", customType: VOICE_ENTRY, data }));
-        break;
-      }
-    } catch { /* Ignore unrelated/corrupt snapshots. */ }
+  let release!: (value: { text: string }) => void;
+  const prepared = new Promise<{ text: string }>((resolve) => {
+    release = resolve;
+  });
+  // Isolate the asynchronous preparation seam; never read or lock a user's snapshot store.
+  (f.host as any).transcriptContext = () => prepared;
+  const lease = f.host.lease();
+  const send = lease.send("one", "work");
+  const steer = lease.steer("two", "steer");
+  const outcomes = Promise.all([send.catch((error) => error), steer.catch((error) => error)]);
+  await tick();
+  lease.revoke();
+  release({ text: "{}" });
+  for (const error of await outcomes) {
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("revoked");
   }
-  f.manager.getBranch = () => entries;
-  // Hold snapshot creation at its filesystem lock until the lease is revoked.
-  await mkdir(SNAPSHOT_DIR, { recursive: true, mode: 0o700 });
-  const lock = SNAPSHOT_DIR + "/.lock";
-  await mkdir(lock);
-  try {
-    const lease = f.host.lease();
-    const send = lease.send("one", "work");
-    const steer = lease.steer("two", "steer");
-    await new Promise((resolve) => setTimeout(resolve, 15));
-    lease.revoke();
-    await rm(lock, { recursive: true });
-    await expect(send).rejects.toThrow("revoked");
-    await expect(steer).rejects.toThrow("revoked");
-    expect(f.sent).toEqual([]);
-    expect(f.host.context().requestCount).toBe(2);
-  } finally {
-    await rm(lock, { recursive: true, force: true });
-    f.host.close();
-  }
+  expect(f.sent).toEqual([]);
+  expect(f.host.context().requestCount).toBe(2);
+  f.host.close();
 });
 
 test("lease retries dedupe locally but never reset the host request budget", async () => {
@@ -131,5 +129,15 @@ test("lease retries dedupe locally but never reset the host request budget", asy
   next.revoke();
   await expect(f.host.lease().send("more", "work")).rejects.toThrow("capacity");
   expect(f.sent).toHaveLength(256);
+  f.host.close();
+});
+
+test("lease preserves the 128-character request identity contract", async () => {
+  const f = fixture();
+  const lease = f.host.lease();
+  await lease.send("r".repeat(128), "work");
+  await lease.send("r".repeat(128), "work");
+  expect(f.sent).toHaveLength(1);
+  await expect(lease.send("r".repeat(129), "work")).rejects.toThrow("Invalid request ID");
   f.host.close();
 });

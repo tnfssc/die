@@ -40,7 +40,10 @@ export function browserMediaSource(): MediaSource {
     async acquire16k(signal: AbortSignal): Promise<Capture> {
       if (signal.aborted) throw new DOMException("Aborted", "AbortError");
       // getUserMedia cannot be cancelled: release a late stream immediately.
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true }, video: false });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true },
+        video: false,
+      });
       let context: AudioContext | undefined;
       let source: MediaStreamAudioSourceNode | undefined;
       let node: AudioWorkletNode | undefined;
@@ -54,30 +57,50 @@ export function browserMediaSource(): MediaSource {
         listener = undefined;
         if (node) node.port.onmessage = null;
         node?.port.close();
-        source?.disconnect(); node?.disconnect(); silence?.disconnect();
+        source?.disconnect();
+        node?.disconnect();
+        silence?.disconnect();
         for (const track of stream.getTracks()) track.stop();
-        if (context) { closed = context.close(); void closed.catch(() => {}); }
+        if (context) {
+          closed = context.close();
+          void closed.catch(() => {});
+        }
       };
       try {
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
         context = new AudioContext();
         const url = URL.createObjectURL(new Blob([CAPTURE_PROCESSOR], { type: "text/javascript" }));
-        try { await context.audioWorklet.addModule(url); } finally { URL.revokeObjectURL(url); }
+        try {
+          await context.audioWorklet.addModule(url);
+        } finally {
+          URL.revokeObjectURL(url);
+        }
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
         source = context.createMediaStreamSource(stream);
         node = new AudioWorkletNode(context, "die-pcm-capture");
-        silence = context.createGain(); silence.gain.value = 0;
+        silence = context.createGain();
+        silence.gain.value = 0;
         node.port.onmessage = (event: MessageEvent<Uint8Array>) => {
-          if (!stopped && event.data instanceof Uint8Array && event.data.byteLength === 640) listener?.(event.data.slice());
+          if (!stopped && event.data instanceof Uint8Array && event.data.byteLength === 640)
+            listener?.(event.data.slice());
         };
-        source.connect(node); node.connect(silence); silence.connect(context.destination);
+        source.connect(node);
+        node.connect(silence);
+        silence.connect(context.destination);
         await context.resume();
         if (signal.aborted) throw new DOMException("Aborted", "AbortError");
         return {
-          onPcm16(cb) { listener = cb; return () => { if (listener === cb) listener = undefined; }; },
+          onPcm16(cb) {
+            listener = cb;
+            return () => {
+              if (listener === cb) listener = undefined;
+            };
+          },
           stop,
           // The controller currently cannot await stop(); callers needing verified release can await this.
-          get closed() { return closed; },
+          get closed() {
+            return closed;
+          },
         } as Capture & { readonly closed: Promise<void> };
       } catch (error) {
         stop();
@@ -96,35 +119,59 @@ export function browserAudioOutput(): AudioOutput & { readonly closed: Promise<v
   let stopped = false;
   let closed: Promise<void> = Promise.resolve();
   const clear = () => {
-    for (const source of playing) { source.onended = null; try { source.stop(); } catch {} source.disconnect(); }
-    playing.clear(); endTime = context.currentTime;
+    for (const source of playing) {
+      source.onended = null;
+      try {
+        source.stop();
+      } catch {}
+      source.disconnect();
+    }
+    playing.clear();
+    endTime = context.currentTime;
   };
   return {
-    get queuedBytes() { return stopped ? 0 : Math.max(0, Math.ceil((endTime - context.currentTime) * 48000)); },
+    get queuedBytes() {
+      return stopped ? 0 : Math.max(0, Math.ceil((endTime - context.currentTime) * 48000));
+    },
     enqueue24k(frame) {
       if (stopped) throw new Error("audio output stopped");
       if (!frame.byteLength || frame.byteLength % 2 || frame.byteLength > 9600) throw new Error("Invalid output frame");
-      if (Math.max(0, endTime - context.currentTime) * 48000 + frame.byteLength > 12000) throw new Error("output buffer full");
+      if (Math.max(0, endTime - context.currentTime) * 48000 + frame.byteLength > 12000)
+        throw new Error("output buffer full");
       const buffer = context.createBuffer(1, frame.byteLength / 2, 24000);
       const samples = buffer.getChannelData(0);
       const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
       for (let i = 0; i < samples.length; i++) samples[i] = view.getInt16(i * 2, true) / 32768;
       const source = context.createBufferSource();
-      source.buffer = buffer; source.connect(context.destination);
-      source.onended = () => { playing.delete(source); source.disconnect(); };
+      source.buffer = buffer;
+      source.connect(context.destination);
+      source.onended = () => {
+        playing.delete(source);
+        source.disconnect();
+      };
       const start = Math.max(context.currentTime, endTime);
-      source.start(start); playing.add(source);
+      source.start(start);
+      playing.add(source);
       endTime = start + buffer.duration;
     },
     clear,
-    stop() { if (stopped) return; stopped = true; clear(); closed = context.close(); void closed.catch(() => {}); },
-    get closed() { return closed; },
+    stop() {
+      if (stopped) return;
+      stopped = true;
+      clear();
+      closed = context.close();
+      void closed.catch(() => {});
+    },
+    get closed() {
+      return closed;
+    },
   };
 }
 
 /** Dedicated same-origin relay endpoint; no credentials/provider keys in socket messages. */
 export function browserTransportFactory(path: string): TransportFactory {
-  if (!path.startsWith("/") || path.startsWith("//") || path.includes("#")) throw new Error("Expected same-origin relay path");
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("#"))
+    throw new Error("Expected same-origin relay path");
   return {
     connect(signal): Promise<Transport> {
       if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
@@ -143,30 +190,70 @@ export function browserTransportFactory(path: string): TransportFactory {
           socket.onmessage = socket.onclose = socket.onerror = socket.onopen = null;
           socket.close();
         };
-        const abort = () => { close(); reject(new DOMException("Aborted", "AbortError")); };
+        const abort = () => {
+          close();
+          reject(new DOMException("Aborted", "AbortError"));
+        };
         signal.addEventListener("abort", abort, { once: true });
-        if (signal.aborted) { abort(); return; }
-        socket.onerror = () => { if (!active) return; if (!opened) { close(); reject(new Error("Voice socket failed")); } else callback?.({ type: "error", reason: "Voice socket failed" }); };
-        socket.onclose = () => { if (!active) return; if (!opened) { close(); reject(new Error("Voice socket closed")); } else { callback?.({ type: "closed" }); close(); } };
+        if (signal.aborted) {
+          abort();
+          return;
+        }
+        socket.onerror = () => {
+          if (!active) return;
+          if (!opened) {
+            close();
+            reject(new Error("Voice socket failed"));
+          } else callback?.({ type: "error", reason: "Voice socket failed" });
+        };
+        socket.onclose = () => {
+          if (!active) return;
+          if (!opened) {
+            close();
+            reject(new Error("Voice socket closed"));
+          } else {
+            callback?.({ type: "closed" });
+            close();
+          }
+        };
         socket.onopen = () => {
           if (!active) return;
           opened = true;
           resolve({
-            get queuedBytes() { return socket.bufferedAmount; },
-            onMessage(cb) { callback = cb; return () => { if (callback === cb) callback = undefined; }; },
+            get queuedBytes() {
+              return socket.bufferedAmount;
+            },
+            onMessage(cb) {
+              callback = cb;
+              return () => {
+                if (callback === cb) callback = undefined;
+              };
+            },
             send16k(frame) {
               if (!active || socket.readyState !== WebSocket.OPEN) throw new Error("Voice socket closed");
-              if (!frame.byteLength || frame.byteLength > 3200 || frame.byteLength % 2 || socket.bufferedAmount + frame.byteLength > 6400) throw new Error("Input buffer full");
+              if (
+                !frame.byteLength ||
+                frame.byteLength > 3200 ||
+                frame.byteLength % 2 ||
+                socket.bufferedAmount + frame.byteLength > 6400
+              )
+                throw new Error("Input buffer full");
               socket.send(frame.slice());
             },
-            sendControl(control) { if (!active || socket.readyState !== WebSocket.OPEN) throw new Error("Voice socket closed"); socket.send(JSON.stringify(control)); },
+            sendControl(control) {
+              if (!active || socket.readyState !== WebSocket.OPEN) throw new Error("Voice socket closed");
+              socket.send(JSON.stringify(control));
+            },
             close,
           });
         };
         socket.onmessage = (event) => {
           if (!active) return;
-          try { callback?.(decodeRelayMessage(event.data)); }
-          catch { callback?.({ type: "error", reason: "Invalid voice message" }); }
+          try {
+            callback?.(decodeRelayMessage(event.data));
+          } catch {
+            callback?.({ type: "error", reason: "Invalid voice message" });
+          }
         };
       });
     },

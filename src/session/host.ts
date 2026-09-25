@@ -269,7 +269,10 @@ export class SessionHost implements SessionOperations {
     return { text: JSON.stringify(context) };
   }
   private queue(
-    requestId: string, text: string, deliverAs: "steer" | "followUp", check: () => void = () => {},
+    requestId: string,
+    text: string,
+    deliverAs: "steer" | "followUp",
+    check: () => void = () => {},
   ): Promise<{ queued: true }> {
     if (!text.trim() || text.length > MAX_TEXT) throw new Error("Invalid host message text");
     return this.once(requestId, deliverAs, text, async () => {
@@ -348,7 +351,12 @@ export class SessionHost implements SessionOperations {
     this.assertActive();
     return this.host.tasks.inspect(id, offset, this.host.context, signal);
   }
-  stop(requestId: string, id: string, signal: AbortSignal = new AbortController().signal, check: () => void = () => {}): Promise<unknown> {
+  stop(
+    requestId: string,
+    id: string,
+    signal: AbortSignal = new AbortController().signal,
+    check: () => void = () => {},
+  ): Promise<unknown> {
     return this.once(requestId, "stop", id, async () => {
       check();
       if (!(await this.host.confirmStop(id))) throw new Error("User did not confirm cancellation");
@@ -472,9 +480,9 @@ export class SessionHost implements SessionOperations {
     };
     const requestId = (id: string) => {
       check();
-      if (typeof id !== "string" || !id || id.length > 128 - prefix.length || !/^[A-Za-z0-9._:-]+$/.test(id))
+      if (typeof id !== "string" || !id || id.length > 128 || !/^[A-Za-z0-9._:-]+$/.test(id))
         throw new Error("Invalid request ID");
-      return prefix + id;
+      return prefix + createHash("sha256").update(id).digest("hex");
     };
     return {
       send: async (id, text) => this.queue(requestId(id), text, "followUp", check),

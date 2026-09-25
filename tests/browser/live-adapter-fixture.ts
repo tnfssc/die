@@ -11,7 +11,13 @@ button.addEventListener("click", async () => {
     const devices = navigator.mediaDevices;
     const nativeGetUserMedia = devices.getUserMedia.bind(devices);
     let activeStream: MediaStream | undefined;
-    Object.defineProperty(devices, "getUserMedia", { configurable: true, value: async (constraints: MediaStreamConstraints) => { activeStream = await nativeGetUserMedia(constraints); return activeStream; } });
+    Object.defineProperty(devices, "getUserMedia", {
+      configurable: true,
+      value: async (constraints: MediaStreamConstraints) => {
+        activeStream = await nativeGetUserMedia(constraints);
+        return activeStream;
+      },
+    });
     capture = await browserMediaSource().acquire16k(new AbortController().signal);
     const probe = new AudioContext();
     state.contextSampleRate = probe.sampleRate;
@@ -41,11 +47,13 @@ button.addEventListener("click", async () => {
         state.queueAfterClear = out.queuedBytes;
       }
     });
-    await new Promise(resolve => setTimeout(resolve, 650));
+    await new Promise((resolve) => setTimeout(resolve, 650));
     // Permission resolving AFTER abort releases even a real fake-device stream.
     const original = nativeGetUserMedia;
     let release!: (stream: MediaStream) => void;
-    const delayed = new Promise<MediaStream>(resolve => { release = resolve; });
+    const delayed = new Promise<MediaStream>((resolve) => {
+      release = resolve;
+    });
     Object.defineProperty(devices, "getUserMedia", { configurable: true, value: () => delayed });
     try {
       const lateAbort = new AbortController();
@@ -53,25 +61,39 @@ button.addEventListener("click", async () => {
       lateAbort.abort();
       const lateStream = await original({ audio: true });
       release(lateStream);
-      try { await pending; throw new Error("late permission unexpectedly succeeded"); }
-      catch (error) { if ((error as Error).name !== "AbortError") throw error; }
-      state.lateTracksEnded = lateStream.getTracks().every(t => t.readyState === "ended");
-    } finally { Object.defineProperty(devices, "getUserMedia", { configurable: true, value: original }); }
+      try {
+        await pending;
+        throw new Error("late permission unexpectedly succeeded");
+      } catch (error) {
+        if ((error as Error).name !== "AbortError") throw error;
+      }
+      state.lateTracksEnded = lateStream.getTracks().every((t) => t.readyState === "ended");
+    } finally {
+      Object.defineProperty(devices, "getUserMedia", { configurable: true, value: original });
+    }
     const pendingAbort = new AbortController();
     const pendingSocket = browserTransportFactory("/pending").connect(pendingAbort.signal);
     pendingAbort.abort();
-    try { await pendingSocket; throw new Error("aborted socket unexpectedly opened"); }
-    catch (error) { if ((error as Error).name !== "AbortError") throw error; }
+    try {
+      await pendingSocket;
+      throw new Error("aborted socket unexpectedly opened");
+    } catch (error) {
+      if ((error as Error).name !== "AbortError") throw error;
+    }
     state.pendingSocketAborted = true;
     transport.close();
-    capture.stop(); output.stop();
-    state.captureTracksEnded = activeStream?.getTracks().every(t => t.readyState === "ended");
+    capture.stop();
+    output.stop();
+    state.captureTracksEnded = activeStream?.getTracks().every((t) => t.readyState === "ended");
     await Promise.all([capture.closed, output.closed]);
     state.captureClosed = true;
     state.outputClosed = true;
     state.phase = "done";
   } catch (error) {
-    state.phase = "error"; state.error = String(error);
-    transport?.close(); capture?.stop(); output?.stop();
+    state.phase = "error";
+    state.error = String(error);
+    transport?.close();
+    capture?.stop();
+    output?.stop();
   }
 });
