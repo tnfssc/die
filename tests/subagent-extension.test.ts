@@ -1,4 +1,4 @@
-import { getLiveHost } from "../src/live/host-access";
+import { getSessionHost } from "../src/session/host-access";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -669,7 +669,7 @@ test("GPT-Live delegation cannot bypass the current agent jobs.stop confirmation
   };
   try {
     await e.fire("session_start", {}, ctx);
-    const host = getLiveHost({ events: e.events } as any, ctx)!;
+    const host = getSessionHost({ events: e.events } as any, ctx)!;
     expect(host).toBeDefined();
     await host.delegate("d", '{"fragments":[{"text":"cancel maybe"}]}');
     await e.tools.get("execute").execute("bind", { code: "" }, undefined, undefined, ctx);

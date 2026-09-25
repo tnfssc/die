@@ -4,7 +4,7 @@ import liveExtension from "../src/live/extension";
 import { VoiceSession } from "../src/live/session";
 import type { LiveParams, LiveConnection, VoiceOrchestration } from "../src/live/types";
 import tasksExtension from "../src/tasks/extension";
-import { getLiveHost } from "../src/live/host-access";
+import { getSessionHost } from "../src/session/host-access";
 
 test("tasks extension exposes its real shared JobService/TaskManager and retains bridge until shutdown", async () => {
   const handlers = new Map<string, Function[]>();
@@ -62,12 +62,12 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   const fire = async (name: string, event: unknown = {}) => {
     for (const fn of handlers.get(name) ?? []) await fn(event, ctx);
   };
-  expect(getLiveHost(voicePi, ctx)).toBeUndefined();
+  expect(getSessionHost(voicePi, ctx)).toBeUndefined();
   await fire("session_start");
-  expect(getLiveHost(voicePi, { ...ctx, sessionManager: { ...sessionManager } })).toBeUndefined();
-  const host = getLiveHost(voicePi, ctx)!;
+  expect(getSessionHost(voicePi, { ...ctx, sessionManager: { ...sessionManager } })).toBeUndefined();
+  const host = getSessionHost(voicePi, ctx)!;
   expect(host).toBeDefined();
-  expect(getLiveHost(voicePi, ctx)).toBe(host);
+  expect(getSessionHost(voicePi, ctx)).toBe(host);
   expect(((await host.list()) as { jobs: unknown[] }).jobs).toEqual([]);
   await host.send("request-1", "please work");
   await host.send("request-1", "please work");
@@ -174,12 +174,12 @@ test("tasks extension exposes its real shared JobService/TaskManager and retains
   await new Promise((resolve) => setTimeout(resolve, 120));
   expect(JSON.stringify(contexts)).toContain("Actual configured-agent reply");
   await voiceCommand("stop", ctx);
-  expect(getLiveHost(voicePi, ctx)).toBe(host);
+  expect(getSessionHost(voicePi, ctx)).toBe(host);
   await voiceCommand("start", ctx);
   await expect(tools!.execute({ name: "agent_steer", args: { requestId: "request-2" } })).rejects.toThrow("transcript");
   expect(sent).toHaveLength(2);
   await voiceCommand("stop", ctx);
   await fire("session_shutdown");
-  expect(getLiveHost(voicePi, ctx)).toBeUndefined();
+  expect(getSessionHost(voicePi, ctx)).toBeUndefined();
   expect(() => host.context()).toThrow("scope changed");
 });

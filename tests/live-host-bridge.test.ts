@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { TaskManager } from "../src/tasks/task-manager";
 import { JobService } from "../src/tasks/job-service";
-import { LiveHostBridge, SNAPSHOT_DIR, SNAPSHOT_TTL_MS, SNAPSHOT_MAX_BYTES } from "../src/live/host-bridge";
+import { SessionHost, SNAPSHOT_DIR, SNAPSHOT_TTL_MS, SNAPSHOT_MAX_BYTES } from "../src/session/host";
 import { mkdir, readdir, rm, stat, utimes } from "node:fs/promises";
 import { join } from "node:path";
-import type { HostAuthority } from "../src/live/host-bridge";
+import type { SessionAuthority, SessionTaskPort } from "../src/session/host";
 
 function fixture(failSend = false, ephemeral = false) {
   let session = "s1";
@@ -62,17 +62,23 @@ function fixture(failSend = false, ephemeral = false) {
     },
   };
   const host = {
-    manager,
+    tasks: {
+      list: (params: any, ctx: any, signal: AbortSignal) => service.handle("jobs.list", params),
+      inspect: (id: string, offset: number | undefined, ctx: any, signal: AbortSignal) =>
+        service.handle("jobs.inspect", { id, offset, limit: 3000 }),
+      stop: (id: string, ctx: any, signal: AbortSignal) => service.handle("jobs.stop", { id }),
+      localJobs: () => manager.list(),
+      subscribe: manager.subscribe,
+    },
     context,
-    service,
     sendUserMessage: (...args: unknown[]) => {
       messages.push(args);
       if (failSend) throw new Error("delivery failed");
     },
     confirmStop: async () => confirm,
-  } as unknown as HostAuthority;
+  } as unknown as SessionAuthority;
   return {
-    bridge: new LiveHostBridge(host),
+    bridge: new SessionHost(host),
     native: (status: string) => {
       native = { id: "native-scoped", status };
     },
@@ -98,6 +104,56 @@ function fixture(failSend = false, ephemeral = false) {
     },
   };
 }
+test("session host routes task operations through the supplied port, with confirmation and scope guards", async () => {
+  let session = "owned";
+  let confirmed = false;
+  const calls: string[] = [];
+  const context = {
+    sessionManager: {
+      getSessionId: () => session,
+      getSessionFile: () => "/tmp/owned",
+      getLeafId: () => "leaf",
+      getBranch: () => [],
+    },
+  };
+  const host = new SessionHost({
+    context,
+    tasks: {
+      list: async (params, ctx, signal) => {
+        expect(ctx as object).toBe(context);
+        calls.push("list:" + params.count);
+        return { jobs: [] };
+      },
+      inspect: async (id, offset, ctx, signal) => {
+        expect(ctx as object).toBe(context);
+        calls.push("inspect:" + id + ":" + offset);
+        return { id };
+      },
+      stop: async (id, ctx, signal) => {
+        expect(ctx as object).toBe(context);
+        calls.push("stop:" + id);
+        return { id };
+      },
+      localJobs: () => [{ id: "owned-task", status: "running", kind: "command" }],
+      subscribe: () => () => {},
+    } satisfies SessionTaskPort,
+    sendUserMessage: () => {},
+    confirmStop: async () => confirmed,
+  } as unknown as SessionAuthority);
+  expect(await host.list({ count: 3 })).toEqual({ jobs: [] });
+  expect(await host.inspect("owned-task", 12)).toEqual({ id: "owned-task" });
+  expect(host.context().jobs).toEqual([{ id: "owned-task", status: "running", kind: "command" }]);
+  await expect(host.stop("denied", "owned-task")).rejects.toThrow("confirm");
+  expect(calls).toEqual(["list:3", "inspect:owned-task:12"]);
+  confirmed = true;
+  expect(await host.stop("allowed", "owned-task")).toEqual({ id: "owned-task" });
+  session = "elsewhere";
+  expect(() => host.stop("new", "owned-task")).toThrow("scope changed");
+  expect(() => host.context()).toThrow("scope changed");
+  expect(calls).toEqual(["list:3", "inspect:owned-task:12", "stop:owned-task"]);
+  host.close();
+});
+
 describe("Live host authority", () => {
   test("steers configured agent exactly once across voice reconnect and rejects changed replay", async () => {
     const f = fixture();
@@ -375,13 +431,20 @@ test("actual TaskManager + JobService dispatch stays within owner", async () => 
   const context = {
     sessionManager: { getSessionId: () => "one", getSessionFile: () => "/tmp/one", getBranch: () => [] },
   };
-  const bridge = new LiveHostBridge({
-    manager,
-    service: new JobService(manager, () => ({ depth: 0 })),
+  const service = new JobService(manager, () => ({ depth: 0 }));
+  const bridge = new SessionHost({
+    tasks: {
+      list: (params: any, ctx: any, signal: AbortSignal) => service.handle("jobs.list", params, ctx, signal),
+      inspect: (id: string, offset: number | undefined, ctx: any, signal: AbortSignal) =>
+        service.handle("jobs.inspect", { id, offset, limit: 3000 }, ctx, signal),
+      stop: (id: string, ctx: any, signal: AbortSignal) => service.handle("jobs.stop", { id }, ctx, signal),
+      localJobs: () => manager.list(),
+      subscribe: (listener: any) => manager.subscribe(listener),
+    },
     context,
     sendUserMessage: () => {},
     confirmStop: async () => false,
-  } as unknown as HostAuthority);
+  } as unknown as SessionAuthority);
   expect(((await bridge.list()) as { jobs: { id: string }[] }).jobs[0]?.id).toBe(task.id);
   const inspected = (await bridge.inspect(task.id)) as { id: string };
   expect(inspected.id).toBe(task.id);

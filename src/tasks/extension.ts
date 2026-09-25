@@ -1,6 +1,6 @@
 import { requestForegroundStop } from "./foreground-stop";
-import { LiveHostBridge } from "../live/host-bridge";
-import { registerLiveHost } from "../live/host-access";
+import { SessionHost, type SessionTaskPort } from "../session/host";
+import { registerSessionHost } from "../session/host-access";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { attachDiagnosticSink, diagnosticRecorder, recordDiagnostic } from "../diagnostics";
 import { registerOperationDiagnostics } from "../diagnostics-extension";
@@ -464,18 +464,32 @@ export default function asynchronousTasksExtension(
       );
     return service;
   };
-  let liveHost: LiveHostBridge | undefined;
-  registerLiveHost(pi, (ctx) => {
+  let sessionHost: SessionHost | undefined;
+  registerSessionHost(pi, (ctx) => {
     if (ctx.sessionManager !== owningContext?.sessionManager) return undefined;
-    if (!liveHost)
-      liveHost = new LiveHostBridge({
-        service: getService(ctx),
-        manager: getManager(ctx),
+    if (!sessionHost)
+      sessionHost = new SessionHost({
+        tasks: {
+          list: (params, context, signal) => getService(context).handle("jobs.list", params, context, signal),
+          inspect: (id, offset, context, signal) =>
+            getService(context).handle(
+              "jobs.inspect",
+              { id, ...(offset === undefined ? {} : { offset }), limit: 3000 },
+              context,
+              signal,
+            ),
+          stop: (id, context, signal) => getService(context).handle("jobs.stop", { id }, context, signal),
+          localJobs: () =>
+            getManager(ctx)
+              .list()
+              .map(({ id, status, kind }) => ({ id, status, kind })),
+          subscribe: (listener) => getManager(ctx).subscribe((event) => listener(event)),
+        } satisfies SessionTaskPort,
         context: ctx,
         sendUserMessage: (text, options) => pi.sendUserMessage(text, options),
         confirmStop: (id) => ctx.ui.confirm("Stop job?", `Cancel job ${id}?`),
       });
-    return liveHost;
+    return sessionHost;
   });
   pi.on("message_end", (event) => {
     if (event.message.role !== "assistant") return;
@@ -484,10 +498,10 @@ export default function asynchronousTasksExtension(
       .map((part) => part.text)
       .join(" ")
       .slice(0, 2000);
-    if (text) liveHost?.observe({ type: "assistant", text });
+    if (text) sessionHost?.observe({ type: "assistant", text });
   });
   pi.on("turn_end", () => {
-    liveHost?.observe({ type: "turn_end" });
+    sessionHost?.observe({ type: "turn_end" });
   });
   projectWisdom = registerProjectWisdom(pi, {
     isRoot: () => subagentDepth === 0,
@@ -497,8 +511,8 @@ export default function asynchronousTasksExtension(
     async (ctx, method, params, signal) => {
       if (method.startsWith("history.")) return history.handle(method, params, ctx);
       if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
-      if ((method === "jobs.stop" || method === "jobs.stopWork") && liveHost)
-        await liveHost.confirmDelegatedAgentStop(
+      if ((method === "jobs.stop" || method === "jobs.stopWork") && sessionHost)
+        await sessionHost.confirmDelegatedAgentStop(
           method === "jobs.stopWork"
             ? "current-session work"
             : params && typeof params === "object"
@@ -520,9 +534,9 @@ export default function asynchronousTasksExtension(
         },
         signal,
         (observed) =>
-          liveHost?.observe({ type: "stopping", text: "Foreground stop observation: " + JSON.stringify(observed) }),
+          sessionHost?.observe({ type: "stopping", text: "Foreground stop observation: " + JSON.stringify(observed) }),
       );
-      liveHost?.observe({
+      sessionHost?.observe({
         type: "stopping",
         text: "Current-session stop-work result (not proof pending jobs exited): " + JSON.stringify(result),
       });
@@ -687,8 +701,8 @@ export default function asynchronousTasksExtension(
 
   pi.on("session_shutdown", async (_event, ctx) => {
     // Pi emits this before reload/new/resume/fork as well as final quit.
-    liveHost?.close();
-    liveHost = undefined;
+    sessionHost?.close();
+    sessionHost = undefined;
     clearInstructionContinuity(ctx.sessionManager as object);
     taskUi?.setStatus("die-tasks", undefined);
     instructionMode.shutdown();

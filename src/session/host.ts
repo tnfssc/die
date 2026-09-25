@@ -1,16 +1,30 @@
-import { VOICE_ENTRY, type TranscriptEntry } from "../session/transcript";
+import { VOICE_ENTRY, type TranscriptEntry } from "./transcript";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rm, lstat as stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { JobService } from "../tasks/job-service";
-import type { TaskManager, TaskEvent } from "../tasks/task-manager";
 
 /** This authority must come from the owning tasks extension, never a second scheduler. */
-export interface HostAuthority {
-  service: Pick<JobService, "handle">;
-  manager: Pick<TaskManager, "list" | "subscribe">;
+export interface SessionTaskPort {
+  list(
+    params: { cursor?: number | string; count?: number },
+    context: ExtensionContext,
+    signal: AbortSignal,
+  ): Promise<unknown>;
+  inspect(id: string, offset: number | undefined, context: ExtensionContext, signal: AbortSignal): Promise<unknown>;
+  stop(id: string, context: ExtensionContext, signal: AbortSignal): Promise<unknown>;
+  localJobs(): { id: string; status: string; kind: string }[];
+  subscribe(
+    listener: (event: {
+      type: "activity" | "spawned" | "updated" | "completed" | "stopping";
+      task: { id: string; status: string };
+    }) => void,
+  ): () => void;
+}
+/** Session authority is supplied by the owning tasks extension. */
+export interface SessionAuthority {
+  tasks: SessionTaskPort;
   context: ExtensionContext;
   sendUserMessage(text: string, options: { deliverAs: "steer" | "followUp"; expandPromptTemplates: false }): void;
   confirmStop(id: string): Promise<boolean>;
@@ -104,7 +118,7 @@ async function retainSnapshot(content: string): Promise<{ path: string; created:
   });
 }
 
-export class LiveHostBridge {
+export class SessionHost {
   private readonly requests = new Map<
     string,
     { hash: string; result: Promise<unknown>; operation: string; state: "pending" | "dispatched" | "failed" }
@@ -118,11 +132,11 @@ export class LiveHostBridge {
   private watcher?: ReturnType<typeof setInterval>;
   private polling = false;
   private readonly nativeActive = new Map<string, string>();
-  constructor(private readonly host: HostAuthority) {
+  constructor(private readonly host: SessionAuthority) {
     this.owner = host.context.sessionManager;
     this.sessionId = host.context.sessionManager.getSessionId();
     this.sessionFile = host.context.sessionManager.getSessionFile();
-    this.unsubscribe = host.manager.subscribe((event: TaskEvent) => {
+    this.unsubscribe = host.tasks.subscribe((event) => {
       if (event.type === "activity" || !this.active()) return;
       this.observe({ type: event.type, id: event.task.id, status: event.task.status });
     });
@@ -323,22 +337,17 @@ export class LiveHostBridge {
     signal: AbortSignal = new AbortController().signal,
   ): Promise<unknown> {
     this.assertActive();
-    return this.host.service.handle("jobs.list", params, this.host.context, signal);
+    return this.host.tasks.list(params, this.host.context, signal);
   }
   async inspect(id: string, offset?: number, signal: AbortSignal = new AbortController().signal): Promise<unknown> {
     this.assertActive();
-    return this.host.service.handle(
-      "jobs.inspect",
-      { id, ...(offset === undefined ? {} : { offset }), limit: 3000 },
-      this.host.context,
-      signal,
-    );
+    return this.host.tasks.inspect(id, offset, this.host.context, signal);
   }
   stop(requestId: string, id: string, signal: AbortSignal = new AbortController().signal): Promise<unknown> {
     return this.once(requestId, "stop", id, async () => {
       if (!(await this.host.confirmStop(id))) throw new Error("User did not confirm cancellation");
       this.assertActive();
-      return this.host.service.handle("jobs.stop", { id }, this.host.context, signal);
+      return this.host.tasks.stop(id, this.host.context, signal);
     });
   }
   context(): {
@@ -381,8 +390,8 @@ export class LiveHostBridge {
         .slice(-12)
         .map(([id, entry]) => ({ id, operation: entry.operation, state: entry.state })),
       recent: recent.slice(-6),
-      jobs: this.host.manager
-        .list()
+      jobs: this.host.tasks
+        .localJobs()
         .slice(0, 20)
         .map(({ id, status, kind }) => ({ id, status, kind })),
       nativeUpdates:
@@ -397,7 +406,7 @@ export class LiveHostBridge {
     try {
       const page = (await this.list({ count: 20 }, signal)) as { jobs?: { id: string; status: string }[] };
       if (!this.active() || !this.listeners.size) return;
-      const local = new Set(this.host.manager.list().map((job) => job.id));
+      const local = new Set(this.host.tasks.localJobs().map((job) => job.id));
       for (const job of (page.jobs ?? []).slice(0, 20)) {
         if (!job || typeof job.id !== "string" || typeof job.status !== "string" || local.has(job.id)) continue;
         const previous = this.nativeActive.get(job.id);

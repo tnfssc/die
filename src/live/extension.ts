@@ -17,7 +17,7 @@ import { OpenAIRealtimeSession } from "./openai-session";
 import { liveLocalOnly } from "./status";
 import { runLiveSetup } from "./setup";
 import { LiveAudio, type AudioCallbacks, type AudioSetupError } from "./audio";
-import { getLiveHost } from "./host-access";
+import { getSessionHost } from "../session/host-access";
 import { registerLiveStop, type LiveStopResult } from "./lifecycle-access";
 import { boundedHostContext, createOrchestration } from "./orchestration";
 import type { SessionOperations } from "../session/operations";
@@ -80,7 +80,7 @@ const defaults: LiveDependencies = {
       ? new OpenAIRealtimeSession(callbacks, undefined, orchestration, model as (typeof OPENAI_REALTIME_MODELS)[number])
       : new VoiceSession(callbacks, undefined, orchestration);
   },
-  host: getLiveHost,
+  host: getSessionHost,
   audio: (callbacks, signal) => LiveAudio.launch({ callbacks, signal }),
 };
 
