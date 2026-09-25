@@ -45,3 +45,11 @@ Follow-up review found three browser reentrancy/disposal gaps in 23f996e: pendin
 ## Integrated foundation
 
 Parent cherry-picked 084920a, bce62d2, f5cdc52, 23f996e, 1b0bc4a into root after review. Parent ran browser, relay, integration, orchestration and session suites: 47 pass, 0 fail, 489 assertions. Foundation is now in source but remains unused by shipped UI. Real adapters, authority wiring, SDK backlog and provider/device acceptance remain pending with dual-provider integration worker.
+
+## Phase two returned, vertical feature still missing
+
+Dual-provider branch ends 08b87bc. Includes public-doc transport audit, raw bounded Gemini adapter, OpenAI factory authority, host leases, real browser adapters and Chromium fake-media loopback. Not integrated yet. 66 tests/typecheck and loopback reported pass. Actual maintained web bridge/route/UI absent. No Opus/WebRTC path for Gemini verified; direct OpenAI shared session mutation needs authority restrictions not established in docs. Server-owned sessions selected provisionally, PCM bandwidth limitation remains.
+
+Next tasks from08b87bc: task_cbd3af59 async lifecycle+bounded worklet/cancel in /home/tnfssc/.die/worktrees/die-a86675007a5e-task_cbd3af59, branch die/complete-web-voice-async-audio-lifecycle-cbd3af59; task_6394ca7b actual vertical owner IPC/canonical patch/UI/build in /home/tnfssc/.die/worktrees/die-a86675007a5e-task_6394ca7b, branch die/wire-live-voice-into-real-web-sessions-6394ca7b. Foundation ownership restrictions lifted for those fixes. Independent host/provider review is also underway. CLI cost completed independently; preserve its onUsage hooks on merge.
+
+Parent integrated phase-two module commits inertly after authority review. 48 focused web/provider/lease/session tests pass (229 assertions), full check passes. Independent review found no demonstrated permission bypass or duplicate OpenAI handoff; branch-switch revocation must be enforced at integration, not by freezing leaf ID across normal appends. Pending Gemini close issue belongs to async lifecycle task. Both findings forwarded to vertical worker. No shipped route enabled.

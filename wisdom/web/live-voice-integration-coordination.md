@@ -1,0 +1,7 @@
+# Dual-provider integration coordination
+
+Task task_37ea736e selected server-owned sessions for both providers after current public doc network verification (commit e7330d4 / original 33fb6cf); direct browser content/session mutation lacks documented capability restriction for current host transcript authority. Gemini PCM WS; OpenAI actual Realtime GA adapter, not GPT-Live. Browser PCM estimate 1.92 MB/min upload + 2.88 MB/min download continuous full duplex, not measurement.
+
+Picked foundation fix 23f996e as 5b72165 with permission in parent handoff. **Need controller async teardown contract:** browser AudioContext.close and WebSocket closed event cannot truthfully implement synchronous verified stop/close. Device worker task_79523975 is isolated and forbidden foundation edits. Please coordinate ownership/permission to extend foundation Capture.stop/AudioOutput.stop/Transport.close and controller end/dispose to await Promise<void>; existing fix still synchronous. No route activation before provider backlog bounds and actual owner process binding.
+
+Canonical route/IPC implementation worker task_d2079809 inspects actual pinned upstream now; initial seam research established no existing browser SessionOperations capability. Host lease worker task_60306d6c patches SessionHost for revocation inside async dispatch, not just outside proxy. Provider factory worker task_7f82bd0b owns new module only, not provider files (CLI accounting overlap avoided).
