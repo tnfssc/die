@@ -68,7 +68,8 @@ test("saved answer queues until idle settlement, unrelated turns do not erase pe
   const h = harness();
   try {
     const q = await h.runtime.service.ask(h.ctx, { text: "Which?" });
-    h.emit("agent_settled"); // unrelated progress before an answer
+    h.emit("agent_settled");
+    await h.tick(); // unrelated progress before an answer
     expect(h.runtime.service.get(h.ctx, q.id).status).toBe("pending");
     const answer = await h.runtime.commands(h.ctx).handle("questions.answer", { id: q.id, answer: "This" });
     expect((answer as any).status).toBe("answered");
@@ -76,17 +77,21 @@ test("saved answer queues until idle settlement, unrelated turns do not erase pe
     expect(h.sent).toHaveLength(0);
     h.emit("agent_end", h.ctx, { messages: [{ role: "assistant", stopReason: "stop" }] });
     h.emit("agent_settled");
+    await h.tick();
     expect(h.sent).toHaveLength(0); // still busy
     h.idle(true);
     h.owner(true);
     h.emit("agent_settled");
+    await h.tick();
     expect(h.sent).toHaveLength(0); // Live owns the parent turn
     h.owner(false);
     h.emit("agent_settled");
+    await h.tick();
     expect(h.sent).toHaveLength(1);
     expect(h.sent[0]!.options).toMatchObject({ triggerTurn: true, deliverAs: "followUp" });
     expect(h.sent[0]!.message.details.questionId).toBe(q.id);
     h.emit("agent_settled");
+    await h.tick();
     expect(h.sent).toHaveLength(1);
     await expect(h.runtime.commands(h.ctx).handle("questions.answer", { id: q.id, answer: "Again" })).rejects.toThrow();
     expect(h.sent).toHaveLength(1);
@@ -127,6 +132,7 @@ test("navigation and stopWork pause discard queued wake; pending background resu
     h.idle(true);
     h.emit("agent_settled");
     await h.tick();
+    await h.tick();
     expect(h.sent).toHaveLength(0);
     h.leaf("root");
     h.idle(false);
@@ -134,6 +140,7 @@ test("navigation and stopWork pause discard queued wake; pending background resu
     await h.runtime.commands(h.ctx).handle("questions.answer", { id: second.id, answer: "yes" });
     h.runtime.pause(); // stopWork
     h.emit("agent_settled");
+    await h.tick();
     await h.tick();
     expect(h.sent).toHaveLength(0);
     expect(h.runtime.service.get(h.ctx, second.id).status).toBe("answered");
@@ -195,6 +202,125 @@ test("explicit resume queue is bounded by pending-question capacity", async () =
       "Too many queued",
     );
     expect(h.sent).toHaveLength(0);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("durable dispatch claim fences a restart after host acceptance but failed receipt write", async () => {
+  const h = harness();
+  try {
+    const q = await h.runtime.service.ask(h.ctx, { text: "Target?" });
+    const save = h.runtime.service.setDelivery.bind(h.runtime.service);
+    h.runtime.service.setDelivery = async (ctx, input) => {
+      if (input.delivery === "delivered") throw new Error("write failed after send");
+      return save(ctx, input);
+    };
+    await h.runtime.commands(h.ctx).handle("questions.answer", { id: q.id, answer: "A" });
+    h.idle(true);
+    h.emit("agent_settled");
+    await h.tick();
+    expect(h.sent).toHaveLength(1);
+    expect(h.sent[0]!.message.display).toBe(false);
+    expect(h.runtime.service.get(h.ctx, q.id).delivery).toBe("dispatching");
+    const fresh = registerQuestionRuntime(
+      {
+        on: () => {},
+        sendMessage: () => {
+          throw new Error("duplicate");
+        },
+      } as any,
+      { supported: () => true },
+    );
+    await expect(fresh.commands(h.ctx).handle("questions.resume", { id: q.id })).rejects.toThrow("uncertain");
+    expect(h.sent).toHaveLength(1);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("only foreground blockers suppress goal reminders, including the queued answer turn", async () => {
+  const h = harness();
+  try {
+    const q = await h.runtime.service.ask(h.ctx, { text: "Next?" });
+    expect(h.runtime.hasBlockingQuestions()).toBe(false);
+    const child = await h.runtime.service.block(h.ctx, {
+      id: q.id,
+      owner: q.owner,
+      version: q.version,
+      checkpoint: "child follow-up",
+      taskIds: ["done-child"],
+    });
+    expect(h.runtime.hasBlockingQuestions()).toBe(false);
+    await h.runtime.service.block(h.ctx, {
+      id: q.id,
+      owner: q.owner,
+      version: child.version,
+      checkpoint: "parent next step",
+      foreground: true,
+    });
+    expect(h.runtime.hasBlockingQuestions()).toBe(true);
+    await h.runtime.commands(h.ctx).handle("questions.answer", { id: q.id, answer: "Go" });
+    expect(h.runtime.hasBlockingQuestions()).toBe(true);
+    h.idle(true);
+    h.emit("agent_settled");
+    await h.tick();
+    expect(h.runtime.hasBlockingQuestions()).toBe(true);
+    h.emit("before_agent_start");
+    expect(h.runtime.hasBlockingQuestions()).toBe(false);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("answering a pending question after restart saves it without guessing owner availability", async () => {
+  const h = harness();
+  try {
+    const q = await h.runtime.service.ask(h.ctx, { text: "Old checkpoint?" });
+    const sent: any[] = [];
+    const fresh = registerQuestionRuntime({ on: () => {}, sendMessage: (m: any) => sent.push(m) } as any, {
+      supported: () => true,
+      hasMainToolOwner: () => false,
+    });
+    h.idle(true);
+    await fresh.commands(h.ctx).handle("questions.answer", { id: q.id, answer: "A" });
+    await h.tick();
+    expect(sent).toHaveLength(0);
+    expect(fresh.service.get(h.ctx, q.id).delivery).toBe("resume-needed");
+    await fresh.commands(h.ctx).handle("questions.resume", { id: q.id });
+    await h.tick();
+    expect(sent).toHaveLength(1);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test("two attached runtimes cannot claim the same saved reply twice", async () => {
+  const h = harness();
+  try {
+    const q = await h.runtime.service.ask(h.ctx, { text: "One reply?" });
+    h.runtime.pause();
+    await h.runtime.commands(h.ctx).handle("questions.answer", { id: q.id, answer: "A" });
+    h.idle(true);
+    const sent: any[] = [];
+    const factory = () =>
+      registerQuestionRuntime({ on: () => {}, sendMessage: (m: any) => sent.push(m) } as any, {
+        supported: () => true,
+        hasMainToolOwner: () => false,
+      });
+    const a = factory(),
+      b = factory();
+    await Promise.allSettled([
+      a.commands(h.ctx).handle("questions.resume", { id: q.id }),
+      b.commands(h.ctx).handle("questions.resume", { id: q.id }),
+    ]);
+    await h.tick();
+    await h.tick();
+    expect(sent).toHaveLength(1);
+    const saved = a.service.get(h.ctx, q.id);
+    await expect(
+      b.service.setDelivery(h.ctx, { id: saved.id, owner: saved.owner, version: saved.version, delivery: "queued" }),
+    ).rejects.toThrow("already claimed");
   } finally {
     h.cleanup();
   }

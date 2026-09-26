@@ -57,7 +57,7 @@ test("question commands keep status pinned without stealing focus or repeating n
   expect(notices.pop()).toContain("q1");
   await command.handler("answer q1 deploy now", ctx);
   expect(notices.pop()).toBe("Answer saved for q1");
-  expect(statuses.has("die-questions")).toBe(false);
+  expect(statuses.get("die-questions")).toBe("1 question · 1 saved");
   hooks.get("session_shutdown")!({}, ctx);
   expect(statuses.has("die-questions")).toBe(false);
 });

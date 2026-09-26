@@ -272,15 +272,22 @@ export function renderCompactFooter(
   const task = singleLine(statuses.get("die-tasks") ?? "").replace(/^(\d+ tasks?) running$/, "$1");
   const shortTask = task.replace(/^(\d+) tasks?$/, "$1t");
   const questionStatus = singleLine(statuses.get("die-questions") ?? "");
-  const questionCount = questionStatus.match(/^([0-9]+) questions? pending/);
+  const questionCount = questionStatus.match(/^([0-9]+) questions?(?: pending)?/);
+  const savedQuestions = questionStatus.match(/ · ([0-9]+) saved/)?.[1];
   const questions = questionStatus
     ? questionCount
-      ? questionCount[1] + " /questions" + (questionStatus.includes("waiting on you") ? " · waiting on you" : "")
+      ? questionCount[1] +
+        " /questions" +
+        (questionStatus.includes("waiting on you") ? " · waiting on you" : "") +
+        (savedQuestions ? " · " + savedQuestions + " saved" : "")
       : questionStatus
     : "";
   const shortQuestions = questionStatus
     ? questionCount
-      ? questionCount[1] + " /questions" + (questionStatus.includes("waiting on you") ? " waiting" : "")
+      ? questionCount[1] +
+        " /questions" +
+        (questionStatus.includes("waiting on you") ? " waiting" : "") +
+        (savedQuestions ? " " + savedQuestions + " saved" : "")
       : "/questions unavailable"
     : "";
   const mode = singleLine(statuses.get("die-mode") ?? "");

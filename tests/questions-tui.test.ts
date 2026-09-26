@@ -56,7 +56,10 @@ test.skipIf(!hasTmux)(
       );
       const launch = [
         "env",
-      "-u", "DIE_SUBAGENT_DEPTH", "-u", "DIE_SUBAGENT_TYPE",
+        "-u",
+        "DIE_SUBAGENT_DEPTH",
+        "-u",
+        "DIE_SUBAGENT_TYPE",
         "HOME=" + home,
         "OPENAI_API_KEY=offline-test-placeholder",
         resolve(import.meta.dir, "../dist/die"),

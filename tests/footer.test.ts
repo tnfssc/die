@@ -72,7 +72,7 @@ describe("compact extension footer", () => {
     }
     statuses.delete("die-tasks");
     statuses.set("die-live", "Live speaking");
-    expect(Bun.stripANSI(renderSingleRowFooter(ctx, data, theme, 100)[0]!)).toContain("2 questions");
+    expect(Bun.stripANSI(renderSingleRowFooter(ctx, data, theme, 100)[0]!)).toContain("2 /questions");
   });
   test("braille animation stays one row and within narrow terminal widths", () => {
     const { ctx, data, statuses } = fixture();

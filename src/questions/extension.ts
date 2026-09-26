@@ -76,18 +76,21 @@ export function registerQuestions(
           void refresh();
         });
       }
-      const pending = records(await service.handle("questions.list", { status: "pending" })).filter(
-        (question) => !question.readOnly && (!question.status || question.status === "pending"),
+      const open = records(await service.handle("questions.list", {})).filter(
+        (question) =>
+          !question.readOnly && (!question.status || question.status === "pending" || question.status === "answered"),
       );
+      const saved = open.filter((q) => q.status === "answered").length;
+      const waiting = open.some((q) => q.status !== "answered" && q.blocked);
       if (token === generation && context === current)
         current.ui.setStatus(
           "die-questions",
-          pending.length
-            ? pending.length +
+          open.length
+            ? open.length +
                 " question" +
-                (pending.length === 1 ? "" : "s") +
-                " pending" +
-                (pending.some((q) => q.blocked) ? " · waiting on you" : "")
+                (open.length === 1 ? "" : "s") +
+                (saved ? " · " + saved + " saved" : " pending") +
+                (waiting ? " · waiting on you" : "")
             : undefined,
         );
     } catch {
@@ -122,13 +125,21 @@ export function registerQuestions(
                   question.choices.join(" | ") +
                   (question.allowFreeText === false ? " (pick one)" : " (or your own answer)"),
               question.blocked &&
-                "Waiting: " +
-                  (question.blocked.foreground ? "parent follow-up; " : "") +
-                  (question.blocked.taskIds?.join(", ") ?? "") +
+                "Blocked follow-up: " +
+                  [question.blocked.foreground ? "parent" : "", ...(question.blocked.taskIds ?? [])]
+                    .filter(Boolean)
+                    .join(", ") +
                   " — " +
                   question.blocked.checkpoint,
               question.answer && "Answer: " + question.answer,
-              question.status === "answered" && (question.delivery === "delivered" ? "Answer sent to parent" : question.delivery === "queued" ? "Answer saved · waiting for parent" : "Answer saved · /questions resume " + question.id),
+              question.status === "answered" &&
+                (question.delivery === "dispatching"
+                  ? "Answer saved · delivery uncertain; check parent chat"
+                  : question.delivery === "delivered"
+                    ? "Answer sent to parent"
+                    : question.delivery === "queued"
+                      ? "Answer saved · waiting for parent"
+                      : "Answer saved · /questions resume " + question.id),
               question.resolutionReason && "Closed: " + question.resolutionReason,
               question.taskIds?.length &&
                 "Tasks: " + question.taskIds.join(", ") + ". Child in-place replies are not supported.",

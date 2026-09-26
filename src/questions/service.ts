@@ -22,7 +22,7 @@ export type Question = {
   taskIds?: string[];
   reason?: string;
   blocked?: { checkpoint: string; foreground?: boolean; taskIds?: string[] };
-  delivery?: "resume-needed" | "queued" | "delivered";
+  delivery?: "resume-needed" | "queued" | "dispatching" | "delivered";
   replyId?: string;
   replyVersion?: number;
 };
@@ -94,6 +94,7 @@ function write(file: string, records: Question[]): void {
 }
 /** One durable ledger per session file, including sibling branches. Never derive answers from transcripts. */
 export class QuestionService {
+  onAsked?: (question: Question) => void;
   onAnswered?: (question: Question, ctx: QuestionContext) => void | Promise<void>;
   private async change<T>(file: string, edit: (records: Question[]) => { result: T; changed: boolean }): Promise<T> {
     mkdirSync(dirname(file), { recursive: true });
@@ -134,6 +135,7 @@ export class QuestionService {
     return true;
   }
   list(ctx: QuestionContext): Question[] {
+    if (!ctx.sessionManager.getLeafId()) return [];
     const current = activeOwner(ctx);
     const ancestors = new Set(ctx.sessionManager.getBranch().map((e) => e.id));
     ancestors.add(current.branchId);
@@ -146,7 +148,7 @@ export class QuestionService {
     if (!q) throw new Error("Question not found on current branch");
     return q;
   }
-  ask(
+  async ask(
     ctx: QuestionContext,
     input: {
       text: string;
@@ -160,6 +162,10 @@ export class QuestionService {
   ): Promise<Question> {
     const question = text(input?.text, 4000, "text");
     const key = input.dedupKey === undefined ? undefined : text(input.dedupKey, 128, "dedupKey");
+    if (input.choices !== undefined && !Array.isArray(input.choices))
+      throw new Error("choices must be an array of strings");
+    if (input.allowFreeText === false && !input.choices?.length)
+      throw new Error("choices are required when free text is off");
     const choices = input.choices?.map((c) => text(c, 500, "choice"));
     if (choices && (choices.length < 1 || choices.length > 20 || new Set(choices).size !== choices.length))
       throw new Error("Invalid choices");
@@ -169,7 +175,8 @@ export class QuestionService {
     const reason = input.reason === undefined ? undefined : text(input.reason, 2000, "reason");
     const taskIds = ids(input.taskIds);
     const owner = activeOwner(ctx);
-    return this.change(path(ctx), (records) => {
+    let created = false;
+    const saved = await this.change(path(ctx), (records) => {
       activeOwner(ctx, owner.branchId); // navigation may have changed while waiting for the lock
       if (ctx.sessionManager.getLeafId() !== owner.branchId) throw new Error("Session navigation changed");
       if (key) {
@@ -191,7 +198,8 @@ export class QuestionService {
       }
       if (records.filter((q) => q.status === "pending").length >= maxPending)
         throw new Error("Too many active questions (20). Answer or cancel a pending question first.");
-      if (records.length >= maxPending + maxHistory) throw new Error("Question ledger full (220). Start a new session; existing questions were kept.");
+      if (records.length >= maxPending + maxHistory)
+        throw new Error("Question ledger full (220). Start a new session; existing questions were kept.");
       const now = new Date().toISOString();
       const result: Question = {
         id: "q_" + randomUUID(),
@@ -209,8 +217,11 @@ export class QuestionService {
         ...(reason ? { reason } : {}),
       };
       records.push(result);
+      created = true;
       return { result, changed: true };
     });
+    if (created) this.onAsked?.(saved);
+    return saved;
   }
   private mutate(ctx: QuestionContext, input: QuestionMutation, edit: (q: Question) => boolean): Promise<Question> {
     if (!input || !/^q_[0-9a-f-]{36}$/.test(input.id) || !Number.isSafeInteger(input.version) || input.version < 1)
@@ -290,19 +301,27 @@ export class QuestionService {
   }
   cancel(ctx: QuestionContext, input: QuestionMutation): Promise<Question> {
     return this.mutate(ctx, input, (q) => {
-      check(q, input.version);
+      if (q.version !== input.version) throw new Error("Stale question version: current " + q.version);
+      if (q.status !== "pending" && q.status !== "answered") throw new Error("Question already " + q.status);
       q.status = "cancelled";
       return true;
     });
   }
   setDelivery(
     ctx: QuestionContext,
-    input: QuestionMutation & { delivery: "resume-needed" | "queued" | "delivered" },
+    input: QuestionMutation & { delivery: "resume-needed" | "queued" | "dispatching" | "delivered" },
   ): Promise<Question> {
-    if (!["resume-needed", "queued", "delivered"].includes(input.delivery)) throw new Error("Invalid delivery");
+    if (!["resume-needed", "queued", "dispatching", "delivered"].includes(input.delivery))
+      throw new Error("Invalid delivery");
     return this.mutate(ctx, input, (q) => {
       if (q.version !== input.version) throw new Error("Stale question version: current " + q.version);
       if (q.status !== "answered") throw new Error("Question not answered");
+      if (input.delivery === "queued" && (q.delivery === "dispatching" || q.delivery === "delivered"))
+        throw new Error("Reply dispatch already claimed; do not send it twice");
+      if (input.delivery === "dispatching" && q.delivery !== "queued")
+        throw new Error("Reply dispatch already claimed or not queued");
+      if ((input.delivery === "delivered" || input.delivery === "resume-needed") && q.delivery !== "dispatching")
+        throw new Error("Reply has no active dispatch claim");
       q.delivery = input.delivery;
       return true;
     });
@@ -340,4 +359,3 @@ function check(q: Question, version: number): void {
   if (q.version !== version) throw new Error("Stale question version: current " + q.version);
   if (q.status !== "pending") throw new Error("Question already " + q.status);
 }
-export const questionService = new QuestionService();
