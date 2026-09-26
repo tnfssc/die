@@ -438,20 +438,24 @@ export default function asynchronousTasksExtension(
   const questions = registerQuestionRuntime(pi, { supported: () => subagentDepth === 0 && !t3NativeSession });
   registerQuestions(pi, (ctx) => questions.commands(ctx));
 
-  goals = registerGoalMode(pi, {
-    runningIds: () =>
-      new Set(
-        manager
-          ?.list()
-          .filter((task) => task.status === "running")
-          .map((task) => task.id) ?? [],
-      ),
-    status: (id) => {
-      const task = manager?.list().find((item) => item.id === id);
-      if (!task) return "unavailable";
-      return task.status === "running" ? "running" : "finished";
+  goals = registerGoalMode(
+    pi,
+    {
+      runningIds: () =>
+        new Set(
+          manager
+            ?.list()
+            .filter((task) => task.status === "running")
+            .map((task) => task.id) ?? [],
+        ),
+      status: (id) => {
+        const task = manager?.list().find((item) => item.id === id);
+        if (!task) return "unavailable";
+        return task.status === "running" ? "running" : "finished";
+      },
     },
-  }, { hasBlockingQuestions: () => questions.hasBlockingQuestions() });
+    { hasBlockingQuestions: () => questions.hasBlockingQuestions() },
+  );
   const history = new HistoryService();
   let service: JobService | undefined;
   const getService = (ctx: ExtensionContext) => {

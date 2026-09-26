@@ -66,7 +66,7 @@ describe("compact extension footer", () => {
     statuses.set("die-tasks", "1 task running");
     for (const width of [40, 60, 100]) {
       const line = renderSingleRowFooter(ctx, data, theme, width)[0]!;
-      expect(Bun.stripANSI(line)).toMatch(/2q|2 questions/);
+      expect(Bun.stripANSI(line)).toMatch(/2 \/questions/);
       expect(Bun.stripANSI(line)).not.toContain("+1 status");
       expect(visibleWidth(line)).toBeLessThanOrEqual(width);
     }

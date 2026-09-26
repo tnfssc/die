@@ -33,6 +33,13 @@
   - Server-scoped native task IDs support list/inspect/stop. They reject input, closeInput, snooze, and setWatch. Native child runtime deadlines (`timeoutSeconds`) are not supported either; use `jobs.stop(id)` to cancel the child subtree. Local shell/CLI timeouts still work.
 - Execution cancelled? Jobs already started with shell() or subagent() may still run. jobs.list() shows their state.
 - Helpers return values, not printed output. Want see result? Use console.log.
+- Questions (parent CLI session):
+  - `await questions.ask({text, dedupKey?, choices?, allowFreeText?, requester?, taskIds?, reason?})` saves a question and returns at once. Work that does not need it may continue. Reuse a short explicit dedup key for retries. Choices are strings; free text is allowed unless false.
+  - `await questions.list()` and `await questions.get(id)` read saved state. Keep the returned ID, owner and version for mutations.
+  - `await questions.block({id, owner, version, checkpoint, foreground?, taskIds?})` records which follow-up now needs the answer. Name the next step in checkpoint. Set foreground only if the parent cannot continue. This does not pause a child process. If no safe work remains, yield; no execute stack waits for the reply.
+  - `await questions.resolve({id, owner, version, reason})` closes a question after using its answer or when it is no longer needed. `await questions.cancel({id, owner, version})` withdraws it, not an answer or permission to guess.
+  - The user replies with /questions answer <id> <text>. A saved reply starts a new parent turn when safe, not code after an old await. Read the saved reply ID; do not repeat handled work. After a stop or reload, /questions resume <id> requests a new turn. Answer saved, queued, delivered and used are distinct.
+  - Live may ask and read the same state. Do not bind provisional or ordinary speech to a question. Targeted voice replies, web projection and child in-place replies are not supported. A child should give its parent the question and checkpoint; the parent can record it with requester/task IDs.
 - History API:
   - `await history.search({query, cursor?, limit?, excerptChars?})` — Find text in current conversation branch. Returns short matches and a `ref` for each.
   - `await history.read({ref, cursor?, maxChars?})` — Read original text at that ref.

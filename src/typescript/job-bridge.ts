@@ -96,14 +96,30 @@ export interface ExecuteJobGlobals {
   };
   live: { stop(): Promise<unknown> };
   questions: {
-    ask(input: { text: string; blocked: true; dedupKey?: string }): Promise<unknown>;
+    ask(input: {
+      text: string;
+      dedupKey?: string;
+      choices?: string[];
+      allowFreeText?: boolean;
+      requester?: string;
+      taskIds?: string[];
+      reason?: string;
+    }): Promise<unknown>;
     list(): Promise<unknown>;
     get(id: string): Promise<unknown>;
-    answer(input: {
+    block(input: {
       id: string;
       owner: { sessionId: string; branchId: string };
       version: number;
-      text: string;
+      checkpoint: string;
+      foreground?: boolean;
+      taskIds?: string[];
+    }): Promise<unknown>;
+    resolve(input: {
+      id: string;
+      owner: { sessionId: string; branchId: string };
+      version: number;
+      reason: string;
     }): Promise<unknown>;
     cancel(input: { id: string; owner: { sessionId: string; branchId: string }; version: number }): Promise<unknown>;
   };
@@ -332,7 +348,8 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
       ask: async (input) => request("questions.ask", input),
       list: async () => request("questions.list", {}),
       get: async (id) => request("questions.get", { id }),
-      answer: async (input) => request("questions.answer", input),
+      block: async (input) => request("questions.block", input),
+      resolve: async (input) => request("questions.resolve", input),
       cancel: async (input) => request("questions.cancel", input),
     },
     jobs: {

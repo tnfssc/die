@@ -8,7 +8,11 @@ function harness() {
   const dir = mkdtempSync(join(tmpdir(), "die-question-runtime-"));
   const handlers = new Map<string, (event: any, ctx: any) => void>();
   const sent: Array<{ message: any; options: any }> = [];
-  let idle = false, owner = false, supported = true, leaf = "root", session = "session";
+  let idle = false,
+    owner = false,
+    supported = true,
+    leaf = "root",
+    session = "session";
   const manager = {
     getSessionFile: () => join(dir, "session.jsonl"),
     getSessionId: () => session,
@@ -17,8 +21,12 @@ function harness() {
   };
   const ctx: any = { sessionManager: manager, isIdle: () => idle, signal: undefined };
   const pi = {
-    on: (name: string, fn: (event: any, ctx: any) => void) => { handlers.set(name, fn); },
-    sendMessage: (message: any, options: any) => { sent.push({ message, options }); },
+    on: (name: string, fn: (event: any, ctx: any) => void) => {
+      handlers.set(name, fn);
+    },
+    sendMessage: (message: any, options: any) => {
+      sent.push({ message, options });
+    },
   };
   const runtime = registerQuestionRuntime(pi as any, {
     supported: () => supported,
@@ -26,18 +34,40 @@ function harness() {
   });
   const emit = (name: string, context = ctx, event: any = {}) => handlers.get(name)!(event, context);
   emit("session_start");
-  const tick = async () => { await new Promise(resolve => setTimeout(resolve, 0)); };
+  const tick = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  };
   const cleanup = () => rmSync(dir, { recursive: true, force: true });
-  return { runtime, ctx, manager, sent, emit, tick, cleanup,
-    idle: (v: boolean) => { idle = v; }, owner: (v: boolean) => { owner = v; },
-    supported: (v: boolean) => { supported = v; }, leaf: (v: string) => { leaf = v; },
-    session: (v: string) => { session = v; } };
+  return {
+    runtime,
+    ctx,
+    manager,
+    sent,
+    emit,
+    tick,
+    cleanup,
+    idle: (v: boolean) => {
+      idle = v;
+    },
+    owner: (v: boolean) => {
+      owner = v;
+    },
+    supported: (v: boolean) => {
+      supported = v;
+    },
+    leaf: (v: string) => {
+      leaf = v;
+    },
+    session: (v: string) => {
+      session = v;
+    },
+  };
 }
 
 test("saved answer queues until idle settlement, unrelated turns do not erase pending", async () => {
   const h = harness();
   try {
-    const q = await h.runtime.service.ask(h.ctx, { text: "Which?", blocked: true });
+    const q = await h.runtime.service.ask(h.ctx, { text: "Which?" });
     h.emit("agent_settled"); // unrelated progress before an answer
     expect(h.runtime.service.get(h.ctx, q.id).status).toBe("pending");
     const answer = await h.runtime.commands(h.ctx).handle("questions.answer", { id: q.id, answer: "This" });
@@ -60,13 +90,15 @@ test("saved answer queues until idle settlement, unrelated turns do not erase pe
     expect(h.sent).toHaveLength(1);
     await expect(h.runtime.commands(h.ctx).handle("questions.answer", { id: q.id, answer: "Again" })).rejects.toThrow();
     expect(h.sent).toHaveLength(1);
-  } finally { h.cleanup(); }
+  } finally {
+    h.cleanup();
+  }
 });
 
 test("restart keeps durable answers but does not replay; explicit resume dispatches once", async () => {
   const h = harness();
   try {
-    const q = await h.runtime.service.ask(h.ctx, { text: "Which?", blocked: true });
+    const q = await h.runtime.service.ask(h.ctx, { text: "Which?" });
     await h.runtime.commands(h.ctx).handle("questions.answer", { id: q.id, answer: "Saved" });
     h.runtime.pause();
     h.idle(true);
@@ -78,13 +110,15 @@ test("restart keeps durable answers but does not replay; explicit resume dispatc
     await fresh.commands(h.ctx).handle("questions.resume", { id: q.id });
     await h.tick();
     expect(h.sent).toHaveLength(1);
-  } finally { h.cleanup(); }
+  } finally {
+    h.cleanup();
+  }
 });
 
 test("navigation and stopWork pause discard queued wake; pending background result is not a question answer", async () => {
   const h = harness();
   try {
-    const q = await h.runtime.service.ask(h.ctx, { text: "Wait?", blocked: true });
+    const q = await h.runtime.service.ask(h.ctx, { text: "Wait?" });
     h.emit("agent_settled", h.ctx, { task: "background completion" });
     expect(h.runtime.service.get(h.ctx, q.id).status).toBe("pending");
     await h.runtime.commands(h.ctx).handle("questions.answer", { id: q.id, answer: "yes" });
@@ -96,14 +130,16 @@ test("navigation and stopWork pause discard queued wake; pending background resu
     expect(h.sent).toHaveLength(0);
     h.leaf("root");
     h.idle(false);
-    const second = await h.runtime.service.ask(h.ctx, { text: "Stop?", blocked: true });
+    const second = await h.runtime.service.ask(h.ctx, { text: "Stop?" });
     await h.runtime.commands(h.ctx).handle("questions.answer", { id: second.id, answer: "yes" });
     h.runtime.pause(); // stopWork
     h.emit("agent_settled");
     await h.tick();
     expect(h.sent).toHaveLength(0);
     expect(h.runtime.service.get(h.ctx, second.id).status).toBe("answered");
-  } finally { h.cleanup(); }
+  } finally {
+    h.cleanup();
+  }
 });
 
 test("tool answers and unsupported child/web operations fail closed", async () => {
@@ -111,27 +147,36 @@ test("tool answers and unsupported child/web operations fail closed", async () =
   try {
     await expect(h.runtime.handle(h.ctx, "questions.answer", {})).rejects.toThrow("targeted user reply");
     h.supported(false);
-    await expect(h.runtime.handle(h.ctx, "questions.ask", { text: "no", blocked: true })).rejects.toThrow("not supported");
+    await expect(h.runtime.handle(h.ctx, "questions.ask", { text: "no" })).rejects.toThrow("not supported");
     await expect(h.runtime.commands(h.ctx).handle("questions.list")).rejects.toThrow("parent CLI");
     expect(h.runtime.hasBlockingQuestions()).toBe(false);
-  } finally { h.cleanup(); }
+  } finally {
+    h.cleanup();
+  }
 });
 
 test("late old-session callbacks cannot replace the navigated manager", async () => {
   const h = harness();
   try {
     const oldCommands = h.runtime.commands(h.ctx);
-    const next = { ...h.ctx, sessionManager: {
-      getSessionFile: () => join((h.manager.getSessionFile()), "other"),
-      getSessionId: () => "other", getLeafId: () => "root", getBranch: () => [{ id: "root" }],
-    } };
-    h.emit("session_switch", next);
+    const next = {
+      ...h.ctx,
+      sessionManager: {
+        getSessionFile: () => join(h.manager.getSessionFile(), "other"),
+        getSessionId: () => "other",
+        getLeafId: () => "root",
+        getBranch: () => [{ id: "root" }],
+      },
+    };
+    h.emit("session_start", next);
     h.idle(true);
     h.emit("agent_settled", h.ctx); // stale callback
-    await expect(oldCommands.handle("questions.ask", { text: "stale", blocked: true })).rejects.toThrow("no longer active");
+    await expect(oldCommands.handle("questions.ask", { text: "stale" })).rejects.toThrow("no longer active");
     await expect(h.runtime.handle(h.ctx, "questions.list", {})).rejects.toThrow("no longer active");
     expect(h.sent).toHaveLength(0);
-  } finally { h.cleanup(); }
+  } finally {
+    h.cleanup();
+  }
 });
 
 test("explicit resume queue is bounded by pending-question capacity", async () => {
@@ -139,12 +184,18 @@ test("explicit resume queue is bounded by pending-question capacity", async () =
   try {
     const saved = [];
     for (let i = 0; i < 21; i++) {
-      const q = await h.runtime.service.ask(h.ctx, { text: "Q" + i, blocked: true });
-      saved.push(await h.runtime.service.answer(h.ctx, { id: q.id, owner: q.owner, version: q.version, text: "A" + i }));
+      const q = await h.runtime.service.ask(h.ctx, { text: "Q" + i });
+      saved.push(
+        await h.runtime.service.answer(h.ctx, { id: q.id, owner: q.owner, version: q.version, text: "A" + i }),
+      );
     }
     h.runtime.pause();
     for (const q of saved.slice(0, 20)) await h.runtime.commands(h.ctx).handle("questions.resume", { id: q.id });
-    await expect(h.runtime.commands(h.ctx).handle("questions.resume", { id: saved[20]!.id })).rejects.toThrow("Too many queued");
+    await expect(h.runtime.commands(h.ctx).handle("questions.resume", { id: saved[20]!.id })).rejects.toThrow(
+      "Too many queued",
+    );
     expect(h.sent).toHaveLength(0);
-  } finally { h.cleanup(); }
+  } finally {
+    h.cleanup();
+  }
 });

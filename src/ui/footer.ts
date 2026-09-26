@@ -271,11 +271,18 @@ export function renderCompactFooter(
   const statuses = data.getExtensionStatuses();
   const task = singleLine(statuses.get("die-tasks") ?? "").replace(/^(\d+ tasks?) running$/, "$1");
   const shortTask = task.replace(/^(\d+) tasks?$/, "$1t");
-  const questions = singleLine(statuses.get("die-questions") ?? "").replace(
-    /^([0-9]+) questions? pending$/,
-    "$1 questions",
-  );
-  const shortQuestions = questions.replace(/^([0-9]+) questions$/, "$1q");
+  const questionStatus = singleLine(statuses.get("die-questions") ?? "");
+  const questionCount = questionStatus.match(/^([0-9]+) questions? pending/);
+  const questions = questionStatus
+    ? questionCount
+      ? questionCount[1] + " /questions" + (questionStatus.includes("waiting on you") ? " · waiting on you" : "")
+      : questionStatus
+    : "";
+  const shortQuestions = questionStatus
+    ? questionCount
+      ? questionCount[1] + " /questions" + (questionStatus.includes("waiting on you") ? " waiting" : "")
+      : "/questions unavailable"
+    : "";
   const mode = singleLine(statuses.get("die-mode") ?? "");
   // Native fast mode owns the bolt badge; it is provider status, never an editor spinner.
   const nativeFast = singleLine(statuses.get("die-native-fast") ?? "");
@@ -367,7 +374,11 @@ export function renderCompactFooter(
       model,
       " ",
     ],
-    [[accent(live), accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, extra], model, " "],
+    [
+      [shortQuestions, accent(live), accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, extra],
+      model,
+      " ",
+    ],
   ];
   for (const [parts, right, separator] of candidates) {
     const left = parts.filter(Boolean).join(separator);

@@ -5,7 +5,25 @@ export interface QuestionCommands {
   handle(method: string, params?: Record<string, unknown>): unknown | Promise<unknown>;
   subscribe?(listener: () => void): () => void;
 }
-type Question = { id: string; text?: string; question?: string; status?: string; answer?: string };
+type Question = {
+  id: string;
+  text?: string;
+  question?: string;
+  status?: string;
+  answer?: string;
+  readOnly?: boolean;
+  owner?: { sessionId: string; branchId: string };
+  version?: number;
+  requester?: string;
+  taskIds?: string[];
+  reason?: string;
+  choices?: string[];
+  allowFreeText?: boolean;
+  blocked?: { checkpoint: string; foreground?: boolean; taskIds?: string[] };
+  replyId?: string;
+  delivery?: string;
+  resolutionReason?: string;
+};
 
 function records(value: unknown): Question[] {
   if (Array.isArray(value)) return value as Question[];
@@ -18,7 +36,20 @@ function records(value: unknown): Question[] {
 }
 
 function renderQuestion(question: Question): string {
-  return [question.id, question.status ? "[" + question.status + "]" : "", question.text ?? question.question ?? ""]
+  return [
+    question.id,
+    question.status
+      ? "[" +
+        question.status +
+        (question.readOnly
+          ? "; history only"
+          : question.blocked && question.status === "pending"
+            ? "; waiting on you"
+            : "") +
+        "]"
+      : "",
+    question.text ?? question.question ?? "",
+  ]
     .filter(Boolean)
     .join(" ");
 }
@@ -46,21 +77,27 @@ export function registerQuestions(
         });
       }
       const pending = records(await service.handle("questions.list", { status: "pending" })).filter(
-        (question) => !question.status || question.status === "pending",
+        (question) => !question.readOnly && (!question.status || question.status === "pending"),
       );
       if (token === generation && context === current)
         current.ui.setStatus(
           "die-questions",
-          pending.length ? pending.length + " question" + (pending.length === 1 ? "" : "s") + " pending" : undefined,
+          pending.length
+            ? pending.length +
+                " question" +
+                (pending.length === 1 ? "" : "s") +
+                " pending" +
+                (pending.some((q) => q.blocked) ? " · waiting on you" : "")
+            : undefined,
         );
     } catch {
       // Commands report errors; background refresh must not create notice spam.
-      if (token === generation && context === current) current.ui.setStatus("die-questions", undefined);
+      if (token === generation && context === current) current.ui.setStatus("die-questions", "/questions unavailable");
     }
   };
 
   pi.registerCommand("questions", {
-    description: "List, inspect, answer or cancel pending questions",
+    description: "List, inspect, answer, cancel or resume questions",
     async handler(args, ctx) {
       context = ctx;
       const parts = args.trim().split(/\s+/).filter(Boolean);
@@ -68,7 +105,7 @@ export function registerQuestions(
       try {
         const service = getService(ctx);
         if (verb === "list") {
-          if (id) throw new Error("Usage: /questions [list|detail <id>|answer <id> <text>|cancel <id>]");
+          if (id) throw new Error("Usage: /questions [list|detail <id>|answer <id> <text>|cancel <id>|resume <id>]");
           const questions = records(await service.handle("questions.list", {}));
           ctx.ui.notify(questions.length ? questions.map(renderQuestion).join("\n") : "No questions", "info");
         } else if (verb === "detail") {
@@ -76,7 +113,28 @@ export function registerQuestions(
           const question = (await service.handle("questions.get", { id })) as Question | null;
           if (!question) throw new Error("Question not found: " + id);
           ctx.ui.notify(
-            [renderQuestion(question), question.answer ? "Answer: " + question.answer : ""].filter(Boolean).join("\n"),
+            [
+              renderQuestion(question),
+              question.requester && "Requester: " + question.requester,
+              question.reason && "Why: " + question.reason,
+              question.choices?.length &&
+                "Choices: " +
+                  question.choices.join(" | ") +
+                  (question.allowFreeText === false ? " (pick one)" : " (or your own answer)"),
+              question.blocked &&
+                "Waiting: " +
+                  (question.blocked.foreground ? "parent follow-up; " : "") +
+                  (question.blocked.taskIds?.join(", ") ?? "") +
+                  " — " +
+                  question.blocked.checkpoint,
+              question.answer && "Answer: " + question.answer,
+              question.status === "answered" && (question.delivery === "delivered" ? "Answer sent to parent" : question.delivery === "queued" ? "Answer saved · waiting for parent" : "Answer saved · /questions resume " + question.id),
+              question.resolutionReason && "Closed: " + question.resolutionReason,
+              question.taskIds?.length &&
+                "Tasks: " + question.taskIds.join(", ") + ". Child in-place replies are not supported.",
+            ]
+              .filter(Boolean)
+              .join("\n"),
             "info",
           );
         } else if (verb === "answer") {
@@ -92,7 +150,7 @@ export function registerQuestions(
           if (!id || rest.length) throw new Error("Usage: /questions cancel <id>");
           await service.handle("questions.cancel", { id });
           ctx.ui.notify("Question " + id + " cancelled", "info");
-        } else throw new Error("Usage: /questions [list|detail <id>|answer <id> <text>|cancel <id>]");
+        } else throw new Error("Usage: /questions [list|detail <id>|answer <id> <text>|cancel <id>|resume <id>]");
         await refresh();
       } catch (error) {
         ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning");
@@ -106,7 +164,6 @@ export function registerQuestions(
     void refresh();
   };
   pi.on("session_start", (_event, ctx) => attach(ctx));
-  pi.on("session_switch", (_event, ctx) => attach(ctx));
   pi.on("session_tree", (_event, ctx) => attach(ctx));
   pi.on("tool_execution_end", (_event, ctx) => attach(ctx));
   pi.on("before_agent_start", (_event, ctx) => {
