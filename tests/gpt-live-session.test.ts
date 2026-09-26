@@ -115,8 +115,18 @@ test("interleaved provisional transcripts and offset-only client delegation, ded
   expect(session.thinking("item_1", "Checking, nothing changed yet")).toBe(true);
   expect(session.commentary("item_1", "Confirmed for Thursday")).toBe(true);
   expect(socket.sent.slice(-2)).toEqual([
-    { type: "session.thinking.append", event_id: "live_context_1", delegation_id: "item_1", content: "Checking, nothing changed yet" },
-    { type: "session.commentary.append", event_id: "live_context_2", delegation_id: "item_1", content: "Confirmed for Thursday" },
+    {
+      type: "session.thinking.append",
+      event_id: "live_context_1",
+      delegation_id: "item_1",
+      content: "Checking, nothing changed yet",
+    },
+    {
+      type: "session.commentary.append",
+      event_id: "live_context_2",
+      delegation_id: "item_1",
+      content: "Confirmed for Thursday",
+    },
   ]);
   socket.event({ type: "session.output_audio.delta", delta: Buffer.alloc(19_200).toString("base64") });
   expect(pcm.map((x) => x.length)).toEqual([9_600, 9_600]);
@@ -301,8 +311,18 @@ test("typed context stays distinct; append acknowledgments mark timeline deliver
   expect(session.instructions("Speak briefly and ask for confirmation.")).toBe(true);
   expect(session.observation("The job is still running.")).toBe(true);
   expect(socket.sent.slice(-2)).toEqual([
-    { type: "session.instructions.append", event_id: "live_context_1", delegation_id: null, content: "Speak briefly and ask for confirmation." },
-    { type: "session.thinking.append", event_id: "live_context_2", delegation_id: null, content: "The job is still running." },
+    {
+      type: "session.instructions.append",
+      event_id: "live_context_1",
+      delegation_id: null,
+      content: "Speak briefly and ask for confirmation.",
+    },
+    {
+      type: "session.thinking.append",
+      event_id: "live_context_2",
+      delegation_id: null,
+      content: "The job is still running.",
+    },
   ]);
   socket.event({ type: "session.instructions.appended", client_event_id: "unknown", start_ms: 10, end_ms: 20 });
   socket.event({ type: "session.commentary.appended", client_event_id: "live_context_1", start_ms: 10, end_ms: 20 });
@@ -313,4 +333,21 @@ test("typed context stays distinct; append acknowledgments mark timeline deliver
   const close = session.close();
   socket.event({ type: "session.closed" });
   await close;
+});
+
+test("unacknowledged context is bounded and a matched acknowledgment restores capacity", async () => {
+  const { socket, session } = fixture();
+  const start = session.connect("fake");
+  socket.ready();
+  await start;
+  for (let i = 0; i < 256; i++) expect(session.observation("Bounded host context")).toBe(true);
+  const count = socket.sent.length;
+  expect(session.observation("Capacity exceeded")).toBe(false);
+  expect(socket.sent.length).toBe(count);
+  socket.event({ type: "session.thinking.appended", client_event_id: "live_context_1", start_ms: 0, end_ms: 1 });
+  expect(session.observation("Capacity restored")).toBe(true);
+  const close = session.close();
+  socket.event({ type: "session.closed" });
+  await close;
+  expect(session.observation("No updates after closure")).toBe(false);
 });

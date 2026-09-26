@@ -37,7 +37,9 @@ describe("Live voice settings (offline)", () => {
     try {
       await saveLiveConfig(chosen, path);
       expect(await loadLiveConfig(path)).toEqual(chosen);
-      expect(modelForProvider("openai", { provider: "google", model: "gemini-3.8-live", openaiModel: chosen.model })).toBe("gpt-live-1");
+      expect(
+        modelForProvider("openai", { provider: "google", model: "gemini-3.8-live", openaiModel: chosen.model }),
+      ).toBe("gpt-live-1");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

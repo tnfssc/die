@@ -26,7 +26,12 @@ export interface GPTLiveCallbacks {
   onClosed?: (finalized: boolean, usage?: unknown) => void;
   onUsage?: (usage: unknown) => void;
   /** Context reached its estimated timeline position, not proof of speech or task completion. */
-  onContextAppended?: (ack: { eventId: string; type: "instructions" | "thinking" | "commentary"; startMs: number; endMs: number }) => void;
+  onContextAppended?: (ack: {
+    eventId: string;
+    type: "instructions" | "thinking" | "commentary";
+    startMs: number;
+    endMs: number;
+  }) => void;
 }
 const URL = "wss://api.openai.com/v1/live/sessions";
 const MAX_EVENT = 150_000,
@@ -244,7 +249,9 @@ export class GPTLiveSession {
           return;
         }
         this.pendingContext.delete(id);
-        this.emit(() => this.callbacks.onContextAppended?.({ eventId: id, type: kind, startMs: event.start_ms, endMs: event.end_ms }));
+        this.emit(() =>
+          this.callbacks.onContextAppended?.({ eventId: id, type: kind, startMs: event.start_ms, endMs: event.end_ms }),
+        );
         break;
       }
       case "session.input_transcript.delta":
