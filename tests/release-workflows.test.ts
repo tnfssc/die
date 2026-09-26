@@ -64,7 +64,8 @@ describe("release automation", () => {
       };
       expect(workflow.permissions).toEqual({ contents: "read" });
       for (const [jobName, job] of Object.entries(workflow.jobs)) {
-        if (jobName === "publish") expect(job.permissions).toEqual({ contents: "write" });
+        if (jobName === "publish" || jobName === "prepare-manual")
+          expect(job.permissions).toEqual({ contents: "write" });
         else expect(job.permissions?.contents).not.toBe("write");
         for (const step of job.steps) {
           if (!step.uses) continue;
@@ -129,16 +130,16 @@ describe("release automation", () => {
     const workflow = await read(".github/workflows/release.yml");
     expect(() => Bun.YAML.parse(workflow)).not.toThrow();
     expect(workflow).toContain('- "v*"');
-    expect(workflow).not.toContain("workflow_dispatch:");
+    expect(workflow).toContain("workflow_dispatch:");
     expect(workflow).toContain("!contains(github.ref_name, '-')");
-    expect(workflow).toContain("needs: [reuse-check, mac-helper]");
+    expect(workflow).toContain("needs: [reuse-check, prepare-manual, mac-helper]");
     expect(workflow).toContain("scripts/build-live-helper.sh");
     expect(workflow).toContain("Mach-O 64-bit (executable arm64|arm64 executable)");
     expect(workflow).toContain("-fsanitize=address,undefined");
     expect(workflow).toContain("actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c");
     expect(workflow).toContain("--live-helper=./artifacts/release/mac-helper/live-audio");
     expect(workflow).toContain("stable-release-assets");
-    expect(workflow).toContain("needs: [release, reuse-assets, mac-release-smoke]");
+    expect(workflow).toContain("needs: [release, reuse-assets, mac-release-smoke, prepare-manual]");
     expect(workflow).toContain("bun scripts/verify-v071-update.ts dist/release/die-darwin-arm64");
     expect(workflow).toContain("--live-self-test");
     expect(workflow).toContain("permissions:\n  contents: read");
@@ -191,13 +192,13 @@ describe("release automation", () => {
         { if?: string; needs?: string | string[]; permissions?: Record<string, string>; steps: { run?: string }[] }
       >;
     };
-    expect(Object.keys(workflow.on)).toEqual(["push"]);
+    expect(Object.keys(workflow.on)).toEqual(["workflow_dispatch", "push"]);
     expect(workflow.on.push).toEqual({ branches: ["develop"], tags: ["v*"] });
     expect(workflow.jobs.publish!.if).toBe(
-      "${{ always() && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.mac-release-smoke.result == 'success' && (needs.release.result == 'success' || needs.reuse-assets.result == 'success') }}",
+      "${{ always() && (github.event_name == 'workflow_dispatch' && needs.prepare-manual.result == 'success' || github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) && needs.mac-release-smoke.result == 'success' && (needs.release.result == 'success' || needs.reuse-assets.result == 'success') }}",
     );
-    expect(workflow.jobs.publish!.needs).toEqual(["release", "reuse-assets", "mac-release-smoke"]);
-    expect(workflow.jobs["mac-release-smoke"]!.needs).toEqual(["release", "reuse-assets"]);
+    expect(workflow.jobs.publish!.needs).toEqual(["release", "reuse-assets", "mac-release-smoke", "prepare-manual"]);
+    expect(workflow.jobs["mac-release-smoke"]!.needs).toEqual(["release", "reuse-assets", "prepare-manual"]);
     expect(workflow.jobs["mac-release-smoke"]!.if).toContain(
       "needs.release.result == 'success' || needs.reuse-assets.result == 'success'",
     );
@@ -218,7 +219,7 @@ describe("release automation", () => {
   test("publish selects only notes for the validated tag and fails closed", async () => {
     const workflow = await read(".github/workflows/release.yml");
     const publish = workflow.slice(workflow.indexOf("  publish:"));
-    expect(publish).toContain('notes_file=$(bun scripts/select-release-notes.ts "$GITHUB_REF_NAME")');
+    expect(publish).toContain('notes_file=$(bun scripts/select-release-notes.ts "$RELEASE_TAG")');
     expect(publish).toContain('--notes-file "$notes_file"');
     expect(publish).not.toContain("--notes-file support/release-v0.11.1.md");
     expect(publish.indexOf("notes_file=$(bun")).toBeLessThan(publish.indexOf("gh release create"));
