@@ -1,6 +1,6 @@
 # Die architecture survey: handing off, jobs, UI and Live
 
-Research only, at this checkout (branch `die/die-pending-question-architecture-survey-acceb3d6`). Read `wisdom/values.md`, `wisdom/tasks-ui/background-ux-audit.md`, `wisdom/tasks-ui/task-monitor.md`, `wisdom/t3/t3-task-ui-research.md`, `wisdom/web/orchestrator-web-tasks-research.md`, `wisdom/live/session-host-boundary.md` and main-owner/voice notes. Source references below are current local checkout lines; upstream web source is represented here by the pinned patch, not an independently checked-out upstream tree.
+Research only, checked 2026-09-26 at die base `2b58227be64c72f83c4c9050a4e668e2e4eabbad`. Durable worktree: `/home/tnfssc/.die/worktrees/die-a86675007a5e-task_ccdefa31-a86675007a5e-task_acceb3d6`. At this checkout (branch `die/die-pending-question-architecture-survey-acceb3d6`). Read `wisdom/values.md`, `wisdom/tasks-ui/background-ux-audit.md`, `wisdom/tasks-ui/task-monitor.md`, `wisdom/t3/t3-task-ui-research.md`, `wisdom/web/orchestrator-web-tasks-research.md`, `wisdom/live/session-host-boundary.md` and main-owner/voice notes. Source references below are current local checkout lines; upstream web source is represented here by the pinned patch, not an independently checked-out upstream tree.
 
 ## Actual handoff and bridge
 
