@@ -1,6 +1,6 @@
 # GPT-Live crackling investigation (v0.14.0, 2026-09-26)
 
-Report: “a ton of crackling when im speaking with gpt live 1”. Direction/location of the sound, whether it occurs during assistant-only speech, output route, and headphones comparison are not yet known. Do not claim this report is reproduced or fixed from offline tests.
+Report: “a ton of crackling when im speaking with gpt live 1”. Parent later provided user clarification in crackling-user-clarification.md: crackling is in GPT-Live spoken replies and happens randomly. Do not assume it is limited to overlapping user speech or microphone feedback. Output route and headphones comparison remain unknown. The reproduced packet-seam defect is relevant to random output discontinuities but does not prove this report is fixed.
 
 ## Contract and production audit
 
@@ -46,7 +46,7 @@ The fix necessarily touches shared native rendering, but only the demonstrated m
 
 No paid provider connection, key discovery, real mic/speaker recording, Swift AVAudioEngine execution, device acoustic measurement, or packaged-app acceptance here. Host is Linux. Normal OpenAI key was reportedly absent at parent's last check; no secret hunt or alternate credential use. No evidence justifies changing working Realtime/Gemini shared production paths.
 
-First ask: is the crackle in assistant sound, and does it persist when the user is silent? Does headphones vs built-in speaker change it? On the affected route, compare /live speaker-check local synthetic playback with GPT-only listening, then overlap speaking. With explicit consent, bounded same-run provider PCM vs native-render timing/capture evidence would distinguish provider waveform corruption, underruns/UI stalls, threshold flushes, and acoustic feedback. Device-specific reproduction must precede claiming an acoustic fix.
+User already clarified random crackling in assistant replies. Next determine whether it also occurs with the user silent and whether headphones vs built-in speaker changes it. On the affected route, compare /live speaker-check local synthetic playback with GPT-only listening, then overlap speaking. With explicit consent, bounded same-run provider PCM vs native-render timing/capture evidence would distinguish provider waveform corruption, underruns/UI stalls, threshold flushes, and acoustic feedback. Device-specific reproduction must precede claiming an acoustic fix.
 
 ## Durable work
 
