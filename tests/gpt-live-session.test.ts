@@ -115,8 +115,8 @@ test("interleaved provisional transcripts and offset-only client delegation, ded
   expect(session.thinking("item_1", "Checking, nothing changed yet")).toBe(true);
   expect(session.commentary("item_1", "Confirmed for Thursday")).toBe(true);
   expect(socket.sent.slice(-2)).toEqual([
-    { type: "session.thinking.append", delegation_id: "item_1", content: "Checking, nothing changed yet" },
-    { type: "session.commentary.append", delegation_id: "item_1", content: "Confirmed for Thursday" },
+    { type: "session.thinking.append", event_id: "live_context_1", delegation_id: "item_1", content: "Checking, nothing changed yet" },
+    { type: "session.commentary.append", event_id: "live_context_2", delegation_id: "item_1", content: "Confirmed for Thursday" },
   ]);
   socket.event({ type: "session.output_audio.delta", delta: Buffer.alloc(19_200).toString("base64") });
   expect(pcm.map((x) => x.length)).toEqual([9_600, 9_600]);
@@ -258,6 +258,7 @@ test("general host observations use nullable delegation and enforce conservative
   expect(f.session.observation("Quoted untrusted host data", true)).toBe(true);
   expect(f.socket.sent.at(-1)).toEqual({
     type: "session.commentary.append",
+    event_id: "live_context_1",
     delegation_id: null,
     content: "Quoted untrusted host data",
   });
@@ -289,4 +290,27 @@ test("GPT-Live cumulative usage and final billing event reach cost callback", as
   socket.event({ type: "session.closed", usage: { seconds: 15 } });
   expect(updates).toEqual([{ seconds: 12 }]);
   expect(closes).toEqual([[true, { seconds: 15 }]]);
+});
+
+test("typed context stays distinct; append acknowledgments mark timeline delivery, not task or speech completion", async () => {
+  const acknowledged: any[] = [];
+  const { socket, session } = fixture({ onContextAppended: (ack) => acknowledged.push(ack) });
+  const start = session.connect("fake");
+  socket.ready();
+  await start;
+  expect(session.instructions("Speak briefly and ask for confirmation.")).toBe(true);
+  expect(session.observation("The job is still running.")).toBe(true);
+  expect(socket.sent.slice(-2)).toEqual([
+    { type: "session.instructions.append", event_id: "live_context_1", delegation_id: null, content: "Speak briefly and ask for confirmation." },
+    { type: "session.thinking.append", event_id: "live_context_2", delegation_id: null, content: "The job is still running." },
+  ]);
+  socket.event({ type: "session.instructions.appended", client_event_id: "unknown", start_ms: 10, end_ms: 20 });
+  socket.event({ type: "session.commentary.appended", client_event_id: "live_context_1", start_ms: 10, end_ms: 20 });
+  expect(acknowledged).toEqual([]);
+  socket.event({ type: "session.instructions.appended", client_event_id: "live_context_1", start_ms: 10, end_ms: 20 });
+  socket.event({ type: "session.instructions.appended", client_event_id: "live_context_1", start_ms: 10, end_ms: 20 });
+  expect(acknowledged).toEqual([{ eventId: "live_context_1", type: "instructions", startMs: 10, endMs: 20 }]);
+  const close = session.close();
+  socket.event({ type: "session.closed" });
+  await close;
 });
