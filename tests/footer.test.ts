@@ -60,6 +60,20 @@ describe("compact extension footer", () => {
       expect(visibleWidth(lines[0]!)).toBeLessThanOrEqual(width);
     }
   });
+  test("pending questions remain in ordinary-color compact footer through progress updates", () => {
+    const { ctx, data, statuses } = fixture();
+    statuses.set("die-questions", "2 questions pending");
+    statuses.set("die-tasks", "1 task running");
+    for (const width of [40, 60, 100]) {
+      const line = renderSingleRowFooter(ctx, data, theme, width)[0]!;
+      expect(Bun.stripANSI(line)).toMatch(/2q|2 questions/);
+      expect(Bun.stripANSI(line)).not.toContain("+1 status");
+      expect(visibleWidth(line)).toBeLessThanOrEqual(width);
+    }
+    statuses.delete("die-tasks");
+    statuses.set("die-live", "Live speaking");
+    expect(Bun.stripANSI(renderSingleRowFooter(ctx, data, theme, 100)[0]!)).toContain("2 questions");
+  });
   test("braille animation stays one row and within narrow terminal widths", () => {
     const { ctx, data, statuses } = fixture();
     for (const width of [1, 10, 24, 40, 60, 90])

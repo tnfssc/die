@@ -271,6 +271,11 @@ export function renderCompactFooter(
   const statuses = data.getExtensionStatuses();
   const task = singleLine(statuses.get("die-tasks") ?? "").replace(/^(\d+ tasks?) running$/, "$1");
   const shortTask = task.replace(/^(\d+) tasks?$/, "$1t");
+  const questions = singleLine(statuses.get("die-questions") ?? "").replace(
+    /^([0-9]+) questions? pending$/,
+    "$1 questions",
+  );
+  const shortQuestions = questions.replace(/^([0-9]+) questions$/, "$1q");
   const mode = singleLine(statuses.get("die-mode") ?? "");
   // Native fast mode owns the bolt badge; it is provider status, never an editor spinner.
   const nativeFast = singleLine(statuses.get("die-native-fast") ?? "");
@@ -287,6 +292,7 @@ export function renderCompactFooter(
   const otherCount = [...statuses.keys()].filter(
     (key) =>
       key !== "die-tasks" &&
+      key !== "die-questions" &&
       key !== "die-mode" &&
       key !== "die-native-fast" &&
       key !== "die-live" &&
@@ -319,6 +325,7 @@ export function renderCompactFooter(
         accent(live),
         branch ? `${project}:${singleLine(branch)}` : project,
         accent(task),
+        questions,
         accent(mode),
         accent(nativeFast),
         cost,
@@ -330,12 +337,33 @@ export function renderCompactFooter(
       " · ",
     ],
     [
-      [accent(live), project, accent(task), accent(mode), accent(nativeFast), cost, context("ctx "), cacheText, extra],
+      [
+        accent(live),
+        project,
+        accent(task),
+        questions,
+        accent(mode),
+        accent(nativeFast),
+        cost,
+        context("ctx "),
+        cacheText,
+        extra,
+      ],
       modelWithThinking,
       " · ",
     ],
     [
-      [accent(live), accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, project, extra],
+      [
+        accent(live),
+        accent(shortTask),
+        shortQuestions,
+        accent(shortNativeFast),
+        cost,
+        context("C"),
+        cacheText,
+        project,
+        extra,
+      ],
       model,
       " ",
     ],
