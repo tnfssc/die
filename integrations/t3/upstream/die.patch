@@ -10881,13 +10881,13 @@ index 89390422f..059b486f2 100644
        <ChatView
          {...(nextChatViewKey ? { key: nextChatViewKey.key } : {})}
 diff --git a/apps/web/src/components/chat/ChatComposer.tsx b/apps/web/src/components/chat/ChatComposer.tsx
-index 54689eee2..93851b117 100644
+index 54689eee2..d1a4ec179 100644
 --- a/apps/web/src/components/chat/ChatComposer.tsx
 +++ b/apps/web/src/components/chat/ChatComposer.tsx
 @@ -1,5 +1,6 @@
  import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
  import { runtimeModeConfig, runtimeModeOptions as runtimeModes } from "./runtimeModeConfig";
-+import { shouldShowNativeCostSummary } from "./nativeUsageCost.logic";
++import { nativeCostSummary, shouldShowNativeCostSummary } from "./nativeUsageCost.logic";
  import { isLocalEnvironmentDisabled } from "../../localEnvironment";
  import { usePrimaryEnvironmentId } from "../../state/environments";
  import { useRightPanelStore } from "~/rightPanelStore";
@@ -10899,16 +10899,7 @@ index 54689eee2..93851b117 100644
    ProjectId,
    PullRequestListInput,
    PreviewAnnotationPayload,
-@@ -1331,9 +1333,16 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
-   );
- });
- 
-+const formatNativeCost = (usage: NativeThreadUsageReport["own"]): string => {
-+  if (usage.costStatus === "unavailable") return "unavailable";
-+  const amount = usage.costUsd < 0.01 ? usage.costUsd.toFixed(4) : usage.costUsd.toFixed(2);
-+  return `${amount}${usage.costStatus === "partial" ? " (partial)" : ""}`;
-+};
-+
+@@ -1334,6 +1336,7 @@ const ComposerFooterModeControls = memo(function ComposerFooterModeControls(prop
  const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(props: {
    compact: boolean;
    activeContextWindow: ContextWindowSnapshot | null;
@@ -10916,7 +10907,7 @@ index 54689eee2..93851b117 100644
    reserveContextWindowMeter: boolean;
    activeThreadModelDisplayName: string | null;
    isPreparingWorktree: boolean;
-@@ -1366,6 +1375,16 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
+@@ -1366,6 +1369,15 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
  }) {
    return (
      <>
@@ -10926,14 +10917,13 @@ index 54689eee2..93851b117 100644
 +          title="Provider-reported API-equivalent spend. Partial means one or more turns did not report cost."
 +          data-testid="native-usage-cost"
 +        >
-+          Cost own {formatNativeCost(props.nativeUsage.own)} · subtree{" "}
-+          {formatNativeCost(props.nativeUsage.subtree)}
++          {nativeCostSummary(props.nativeUsage)}
 +        </span>
 +      ) : null}
        {props.activeContextWindow ? (
          <ContextWindowMeter
            usage={props.activeContextWindow}
-@@ -1559,6 +1578,7 @@ export interface ChatComposerProps {
+@@ -1559,6 +1571,7 @@ export interface ChatComposerProps {
  
    // Context window
    activeContextWindow: ContextWindowSnapshot | null;
@@ -10941,7 +10931,7 @@ index 54689eee2..93851b117 100644
    compactThreadUnavailable: boolean;
    compactDisabled: boolean;
    compactDisabledReason: string | null;
-@@ -1701,6 +1721,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -1701,6 +1714,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
      activeProjectDefaultModelSelection,
      activeThreadModelSelection,
      activeContextWindow,
@@ -10949,7 +10939,7 @@ index 54689eee2..93851b117 100644
      compactThreadUnavailable,
      compactDisabled,
      compactDisabledReason,
-@@ -7409,6 +7430,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
+@@ -7409,6 +7423,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                        settings.contextWindowMeterEnabled ? activeContextWindow : null
                      }
                      reserveContextWindowMeter={reserveContextWindowMeter}
@@ -11144,14 +11134,14 @@ index 80f146569..5c9bd32c8 100644
            collapsedSupersededEntryIds.has(nextEntry.id) ||
 diff --git a/apps/web/src/components/chat/nativeUsageCost.logic.test.ts b/apps/web/src/components/chat/nativeUsageCost.logic.test.ts
 new file mode 100644
-index 000000000..a83f7844b
+index 000000000..48eb2743f
 --- /dev/null
 +++ b/apps/web/src/components/chat/nativeUsageCost.logic.test.ts
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,96 @@
 +import { describe, expect, it } from "vite-plus/test";
 +import type { NativeThreadUsageReport, NativeUsageTotals } from "@t3tools/contracts";
 +
-+import { shouldShowNativeCostSummary } from "./nativeUsageCost.logic";
++import { nativeCostSummary, shouldShowNativeCostSummary } from "./nativeUsageCost.logic";
 +
 +const totals = (overrides: Partial<NativeUsageTotals> = {}): NativeUsageTotals => ({
 +  turns: 0,
@@ -11217,17 +11207,57 @@ index 000000000..a83f7844b
 +    expect(shouldShowNativeCostSummary(report(totals(), subtreeOnly))).toBe(true);
 +  });
 +});
++
++describe("nativeCostSummary", () => {
++  it("renders a single priced or unavailable cost when own and subtree are the same", () => {
++    expect(nativeCostSummary(report(totals({ turns: 1, costUsd: 0.004, costStatus: "complete" }))))
++      .toBe("Cost $0.0040");
++    expect(nativeCostSummary(report(totals({ turns: 1, costStatus: "unavailable" }))))
++      .toBe("Cost unavailable");
++    expect(nativeCostSummary(report(totals({ turns: 1, costStatus: "complete" }))))
++      .toBe("Cost $0.0000");
++  });
++
++  it("keeps the thread and total distinction when delegated usage differs", () => {
++    expect(nativeCostSummary(report(
++      totals({ turns: 1, costUsd: 0.02, costStatus: "complete" }),
++      totals({ turns: 2, costUsd: 0.03, costStatus: "partial" }),
++    ))).toBe("Cost $0.03 (partial) total · $0.02 this thread");
++    expect(nativeCostSummary(report(totals(), totals({ turns: 1, costStatus: "unavailable" }))))
++      .toBe("Cost unavailable total · no turns this thread");
++  });
++
++  it("keeps a distinct total even when rounded display amounts coincide", () => {
++    expect(nativeCostSummary(report(
++      totals({ turns: 1, costUsd: 0.02, costStatus: "complete" }),
++      totals({ turns: 2, costUsd: 0.02, costStatus: "complete" }),
++    ))).toBe("Cost $0.02 total · $0.02 this thread");
++  });
++});
 diff --git a/apps/web/src/components/chat/nativeUsageCost.logic.ts b/apps/web/src/components/chat/nativeUsageCost.logic.ts
 new file mode 100644
-index 000000000..d3855ebb6
+index 000000000..e73ddbb08
 --- /dev/null
 +++ b/apps/web/src/components/chat/nativeUsageCost.logic.ts
-@@ -0,0 +1,6 @@
+@@ -0,0 +1,19 @@
 +import type { NativeThreadUsageReport } from "@t3tools/contracts";
 +
 +/** Only show cost once this thread or its delegated subtree has recorded a provider turn. */
 +export function shouldShowNativeCostSummary(usage: NativeThreadUsageReport | null): boolean {
 +  return usage !== null && (usage.own.turns > 0 || usage.subtree.turns > 0);
++}
++
++/** Collapse the identical own/subtree pair until delegated usage adds a distinct total. */
++export function nativeCostSummary(usage: NativeThreadUsageReport): string {
++  const format = (totals: NativeThreadUsageReport["own"]): string => {
++    if (totals.costStatus === "unavailable") return "unavailable";
++    const amount = totals.costUsd < 0.01 ? totals.costUsd.toFixed(4) : totals.costUsd.toFixed(2);
++    return `$${amount}${totals.costStatus === "partial" ? " (partial)" : ""}`;
++  };
++  const own = format(usage.own);
++  const subtree = format(usage.subtree);
++  if (usage.own.turns === usage.subtree.turns && own === subtree) return `Cost ${subtree}`;
++  return `Cost ${subtree} total · ${usage.own.turns === 0 ? "no turns" : own} this thread`;
 +}
 diff --git a/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx b/apps/web/src/components/pullRequest/PullRequestDetailPanel.tsx
 index f19e41599..bc569dd38 100644
