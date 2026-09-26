@@ -12,13 +12,17 @@ export async function runLiveSetup(
   credentials: LiveCredentialService,
   signal: AbortSignal,
   importAvailable: () => boolean = () => existsSync(liveCredentialsPath()),
+  allowStart = true,
 ): Promise<boolean> {
   let explained: string | undefined;
   while (!signal.aborted) {
     const status = await credentials.status(signal);
     if (signal.aborted) return false;
     if (status.state === "stored_api_key" || status.state === "configured_api_key") {
-      const choice = await ui.select("Live", ["Start voice", "Done"]);
+      const choice = await ui.select(
+        allowStart ? "Live" : "Google API key configured",
+        allowStart ? ["Start voice", "Done"] : ["Done"],
+      );
       return !signal.aborted && choice === "Start voice";
     }
     const canImport = status.canImport && importAvailable();

@@ -1082,167 +1082,151 @@ test("rejected Live startup leaves no animation updates", async () => {
   expect(t.status.length).toBe(count);
 });
 
-describe("Live provider selection", () => {
-  test("default Gemini and selected OpenAI are voice models separate from coding agent; busy switches blocked", async () => {
-    const keys: string[] = [];
-    const voices: string[] = [];
+describe("Live model and credential setup", () => {
+  test("all models visible regardless of selected provider; labels reflect resolver readiness, not network access", async () => {
+    const captures: string[][] = [];
     const t = setup({
-      key: async (_signal, provider) => {
-        keys.push(provider ?? "google");
-        return "fake-key";
-      },
-      voice: (callbacks, _orchestration, provider) => {
-        voices.push(provider ?? "google");
-        return {
-          state: "ready",
-          generation: 0,
-          connect: async () => {
-            callbacks.onReady?.();
-          },
-          sendAudio: () => {},
-          close: () => {},
-        };
-      },
+      credentials: async (_signal, provider) => ({
+        status: async () =>
+          provider === "google"
+            ? { state: "oauth" as const, canImport: false as const }
+            : { state: "stored_api_key" as const, canImport: false as const },
+        loadKey: async () => {
+          throw new Error("no key read");
+        },
+        importLiveEnv: async () => {
+          throw new Error("no import");
+        },
+      }),
     });
-    await t.run("status");
-    expect(t.notices.at(-1)).toContain("Google Gemini voice model");
-    await t.run("start");
-    expect(keys).toEqual(["google"]);
-    await t.run("provider openai");
-    expect(t.notices.at(-1)).toContain("stop it");
-    await t.run("stop");
-    await t.run("provider openai");
-    await t.run("status");
-    expect(t.notices.at(-1)).toContain("OpenAI voice model");
-    expect(t.notices.at(-1)).toContain("Coding-agent model is configured separately");
-    await t.run("start");
-    expect(keys).toEqual(["google", "openai"]);
-    expect(voices).toEqual(["google", "openai"]);
-    await t.run("status");
-    expect(t.notices.at(-1)).toContain("OpenAI voice model");
-    await t.run("stop");
-  });
-
-  test("model selection persists across provider switching", async () => {
-    let saved: import("../src/live/config").LiveConfig = { provider: "google", model: "gemini-3.8-live" };
-    const keys: string[] = [];
-    const models: string[] = [];
-    let audio = 0;
-    const config = {
-      load: async () => saved,
-      save: async (next: typeof saved) => {
-        saved = next;
-      },
-    };
-    const overrides: Partial<LiveDependencies> = {
-      config,
-      key: async (_signal, provider) => {
-        keys.push(provider!);
-        return "fake";
-      },
-      voice: (callbacks, _tools, _provider, model) => {
-        models.push(model!);
-        return {
-          state: "ready",
-          generation: 0,
-          connect: async () => {
-            callbacks.onReady?.();
-          },
-          sendAudio: () => {},
-          close: () => {},
-        };
-      },
-      audio: async () => {
-        audio++;
-        throw new Error("fake no device");
-      },
-    };
-    const t = setup(overrides);
-    await t.run("model gemini-3.8-live-extended-thinking");
-    expect(saved).toMatchObject({ provider: "google", model: "gemini-3.8-live-extended-thinking" });
-    await t.run("provider openai");
-    await t.run("model gpt-realtime-2.1-mini");
-    expect(saved).toMatchObject({ provider: "openai", model: "gpt-realtime-2.1-mini" });
-    await t.run("model unlisted");
-    expect(saved.model).toBe("gpt-realtime-2.1-mini");
-    await t.run("provider google");
-    expect(saved.model).toBe("gemini-3.8-live-extended-thinking");
-    await t.run("provider openai");
-    expect(saved.model).toBe("gpt-realtime-2.1-mini");
-    const restarted = setup(overrides);
-    await restarted.run("status");
-    expect(restarted.notices.at(-1)).toContain("gpt-realtime-2.1-mini");
-    const choices: string[][] = [];
-    restarted.ctx.ui.select = async (_title?: string, options?: string[]) => {
-      choices.push(options ?? []);
+    t.ctx.ui.select = async (_title, options) => {
+      captures.push(options ?? []);
       return undefined;
     };
-    await restarted.run("model");
-    expect(choices[0]).toEqual(["gpt-realtime-2.1", "gpt-realtime-2.1-mini (selected)", "gpt-live-1"]);
-    expect(keys).toEqual([]);
-    expect(models).toEqual([]);
-    expect(audio).toBe(0);
+    await t.run("model");
+    expect(captures[0]).toEqual([
+      "gemini-3.8-live · Google Gemini · API key needed (OAuth) (selected)",
+      "gemini-3.8-live-extended-thinking · Google Gemini · API key needed (OAuth)",
+      "gpt-realtime-2.1 · OpenAI · key configured",
+      "gpt-realtime-2.1-mini · OpenAI · key configured",
+      "gpt-live-1 · OpenAI · key configured",
+    ]);
+    expect(t.launches).toBe(0);
+    expect(t.ownerAcquires).toBe(0);
   });
 
-  test("failed settings writes leave the previous selection in force", async () => {
+  test("explicit GPT and Gemini thinking choices atomically switch provider and round-trip with remembered models", async () => {
+    let saved: import("../src/live/config").LiveConfig = { provider: "google", model: "gemini-3.8-live" };
     const t = setup({
       config: {
-        load: async () => ({ provider: "google", model: "gemini-3.8-live" }),
-        save: async () => {
-          throw new Error("disk test failure");
+        load: async () => saved,
+        save: async (next) => {
+          saved = next;
         },
       },
     });
-    await t.run("provider openai");
-    expect(t.notices.at(-1)).toContain("previous choice kept");
-    await t.run("status");
-    expect(t.notices.at(-1)).toContain("Google Gemini voice model gemini-3.8-live");
+    await t.run("model gpt-live-1");
+    expect(saved).toMatchObject({ provider: "openai", model: "gpt-live-1", openaiModel: "gpt-live-1" });
+    await t.run("model gemini-3.8-live-extended-thinking");
+    expect(saved).toMatchObject({
+      provider: "google",
+      model: "gemini-3.8-live-extended-thinking",
+      googleModel: "gemini-3.8-live-extended-thinking",
+      openaiModel: "gpt-live-1",
+    });
+    await t.run("model gpt-realtime-2.1-mini");
+    expect(saved).toMatchObject({
+      provider: "openai",
+      model: "gpt-realtime-2.1-mini",
+      googleModel: "gemini-3.8-live-extended-thinking",
+    });
+    await t.run("model bogus");
+    expect(saved.model).toBe("gpt-realtime-2.1-mini");
+    const restarted = setup({ config: { load: async () => saved, save: async () => {} } });
+    await restarted.run("status");
+    expect(restarted.notices.at(-1)).toContain("OpenAI voice model gpt-realtime-2.1-mini");
+    expect(t.launches).toBe(0);
   });
 
-  test("OpenAI setup only rechecks canonical API key; cancellation never opens devices", async () => {
-    let loaded = 0;
+  test("picker crosses from either provider and cancellation does not save or launch", async () => {
+    let saved: import("../src/live/config").LiveConfig = { provider: "google", model: "gemini-3.8-live" };
     const t = setup({
-      key: async () => {
-        throw new Error("no key");
+      config: {
+        load: async () => saved,
+        save: async (next) => {
+          saved = next;
+        },
       },
+    });
+    t.ctx.ui.select = async (_title, options) =>
+      options?.find((option) => option.startsWith("gpt-realtime-2.1-mini ·"));
+    await t.run("model");
+    expect(saved).toMatchObject({ provider: "openai", model: "gpt-realtime-2.1-mini" });
+    t.ctx.ui.select = async (_title, options) =>
+      options?.find((option) => option.startsWith("gemini-3.8-live-extended-thinking ·"));
+    await t.run("model");
+    expect(saved).toMatchObject({ provider: "google", model: "gemini-3.8-live-extended-thinking" });
+    t.ctx.ui.select = async () => undefined;
+    await t.run("model");
+    expect(saved.model).toBe("gemini-3.8-live-extended-thinking");
+    expect(t.launches).toBe(0);
+  });
+
+  test("provider config does not switch model or start mic; missing key and OAuth remain setup-needed", async () => {
+    const queried: string[] = [];
+    const t = setup({
       credentials: async (_signal, provider) => {
-        expect(provider).toBe("openai");
+        queried.push(provider!);
         return {
-          status: async () => ({ state: "missing", canImport: true }),
+          status: async () =>
+            provider === "openai"
+              ? { state: "missing" as const, canImport: false as const }
+              : { state: "oauth" as const, canImport: false as const },
           loadKey: async () => {
-            loaded++;
-            throw new Error("unreachable");
+            throw new Error("no key");
           },
           importLiveEnv: async () => {
-            throw new Error("must not import Gemini key");
+            throw new Error("no import");
           },
         };
       },
     });
     await t.run("provider openai");
-    await t.run("start");
     expect(t.notices.join(" ")).toContain("openai-codex OAuth do not work");
-    expect(loaded).toBe(0);
+    await t.run("provider google");
+    expect(t.notices.join(" ")).toContain("Google OAuth credential will not be replaced");
+    await t.run("status");
+    expect(t.notices.at(-1)).toContain("Google Gemini voice model gemini-3.8-live");
+    expect(queried).toEqual(["openai", "google"]);
     expect(t.launches).toBe(0);
   });
-});
 
-test("newer provider selection invalidates an older open selection menu", async () => {
-  const t = setup();
-  let resolve!: (choice: string) => void;
-  let choices: string[] = [];
-  t.ctx.ui.select = async (_title, options) => {
-    choices = options ?? [];
-    return new Promise<string>((done) => {
-      resolve = done;
+  test("failed save, cancelled picker and active run leave selection untouched", async () => {
+    let fail = true;
+    let saved: import("../src/live/config").LiveConfig = { provider: "google", model: "gemini-3.8-live" };
+    const t = setup({
+      config: {
+        load: async () => saved,
+        save: async (next) => {
+          if (fail) throw Error("disk");
+          saved = next;
+        },
+      },
     });
-  };
-  const pending = t.run("provider");
-  await t.run("provider openai");
-  resolve(choices[0]!);
-  await pending;
-  await t.run("status");
-  expect(t.notices.at(-1)).toContain("OpenAI voice model");
+    await t.run("model gpt-realtime-2.1");
+    expect(t.notices.at(-1)).toContain("previous choice kept");
+    fail = false;
+    t.ctx.ui.select = async () => undefined;
+    await t.run("model");
+    expect(saved.provider).toBe("google");
+    await t.run("start");
+    await t.run("model gpt-realtime-2.1");
+    expect(t.notices.at(-1)).toContain("stop it");
+    await t.run("provider openai");
+    expect(t.notices.at(-1)).toContain("stop it");
+    expect(saved.provider).toBe("google");
+    await t.run("stop");
+  });
 });
 
 describe("Realtime startup diagnostics reach the terminal safely", () => {

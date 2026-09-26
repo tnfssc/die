@@ -1,13 +1,7 @@
 import { stripVTControlCharacters } from "node:util";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { createDefaultLiveCredentialService, type LiveCredentialService, type LiveProviderId } from "./credentials";
-import {
-  LIVE_PROVIDERS,
-  OPENAI_REALTIME_MODELS,
-  OPENAI_LIVE_MODEL,
-  modelForProvider,
-  type LiveModelId,
-} from "./providers";
+import { LIVE_PROVIDERS, OPENAI_REALTIME_MODELS, OPENAI_LIVE_MODEL, type LiveModelId } from "./providers";
 import { loadLiveConfig, saveLiveConfig, type LiveConfig } from "./config";
 import { VoiceCostTracker, VOICE_COST_ENTRY } from "./cost";
 import { GPTLiveSession, type GPTLiveCallbacks } from "./gpt-live-session";
@@ -667,7 +661,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     return run.stopObserved();
   });
   pi.registerCommand("live", {
-    description: "Toggle main-agent voice (paid). Typed input goes to Live; /live stop returns to text.",
+    description:
+      "Main-agent voice (paid). /live model chooses across providers; /live provider configures credentials; /live stop returns to text.",
     getArgumentCompletions: (prefix) => {
       const matches = ["start", "stop", "setup", "status", "provider", "model", "mic-check", "speaker-check"].filter(
         (value) => value.startsWith(prefix),
@@ -742,62 +737,41 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         );
       } else if (action === "provider" || action.startsWith("provider ")) {
         if (active) {
-          ctx.ui.notify("Live is busy; stop it before changing voice provider.", "info");
+          ctx.ui.notify("Live is busy; stop it before configuring voice providers.", "info");
           return;
         }
-        const owner = ++sequence;
         const requested = action.slice("provider".length).trim();
-        let choice: LiveProviderId | undefined;
-        if (requested === "google" || requested === "openai") choice = requested;
-        else if (!requested) {
-          const options = (["google", "openai"] as const).map((id) => {
-            const model = modelForProvider(id, selected);
-            return (
-              LIVE_PROVIDERS[id].label + " · voice model " + model + (selected.provider === id ? " (selected)" : "")
-            );
-          });
-          const picked = await ctx.ui.select("Live voice provider (owns main while active)", options);
-          choice = picked === options[0] ? "google" : picked === options[1] ? "openai" : undefined;
-        } else {
+        const providers = ["google", "openai"] as const;
+        if (requested && !providers.includes(requested as LiveProviderId)) {
           ctx.ui.notify("Usage: /live provider [google|openai]", "info");
           return;
         }
-        if (
-          choice &&
-          sequence === owner &&
-          !current &&
-          !entry &&
-          confirmation === undefined &&
-          !probe &&
-          !speakerProbe
-        ) {
-          const next: LiveConfig = {
-            provider: choice,
-            model: modelForProvider(choice, selected),
-            googleModel:
-              selected.provider === "google" ? (selected.model as LiveConfig["googleModel"]) : selected.googleModel,
-            openaiModel:
-              selected.provider === "openai" ? (selected.model as LiveConfig["openaiModel"]) : selected.openaiModel,
-          };
-          saving = true;
-          try {
-            await deps.config.save(next);
-          } catch {
-            ctx.ui.notify("Could not persist Live selection; previous choice kept.", "error");
-            return;
-          } finally {
-            saving = false;
-          }
-          if (owner !== sequence) return;
-          selected = next;
-          ctx.ui.notify(
-            "Live voice provider: " +
-              LIVE_PROVIDERS[choice].label +
-              " · voice model " +
-              selected.model +
-              ". Coding-agent model is separate.",
-            "info",
-          );
+        const controller = new AbortController();
+        entry = controller;
+        const owner = ++sequence;
+        const sessionId = ctx.sessionManager?.getSessionId?.();
+        const leafId = ctx.sessionManager?.getLeafId?.();
+        const alive = () =>
+          entry === controller &&
+          owner === sequence &&
+          !controller.signal.aborted &&
+          sessionId === ctx.sessionManager?.getSessionId?.() &&
+          leafId === ctx.sessionManager?.getLeafId?.();
+        try {
+          const options = providers.map((id) => LIVE_PROVIDERS[id].label);
+          const picked = requested || (await ctx.ui.select("Configure Live provider credentials", options));
+          const provider = requested
+            ? (requested as LiveProviderId)
+            : providers[(options as string[]).indexOf(picked ?? "")];
+          if (!provider || !alive()) return;
+          const credentials = await deps.credentials(controller.signal, provider);
+          if (!alive()) return;
+          if (provider === "google") await runLiveSetup(ctx.ui, credentials, controller.signal, undefined, false);
+          else await runOpenAISetup(ctx.ui, credentials, controller.signal, false);
+        } catch {
+          if (alive()) ctx.ui.notify("Could not check provider credentials. Try /live provider again.", "warning");
+        } finally {
+          if (entry === controller) entry = undefined;
         }
       } else if (action === "model" || action.startsWith("model ")) {
         if (active) {
@@ -806,42 +780,71 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         }
         const owner = ++sequence;
         const requested = action.slice("model".length).trim();
-        const models: readonly string[] = LIVE_PROVIDERS[selected.provider].models;
-        const options = models.map((model) => model + (selected.model === model ? " (selected)" : ""));
-        const picked =
-          requested ||
-          (await ctx.ui.select(
-            "Live " + LIVE_PROVIDERS[selected.provider].label + " voice model (owns main while active)",
-            options,
-          ));
-        const pickedIndex = options.indexOf(picked ?? "");
-        const choice = requested || (pickedIndex < 0 ? undefined : models[pickedIndex]);
-        if (!choice) return;
-        if (!models.includes(choice)) {
-          ctx.ui.notify(
-            "Unsupported voice model for " +
-              LIVE_PROVIDERS[selected.provider].label +
-              ": " +
-              clean(choice).slice(0, 100),
-            "error",
-          );
+        const providers = ["google", "openai"] as const;
+        const models = providers.flatMap((provider) =>
+          LIVE_PROVIDERS[provider].models.map((model) => ({ provider, model })),
+        );
+        let choice = models.find(({ model }) => model === requested);
+        if (requested && !choice) {
+          ctx.ui.notify("Unsupported Live voice model: " + clean(requested).slice(0, 100), "error");
           return;
         }
+        if (!requested) {
+          const readiness: Record<LiveProviderId, string> = { google: "setup needed", openai: "setup needed" };
+          for (const provider of providers) {
+            try {
+              const status = await (await deps.credentials(new AbortController().signal, provider)).status();
+              readiness[provider] =
+                status.state === "stored_api_key" || status.state === "configured_api_key"
+                  ? "key configured"
+                  : status.state === "oauth"
+                    ? "API key needed (OAuth)"
+                    : "setup needed";
+            } catch {
+              readiness[provider] = "readiness unknown";
+            }
+            if (owner !== sequence || current || entry || probe || speakerProbe || confirmation !== undefined) return;
+          }
+          const options = models.map(
+            ({ provider, model }) =>
+              model +
+              " · " +
+              LIVE_PROVIDERS[provider].label +
+              " · " +
+              readiness[provider] +
+              (selected.model === model ? " (selected)" : ""),
+          );
+          const picked = await ctx.ui.select("Live voice model", options);
+          choice = models[options.indexOf(picked ?? "")];
+        }
         if (
+          !choice ||
           owner !== sequence ||
           current ||
           stoppingRun ||
           entry ||
           confirmation !== undefined ||
           probe ||
-          speakerProbe
+          speakerProbe ||
+          saving
         )
           return;
         const next: LiveConfig = {
           ...selected,
-          model: choice as LiveModelId,
-          googleModel: selected.provider === "google" ? (choice as LiveConfig["googleModel"]) : selected.googleModel,
-          openaiModel: selected.provider === "openai" ? (choice as LiveConfig["openaiModel"]) : selected.openaiModel,
+          provider: choice.provider,
+          model: choice.model,
+          googleModel:
+            choice.provider === "google"
+              ? (choice.model as LiveConfig["googleModel"])
+              : selected.provider === "google"
+                ? (selected.model as LiveConfig["googleModel"])
+                : selected.googleModel,
+          openaiModel:
+            choice.provider === "openai"
+              ? (choice.model as LiveConfig["openaiModel"])
+              : selected.provider === "openai"
+                ? (selected.model as LiveConfig["openaiModel"])
+                : selected.openaiModel,
         };
         saving = true;
         try {
@@ -855,11 +858,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         if (owner !== sequence) return;
         selected = next;
         ctx.ui.notify(
-          "Live " +
-            LIVE_PROVIDERS[selected.provider].label +
-            " voice model " +
-            selected.model +
-            ". Coding-agent model is separate.",
+          "Live voice: " + LIVE_PROVIDERS[selected.provider].label + " · " + selected.model + ". /live provider configures keys.",
           "info",
         );
       } else if (action === "mic-check") {
@@ -1079,13 +1078,17 @@ async function runOpenAISetup(
   ui: Pick<ExtensionContext["ui"], "select" | "notify">,
   credentials: LiveCredentialService,
   signal: AbortSignal,
+  allowStart = true,
 ): Promise<boolean> {
   let explained = false;
   while (!signal.aborted) {
     const status = await credentials.status(signal);
     if (signal.aborted) return false;
     if (status.state === "stored_api_key" || status.state === "configured_api_key") {
-      const choice = await ui.select("OpenAI voice (owns the main session while active)", ["Start voice", "Done"]);
+      const choice = await ui.select(
+        allowStart ? "OpenAI voice (owns the main session while active)" : "OpenAI API key configured",
+        allowStart ? ["Start voice", "Done"] : ["Done"],
+      );
       return !signal.aborted && choice === "Start voice";
     }
     if (!explained) {

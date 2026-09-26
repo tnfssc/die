@@ -83,7 +83,7 @@ Die limits stored job output, execute capture, and persistent session-body cachi
 
 The native helper is included in macOS Apple Silicon builds. Linux Live currently requires a separately built helper; Linux releases do not bundle it.
 
-Type `/live` in the local terminal to start talking; type it again to stop. Choose voice with `/live provider` and `/live model`. Gemini and OpenAI Realtime use the session’s tools directly. GPT-Live (`gpt-live-1`) is a voice frontend paired with your selected coding agent in the same session, retaining its model settings, tools, permissions, and history. Typed and spoken work share that coding backend. Starting Live sends audio to the selected provider and may incur API charges.
+Type `/live` in the local terminal to start talking; type it again to stop. Choose any supported voice with `/live model` (the provider follows the model); `/live provider` configures provider credentials without changing the voice model. Model labels show local credential readiness, not verified provider access. Gemini and OpenAI Realtime use the session’s tools directly. GPT-Live (`gpt-live-1`) is a voice frontend paired with your selected coding agent in the same session, retaining its model settings, tools, permissions, and history. Typed and spoken work share that coding backend. Starting Live sends audio to the selected provider and may incur API charges.
 
 Use `/live setup` to check provider credentials. OpenAI Live requires a configured OpenAI API key; Codex OAuth alone is not sufficient. Keys stay out of chat. `/live stop` ends voice, not your agent’s jobs. Speech interruption does not cancel work; ask explicitly to stop work. GPT-Live speech transcripts remain provisional, and ambiguous requests may require clarification.
 
