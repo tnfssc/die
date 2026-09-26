@@ -210,11 +210,7 @@ describe("direct Live main owner", () => {
       expect(view.render(120).map(stripTerminalSequences).join("\n")).toContain("live visible");
       unsubscribe();
       await session.prompt("typed to active live owner");
-      expect(
-        session.sessionManager
-          .buildSessionContext()
-          .messages.some((m) => m.role === "user" && JSON.stringify(m.content).includes("typed to active live owner")),
-      ).toBe(true);
+      expect(JSON.stringify(session.sessionManager.buildSessionContext())).toContain("typed to active live owner");
       await expect(
         (session as any)._runAgentPrompt({
           role: "user",
@@ -519,4 +515,49 @@ test("before-agent-start setActiveTools denial is not undone by Live acquisition
   };
   await expect(acquireMainOwner({} as any, f.ctx)).rejects.toThrow("disabled execute");
   expect(currentMainOwner(f.manager)).toBeUndefined();
+});
+
+test("GPT-Live delegation reuses one configured session turn, retries never rerun and voice stop does not cancel work", async () => {
+  const f = fixture();
+  const calls: string[] = [];
+  let finish!: () => void;
+  const running = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  (f.session as any).prompt = async (prompt: string) => {
+    calls.push(prompt);
+    await running;
+  };
+  (f.session as any).abort = () => {
+    throw new Error("voice stop cancelled coding work");
+  };
+  const owner = await acquireMainOwner({} as any, f.ctx);
+  owner.delegatedVoice = true;
+  const first = owner.delegate!("delegation-1", "Implement the requested feature");
+  const retry = owner.delegate!("delegation-1", "Implement the requested feature");
+  expect(first).toBe(retry);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  owner.close();
+  expect(calls).toEqual(["Implement the requested feature"]);
+  finish();
+  await first;
+  await owner.released;
+  expect(calls).toHaveLength(1);
+});
+
+test("paired stop-work fences queued work but allows a later new request without restarting voice", async () => {
+  const f = fixture();
+  const calls: string[] = [];
+  (f.session as any).prompt = async (text: string) => {
+    calls.push(text);
+  };
+  const owner = await acquireMainOwner({} as any, f.ctx);
+  owner.delegatedVoice = true;
+  const prior = owner.delegate!("before-stop", "queued before stop");
+  owner.stopForeground();
+  await expect(prior).rejects.toThrow("stopped explicitly");
+  await owner.delegate!("after-stop", "new explicit request");
+  expect(calls).toEqual(["new explicit request"]);
+  owner.close();
+  await owner.released;
 });

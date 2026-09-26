@@ -83,8 +83,8 @@ Die limits stored job output, execute capture, and persistent session-body cachi
 
 The native helper is included in macOS Apple Silicon builds. Linux Live currently requires a separately built helper; Linux releases do not bundle it.
 
-Type `/live` in the local terminal to start talking; type it again to stop. Live uses Google Gemini for voice and your configured die agent for work. Native full-duplex audio lets you interrupt naturally. Starting Live sends audio to Google and may incur API charges.
+Type `/live` in the local terminal to start talking; type it again to stop. Choose voice with `/live provider` and `/live model`. Gemini and OpenAI Realtime use the session’s tools directly. GPT-Live (`gpt-live-1`) is a voice frontend paired with your selected coding agent in the same session, retaining its model settings, tools, permissions, and history. Typed and spoken work share that coding backend. Starting Live sends audio to the selected provider and may incur API charges.
 
-If a Google API key is missing, Live helps you set it up. Use `/live setup` to revisit setup. Keys stay out of chat. `/live stop` ends voice, not your agent’s jobs.
+Use `/live setup` to check provider credentials. OpenAI Live requires a configured OpenAI API key; Codex OAuth alone is not sufficient. Keys stay out of chat. `/live stop` ends voice, not your agent’s jobs. Speech interruption does not cancel work; ask explicitly to stop work. GPT-Live speech transcripts remain provisional, and ambiguous requests may require clarification.
 
 For troubleshooting, use `/live status`, `/live mic-check`, or `/live speaker-check`. The checks ask before opening devices and do not connect to Google. The speaker check plays a short test sound; it is not proof that speech echo or interruptions work on every route. `die --live-self-test` checks the embedded helper without opening devices.

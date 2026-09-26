@@ -25,6 +25,13 @@ export interface GPTLiveCallbacks {
   /** False: terminal event absent; final usage unknown. */
   onClosed?: (finalized: boolean, usage?: unknown) => void;
   onUsage?: (usage: unknown) => void;
+  /** Context reached its estimated timeline position, not proof of speech or task completion. */
+  onContextAppended?: (ack: {
+    eventId: string;
+    type: "instructions" | "thinking" | "commentary";
+    startMs: number;
+    endMs: number;
+  }) => void;
 }
 const URL = "wss://api.openai.com/v1/live/sessions";
 const MAX_EVENT = 150_000,
@@ -56,6 +63,8 @@ export class GPTLiveSession {
   private readonly resampler = new InputResampler();
   private readonly delegations = new Set<string>();
   private serial = 0;
+  private nextContextId = 0;
+  private readonly pendingContext = new Map<string, "instructions" | "thinking" | "commentary">();
   constructor(
     private readonly callbacks: GPTLiveCallbacks,
     private readonly factory: LiveSocketFactory = (url, headers) =>
@@ -84,6 +93,7 @@ export class GPTLiveSession {
     this.clearTimer();
     this.resampler.reset();
     this.delegations.clear();
+    this.pendingContext.clear();
     try {
       this.socket?.close();
     } catch {
@@ -228,6 +238,22 @@ export class GPTLiveSession {
     }
     if (this.phase !== "ready") return;
     switch (event.type) {
+      case "session.instructions.appended":
+      case "session.thinking.appended":
+      case "session.commentary.appended": {
+        const id = event.client_event_id;
+        const kind = this.pendingContext.get(id);
+        if (!kind || event.type !== `session.${kind}.appended`) return;
+        if (!validTime(event.start_ms) || !validTime(event.end_ms) || event.end_ms < event.start_ms) {
+          this.fail("Invalid Live context acknowledgment");
+          return;
+        }
+        this.pendingContext.delete(id);
+        this.emit(() =>
+          this.callbacks.onContextAppended?.({ eventId: id, type: kind, startMs: event.start_ms, endMs: event.end_ms }),
+        );
+        break;
+      }
       case "session.input_transcript.delta":
       case "session.output_transcript.delta": {
         if (
@@ -294,18 +320,28 @@ export class GPTLiveSession {
   thinking(delegationId: string, content: string): boolean {
     return this.update("session.thinking.append", delegationId, content);
   }
+  /** Trusted application direction only; never promote provisional transcript or tool output into instructions. */
+  instructions(content: string): boolean {
+    return this.update("session.instructions.append", null, content);
+  }
   /** General host observations have no proven delegation correlation. Never invent one. */
   observation(content: string, speak = false): boolean {
     return this.update(speak ? "session.commentary.append" : "session.thinking.append", null, content);
   }
   private update(
-    type: "session.commentary.append" | "session.thinking.append",
+    type: "session.commentary.append" | "session.thinking.append" | "session.instructions.append",
     id: string | null,
     content: string,
   ): boolean {
     if (this.phase !== "ready" || (id !== null && !this.delegations.has(id))) return false;
     if (!content || Buffer.byteLength(content) > 480) throw new Error("Invalid Live update");
-    return this.send({ type, delegation_id: id, content });
+    if (this.pendingContext.size >= 256) return false;
+    const eventId = `live_context_${++this.nextContextId}`;
+    const kind = type.slice("session.".length, -".append".length) as "instructions" | "thinking" | "commentary";
+    this.pendingContext.set(eventId, kind);
+    const sent = this.send({ type, event_id: eventId, delegation_id: id, content });
+    if (!sent) this.pendingContext.delete(eventId);
+    return sent;
   }
   /** Wait for session.closed; transport failure/timeout leaves final usage unknown. */
   async close(): Promise<void> {

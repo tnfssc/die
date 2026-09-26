@@ -9,10 +9,10 @@ export type LiveModelId =
   | (typeof OPENAI_REALTIME_MODELS)[number]
   | typeof OPENAI_LIVE_MODEL;
 
-/** Voice selection is independent of the configured coding-agent model. GPT-Live is unavailable in production. */
+/** Voice selection is independent of the configured coding-agent model. GPT-Live uses the selected coding agent as its client-delegated backend. */
 export const LIVE_PROVIDERS = {
   google: { label: "Google Gemini", models: [...GOOGLE_LIVE_MODELS] },
-  openai: { label: "OpenAI", models: [...OPENAI_REALTIME_MODELS] },
+  openai: { label: "OpenAI", models: [...OPENAI_REALTIME_MODELS, OPENAI_LIVE_MODEL] },
 } as const;
 export function isLiveModel(provider: LiveProviderId, model: unknown): model is LiveModelId {
   return typeof model === "string" && (LIVE_PROVIDERS[provider].models as readonly string[]).includes(model);
@@ -25,7 +25,7 @@ export function modelForProvider(
   previous: {
     provider: LiveProviderId;
     model: LiveModelId;
-    openaiModel?: (typeof OPENAI_REALTIME_MODELS)[number];
+    openaiModel?: (typeof LIVE_PROVIDERS.openai.models)[number];
     googleModel?: (typeof GOOGLE_LIVE_MODELS)[number];
   },
 ): LiveModelId {

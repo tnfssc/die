@@ -26,6 +26,8 @@ export type ClassicSession = {
   getActiveToolNames(): string[];
   _runSystemPromptOptions?: NormalizedBuildSystemPromptOptions;
   _runAgentPrompt(messages: AgentMessage | AgentMessage[]): Promise<void>;
+  prompt: AgentSession["prompt"];
+  abort: AgentSession["abort"];
   _preparePromptAndToolLoadout(
     options: NormalizedBuildSystemPromptOptions,
     messages?: AgentMessage[],
