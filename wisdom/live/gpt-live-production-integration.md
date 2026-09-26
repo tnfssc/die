@@ -23,7 +23,8 @@ All worker worktrees use that path plus -a86675007a5e- and the task suffix:
 - task_6cfff020, die/review-paired-backend-production-runtime-6cfff020: concrete runtime blockers, 71149e7.
 - task_5f84c7f6, die/correct-paired-owner-ordinary-pi-runtime-5f84c7f6: canonical Pi correction, da37a65.
 - task_f7c3a0d3, die/paired-async-job-continuation-acceptance-f7c3a0d3: async continuation acceptance, da58c21f.
-- task_1c45a2c7, die/final-gpt-paired-integration-review-1c45a2c7: final independent review.
+- task_1c45a2c7, die/final-gpt-paired-integration-review-1c45a2c7: final review on pre-fixture-fix snapshot.
+- task_e077d0a8, die/verify-final-stop-fixture-correction-e077d0a8: focused stop recheck.
 
 Parent resolves overlap with task_1a7b19db Gemini work: src/live/providers.ts, src/live/config.ts, src/live/extension.ts, tests/live-config.test.ts, tests/live-extension.test.ts and tests/no-web-voice.test.ts. Do not preserve that task's obsolete GPT blocker messages/tests when merging. This work does not depend on its Gemini changes.
 
@@ -36,3 +37,7 @@ Parent added full production task-extension coverage beyond worker fixtures: typ
 Important integration corrections: no guard is installed before public session.prompt, because production input hooks must route typed input. Paired internal prompts use source extension so they do not recursively reenter that typed-input hook. The private _runAgentPrompt admission seam still rejects unrelated competing model turns. Substantive backend text is forwarded as speech-relevant commentary; private thinking is never extracted. Passive live-transcript records do not wake the coder.
 
 Values unchanged: single ownership, whole-path proof, bounded truthful context, work/voice separation and durable handoff already express the lessons. Feature notes correct obsolete architecture assumptions rather than adding a global rule.
+
+## Review reconciliation
+
+Final normal reviewer reproduced the abort-ignoring fake-model hang at its older 475f94b snapshot. Focused follow-up reviewer had current source but first pointed DIE_PROBE_EXECUTABLE at its own nonexistent dist/die, then omitted it and tried an unprepared source wrapper (only wasm copied). Its failure was not treated as a pass. Parent reran in that same reviewer worktree with the explicitly requested matching integration dist/die: the paired stop test passed (1 test, 6 assertions), and the paired-runtime suite passed (2 tests, 23 assertions). This corroborates the compiled production gate; it does not claim that arbitrary unprepared source-only checkouts or paid/device acceptance passed. No production cancellation bypass was added.
