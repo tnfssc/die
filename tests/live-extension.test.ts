@@ -1572,3 +1572,51 @@ test("real Realtime session accepts a 50-second reply below the playback queue b
   expect(t.closes).toBe(0);
   expect(await t.stop()).toEqual({ stopped: true, errors: [], jobsUnchanged: true });
 });
+
+test("GPT-Live replays connecting replies as commentary without speaking ordinary context", async () => {
+  const updates: Array<{ text: string; speak: boolean }> = [];
+  let deliver!: (text: string, options?: { triggerResponse?: boolean }) => void;
+  let state: "connecting" | "ready" = "connecting";
+  const f = setup({
+    config: { load: async () => ({ provider: "openai", model: "gpt-live-1" }), save: async () => {} },
+    owner: async (_pi, _ctx, callbacks) => {
+      deliver = callbacks!.onContext!;
+      // Owner may return an agent reply before the provider accepts the session.
+      deliver("Queued completion reply", { triggerResponse: true });
+      deliver("Queued background context");
+      return {
+        orchestration: { instructions: "root", tools: [], directMainAgent: true },
+        sendContext() {},
+        close() {},
+        stopForeground() {},
+        released: Promise.resolve(),
+      } as any;
+    },
+    gptSession: () =>
+      ({
+        get state() {
+          return state;
+        },
+        connect: async () => {
+          deliver("Connecting completion reply", { triggerResponse: true });
+          state = "ready";
+        },
+        observation: (text: string, speak: boolean) => {
+          updates.push({ text, speak });
+          return true;
+        },
+        close: async () => {},
+      }) as any,
+  });
+  await f.run("start");
+  deliver("Ready completion reply", { triggerResponse: true });
+  deliver("Ready background context", { triggerResponse: false });
+  expect(updates).toEqual([
+    { text: "Quoted session observation:\nQueued completion reply", speak: true },
+    { text: "Quoted session observation:\nQueued background context", speak: false },
+    { text: "Quoted session observation:\nConnecting completion reply", speak: true },
+    { text: "Quoted session observation:\nReady completion reply", speak: true },
+    { text: "Quoted session observation:\nReady background context", speak: false },
+  ]);
+  await f.run("stop");
+});
