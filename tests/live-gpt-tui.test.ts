@@ -27,10 +27,25 @@ test("GPT streaming keeps passive JSON in history but renders only the bounded L
     // resolves dist/modes/interactive/theme. This link is confined to the test HOME.
     await symlink(join(dir, ".die/runtime", version, "theme"), join(themeDir, "theme"));
     const launch = [
-      "env", "HOME=" + dir, "PI_OFFLINE=1", "DIE_SUBAGENT_DEPTH=0", "OPENAI_API_KEY=offline-placeholder",
-      process.execPath, join(root, "src/cli.ts"), "--offline", "--no-session", "--no-extensions",
-      "-e", join(root, "tests/fixtures/live-gpt-tui.ts"), "--provider", "openai", "--model", "gpt-4o",
-    ].map(quote).join(" ");
+      "env",
+      "HOME=" + dir,
+      "PI_OFFLINE=1",
+      "DIE_SUBAGENT_DEPTH=0",
+      "OPENAI_API_KEY=offline-placeholder",
+      process.execPath,
+      join(root, "src/cli.ts"),
+      "--offline",
+      "--no-session",
+      "--no-extensions",
+      "-e",
+      join(root, "tests/fixtures/live-gpt-tui.ts"),
+      "--provider",
+      "openai",
+      "--model",
+      "gpt-4o",
+    ]
+      .map(quote)
+      .join(" ");
     expect((await tmux("new-session", "-d", "-s", "gpt", "-x", "120", "-y", "40", "-c", root, launch)).code).toBe(0);
     await until("Trust project folder?");
     await tmux("send-keys", "-t", "gpt", "Down");

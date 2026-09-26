@@ -607,7 +607,11 @@ test("paired GPT delta stream remains canonical passive history without TUI bubb
     );
   f.owner.sendContext(
     JSON.stringify({
-      source: "gpt_live_provisional", role: "assistant", delta: "reply", uncertain: true, playbackVerified: false,
+      source: "gpt_live_provisional",
+      role: "assistant",
+      delta: "reply",
+      uncertain: true,
+      playbackVerified: false,
     }),
     { customType: "live-transcript" },
   );
@@ -621,7 +625,11 @@ test("paired GPT delta stream remains canonical passive history without TUI bubb
     {
       type: "text",
       text: JSON.stringify({
-        source: "gpt_live_provisional", role: "assistant", delta: "reply", uncertain: true, playbackVerified: false,
+        source: "gpt_live_provisional",
+        role: "assistant",
+        delta: "reply",
+        uncertain: true,
+        playbackVerified: false,
       }),
     },
   ]);
