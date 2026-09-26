@@ -16,6 +16,7 @@ import {
  * ClassicSession that ordinary turns use, Direct providers own tool turns; paired GPT-Live admits ordinary session.prompt turns. */
 type OwnerSession = ClassicSession & {
   _toolRegistry: Map<string, any>;
+  sendCustomMessage(message: { customType: string; content: { type: "text"; text: string }[]; display: boolean; details?: unknown }, options: { triggerTurn: boolean }): Promise<void>;
   _isAgentRunActive?: boolean;
   _extensionRunner: NonNullable<ClassicSession["_extensionRunner"]>;
   sessionManager: ExtensionContext["sessionManager"] & {
@@ -192,6 +193,7 @@ async function acquire(
   let inFlight = 0;
   const delegated = new Map<string, { text: string; operation: Promise<void> }>();
   let delegatedTail: Promise<void> = Promise.resolve();
+  const admittedNotifications = new Set<string>();
   let backendRunning = false;
   let backendStopped = false;
   let release!: () => void;
@@ -455,13 +457,43 @@ async function acquire(
     },
     sendContext(text, metadata) {
       if (!valid()) return;
+      const customType = metadata?.customType ?? "task-complete";
+      if (owner.delegatedVoice && (customType === "task-complete" || customType === "task-attention")) {
+        // Only completed/attention batches authorize a coding continuation. Provisional
+        // Live transcript snapshots are observations, not requests for another turn.
+        const key = JSON.stringify([customType, text, metadata?.details]);
+        if (admittedNotifications.has(key)) return;
+        if (admittedNotifications.size >= 256) {
+          callbacks.onError?.("Paired Live notification capacity reached; continue in text to inspect jobs.");
+          return;
+        }
+        admittedNotifications.add(key);
+        inFlight++;
+        const operation = delegatedTail.catch(() => {}).then(async () => {
+          if (backendStopped) return; // explicit stop-work cancels queued continuations
+          if (!sameBranch(owner, manager)) return;
+          backendRunning = true;
+          const start = session.agent.state.messages.length;
+          // The pinned Pi custom-message API invokes the canonical session's agent
+          // with this non-user message. It retains its normal tools, hooks and history.
+          session._runSystemPromptOptions = undefined;
+          try {
+            await runDelegatedMainTurn(manager, () => session.sendCustomMessage({
+              customType, content: [{ type: "text", text }], display: true, details: metadata?.details,
+            }, { triggerTurn: true }));
+            const reply = session.agent.state.messages.slice(start).filter((m) => m.role === "assistant")
+              .flatMap((m) => m.content.filter((p) => p.type === "text").map((p) => p.text)).join("\n").trim();
+            if (reply && sameBranch(owner, manager)) callbacks.onContext?.(reply);
+          } finally { backendRunning = false; }
+        }).catch(error => callbacks.onError?.(error instanceof Error ? error.message : String(error)))
+          .finally(() => { inFlight--; checkRelease(); });
+        delegatedTail = operation;
+        callbacks.onContext?.(text);
+        return;
+      }
       ownerRecord({
-        role: "custom",
-        customType: metadata?.customType ?? "task-complete",
-        details: metadata?.details,
-        content: [{ type: "text", text }],
-        display: true,
-        timestamp: Date.now(),
+        role: "custom", customType, details: metadata?.details,
+        content: [{ type: "text", text }], display: true, timestamp: Date.now(),
       });
       owner.identity = identity(manager);
       callbacks.onContext?.(text);
