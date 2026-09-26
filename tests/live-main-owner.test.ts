@@ -178,8 +178,8 @@ describe("direct Live main owner", () => {
       // not a separate shell tool. Both helpers must be discoverable on that wire.
       expect(owner.orchestration.tools[0].description).toMatch(/await shell\(/);
       expect(owner.orchestration.tools[0].description).toContain("subagent()");
-      expect(JSON.stringify(owner.orchestration.tools[0].parametersJsonSchema)).toContain('code');
-      expect((owner.orchestration as any).instructions).toContain('shell() runs commands');
+      expect(JSON.stringify(owner.orchestration.tools[0].parametersJsonSchema)).toContain("code");
+      expect((owner.orchestration as any).instructions).toContain("shell() runs commands");
       expect(await owner.orchestration.execute({ name: "execute", args: {} })).toHaveProperty("isError", true);
       expect(toolEvents.map((event) => event.type)).toEqual(["tool_execution_start", "tool_execution_end"]);
       expect(toolEvents[0].args).toEqual({});
