@@ -6,6 +6,7 @@ test("macOS Live CI prepares source CLI assets without building the web runtime"
   const workflow = readFileSync(resolve(import.meta.dir, "../.github/workflows/ci.yml"), "utf8");
   const macOSJob = workflow.split("  live-macos:\n")[1]?.split(/^ {2}[a-z][\w-]*:\s*$/m)[0];
   expect(macOSJob).toBeDefined();
+  expect(macOSJob).toContain("run: brew install tmux");
   expect(macOSJob).toContain("run: bun run ci:macos");
   const runner = readFileSync(resolve(import.meta.dir, "../scripts/ci.sh"), "utf8");
   const lane = runner.split('if [[ "$lane" == macos ]]; then')[1]!.split("\nfi")[0]!;

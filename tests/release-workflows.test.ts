@@ -112,6 +112,7 @@ describe("release automation", () => {
     const job = workflow.jobs["live-macos"]!;
     expect(job["runs-on"]).toBe("macos-15");
     const commands = job.steps.map((step) => step.run ?? "").join("\n");
+    expect(commands).toContain("brew install tmux");
     expect(commands).toContain("bun run ci:macos");
     const runner = await read("scripts/ci.sh");
     const lane = runner.split('if [[ "$lane" == macos ]]; then')[1]!.split("\nfi")[0]!;

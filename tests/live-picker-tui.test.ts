@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, symlink, writeFile, readFile } from "node:fs/promis
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { run } from "./helpers";
+import { waitForLiveTuiStartup } from "./live-tui-startup";
 
 // Real source CLI and Pi renderer; fake only credentials/config and forbidden I/O.
 for (const width of [80, 120])
@@ -61,11 +62,7 @@ for (const width of [80, 120])
       expect(
         (await tmux("new-session", "-d", "-s", "picker", "-x", String(width), "-y", "40", "-c", root, launch)).code,
       ).toBe(0);
-      await until("Trust project folder?");
-      await tmux("send-keys", "-t", "picker", "Down");
-      await tmux("send-keys", "-t", "picker", "Down");
-      await tmux("send-keys", "-t", "picker", "Enter");
-      await until("PICKER FIXTURE LOADED");
+      await waitForLiveTuiStartup(frame, (key) => tmux("send-keys", "-t", "picker", key), "PICKER FIXTURE LOADED");
       await send("/livepicker model", "Live voice model");
       const rendered = await until("gpt-live-1");
       for (const label of [

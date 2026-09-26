@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { run } from "./helpers";
+import { waitForLiveTuiStartup } from "./live-tui-startup";
 
 // Actual Pi interactive renderer in a tmux PTY, with a fake GPT stream and fake audio.
 test("GPT streaming keeps passive JSON in history but renders only the bounded Live transcript widget", async () => {
@@ -47,11 +48,7 @@ test("GPT streaming keeps passive JSON in history but renders only the bounded L
       .map(quote)
       .join(" ");
     expect((await tmux("new-session", "-d", "-s", "gpt", "-x", "120", "-y", "40", "-c", root, launch)).code).toBe(0);
-    await until("Trust project folder?");
-    await tmux("send-keys", "-t", "gpt", "Down");
-    await tmux("send-keys", "-t", "gpt", "Down");
-    await tmux("send-keys", "-t", "gpt", "Enter"); // trust this session only; never persist approval
-    await until("GPT FIXTURE LOADED");
+    await waitForLiveTuiStartup(frame, (key) => tmux("send-keys", "-t", "gpt", key), "GPT FIXTURE LOADED");
     await tmux("send-keys", "-t", "gpt", "-l", "/gptflood start");
     await Bun.sleep(120);
     await tmux("send-keys", "-t", "gpt", "Enter"); // completion may consume the first Enter
