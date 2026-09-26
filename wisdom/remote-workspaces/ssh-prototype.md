@@ -1,8 +1,13 @@
 # SSH workspace placement: bounded local prototypes
 
-2026-09-26. Prototype/research only; no production integration, no merge.
+2026-09-26. Prototype/research only; no production integration.
 
-## Resume here
+Integrated by normal merge `509d2a4` for the v0.15.2 candidate. This does not
+ship SSH workspaces. Current release handoff: [v0.15.2](../releases/release-v0.15.2.md).
+The macOS paths, base and PR-access result below are historical branch provenance,
+not current checkout instructions or a prerequisite for landing research.
+
+## Historical prototype handoff (before integration)
 
 - Worktree: /Users/sharath/.die/worktrees/die-f528e86af6b5-task_3515c928
 - Branch: die/prototype-persistent-remote-workspace-3515c928
@@ -146,7 +151,7 @@ execute replay. Implement only the chosen product shape, not both as a new frame
 Values unchanged: truthful evidence, one owner, stable IDs/reconciliation and using the
 simplest existing boundary already cover these lessons. Added feature-specific wisdom.
 
-## PR preparation (2026-09-26)
+## Historical PR preparation (2026-09-26, before integration)
 
 - Final worktree: `/Users/sharath/.die/worktrees/die-f528e86af6b5-task_7a2ffa64`; branch: `die/pr-remote-workspace-research-and-prototy-7a2ffa64`; base: `origin/develop` at `eb56ca2`. Historical prototype worktree above retained for provenance.
 - Cherry-picked only the two prototype commits; copied the relevant parent `ssh-research.md` into this feature wisdom. No production code or voice fix changed. The research remains advisory; this PR implements neither SSH transport nor a remote service.
