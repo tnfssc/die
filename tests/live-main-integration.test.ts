@@ -203,7 +203,7 @@ test("main Live owns first-turn instructions, actual execute and background comp
 test("Live first turn applies production context and before/after tool hooks; typed route cannot steal owner", async () => {
   const f = await fixture({ hooks: true });
   expect(f.observed.context).toBeGreaterThan(0);
-  await f.owner.typedInput("typed turn must not invoke another model");
+  await f.session.prompt("typed turn must not invoke another model");
   expect(f.typed).toEqual(["typed turn must not invoke another model"]);
   expect(f.streamCalls()).toBe(0);
   const denied = await f.owner.orchestration.execute({
@@ -591,3 +591,30 @@ test("stop voice then stop work in one real execute still cancels the draining v
   expect(JSON.stringify(result)).not.toContain("SHOULD_NOT_REACH");
   await f.owner.released;
 });
+
+
+test("paired backend survives production input routing: voice and typed turns each run once", async () => {
+  const f = await fixture();
+  f.owner.delegatedVoice = true;
+  let calls = 0;
+  f.session.agent.streamFunction = ((model: any) => {
+    calls++;
+    const stream = createAssistantMessageEventStream();
+    const message: any = {
+      role: "assistant", api: model.api, provider: model.provider, model: model.id,
+      timestamp: Date.now(), stopReason: "stop",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      content: [{ type: "text", text: "CANONICAL_PAIRED_RESULT_" + calls }],
+    };
+    stream.push({ type: "done", reason: "stop", message });
+    return stream;
+  }) as any;
+  await f.owner.delegate!("spoken-1", "Provisional spoken request with provenance");
+  await f.session.prompt("Typed request through production input handler");
+  expect(calls).toBe(2);
+  expect(f.contexts.join("\n")).toContain("CANONICAL_PAIRED_RESULT_2");
+  const history = JSON.stringify(f.manager.buildSessionContext());
+  expect(history).toContain("Provisional spoken request with provenance");
+  expect(history).toContain("Typed request through production input handler");
+}, 5000);

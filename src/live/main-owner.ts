@@ -13,7 +13,7 @@ import {
 } from "../agent/instruction-continuity";
 
 /** This Pi release has no public external-agent tool seam. Own the same pinned
- * ClassicSession that ordinary turns use, without ever calling agent.prompt(). */
+ * ClassicSession that ordinary turns use, Direct providers own tool turns; paired GPT-Live admits ordinary session.prompt turns. */
 type OwnerSession = ClassicSession & {
   _toolRegistry: Map<string, any>;
   _isAgentRunActive?: boolean;
@@ -435,10 +435,10 @@ async function acquire(
         // The ordinary prompt rebuilds its own selected-tool and instruction frame.
         session._runSystemPromptOptions = undefined;
         try {
-          await runDelegatedMainTurn(manager, () => session.prompt(text, { expandPromptTemplates: false, source: "interactive" }));
+          await runDelegatedMainTurn(manager, () => session.prompt(text, { expandPromptTemplates: false, source: "extension" }));
           const reply = session.agent.state.messages.slice(start).filter((m) => m.role === "assistant")
             .flatMap((m) => m.content.filter((p) => p.type === "text").map((p) => p.text)).join("\n").trim();
-          if (reply && sameBranch(owner, manager)) callbacks.onContext?.(reply);
+          if (reply && sameBranch(owner, manager)) callbacks.onContext?.(reply, { triggerResponse: true });
         } finally { backendRunning = false; }
       }).finally(() => { inFlight--; checkRelease(); });
       delegated.set(id, { text, operation });

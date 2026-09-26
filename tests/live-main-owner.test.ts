@@ -209,8 +209,8 @@ describe("direct Live main owner", () => {
       view.setExpanded(true);
       expect(view.render(120).map(stripTerminalSequences).join("\n")).toContain("live visible");
       unsubscribe();
-      await expect(session.prompt("typed to active live owner")).rejects.toThrow("Live owns");
-      expect(JSON.stringify(session.sessionManager.buildSessionContext())).not.toContain("typed to active live owner");
+      await session.prompt("typed to active live owner");
+      expect(JSON.stringify(session.sessionManager.buildSessionContext())).toContain("typed to active live owner");
       await expect(
         (session as any)._runAgentPrompt({
           role: "user",
