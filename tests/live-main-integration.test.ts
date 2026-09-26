@@ -597,6 +597,38 @@ test("stop voice then stop work in one real execute still cancels the draining v
   await f.owner.released;
 });
 
+test("paired GPT delta stream remains canonical passive history without TUI bubbles or model turns", async () => {
+  const f = await fixture();
+  f.owner.delegatedVoice = true;
+  for (let n = 0; n < 24; n++)
+    f.owner.sendContext(
+      JSON.stringify({ source: "gpt_live_provisional", role: "user", delta: "delta" + n, uncertain: true }),
+      { customType: "live-transcript" },
+    );
+  f.owner.sendContext(
+    JSON.stringify({
+      source: "gpt_live_provisional", role: "assistant", delta: "reply", uncertain: true, playbackVerified: false,
+    }),
+    { customType: "live-transcript" },
+  );
+  await until(
+    () => f.manager.buildSessionContext().messages.filter((m: any) => m.customType === "live-transcript").length === 25,
+  );
+  const transcripts = f.manager.buildSessionContext().messages.filter((m: any) => m.customType === "live-transcript");
+  expect(transcripts).toHaveLength(25);
+  expect(transcripts.every((m: any) => m.role === "custom" && m.display === false)).toBe(true);
+  expect((transcripts.at(-1) as any)?.content).toEqual([
+    {
+      type: "text",
+      text: JSON.stringify({
+        source: "gpt_live_provisional", role: "assistant", delta: "reply", uncertain: true, playbackVerified: false,
+      }),
+    },
+  ]);
+  expect(f.session.agent.state.messages.filter((m: any) => m.customType === "live-transcript")).toHaveLength(25);
+  expect(f.streamCalls()).toBe(0); // passive fragments never wake the coding agent
+}, 12000);
+
 test("paired backend survives production input routing: voice and typed turns each run once", async () => {
   const f = await fixture();
   f.owner.delegatedVoice = true;

@@ -1,0 +1,15 @@
+mise ERROR error parsing config file: ~/.die/worktrees/die-a86675007a5e-task_3d13e60c-a86675007a5e-task_8dee1d99/mise.to
+ml
+mise ERROR Config files in ~/.die/worktrees/die-a86675007a5e-task_3d13e60c-a86675007a5e-task_8dee1d99/mise.toml are not
+trusted.
+Trust them with `mise trust`. See https://mise.jdx.dev/cli/trust.html for more information.
+mise ERROR Run with --verbose or MISE_VERBOSE=1 for more information
+
+ GPT-Live speaks for your selected coding agent. Typed and spoken work share this session; /live stop closes voice, not
+ work.
+
+ You: delta0 delta1 delta2 delta3 delta4 delta5 delta6 delta7 delta8 delta9 delta10 delta11 delta12 delta13 delta14
+ delta15 delta16 delta17 delta18 delta19 delta20 delta21 delta22 delta23
+ Voice: provisional voice reply
+
+Live listening ⠐⠐⠐⠐⠐⠐⠐⠐⠐⠐ $0.000~ C1.7% cache est ? die-a86675007a5e-task_3d13e60c-a86675007a5e-task_8dee1d99     gpt-4o

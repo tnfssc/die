@@ -544,7 +544,9 @@ async function acquire(
             {
               customType,
               content: [{ type: "text", text }],
-              display: true,
+              // Provisional GPT fragments are canonical passive history, not one TUI bubble per delta.
+              // The Live transcript widget supplies the bounded visible view instead.
+              display: customType !== "live-transcript",
               details: metadata?.details,
             },
             { triggerTurn: false },
