@@ -560,9 +560,7 @@ describe("Live voice", () => {
     const t = setup();
     await t.run("status");
     expect([t.launches, t.keyCalls, t.starts]).toEqual([0, 0, 0]);
-    expect(t.notices).toEqual([
-      "Live off · Google Gemini voice model gemini-3.8-live. Coding-agent model is configured separately.",
-    ]);
+    expect(t.notices).toEqual(["Live off · Google Gemini voice model gemini-3.8-live."]);
   });
   test("status reports the direct main owner and only execute", async () => {
     const t = setup();
@@ -572,6 +570,7 @@ describe("Live voice", () => {
     expect(t.orchestration?.tools.map((tool) => tool.name)).toEqual(["execute"]);
     await t.run("status");
     expect(t.notices.at(-1)).toContain("tools configured 1");
+    expect(t.notices.at(-1)).not.toContain("Agent work is independent of voice");
     await t.run("stop");
     expect(t.ownerCloses).toBe(1);
   });
@@ -667,7 +666,7 @@ describe("Live voice", () => {
     const t = setup();
     await t.run("mic-check");
     expect([t.launches, t.keyCalls, t.starts, t.closes]).toEqual([1, 0, 1, 1]);
-    expect(t.notices.join(" ")).toContain("Audio route ready [ready]");
+    expect(t.notices.join(" ")).toContain("Audio route ready. Sound quality not measured.");
     const denied = setup({
       audio: async () => {
         throw new Error("SECRET");
@@ -797,6 +796,7 @@ describe("local speaker-check wiring", () => {
     expect([t.launches, t.keyCalls]).toEqual([0, 0]);
     expect(t.notices.at(-1)).toContain("Residual high");
     expect(t.notices.at(-1)).toContain("provider not connected");
+    expect(t.notices.at(-1)).not.toContain("agent work is unchanged");
     expect(t.notices.at(-1)).toContain("cannot prove barge-in or AEC");
   });
   test("stop aborts active measurement; prevents stale result and start/mic overlap", async () => {
@@ -1132,6 +1132,7 @@ describe("Live model and credential setup", () => {
       },
     });
     await t.run("model gpt-live-1");
+    expect(t.notices.at(-1)).toBe("Live voice: OpenAI · gpt-live-1.");
     expect(saved).toMatchObject({ provider: "openai", model: "gpt-live-1", openaiModel: "gpt-live-1" });
     await t.run("model gemini-3.8-live-extended-thinking");
     expect(saved).toMatchObject({

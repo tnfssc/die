@@ -657,8 +657,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     return run.stopObserved();
   });
   pi.registerCommand("live", {
-    description:
-      "Main-agent voice (paid). /live model chooses across providers; /live provider configures credentials; /live stop returns to text.",
+    description: "Voice (paid): start, stop, status, model, provider, setup, mic-check, speaker-check.",
     getArgumentCompletions: (prefix) => {
       const matches = ["start", "stop", "setup", "status", "provider", "model", "mic-check", "speaker-check"].filter(
         (value) => value.startsWith(prefix),
@@ -716,19 +715,14 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                     "/" +
                     (current.audio.diagnostics.ready.voiceProcessingBypassed ? "bypassed" : "unbypassed") +
                     " (configuration only, AEC unmeasured)"
-                  : "unknown") +
-                ". Agent work is independent of voice."
+                  : "unknown")
             : speakerProbe
-              ? "Local speaker check running; provider not connected. /live stop cancels the check; agent work is unchanged."
+              ? "Local speaker check running; provider not connected."
               : probe
-                ? "Local mic check running; provider not connected. Agent work is unchanged."
+                ? "Local mic check running; provider not connected."
                 : entry
                   ? "Live setup."
-                  : "Live off · " +
-                    LIVE_PROVIDERS[selected.provider].label +
-                    " voice model " +
-                    selected.model +
-                    ". Coding-agent model is configured separately.",
+                  : "Live off · " + LIVE_PROVIDERS[selected.provider].label + " voice model " + selected.model + ".",
           "info",
         );
       } else if (action === "provider" || action.startsWith("provider ")) {
@@ -853,14 +847,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         }
         if (owner !== sequence) return;
         selected = next;
-        ctx.ui.notify(
-          "Live voice: " +
-            LIVE_PROVIDERS[selected.provider].label +
-            " · " +
-            selected.model +
-            ". /live provider configures keys.",
-          "info",
-        );
+        ctx.ui.notify("Live voice: " + LIVE_PROVIDERS[selected.provider].label + " · " + selected.model + ".", "info");
       } else if (action === "mic-check") {
         if (!deps.local(ctx.mode)) {
           ctx.ui.notify("Mic check requires a local interactive terminal.", "warning");
@@ -903,9 +890,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           await audio.start();
           if (!controller.signal.aborted)
             ctx.ui.notify(
-              code
-                ? "Mic check: " + audioDiagnostic(code, setup)
-                : "Audio route ready [ready]. No provider or recording saved; this does not prove sound quality.",
+              code ? "Mic check: " + audioDiagnostic(code, setup) : "Audio route ready. Sound quality not measured.",
               code ? "warning" : "info",
             );
         } catch {
@@ -1086,7 +1071,7 @@ async function runOpenAISetup(
     if (signal.aborted) return false;
     if (status.state === "stored_api_key" || status.state === "configured_api_key") {
       const choice = await ui.select(
-        allowStart ? "OpenAI voice (owns the main session while active)" : "OpenAI API key configured",
+        allowStart ? "OpenAI voice" : "OpenAI API key configured",
         allowStart ? ["Start voice", "Done"] : ["Done"],
       );
       return !signal.aborted && choice === "Start voice";
