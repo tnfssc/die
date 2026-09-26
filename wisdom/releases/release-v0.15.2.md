@@ -29,15 +29,39 @@ instruction. No additional UI warnings or metadata were added.
 
 ## Validation
 
-Full local Linux gate is running with explicit installed binaries (no mise shim):
+Full local Linux gate passed (exit 0) with explicit installed binaries (no mise shim):
 Bun 1.4.2, Node 24.21.0, pnpm 11.27.1; SHELL=/bin/sh. Log:
 artifacts/release-v0.15.2-ci.log; per-step logs artifacts/ci/ in the integration worktree.
-Results will be recorded before handoff. Initial shell startup emits an untrusted
+The gate tested the v0.15.2 package/production tree at 22db8b8; final changes only
+record these results and the review. Results:
+- Locked install, format, lint, typecheck, fresh CLI/web build and offline default
+  OpenAI source/compiled transport checks passed. Lint/build warnings remain
+  nonfatal; they are not reported as warning-free.
+- Web backend: 260 tests / 16 files; model behavior: 158 / 2; contracts: 26 / 3;
+  client projection: 9 / 1. All passed.
+- Deterministic suite: 1195 passed, 17 opt-in skipped, 0 failed; 28663 assertions
+  across 166 files. Standalone smoke passed.
+
+Initial shell startup emits an untrusted
 mise config warning; actual gate PATH names installed tool directories directly.
 
 Independent read-only whole-diff review: task_08183d98,
 /home/tnfssc/.die/worktrees/die-a86675007a5e-task_252eb36d-a86675007a5e-task_08183d98,
-branch die/independent-integrated-release-review-08183d98. Review pending.
+branch die/independent-integrated-release-review-08183d98. No confirmed production
+correctness blocker; 118 focused tests passed across eight files including both
+merged Live regressions. Parent
+[bounded review](../reviews/merged-live-remote-final-review.md) also retained from
+b12d276 (note only; equivalent historical wording already integrated here).
+Whole-range diff whitespace check flags only blank lines at EOF in two existing
+raw terminal capture files; retained the evidence rather than altering frames.
+Candidate-only diff whitespace check passes. The untracked
+wisdom/reviews/parent-release-update.md is a parent-owned coordination message;
+left untouched and not committed.
+
+Both integrated local remote-workspace demos and strict direct experiment typecheck
+passed. The actual-agent demo used the built v0.15.2 binary and three fake-model
+turns; result PASS. Logs: artifacts/release-v0.15.2-research.log and
+artifacts/release-v0.15.2-rpc-research.log.
 
 No real microphone/speaker, acoustic listening, ASR-quality, paid provider or actual
 SSH link-loss acceptance. A provider commentary request does not establish audible

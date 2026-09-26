@@ -1,0 +1,9 @@
+# Merged Live and remote research: bounded final review (2026-09-26)
+
+Reviewed merge commits `a0ad19c` and `509d2a4` in this worktree. No remaining code blocker found in this scope.
+
+- `src/live/extension.ts` sends `options?.triggerResponse === true` into `gpt.observation` both in the ready path (line 359) and startup replay (line 610), for every chunk. False/absent options remain thinking-only. The merged `tests/live-extension.test.ts` retains the replay regression alongside the recent audio/surface tests. `gpt-live-delegation.ts` still reserves pending fragments until admission resolves; only `queued: true` marks selected fragments consumed; rejected admission releases them, and pending eviction forces clarification instead of an unsafe suffix.
+- `git diff a0ad19c..509d2a4 --name-status` touches only `experiments/remote-workspaces/**` and two remote wisdom files. No production remote workspace wiring. README states same-machine private sockets, fake local model, no SSH/provider proof. Corrected the stale `ssh-prototype.md` heading and provenance: the research is merged, while its old worktree/PR instructions are historical, not a current unmerged feature.
+- Direct Bun 1.4.2 focused run: `tests/gpt-live-delegation.test.ts` and `tests/gpt-live-session.test.ts` pass (30 tests total); `tests/live-extension.test.ts` and `tests/live-paired-runtime.test.ts` cannot load `@earendil-works/pi-coding-agent` because this worktree has no installed dependencies. No install performed under this task. Parent owns dependency setup/full and hosted gates. No keys, hardware, SSH host or provider playback tested; commentary append is not evidence of audible speech. No offline demo rerun needed: the premerge Linux review records both local-only demos and strict experiment typecheck.
+
+No new cross-cutting lesson for values; truthful evidence and preserving current work are already covered. No production edits, push, tag or release action here.
