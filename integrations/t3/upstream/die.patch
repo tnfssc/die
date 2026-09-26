@@ -3218,7 +3218,21 @@ index ad87b4bf7..c4e24e5d8 100644
        assert.deepEqual(tokenUsage, {
          usedTokens: 20_500,
          maxTokens: 200_000,
-@@ -2413,6 +2575,89 @@ describe("PiRpc framing", () => {
+@@ -1728,6 +1890,13 @@ describe("PiAdapterV2", () => {
+             content: [{ type: "text", text: "hello back" }],
+             timestamp: 1700000001000,
+           },
++          // GPT-Live provisional fragments are retained by Pi as custom messages,
++          // not user turns. The web snapshot must not display their raw JSON.
++          {
++            role: "custom",
++            customType: "live-transcript",
++            content: [{ type: "text", text: '{"source":"gpt_live_provisional","delta":"hi"}' }],
++          },
+           { role: "toolResult", content: [] },
+         ],
+       });
+@@ -2413,6 +2582,89 @@ describe("PiRpc framing", () => {
        assert.equal((yield* Queue.take(connection.events))["type"], "after_oversized");
      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
    );
