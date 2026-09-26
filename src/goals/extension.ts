@@ -54,7 +54,11 @@ function parseSet(args: string): { objective: string; criteria: string[]; constr
   };
 }
 
-export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): GoalRuntime {
+export function registerGoalMode(
+  pi: ExtensionAPI,
+  jobs: GoalJobCoordinator,
+  options: { hasBlockingQuestions?: () => boolean } = {},
+): GoalRuntime {
   let store: GoalStore | undefined;
   let loadedManager: object | undefined;
   let loadedLeaf: string | undefined;
@@ -66,6 +70,8 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
   let reminderSequence = 0;
   const queuedReminderIds = new Set<string>();
   const controller = new GoalContinuationController();
+  // Only foreground blockers should be reported here; child-only questions do not stop goal continuation.
+  const hasBlockingQuestions = () => options.hasBlockingQuestions?.() ?? false;
 
   const leafOf = (ctx: ExtensionContext) => ctx.sessionManager?.getLeafId?.() ?? undefined;
   const ensureStore = (ctx: ExtensionContext): GoalStore => {
@@ -169,7 +175,7 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
         invalidate();
         const current = activeStore.get();
         notify(formatGoal(current));
-        if (current?.status === "active" && (command === "set" || command === "resume")) {
+        if (current?.status === "active" && !hasBlockingQuestions() && (command === "set" || command === "resume")) {
           sendContinuation(current);
         }
       } catch (error) {
@@ -219,7 +225,8 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
       if (match) {
         const accepted =
           match[1] === reminderEpoch && Number(match[2]) === generation && queuedReminderIds.delete(match[3]!);
-        if (!accepted) return { action: "handled" as const };
+        // A reminder may have been queued before the foreground question was posted.
+        if (!accepted || hasBlockingQuestions()) return { action: "handled" as const };
       }
       return;
     }
@@ -277,7 +284,7 @@ export function registerGoalMode(pi: ExtensionAPI, jobs: GoalJobCoordinator): Go
       return;
     }
 
-    if (controller.settle(goal) === "continue") {
+    if (!hasBlockingQuestions() && controller.settle(goal) === "continue") {
       sendContinuation(store!.get()!);
     }
   });
