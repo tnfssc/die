@@ -1,0 +1,7 @@
+# GPT-Live coding delegation (2026-09-26)
+
+The primary GPT-Live socket sends client delegation ID and offset only. No tool names, arguments, or final ASR arrive. Keep its fragments provisional, bounded and time-filtered in GptLiveDelegationBridge; never execute a fabricated tool call from voice metadata. The bridge dispatches a data-labeled snapshot to the existing MainOwner, which runs the selected ordinary Pi session agent through its own run loop. The configured model, instruction frame, extension tool hooks, session manager, permissions, and history stay canonical; the voice model is not another coding authority. Typed input uses that same owner directly. Duplicate delegation IDs map to one Promise. Closing voice prevents further admissions but waits for admitted agent work; barge-in only affects audio, not jobs. Explicit stop-work still uses its separate foreground/work cancellation path.
+
+The existing GPT-Live playback recovery uses a bounded scheduler and provisional local acoustic thresholds, not proven VAD or server response boundaries. Real-device barge-in, paid provider delegation, and acoustic quality are unverified. Focused tests use a fake socket/provider and main-owner fixture; typecheck passes. If the paired model run fails, host reports failure and does not retry the work implicitly. Selected GPT-Live config/provider registration belongs to the provider owner and must be enabled alongside this bridge.
+
+Values unchanged: existing one-owner, bounded context, truthful provisional data and stop semantics already describe this decision.

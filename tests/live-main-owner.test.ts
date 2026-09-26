@@ -520,3 +520,31 @@ test("before-agent-start setActiveTools denial is not undone by Live acquisition
   await expect(acquireMainOwner({} as any, f.ctx)).rejects.toThrow("disabled execute");
   expect(currentMainOwner(f.manager)).toBeUndefined();
 });
+
+test("GPT-Live delegation reuses one configured session turn, retries never rerun and voice stop does not cancel work", async () => {
+  const f = fixture();
+  const calls: string[] = [];
+  let finish!: () => void;
+  const running = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  (f.session as any)._runAgentPrompt = async (prompt: string) => {
+    calls.push(prompt);
+    await running;
+  };
+  (f.session.agent as any).abort = () => {
+    throw new Error("voice stop cancelled coding work");
+  };
+  const owner = await acquireMainOwner({} as any, f.ctx);
+  owner.delegatedVoice = true;
+  const first = owner.delegate!("delegation-1", "Implement the requested feature");
+  const retry = owner.delegate!("delegation-1", "Implement the requested feature");
+  expect(first).toBe(retry);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  owner.close();
+  expect(calls).toEqual(["Implement the requested feature"]);
+  finish();
+  await first;
+  await owner.released;
+  expect(calls).toHaveLength(1);
+});

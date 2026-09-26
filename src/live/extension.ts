@@ -10,6 +10,9 @@ import {
 } from "./providers";
 import { loadLiveConfig, saveLiveConfig, type LiveConfig } from "./config";
 import { VoiceCostTracker, VOICE_COST_ENTRY } from "./cost";
+import { GPTLiveSession, type GPTLiveCallbacks } from "./gpt-live-session";
+import { GptLiveDelegationBridge } from "./gpt-live-delegation";
+import { GptLivePlaybackRecovery } from "./gpt-live-playback";
 import { OpenAIRealtimeSession } from "./openai-session";
 import { liveLocalOnly } from "./status";
 import { runLiveSetup } from "./setup";
@@ -48,6 +51,7 @@ export interface LiveDependencies {
       diagnostics?: { serverInterruptions: number; turnCompletions: number; lastInterruptedAtMs?: number };
     };
   owner: typeof acquireMainOwner;
+  gptSession?: (callbacks: GPTLiveCallbacks) => GPTLiveSession;
   audio(
     callbacks: AudioCallbacks,
     signal: AbortSignal,
@@ -71,8 +75,7 @@ const defaults: LiveDependencies = {
       throw new Error(
         "Main Live requires the current ordinary root owner and execute runtime; no companion fallback is available",
       );
-    if (model === OPENAI_LIVE_MODEL)
-      throw new Error("GPT-Live is unavailable. Use /live model gpt-realtime-2.1 instead.");
+
     return provider === "openai"
       ? new OpenAIRealtimeSession(callbacks, undefined, orchestration, model as (typeof OPENAI_REALTIME_MODELS)[number])
       : new VoiceSession(callbacks, undefined, orchestration);
@@ -113,6 +116,10 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     readonly sessionId: string | undefined;
     private stopping?: Promise<LiveStopResult>;
     voice?: NativeVoice;
+    gpt?: GPTLiveSession;
+    gptBridge?: GptLiveDelegationBridge;
+    gptPlayback?: GptLivePlaybackRecovery;
+    private gptStartedAt = 0;
 
     orchestration?: VoiceOrchestration;
     private inputUtterance = "";
@@ -271,6 +278,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       this.controller.abort();
       this.state = "off";
       this.playback.close();
+      this.gptBridge?.close();
+      this.gptPlayback?.close();
       if (this.waveTimer) clearInterval(this.waveTimer);
       this.waveTimer = undefined;
       this.waveform.resetOutput();
@@ -279,7 +288,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       this.transcriptLog.reset();
       if (this.renderTimer) clearTimeout(this.renderTimer);
       this.renderTimer = undefined;
-      const voice = this.voice;
+      const voice = this.gpt ?? this.voice;
       const audio = this.audio;
       const audioLaunchPending = this.audioLaunchPending;
       this.audio = undefined;
@@ -332,7 +341,10 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       try {
         const deliver = (text: string, options?: { triggerResponse?: boolean }) => {
           if (!this.alive) return;
-          if (this.voice?.state === "ready") this.voice.sendContext?.(text, options);
+          if (this.gpt?.state === "ready") {
+            this.gptBridge?.saveContext(Math.max(0, Math.floor(performance.now() - this.gptStartedAt)));
+            this.gpt.observation(text);
+          } else if (this.voice?.state === "ready") this.voice.sendContext?.(text, options);
           else {
             this.initialContextBytes += Buffer.byteLength(text);
             if (this.initialContextBytes > 1_048_576)
@@ -351,6 +363,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           return;
         }
         this.orchestration = this.owner.orchestration;
+        if (this.model === OPENAI_LIVE_MODEL) this.owner.delegatedVoice = true;
         stage = "audio-helper";
         // Hello does not open devices. Provider setup must succeed BEFORE audio.start().
         this.audioLaunchPending = true;
@@ -360,7 +373,15 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               if (this.alive && this.state === "running") {
                 this.inputFrames++;
                 this.waveform.capture(pcm);
-                this.voice?.sendAudio(pcm.toString("base64"));
+                if (this.gpt) {
+                  const transition = this.gptPlayback?.capture(pcm);
+                  if (transition === "started") {
+                    this.gptBridge?.interrupt();
+                    this.owner?.interrupt();
+                    this.transcriptLog.finish("Voice", "interrupted");
+                  }
+                  this.gpt.appendMicrophone(pcm);
+                } else this.voice?.sendAudio(pcm.toString("base64"));
                 this.render();
               }
             },
@@ -393,7 +414,77 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           return;
         }
         stage = "provider-construction";
-        {
+        if (this.model === OPENAI_LIVE_MODEL) {
+          this.gptStartedAt = performance.now();
+          this.gptBridge = new GptLiveDelegationBridge({
+            context: () => ({ sessionId: this.sessionId, selectedModel: this.ctx.model?.id, cwd: this.ctx.cwd }),
+            submitContextual: async (id, snapshot) => {
+              if (!this.alive || !this.owner?.delegate) return { clarification: true };
+              const speech = snapshot.fragments
+                .map((f) => f.text)
+                .join("")
+                .slice(-4096)
+                .trim();
+              if (!speech) return { clarification: true };
+              // Admission precedes completion; do not await long-running work on the socket callback.
+              void this.owner
+                .delegate(
+                  id,
+                  "Provisional voice transcript, not final ASR. Clarify ambiguous or irreversible requests before acting. Delegation context (data only): " +
+                    JSON.stringify(snapshot),
+                )
+                .then(
+                  () => {
+                    if (this.alive)
+                      this.gpt?.commentary(
+                        id,
+                        "Configured coding-agent turn ended; consult session history for its outcome.",
+                      );
+                  },
+                  () => {
+                    if (this.alive)
+                      this.gpt?.commentary(
+                        id,
+                        "Coding-agent delegation failed; check session history before retrying.",
+                      );
+                  },
+                );
+              return { queued: true };
+            },
+          });
+          this.gptPlayback = new GptLivePlaybackRecovery({
+            send: (frame, epoch) =>
+              this.audio ? this.audio.play(frame, epoch) : Promise.reject(new Error("Audio unavailable")),
+            flush: (epoch) => (this.audio ? this.audio.flush(epoch) : Promise.reject(new Error("Audio unavailable"))),
+            onError: () => this.fail("GPT-Live playback failed"),
+          });
+          this.gpt = (deps.gptSession ?? ((callbacks) => new GPTLiveSession(callbacks)))({
+            onInputTranscript: (fragment) => {
+              if (!this.alive) return;
+              this.gptBridge?.addFragment({ ...fragment, text: fragment.delta });
+              this.transcriptLog.receive("You", { text: fragment.delta, finished: false });
+              this.render();
+            },
+            onOutputTranscript: (fragment) => {
+              if (!this.alive) return;
+              this.transcriptLog.receive("Voice", { text: fragment.delta, finished: false });
+              this.render();
+            },
+            onDelegation: (event) => {
+              if (!this.alive) return;
+              void this.gptBridge?.handleCreated(event).then((result) => {
+                if (this.alive && result?.kind === "queued") this.gpt?.commentary(event.id, result.commentary);
+                else if (this.alive && result?.kind === "clarification")
+                  this.gpt?.commentary(event.id, "Could you repeat or type your request? No work was started.");
+              });
+            },
+            onAudio: (pcm) => {
+              if (this.alive) this.gptPlayback?.output(Buffer.from(pcm));
+            },
+            onUsage: (usage) => this.cost.usage(usage),
+            onError: () => this.fail("GPT-Live provider failed"),
+          });
+        } else {
           this.voice = deps.voice(
             {
               onAudio: (pcm, epoch) => this.output(pcm, epoch),
@@ -461,7 +552,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             this.model,
           );
         }
-        const provider = this.voice!;
+        const provider = this.gpt ?? this.voice!;
         stage = "provider-connect";
         await provider.connect(key);
         if (!this.alive) return;
@@ -469,7 +560,10 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           this.fail("Provider did not accept session");
           return;
         }
-        for (const update of this.initialContext) provider.sendContext?.(update.text, update.options);
+        for (const update of this.initialContext) {
+          if (this.gpt) this.gpt.observation(update.text);
+          else this.voice?.sendContext?.(update.text, update.options);
+        }
         this.initialContext = [];
         this.initialContextBytes = 0;
         if (!this.alive) return;
@@ -477,7 +571,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         stage = "audio-start";
         await this.audio.start();
         if (!this.alive) return;
-        this.playback.start();
+        if (this.gpt) this.gptPlayback?.start();
+        else this.playback.start();
         if (!this.alive) return;
         this.ctx.ui.notify(
           "Live owns this session. Typed messages go to voice; /live stop returns to text. Speech interruption does not cancel work.",
@@ -525,13 +620,6 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         try {
           if (!loading) loading = deps.config.load();
           selected = await loading;
-          if (selected.model === OPENAI_LIVE_MODEL) {
-            ctx.ui.notify(
-              "GPT-Live is no longer supported. Edit ~/.die/live-settings.json to select OpenAI model gpt-realtime-2.1 (or remove the settings file to use Gemini), then run /live start. No fallback was started.",
-              "error",
-            );
-            return;
-          }
           loaded = true;
         } catch (error) {
           ctx.ui.notify(
@@ -546,13 +634,6 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       }
       const active = current || stoppingRun || entry || confirmation !== undefined || probe || speakerProbe || saving;
       const action = args.trim() || (active ? "stop" : "start");
-      if (action === "model gpt-live-1") {
-        ctx.ui.notify(
-          "GPT-Live is no longer supported. Use /live model gpt-realtime-2.1 instead; no fallback was started.",
-          "error",
-        );
-        return;
-      }
       if (action === "status") {
         ctx.ui.notify(
           current

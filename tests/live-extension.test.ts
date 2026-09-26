@@ -71,6 +71,9 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
           },
         },
         typedInput: (text: string) => callbacks?.onInput?.(text),
+        delegate: async (id: string, text: string) => {
+          ownerEvents.push(["delegate", id, text]);
+        },
         stopForeground: () => {},
         inputTranscript: (text: string, final?: boolean) => ownerEvents.push(["input", text, final]),
         outputTranscript: (text: string, final?: boolean) => ownerEvents.push(["output", text, final]),
@@ -1117,7 +1120,7 @@ describe("Live provider selection", () => {
     await t.run("stop");
   });
 
-  test("model selection persists and rejects removed GPT-Live without fallback", async () => {
+  test("model selection persists across provider switching", async () => {
     let saved: import("../src/live/config").LiveConfig = { provider: "google", model: "gemini-3.8-live" };
     const keys: string[] = [];
     const models: string[] = [];
@@ -1170,19 +1173,9 @@ describe("Live provider selection", () => {
     };
     await restarted.run("model");
     expect(choices[0]).toEqual(["gpt-realtime-2.1", "gpt-realtime-2.1-mini (selected)"]);
-    await restarted.run("model gpt-live-1");
-    expect(restarted.notices.at(-1)).toContain("/live model gpt-realtime-2.1");
-    expect(saved.model).toBe("gpt-realtime-2.1-mini");
     expect(keys).toEqual([]);
     expect(models).toEqual([]);
     expect(audio).toBe(0);
-    const legacy = setup({
-      ...overrides,
-      config: { ...config, load: async () => ({ provider: "openai", model: "gpt-live-1" }) },
-    });
-    await legacy.run("start");
-    expect(legacy.notices.at(-1)).toContain("~/.die/live-settings.json");
-    expect(keys).toEqual([]);
   });
 
   test("failed settings writes leave the previous selection in force", async () => {
@@ -1366,4 +1359,41 @@ test("branch navigation waits for admitted tool results before moving the owning
   release();
   await moving;
   expect(navigated).toBe(true);
+});
+
+test("GPT-Live routes client delegation to selected main owner, keeps transcript provisional and voice stop leaves work untouched", async () => {
+  let callbacks: any;
+  const observations: any[] = [];
+  const f = setup({
+    config: { load: async () => ({ provider: "openai", model: "gpt-live-1" }), save: async () => {} },
+    gptSession: (cb: any) => {
+      callbacks = cb;
+      return {
+        state: "ready",
+        connect: async () => {},
+        appendMicrophone: () => true,
+        observation: (message: string) => {
+          observations.push(message);
+          return true;
+        },
+        commentary: (id: string, message: string) => {
+          observations.push([id, message]);
+          return true;
+        },
+        close: async () => {},
+      } as any;
+    },
+  });
+  await f.run("start");
+  expect(f.starts).toBe(1);
+  callbacks.onInputTranscript({ delta: "please inspect", startMs: 100, endMs: 300 });
+  callbacks.onDelegation({ id: "d1", target: "client", offsetMs: 400 });
+  await tick();
+  const delegated = f.ownerEvents.filter((event: any) => event[0] === "delegate");
+  expect(delegated).toHaveLength(1);
+  expect(delegated[0][1]).toBe("d1");
+  expect(delegated[0][2]).toContain("please inspect");
+  expect(f.ownerEvents.some((event: any) => event[0] === "input" && event[2] === true)).toBe(false);
+  await f.run("stop");
+  expect(f.ownerCloses).toBe(1);
 });

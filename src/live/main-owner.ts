@@ -27,6 +27,9 @@ export type MainOwner = {
   beginInput?(): void;
   inputTranscript(text: string, final?: boolean): void;
   typedInput(text: string): void | Promise<void>;
+  /** GPT-Live client delegation uses the selected ordinary agent, never voice tool arguments. */
+  delegate?(id: string, text: string): Promise<void>;
+  delegatedVoice?: boolean;
   outputTranscript(text: string, final?: boolean): void;
   sendContext(text: string, metadata?: { customType: string; details?: unknown }): void;
   interrupt(): void;
@@ -187,6 +190,8 @@ async function acquire(
   let outputDraft = "";
   let counter = 0;
   let retainedToolBytes = 0;
+  const delegated = new Map<string, { text: string; operation: Promise<void> }>();
+  let delegatedTail: Promise<void> = Promise.resolve();
   let turnPreparation: Promise<void> = Promise.resolve();
   // A revoked ASR turn must not authorize a waiting execute (or poison the next turn).
   let pendingTranscript: { result: Promise<boolean>; settle: (final: boolean) => void } | undefined;
@@ -392,11 +397,49 @@ async function acquire(
       }
     },
     async typedInput(text) {
+      if (owner.delegatedVoice) {
+        void owner.delegate?.("typed-" + ++counter, text).then(
+          () =>
+            callbacks.onContext?.(
+              "Typed request: configured coding-agent turn ended; consult session history for outcome.",
+            ),
+          (error) => callbacks.onError?.("Typed Live delegation failed: " + String(error)),
+        );
+        return;
+      }
       if (!valid()) return;
       appendText("user", text);
       prepareUserTurn(text);
       await turnPreparation;
       if (valid()) callbacks.onInput?.(text);
+    },
+    delegate(id, text) {
+      if (!valid()) return Promise.reject(new Error("Live owner is no longer active"));
+      if (!id || id.length > 256 || !text.trim() || text.length > 16_384)
+        return Promise.reject(new Error("Invalid delegation"));
+      const previous = delegated.get(id);
+      if (previous) {
+        if (previous.text !== text) return Promise.reject(new Error("Delegation ID reused with different context"));
+        return previous.operation; // Never repeat an admitted operation after interruption.
+      }
+      if (delegated.size >= 256) return Promise.reject(new Error("Live delegation capacity reached"));
+      inFlight++;
+      const operation = delegatedTail
+        .catch(() => {})
+        .then(async () => {
+          if (!valid()) throw new Error("Live owner closed before delegation");
+          // Pi owns the selected model, effective instructions, permission hooks, tools,
+          // persistence and continuation. Calling the session agent directly avoids a
+          // second coding-agent session or a fabricated execute function call.
+          await (session as OwnerSession & { _runAgentPrompt(messages: string): Promise<void> })._runAgentPrompt(text);
+        })
+        .finally(() => {
+          inFlight--;
+          checkRelease();
+        });
+      delegated.set(id, { text, operation });
+      delegatedTail = operation;
+      return operation;
     },
     outputTranscript(text, final = true) {
       if (!valid()) return;
@@ -436,6 +479,7 @@ async function acquire(
       for (const controller of controllers) stopWorkReports.set(controller, report);
     },
     stopForeground() {
+      if (owner.delegatedVoice && inFlight) session.agent.abort();
       for (const controller of controllers) controller.abort("stop-work");
     },
     close() {
