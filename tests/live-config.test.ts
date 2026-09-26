@@ -30,11 +30,21 @@ describe("Live voice settings (offline)", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+  test("GPT-Live selection persists and survives provider switches", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "die-gpt-live-config-"));
+    const path = join(dir, "live-settings.json");
+    const chosen = { provider: "openai" as const, model: "gpt-live-1" as const, openaiModel: "gpt-live-1" as const };
+    try {
+      await saveLiveConfig(chosen, path);
+      expect(await loadLiveConfig(path)).toEqual(chosen);
+      expect(modelForProvider("openai", { provider: "google", model: "gemini-3.8-live", openaiModel: chosen.model })).toBe("gpt-live-1");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
   test("rejects mismatched and invented models instead of fallback", () => {
     for (const config of [
       { provider: "google", model: "gpt-live-1" },
-      { provider: "openai", model: "gpt-live-1" },
-      { provider: "openai", model: "gpt-realtime-2.1", openaiModel: "gpt-live-1" },
       { provider: "openai", model: "gemini-3.8-live" },
       { provider: "openai", model: "gpt-realtime-2.1-unknown" },
       { provider: "google", model: "gemini-3.8-live", openaiModel: "invented" },
