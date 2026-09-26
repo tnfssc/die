@@ -6,6 +6,8 @@ a prototype flag. See [investigation](main-orchestrator-investigation.md),
 No install, release, push, credential change, paid request, or microphone use
 was done in this worktree.
 
+**GPT-Live update (2026-09-26):** The direct-owner-only GPT exclusion below is historical. The user approved a paired voice frontend with the selected canonical coding backend. See [paired production integration](gpt-live-production-integration.md). Gemini/Realtime retain the direct-owner path described here.
+
 ## One owner, same runtime
 
 Main Live acquires the current Pi session before audio or provider startup.

@@ -524,11 +524,11 @@ test("GPT-Live delegation reuses one configured session turn, retries never reru
   const running = new Promise<void>((resolve) => {
     finish = resolve;
   });
-  (f.session as any)._runAgentPrompt = async (prompt: string) => {
+  (f.session as any).prompt = async (prompt: string) => {
     calls.push(prompt);
     await running;
   };
-  (f.session.agent as any).abort = () => {
+  (f.session as any).abort = () => {
     throw new Error("voice stop cancelled coding work");
   };
   const owner = await acquireMainOwner({} as any, f.ctx);
