@@ -190,7 +190,10 @@ export function registerQuestionRuntime(
       try {
         return service
           .list(context)
-          .some((q) => !q.readOnly && q.status === "pending" && q.blocked?.foreground === true);
+          .some(
+            (q) =>
+              !q.readOnly && (q.status === "pending" || q.status === "cancelled") && q.blocked?.foreground === true,
+          );
       } catch {
         return true;
       }

@@ -278,7 +278,11 @@ export function renderCompactFooter(
     ? questionCount
       ? questionCount[1] +
         " /questions" +
-        (questionStatus.includes("waiting on you") ? " · waiting on you" : "") +
+        (questionStatus.includes("follow-up blocked")
+          ? " · follow-up blocked"
+          : questionStatus.includes("waiting on you")
+            ? " · waiting on you"
+            : "") +
         (savedQuestions ? " · " + savedQuestions + " saved" : "")
       : questionStatus
     : "";
@@ -286,7 +290,11 @@ export function renderCompactFooter(
     ? questionCount
       ? questionCount[1] +
         " /questions" +
-        (questionStatus.includes("waiting on you") ? " waiting" : "") +
+        (questionStatus.includes("follow-up blocked")
+          ? " blocked"
+          : questionStatus.includes("waiting on you")
+            ? " waiting"
+            : "") +
         (savedQuestions ? " " + savedQuestions + " saved" : "")
       : "/questions unavailable"
     : "";

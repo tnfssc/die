@@ -142,3 +142,29 @@ test("bounded ledger and answer/cancel race without loss", async () => {
     f.cleanup();
   }
 });
+
+test("navigation to an ancestor is history only; deeper sibling forks cannot answer", async () => {
+  const f = fixture();
+  try {
+    const s = new QuestionService();
+    const q = await s.ask(f.ctx, { text: "Original?" });
+    f.move("first", "root");
+    f.move("original-tip", "first");
+    f.navigate("root");
+    expect(s.get(f.ctx, q.id).readOnly).toBe(true);
+    await expect(s.answer(f.ctx, { id: q.id, owner: q.owner, version: 1, text: "wrong branch" })).rejects.toThrow(
+      "owner branch",
+    );
+    await expect(s.ask(f.ctx, { text: "New?" })).rejects.toThrow("branch tip");
+    f.move("deeper-fork", "first");
+    expect(s.get(f.ctx, q.id).readOnly).toBe(true);
+    await expect(s.answer(f.ctx, { id: q.id, owner: q.owner, version: 1, text: "wrong fork" })).rejects.toThrow(
+      "owner branch",
+    );
+    f.navigate("original-tip");
+    expect(s.get(f.ctx, q.id).readOnly).toBe(false);
+    await s.answer(f.ctx, { id: q.id, owner: q.owner, version: 1, text: "original" });
+  } finally {
+    f.cleanup();
+  }
+});

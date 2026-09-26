@@ -128,6 +128,9 @@ export class QuestionService {
     const at = branch.indexOf(q.owner.branchId);
     if (at < 0) return false;
     const entries = m.getEntries?.();
+    // An ancestor position with existing descendants is not an active branch tip.
+    // Answering there would fork the old owner rather than continue it.
+    if (entries?.some((e) => e.parentId === m.getLeafId())) return false;
     for (let i = at; i < branch.length - 1; i++) {
       const children = entries?.filter((e) => e.parentId === branch[i]);
       if (children?.length && children[0]?.id !== branch[i + 1]) return false;
@@ -175,6 +178,8 @@ export class QuestionService {
     const reason = input.reason === undefined ? undefined : text(input.reason, 2000, "reason");
     const taskIds = ids(input.taskIds);
     const owner = activeOwner(ctx);
+    if (ctx.sessionManager.getEntries?.().some((e) => e.parentId === owner.branchId))
+      throw new Error("Questions need a current branch tip. Start a new turn before asking on this branch.");
     let created = false;
     const saved = await this.change(path(ctx), (records) => {
       activeOwner(ctx, owner.branchId); // navigation may have changed while waiting for the lock
@@ -265,7 +270,7 @@ export class QuestionService {
     const reason = text(input?.reason, 2000, "reason");
     return this.mutate(ctx, input, (q) => {
       if (q.version !== input.version) throw new Error("Stale question version: current " + q.version);
-      if (q.status !== "pending" && q.status !== "answered") throw new Error("Question already " + q.status);
+      if (q.status === "resolved") throw new Error("Question already resolved");
       q.status = "resolved";
       q.resolutionReason = reason;
       return true;

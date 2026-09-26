@@ -325,3 +325,33 @@ test("two attached runtimes cannot claim the same saved reply twice", async () =
     h.cleanup();
   }
 });
+
+test("cancel withdraws the question without releasing blocked goal work", async () => {
+  const h = harness();
+  try {
+    const q = await h.runtime.service.ask(h.ctx, { text: "Required input?" });
+    await h.runtime.service.block(h.ctx, {
+      id: q.id,
+      owner: q.owner,
+      version: q.version,
+      checkpoint: "Needs input or new plan",
+      foreground: true,
+    });
+    await h.runtime.commands(h.ctx).handle("questions.cancel", { id: q.id });
+    expect(h.runtime.hasBlockingQuestions()).toBe(true);
+    h.idle(true);
+    h.emit("agent_settled");
+    await h.tick();
+    expect(h.sent).toHaveLength(0);
+    const cancelled = h.runtime.service.get(h.ctx, q.id);
+    await h.runtime.service.resolve(h.ctx, {
+      id: q.id,
+      owner: q.owner,
+      version: cancelled.version,
+      reason: "Owner abandoned dependent step",
+    });
+    expect(h.runtime.hasBlockingQuestions()).toBe(false);
+  } finally {
+    h.cleanup();
+  }
+});

@@ -59,3 +59,11 @@ CLI compilation reused the base web archive and compiled current src/cli.ts. It 
 - Final independent review: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_ac81ff3b-a86675007a5e-task_d6e62737; branch die/final-question-implementation-review-d6e62737.
 
 Final review found a real dispatch/receipt crash window. Integration added a durable atomic claim plus uncertainty state and failing-write/two-runtime tests; do not claim a retry can safely ignore that claim. Parent surface review also led to hiding continuation metadata, removing an unusable answer tool, clearer discovery/help and keeping saved answers visible. Values stay unchanged: existing visibility, ownership, bounded state and truthful evidence values cover this work.
+
+## Final surface capture
+
+On source 110765a, the standard harness reopened the saved session as questions-final, then accepted /questions answer <id> Playback. Since this was restored work, it saved the answer without guessing owner availability or calling a model. The pinned footer changed from 2 /questions waiting to 2 /questions 1 saved. Detail showed the answer and /questions resume action; no ledger JSON/provenance bubble appeared. Evidence: artifacts/tui/questions-final-2026-09-26T09-23-54.465Z/transcript.ansi and artifacts/tui/questions-final-{reload,answer,detail}.txt. Harness session was stopped. Actual new-turn dispatch is separately proven with the real Pi SDK test, using a deterministic offline provider.
+
+Final source typecheck passed (bun run check). Current CLI compiled with Bun 1.4.2 and the reused base web archive. The paid/provider and hardware acceptance tests remain gated; no device or production-web claim follows from these checks.
+
+Final integration also rejects replies from a navigated ancestor (not only sibling forks). Cancelling a question withdraws it but leaves its dependent follow-up blocked until the owner resolves it with a new plan. This does not restart a goal or cancel the underlying job. Targeted tests cover both boundaries.

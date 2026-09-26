@@ -78,10 +78,15 @@ export function registerQuestions(
       }
       const open = records(await service.handle("questions.list", {})).filter(
         (question) =>
-          !question.readOnly && (!question.status || question.status === "pending" || question.status === "answered"),
+          !question.readOnly &&
+          (!question.status ||
+            question.status === "pending" ||
+            question.status === "answered" ||
+            (question.status === "cancelled" && !!question.blocked)),
       );
       const saved = open.filter((q) => q.status === "answered").length;
       const waiting = open.some((q) => q.status !== "answered" && q.blocked);
+      const cancelled = open.some((q) => q.status === "cancelled" && q.blocked);
       if (token === generation && context === current)
         current.ui.setStatus(
           "die-questions",
@@ -89,8 +94,8 @@ export function registerQuestions(
             ? open.length +
                 " question" +
                 (open.length === 1 ? "" : "s") +
-                (saved ? " · " + saved + " saved" : " pending") +
-                (waiting ? " · waiting on you" : "")
+                (saved ? " · " + saved + " saved" : cancelled ? "" : " pending") +
+                (waiting ? (cancelled ? " · follow-up blocked" : " · waiting on you") : "")
             : undefined,
         );
     } catch {
@@ -132,6 +137,9 @@ export function registerQuestions(
                   " — " +
                   question.blocked.checkpoint,
               question.answer && "Answer: " + question.answer,
+              question.status === "cancelled" &&
+                question.blocked &&
+                "Cancelled; follow-up needs a new plan, not a guessed answer.",
               question.status === "answered" &&
                 (question.delivery === "dispatching"
                   ? "Answer saved · delivery uncertain; check parent chat"
