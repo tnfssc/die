@@ -160,7 +160,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           return this.audio.play(frame, epoch);
         },
         flush: (epoch) => (this.audio ? this.audio.flush(epoch) : Promise.reject(new Error("Audio not ready"))),
-        onError: () => this.fail("Playback failed or response exceeded the bounded audio budget"),
+        onError: (error) => this.fail(error.message),
         onState: (s) => {
           if (!this.alive) return;
           this.pendingBytes = s.pendingBytes;

@@ -15,8 +15,7 @@ import type { VoiceCallbacks, VoiceError, VoiceOrchestration, VoiceProvider, Voi
 export const OPENAI_VOICE_MODEL = OPENAI_REALTIME_MODELS[0];
 
 const MAX_INPUT = 3200,
-  MAX_PACKET = 96000,
-  MAX_TURN = MAX_PACKET * 24;
+  MAX_PACKET = 96000; // 2 seconds PCM16 mono 24 kHz per packet
 const MAX_CONTEXT = 4096,
   MAX_TRANSCRIPT = 4096,
   MAX_TOOLS = 256;
@@ -172,7 +171,6 @@ export class OpenAIRealtimeSession implements VoiceProvider {
   private serial = 0;
   private epoch = 0;
   private turnValue = 0;
-  private bytes = 0;
   private inputChars = 0;
   private outputChars = 0;
   private inputRevision = 0;
@@ -504,7 +502,6 @@ export class OpenAIRealtimeSession implements VoiceProvider {
     if (response) response.cancelled = true;
     this.audioItems.clear();
     this.queuedEndMs = 0;
-    this.bytes = 0;
     ++this.epoch;
     this.emit(() => this.callbacks.onInterrupted?.(this.epoch));
   }
@@ -753,8 +750,8 @@ export class OpenAIRealtimeSession implements VoiceProvider {
           return;
         }
         const bytes = Buffer.from(m.delta, "base64").length;
-        if (bytes < 2 || bytes % 2 || this.bytes + bytes > MAX_TURN) {
-          this.fail("invalid_audio", "Voice turn audio limit exceeded");
+        if (bytes < 2 || bytes % 2) {
+          this.fail("invalid_audio", "Invalid output audio chunk");
           return;
         }
         let item = this.audioItems.get(m.item_id);
@@ -771,7 +768,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
           };
           this.audioItems.set(m.item_id, item);
         }
-        this.bytes += bytes;
+        // Duration is truncation metadata, not retained PCM. PlaybackScheduler bounds queued audio.
         item.duration += bytes / 48;
         this.queuedEndMs = Math.max(this.queuedEndMs, item.start + item.duration);
         this.emit(() => this.callbacks.onAudio?.(m.delta, this.epoch));
@@ -833,7 +830,7 @@ export class OpenAIRealtimeSession implements VoiceProvider {
           if (id === this.activeResponse && !response.cancelled && response.revision === this.inputRevision) {
             ++this.diagnostics.turnCompletions;
             this.emit(() => this.callbacks.onTurnComplete?.(this.turnValue++));
-            this.bytes = this.inputChars = this.outputChars = 0;
+            this.inputChars = this.outputChars = 0;
           }
           this.continueResponse(id);
         } else {

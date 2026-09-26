@@ -16,7 +16,6 @@ import {
 
 const MAX_INPUT = 3200; // 100 ms PCM16 mono 16 kHz
 const MAX_OUTPUT = 96000; // 2 seconds PCM16 mono 24 kHz per packet
-const MAX_TURN_OUTPUT = 24 * MAX_OUTPUT;
 const MAX_TRANSCRIPT = 4096;
 const CONNECT_TIMEOUT_MS = 15000;
 const MAX_TOOL_BYTES = 16384;
@@ -39,7 +38,6 @@ export class VoiceSession {
   private epoch = 0;
   private playbackEpochValue = 0;
   private turnValue = 0;
-  private turnBytes = 0;
   private inputChars = 0;
   private outputChars = 0;
   private ended = false;
@@ -436,7 +434,6 @@ export class VoiceSession {
         ++this.diagnostics.serverInterruptions;
         this.diagnostics.lastInterruptedAtMs = performance.now();
         ++this.playbackEpochValue;
-        this.turnBytes = 0;
         this.emit(() => this.callbacks.onInterrupted?.(this.playbackEpochValue));
         if (this.stateValue !== "ready") return;
       }
@@ -450,11 +447,7 @@ export class VoiceSession {
             this.fail("invalid_audio", "Invalid output audio chunk");
             return;
           }
-          this.turnBytes += bytes;
-          if (this.turnBytes > MAX_TURN_OUTPUT) {
-            this.fail("invalid_audio", "Voice turn audio limit exceeded");
-            return;
-          }
+          // PlaybackScheduler bounds retained PCM; a streamed turn has no total-duration budget.
           this.emit(() => this.callbacks.onAudio?.(audio.data!, this.playbackEpochValue));
           if (this.stateValue !== "ready") return;
         }
@@ -478,7 +471,7 @@ export class VoiceSession {
         this.emit(() => this.callbacks.onTurnComplete?.(this.turnValue));
         if (this.stateValue !== "ready") return;
         ++this.turnValue;
-        this.turnBytes = this.inputChars = this.outputChars = 0;
+        this.inputChars = this.outputChars = 0;
       }
     }
     // Same-envelope input is processed first. No cross-message waiting: absent

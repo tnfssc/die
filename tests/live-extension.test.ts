@@ -1,3 +1,5 @@
+import { initTheme, InteractiveMode } from "@earendil-works/pi-coding-agent";
+import { Container, stripTerminalSequences } from "@earendil-works/pi-tui";
 import { stopCurrentLive } from "../src/live/lifecycle-access";
 import { defaultSocket, OpenAIRealtimeSession, type RealtimeSocket } from "../src/live/openai-session";
 import { describe, expect, test } from "bun:test";
@@ -715,7 +717,10 @@ describe("Live voice", () => {
     expect(t.played.map((p) => p.length)).toEqual([960, 960, 960, 960]); // Bounded 80ms reserve.
     t.voice.onAudio?.(Buffer.alloc(2_880_002).toString("base64"), 0);
     expect(t.status.at(-1)).toBeUndefined();
-    expect(t.notices.join(" ")).toContain("bounded audio budget");
+    expect(t.notices.at(-1)).toBe(
+      "Live stop requested: Local playback queue exceeds pending budget (2880000 bytes); audio incomplete. No agent work was cancelled.",
+    );
+    expect(t.notices.join(" ")).not.toContain("Provider invalid_audio");
   });
   test("platform gate precedes consent, and session shutdown stops without touching agent", async () => {
     const t = setup({ local: () => false });
@@ -1465,4 +1470,105 @@ test("rejected GPT admission leaves speech available for a later delegation", as
   await tick();
   expect(prompts).toEqual(["Check this repo", "Check this repo"]);
   await f.run("stop");
+});
+
+test("voice failures render truthful warnings without stopping agent work", async () => {
+  const packageDir = process.env.PI_PACKAGE_DIR;
+  delete process.env.PI_PACKAGE_DIR;
+  try {
+    initTheme("dark", false);
+  } finally {
+    if (packageDir !== undefined) process.env.PI_PACKAGE_DIR = packageDir;
+  }
+  for (const source of ["provider", "playback"] as const) {
+    let cancelled = 0;
+    let closed = 0;
+    const t = setup({
+      config: { load: async () => ({ provider: "openai", model: "gpt-realtime-2.1" }), save: async () => {} },
+      owner: async () => ({
+        orchestration: {
+          instructions: "root",
+          directMainAgent: true,
+          tools: [],
+          userTranscript() {},
+          async execute() {},
+        },
+        inputTranscript() {},
+        outputTranscript() {},
+        typedInput() {},
+        sendContext() {},
+        interrupt() {},
+        turnComplete() {},
+        close() {
+          closed++;
+        },
+        stopForeground() {
+          cancelled++;
+        },
+        released: Promise.resolve(),
+      }),
+    });
+    const view = Object.create(InteractiveMode.prototype) as any;
+    view.chatContainer = new Container();
+    view.ui = { requestRender() {} };
+    t.ctx.ui.notify = (message: string, type?: "info" | "warning" | "error") => {
+      view.showExtensionNotify(message, type);
+    };
+    await t.run("start");
+    if (source === "provider") t.voice.onError?.({ code: "invalid_audio", message: "Invalid output audio chunk" });
+    else t.voice.onAudio?.(Buffer.alloc(2_880_002).toString("base64"), 0);
+    const rendered = view.chatContainer
+      .render(240)
+      .map((line: string) => stripTerminalSequences(line))
+      .join("\n");
+    const reason =
+      source === "provider"
+        ? "Provider invalid_audio: Invalid output audio chunk"
+        : "Local playback queue exceeds pending budget (2880000 bytes); audio incomplete";
+    expect(rendered).toContain("Warning: Live stop requested: " + reason + ". No agent work was cancelled.");
+    expect(cancelled).toBe(0);
+    expect(closed).toBe(1);
+    expect(t.status.at(-1)).toBeUndefined();
+    await tick();
+    expect(t.closes).toBe(1);
+  }
+});
+
+test("real Realtime session accepts a 50-second reply below the playback queue bound", async () => {
+  const listeners = new Map<string, ((event: any) => void)[]>();
+  const fire = (type: string, event: any) => {
+    for (const listener of listeners.get(type) ?? []) listener(event);
+  };
+  const message = (event: unknown) => fire("message", { data: JSON.stringify(event) });
+  const socket: RealtimeSocket = {
+    readyState: 1,
+    bufferedAmount: 0,
+    send(data) {
+      if (JSON.parse(data).type === "session.update") message({ type: "session.updated" });
+    },
+    close() {
+      fire("close", {});
+    },
+    addEventListener(type, listener) {
+      listeners.set(type, [...(listeners.get(type) ?? []), listener]);
+      if (type === "close") queueMicrotask(() => fire("open", {}));
+    },
+  };
+  const t = setup({
+    config: { load: async () => ({ provider: "openai", model: "gpt-realtime-2.1" }), save: async () => {} },
+    voice: (callbacks) => new OpenAIRealtimeSession(callbacks, () => socket),
+  });
+  await t.run("start");
+  expect(t.starts).toBe(1);
+  t.notices.length = 0; // Ignore the normal startup ownership notice.
+  message({ type: "response.created", response: { id: "long-response" } });
+  message({ type: "response.output_item.added", response_id: "long-response", item: { type: "message", id: "audio" } });
+  const delta = Buffer.alloc(96000).toString("base64");
+  for (let i = 0; i < 25; i++)
+    message({ type: "response.output_audio.delta", response_id: "long-response", item_id: "audio", delta });
+  message({ type: "response.done", response: { id: "long-response", status: "completed" } });
+  expect(t.notices).toEqual([]);
+  expect(t.status.at(-1)).toBeDefined();
+  expect(t.closes).toBe(0);
+  expect(await t.stop()).toEqual({ stopped: true, errors: [], jobsUnchanged: true });
 });

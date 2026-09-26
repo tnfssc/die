@@ -250,10 +250,12 @@ describe("voice-only SDK session", () => {
     expect(s.state).toBe("closed");
     expect(s.diagnostics.serverInterruptions).toBe(0);
   });
-  test("invalid output mime/rate and aggregate audio limit fail safely once", async () => {
+  test("invalid output mime/rate, alignment, base64 and packet size fail safely once", async () => {
     for (const [content, expected] of [
       [audio("AAAAAA==", "audio/pcm;rate=240000"), "Invalid output audio chunk"],
       [audio("AAAAAA==".repeat(32001)), "Invalid output audio chunk"],
+      [audio(Buffer.alloc(96002).toString("base64")), "Invalid output audio chunk"],
+      [audio(Buffer.alloc(3).toString("base64")), "Invalid output audio chunk"],
     ] as const) {
       const h = harness();
       const errors: unknown[] = [];
@@ -267,15 +269,6 @@ describe("voice-only SDK session", () => {
       h.params.callbacks.onerror?.({} as ErrorEvent);
       expect(h.closes).toBe(1);
     }
-    const h = harness();
-    const errors: unknown[] = [];
-    const s = new VoiceSession({ onError: (e) => errors.push(e) }, h.adapter);
-    const p = s.connect("key");
-    h.ready();
-    await p;
-    const chunk = Buffer.alloc(96000).toString("base64");
-    for (let i = 0; i < 25; i++) h.params.callbacks.onmessage(msg({ serverContent: audio(chunk) }));
-    expect(errors).toEqual([{ code: "invalid_audio", message: "Voice turn audio limit exceeded" }]);
   });
   test("aggregate transcript limit gives explicit terminal error", async () => {
     const h = harness();

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { PlaybackScheduler, type PlaybackClock } from "../src/live/playback";
+import { MAX_PENDING_BYTES, PlaybackScheduler, type PlaybackClock } from "../src/live/playback";
 import { OpenAIRealtimeSession, type RealtimeSocket } from "../src/live/openai-session";
 import { VoiceSession } from "../src/live/session";
 import type { LiveAdapter, LiveConnection, LiveParams, VoiceOrchestration } from "../src/live/types";
@@ -119,6 +119,7 @@ async function stream(push: () => void, pipe: ReturnType<typeof playback>, secon
     push();
     await pipe.pace(1);
     expect(pipe.errors).toEqual([]);
+    expect(pipe.scheduler.state.pendingBytes).toBeLessThan(48_000);
   }
 }
 
@@ -162,22 +163,25 @@ describe("long paced generated audio", () => {
     await stream(response(h.socket, "old"), h.pipe, 25);
     h.socket.message({ type: "input_audio_buffer.speech_started", item_id: "user-next" });
     h.socket.message({ type: "response.done", response: { id: "old", status: "cancelled" } });
-    await stream(response(h.socket, "failed"), h.pipe, 25);
+    await stream(response(h.socket, "failed"), h.pipe, 47);
     h.socket.message({ type: "response.done", response: { id: "failed", status: "failed" } });
     await stream(response(h.socket, "fresh"), h.pipe, 2);
     expect(h.session.state).toBe("ready");
     expect(h.pipe.errors).toEqual([]);
-    expect(h.errors).not.toContain("invalid_audio");
+    expect(h.errors).toEqual(["transport_error"]);
     h.session.close();
     h.pipe.scheduler.close();
   });
-  test("OpenAI still rejects malformed output packets", async () => {
-    const h = await openai();
-    response(h.socket, "bad")();
-    h.socket.message({ type: "response.output_audio.delta", response_id: "bad", item_id: "audio-bad", delta: "!!!" });
-    expect(h.errors).toContain("invalid_audio");
-    expect(h.session.state).toBe("closed");
-    h.pipe.scheduler.close();
+  test("OpenAI still rejects malformed, empty, odd and oversized output packets", async () => {
+    for (const delta of ["!!!", "", Buffer.alloc(3).toString("base64"), Buffer.alloc(96002).toString("base64")]) {
+      const h = await openai();
+      response(h.socket, "bad");
+      h.socket.message({ type: "response.output_audio.delta", response_id: "bad", item_id: "audio-bad", delta });
+      expect(h.errors).toEqual(["invalid_audio"]);
+      expect(h.session.state).toBe("closed");
+      expect(h.pipe.frames).toBe(0);
+      h.pipe.scheduler.close();
+    }
   });
   test("Gemini accepts long paced audio and a new turn after interruption", async () => {
     const pipe = playback();
@@ -228,4 +232,35 @@ describe("long paced generated audio", () => {
     session.close();
     pipe.scheduler.close();
   });
+});
+
+test("stalled playback retains only the pending budget regardless of generated duration", () => {
+  const errors: string[] = [];
+  let writes = 0;
+  const scheduler = new PlaybackScheduler({
+    clock: new Clock(),
+    send: () => {
+      writes++;
+      return new Promise<void>(() => {});
+    },
+    flush: async () => {},
+    onError: (error) => errors.push(error.message),
+  });
+  scheduler.start();
+  const packet = Buffer.alloc(48_000);
+  for (let i = 0; i < 60; i++) expect(scheduler.enqueue(packet, 0)).toBe(true);
+  expect(writes).toBe(1);
+  expect(scheduler.state.inFlight).toBe(true);
+  expect(scheduler.state.pendingBytes).toBe(MAX_PENDING_BYTES - 960);
+  expect(scheduler.enqueue(packet, 0)).toBe(false);
+  expect(scheduler.state.pendingBytes).toBe(MAX_PENDING_BYTES - 960);
+  expect(errors).toEqual(["Local playback queue exceeds pending budget (2880000 bytes); audio incomplete"]);
+  expect(scheduler.enqueue(packet, 0)).toBe(false);
+  expect(errors).toHaveLength(1);
+  scheduler.interrupt(1);
+  expect(scheduler.state.pendingBytes).toBe(0);
+  expect(scheduler.enqueue(packet, 0)).toBe(false); // stale epoch
+  expect(scheduler.enqueue(packet, 1)).toBe(true); // overflow is recoverable at an explicit interruption
+  scheduler.close();
+  expect(scheduler.state.pendingBytes).toBe(0);
 });
