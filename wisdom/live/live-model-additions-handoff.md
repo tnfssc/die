@@ -87,3 +87,10 @@ GPT merge f519798; independent review fix 9ba3e5a. First full local gate
 passed 1121 tests and 17 skips. Final fixed candidate is next.
 Values rechecked: no new global rule; paired frontend still has one task
 authority. Feature and release wisdom capture the concrete contracts.
+
+## Finished
+
+v0.14.0 published. Final local gate: 1122 pass, 17 skips, zero failures.
+Hosted CI/dry run/tag workflow passed. Publication and durable evidence
+are in wisdom/releases/release-v0.14.0.md. No local installation or
+paid/device acceptance claimed. Earlier progress sections are history.
