@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { run } from "./helpers";
 import { waitForLiveTuiStartup } from "./live-tui-startup";
 
@@ -13,12 +13,13 @@ test("GPT streaming keeps passive JSON in history but renders only the bounded L
   const tmux = (...args: string[]) => run(["tmux", "-L", socket, "-f", join(root, "scripts/tmux.conf"), ...args]);
   const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
   const frame = async () => (await tmux("capture-pane", "-p", "-S", "-", "-t", "gpt")).stdout;
-  const until = async (text: string) => {
+  const until = async (texts: string[]) => {
     for (let n = 0; n < 80; n++) {
-      if ((await frame()).includes(text)) return;
+      const value = await frame();
+      if (texts.every((text) => value.includes(text))) return value;
       await Bun.sleep(100);
     }
-    throw new Error("No " + text + " in actual terminal:\n" + (await frame()));
+    throw new Error("No " + texts.join(", ") + " in actual terminal:\n" + (await frame()));
   };
   try {
     const { version } = await Bun.file(join(root, "package.json")).json();
@@ -54,9 +55,7 @@ test("GPT streaming keeps passive JSON in history but renders only the bounded L
     await tmux("send-keys", "-t", "gpt", "Enter"); // completion may consume the first Enter
     await Bun.sleep(150);
     await tmux("send-keys", "-t", "gpt", "Enter");
-    await until("delta23");
-    await until("provisional voice reply");
-    const rendered = await frame();
+    const rendered = await until(["delta23", "You: delta0 delta1", "Voice: provisional voice reply", "Live listening"]);
     expect(rendered).toContain("You: delta0 delta1");
     expect(rendered).toContain("Voice: provisional voice reply");
     expect(rendered).toContain("Live listening");

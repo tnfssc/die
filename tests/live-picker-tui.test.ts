@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, mkdir, rm, symlink, writeFile, readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { run } from "./helpers";
 import { waitForLiveTuiStartup } from "./live-tui-startup";
 
@@ -14,13 +14,14 @@ for (const width of [80, 120])
     const tmux = (...args: string[]) =>
       run([Bun.which("tmux") ?? "/usr/bin/tmux", "-L", socket, "-f", join(home, "tmux.conf"), ...args]);
     const frame = async () => (await tmux("capture-pane", "-p", "-t", "picker")).stdout;
-    const until = async (text: string) => {
+    const until = async (expected: string | string[]) => {
+      const texts = Array.isArray(expected) ? expected : [expected];
       for (let n = 0; n < 100; n++) {
         const value = await frame();
-        if (value.includes(text)) return value;
+        if (texts.every((text) => value.includes(text))) return value;
         await Bun.sleep(80);
       }
-      throw new Error("Missing " + text + " in actual terminal:\n" + (await frame()));
+      throw new Error("Missing " + texts.join(", ") + " in actual terminal:\n" + (await frame()));
     };
     const send = async (text: string, expected: string) => {
       await tmux("send-keys", "-t", "picker", "-l", text);
@@ -64,15 +65,16 @@ for (const width of [80, 120])
       ).toBe(0);
       await waitForLiveTuiStartup(frame, (key) => tmux("send-keys", "-t", "picker", key), "PICKER FIXTURE LOADED");
       await send("/livepicker model", "Live voice model");
-      const rendered = await until("gpt-live-1");
-      for (const label of [
+      const modelLabels = [
         "gemini-3.8-live · Google Gemini · API key needed (OAuth) (selected)",
         "gemini-3.8-live-extended-thinking · Google Gemini · API key needed (OAuth)",
         "gpt-realtime-2.1 · OpenAI · key configured",
         "gpt-realtime-2.1-mini · OpenAI · key configured",
         "gpt-live-1 · OpenAI · key configured",
-      ])
-        expect(rendered).toContain(label);
+      ];
+      const navigation = "↑↓ navigate  enter select  escape/ctrl+c cancel";
+      const rendered = await until(["Live voice model", ...modelLabels, navigation]);
+      for (const label of modelLabels) expect(rendered).toContain(label);
       expect(rendered).toContain("Live voice model");
       expect(rendered).not.toContain("/questions unavailable");
       console.log("PICKER " + width + " cols\n" + rendered);
@@ -80,19 +82,19 @@ for (const width of [80, 120])
       await tmux("send-keys", "-t", "picker", "Enter");
       await until("Live voice: OpenAI · gpt-live-1");
       await send("/livepicker model", "Live voice model");
-      const reselection = await until("gpt-live-1 · OpenAI · key configured (selected)");
+      const reselection = await until(["gpt-live-1 · OpenAI · key configured (selected)", navigation]);
       expect(reselection).toContain("gemini-3.8-live-extended-thinking · Google Gemini · API key needed (OAuth)");
       console.log("RESELECTED " + width + " cols\n" + reselection);
       await tmux("send-keys", "-t", "picker", "Escape");
       await Bun.sleep(500);
       await send("/livepicker provider", "Configure Live provider credentials");
-      const provider = await until("Configure Live provider credentials");
+      const provider = await until(["Configure Live provider credentials", "Google Gemini", "OpenAI", navigation]);
       expect(provider).toContain("Google Gemini");
       expect(provider).toContain("OpenAI");
       console.log("PROVIDER " + width + " cols\n" + provider);
       await tmux("send-keys", "-t", "picker", "Down");
       await tmux("send-keys", "-t", "picker", "Enter");
-      const setup = await until("OpenAI API key configured");
+      const setup = await until(["OpenAI API key configured", "Done", navigation]);
       expect(setup).toContain("Done");
       expect(setup).not.toContain("Start voice");
       console.log("SETUP " + width + " cols\n" + setup);
