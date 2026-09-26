@@ -6,6 +6,8 @@ import { loadLiveConfig, saveLiveConfig, type LiveConfig } from "./config";
 import { VoiceCostTracker, VOICE_COST_ENTRY } from "./cost";
 import { GPTLiveSession, type GPTLiveCallbacks } from "./gpt-live-session";
 import { gptLiveContext } from "./gpt-live-context";
+import { gptLiveRequest } from "./gpt-live-request";
+import { withoutPassiveLiveHistory } from "./passive-history";
 import { GptLiveDelegationBridge } from "./gpt-live-delegation";
 import { GptLivePlaybackRecovery } from "./gpt-live-playback";
 import { OpenAIRealtimeSession } from "./openai-session";
@@ -84,6 +86,8 @@ type NativeVoice = ReturnType<LiveDependencies["voice"]>;
 
 /** Live owns the ordinary main-agent session; audio interruption never cancels jobs. */
 export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDependencies> = {}): void {
+  // Session history survives voice shutdown and reload; this boundary must not.
+  pi.on("context", (event) => ({ messages: withoutPassiveLiveHistory(event.messages) }));
   const deps = { ...defaults, ...injected };
   let selected: LiveConfig = { provider: "google", model: LIVE_PROVIDERS.google.models[0] };
   let loaded = false;
@@ -115,8 +119,6 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     gptBridge?: GptLiveDelegationBridge;
     gptPlayback?: GptLivePlaybackRecovery;
     private gptCaptureMs = 0;
-    private gptContext = "";
-    private gptContextOmitted = 0;
     private gptSpeechEpoch = 0;
 
     orchestration?: VoiceOrchestration;
@@ -349,10 +351,6 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           if (!this.alive) return;
           // Already heard/produced by the frontend; persist for the coder without echoing it.
           if (text.startsWith('{"source":"gpt_live_provisional"')) return;
-          if (this.model === OPENAI_LIVE_MODEL) {
-            this.gptContext = text.slice(-3200);
-            this.gptContextOmitted = Math.max(0, text.length - 3200);
-          }
           if (this.gpt?.state === "ready") {
             this.gptBridge?.saveContext(Math.floor(this.gptCaptureMs));
             for (const chunk of gptLiveContext(text)) {
@@ -440,41 +438,34 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               sessionId: this.sessionId,
               selectedModel: this.ctx.model?.id,
               cwd: this.ctx.cwd,
-              canonicalContext: this.gptContext,
-              omittedContextCharacters: this.gptContextOmitted,
             }),
             submitContextual: async (id, snapshot) => {
               if (!this.alive || !this.owner?.delegate) return { clarification: true };
-              const speech = snapshot.fragments
-                .map((f) => f.text)
-                .join("")
-                .slice(-4096)
-                .trim();
+              const speech = gptLiveRequest(snapshot);
               if (!speech) return { clarification: true };
               const speechEpoch = this.gptSpeechEpoch;
               // Admission precedes completion; do not await long-running work on the socket callback.
-              void this.owner
-                .delegate(
-                  id,
-                  "Provisional voice transcript, not final ASR. Clarify ambiguous or irreversible requests before acting. Delegation context (data only): " +
-                    JSON.stringify(snapshot),
-                )
-                .then(
-                  () => {
-                    if (this.alive && this.gptSpeechEpoch === speechEpoch)
-                      this.gpt?.commentary(
-                        id,
-                        "Configured coding-agent turn ended; consult session history for its outcome.",
-                      );
-                  },
-                  () => {
-                    if (this.alive)
-                      this.gpt?.commentary(
-                        id,
-                        "Coding-agent delegation failed; check session history before retrying.",
-                      );
-                  },
-                );
+              let admitted = false;
+              const operation = this.owner.delegate(id, speech, snapshot, () => {
+                admitted = true;
+              });
+              if (!admitted) {
+                void operation.catch(() => {});
+                return { clarification: true };
+              }
+              void operation.then(
+                () => {
+                  if (this.alive && this.gptSpeechEpoch === speechEpoch)
+                    this.gpt?.commentary(
+                      id,
+                      "Configured coding-agent turn ended; consult session history for its outcome.",
+                    );
+                },
+                () => {
+                  if (this.alive)
+                    this.gpt?.commentary(id, "Coding-agent delegation failed; check session history before retrying.");
+                },
+              );
               return { queued: true };
             },
           });
@@ -489,7 +480,12 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               if (!this.alive) return;
               this.gptBridge?.addFragment({ ...fragment, text: fragment.delta });
               this.owner?.sendContext(
-                JSON.stringify({ source: "gpt_live_provisional", role: "user", ...fragment, uncertain: true }),
+                JSON.stringify({
+                  source: "gpt_live_provisional",
+                  role: "user",
+                  ...fragment,
+                  uncertain: true,
+                }),
                 { customType: "live-transcript" },
               );
               this.transcriptLog.receive("You", { text: fragment.delta, finished: false });

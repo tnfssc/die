@@ -73,8 +73,9 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
           },
         },
         typedInput: (text: string) => callbacks?.onInput?.(text),
-        delegate: async (id: string, text: string) => {
+        delegate: async (id: string, text: string, _provenance?: unknown, onAdmitted?: () => void) => {
           ownerEvents.push(["delegate", id, text]);
+          onAdmitted?.();
         },
         stopForeground: () => {},
         inputTranscript: (text: string, final?: boolean) => ownerEvents.push(["input", text, final]),
@@ -1401,17 +1402,67 @@ test("GPT-Live routes client delegation to selected main owner, keeps transcript
   callbacks.onOutputTranscript({ delta: "provisional answer", startMs: 20, endMs: 80 });
   callbacks.onInputTranscript({ delta: "please inspect", startMs: 100, endMs: 300 });
   expect(observations).toHaveLength(beforeTranscript);
-  expect(f.contexts.some((text) => text.includes("gpt_live_provisional") && text.includes("playbackVerified"))).toBe(
-    true,
-  );
+  expect(f.contexts.filter((text) => text.includes("gpt_live_provisional"))).toHaveLength(2);
   callbacks.onDelegation({ id: "d1", target: "client", offsetMs: 400 });
   callbacks.onDelegation({ id: "d1", target: "client", offsetMs: 400 });
   await tick();
   const delegated = f.ownerEvents.filter((event: any) => event[0] === "delegate");
   expect(delegated).toHaveLength(1);
   expect(delegated[0][1]).toBe("d1");
-  expect(delegated[0][2]).toContain("please inspect");
+  expect(delegated[0][2]).toBe("please inspect");
+  expect(delegated[0][2]).not.toContain("hostContext");
+  expect(delegated[0][2]).not.toContain("Clarify");
+  callbacks.onInputTranscript({ delta: "anything else?", startMs: 600, endMs: 850 });
+  callbacks.onDelegation({ id: "d2", target: "client", offsetMs: 900 });
+  await tick();
+  expect(f.ownerEvents.filter((event: any) => event[0] === "delegate").map((event: any) => event[2])).toEqual([
+    "please inspect",
+    "anything else?",
+  ]);
+  expect(observations.every((text) => typeof text !== "string" || !text.includes("hostContext"))).toBe(true);
   expect(f.ownerEvents.some((event: any) => event[0] === "input" && event[2] === true)).toBe(false);
   await f.run("stop");
   expect(f.ownerCloses).toBe(1);
+});
+
+test("rejected GPT admission leaves speech available for a later delegation", async () => {
+  let callbacks: any;
+  let attempts = 0;
+  const prompts: string[] = [];
+  const owner: any = {
+    orchestration: { instructions: "", tools: [], directMainAgent: true },
+    delegate: (_id: string, text: string, _snapshot: unknown, admitted: () => void) => {
+      prompts.push(text);
+      if (++attempts === 1) return Promise.reject(new Error("Not admitted"));
+      admitted();
+      return Promise.resolve();
+    },
+    sendContext() {},
+    close() {},
+    stopForeground() {},
+    released: Promise.resolve(),
+  };
+  const f = setup({
+    config: { load: async () => ({ provider: "openai", model: "gpt-live-1" }), save: async () => {} },
+    owner: async () => owner,
+    gptSession: (cb: any) => {
+      callbacks = cb;
+      return {
+        state: "ready",
+        connect: async () => {},
+        appendMicrophone: () => true,
+        observation: () => true,
+        commentary: () => true,
+        close: async () => {},
+      } as any;
+    },
+  });
+  await f.run("start");
+  callbacks.onInputTranscript({ delta: "Check this repo", startMs: 100, endMs: 300 });
+  callbacks.onDelegation({ id: "rejected", target: "client", offsetMs: 400 });
+  await tick();
+  callbacks.onDelegation({ id: "accepted", target: "client", offsetMs: 400 });
+  await tick();
+  expect(prompts).toEqual(["Check this repo", "Check this repo"]);
+  await f.run("stop");
 });

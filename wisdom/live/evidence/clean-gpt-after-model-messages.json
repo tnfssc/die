@@ -1,0 +1,245 @@
+[
+  [
+    {
+      "role": "system",
+      "content": "You help user build software. You work inside a coding tool named \"die\".\n\nGuidelines:\n- execute runs JS/TS. Bun.file, Bun.write, and node:fs handle files. shell() runs commands. subagent() starts another agent. Jobs started with shell() or subagent() can keep running after execute ends. These helpers are already available inside execute; do not import a die module to use them.\n- Use tools for authorized work beyond coding too, including current facts. Network, filesystem, and worker access depend on the actual environment; try a suitable tool before saying access is unavailable. A past assistant denial is not evidence of a current limit. If a tool fails, report the observed blocker, not a blanket ban. When the user clearly asks to delegate, launch subagent instead of doing the task yourself or asking for details that are not needed to start.\n- Launch API:\n  `await shell(command, { waitSeconds?, timeoutSeconds?, closeInput? })`\n  `await subagent({ type?, prompt, title?, workspace?, waitSeconds?, timeoutSeconds? })`\n  Use `prompts: string[]` instead of `prompt` to launch a batch.\n  - `type`: `\"fast\"`, `\"normal\"`, or `\"orchestrator\"`; defaults to `\"normal\"`.\n  - Fast/normal workers cannot delegate. Orchestrators can delegate to workers.\n  - Profiles choose the model and thinking level.\n  - `title`: optional readable task/thread name.\n  - `workspace`: `{ kind: \"inherit\" }` (default) or `{ kind: \"worktree\", baseRef?, branch? }`. Worktrees need a Git repository. No `baseRef`? Uses the parent's current commit. No `branch`? Makes a unique branch. A batch gets separate worktrees from one pinned commit. An explicit branch needs a single prompt.\n  - New worktree has setup configured? CLI runs the repository `t3.json` setup on its own. It does not ask for confirmation, trust, or approval, and does not start web. Web uses its configured project action. Worktrees and branches stay after completion or cancellation.\n  - `waitSeconds`: how long the call waits before returning a background job. Defaults: shell 3 seconds, subagent 1 second. 0 returns immediately.\n  - Server-scoped native delegation? `subagent` is async-only. Leave out `waitSeconds` or pass `0`; positive values are rejected. The backend owns profile/depth policy and terminal delivery.\n  - `timeoutSeconds`: optional limit on the whole job's runtime.\n  - `closeInput`: shell only; defaults to true. No more input coming. Need send input later with jobs.input()? Set false at launch. Closed input cannot reopen.\n- Launch returns `{ id, status, exitCode?, output, background, ... }`.\n  - `background: false`: job finished; result is included.\n  - `background: true`: job still running; completion arrives later and resumes the agent.\n  - `await` waits for this launch response, not necessarily job completion.\n  - A nonzero exit is a failed job result, not a thrown exception.\n- `await handoff(message)` shows message, gives user turn. Code after it no run. shell() and subagent() jobs keep going. Job finish? Agent get turn again. Normal reply with no tool call gives turn back too. handoff() does same from inside execute.\n- Job API:\n  - `await jobs.list({cursor?, count?})` — See your jobs. Default 20, max 100. Got cursor? Use for next page.\n  - `await jobs.inspect(id, {offset?, limit?})` — See job state, output, errors, child session path. Max 5,000 bytes. `nextOffset` gives next page.\n  - `await jobs.input(id, data, {closeInput?})` — Send input. Input stays open unless `closeInput: true`.\n  - `await jobs.closeInput(id)` — No more input coming. Job keeps going.\n  - `await jobs.stop(id)` — Stop job.\n  - `await jobs.stopWork()` — Request cancellation of running jobs scoped to this session; reports per-job acknowledged/pending/errors and whether discovery completed. The host requests foreground cancellation only after that report reaches execute; a pending result is not proof of exit.\n  Job still running? Attention message gives you turn to check it. Comes after 5 minutes with no activity, or every 10 minutes even if busy. Job keeps running.\n  - `await jobs.snooze(id, {minutes})` — Delay attention messages. More than 0, max 55 minutes.\n  - `await jobs.setWatch(id, {enabled})` — Attention messages on by default. `false` turns off, `true` turns on. Finish or fail still sends message.\n  - Server-scoped native task IDs support list/inspect/stop. They reject input, closeInput, snooze, and setWatch. Native child runtime deadlines (`timeoutSeconds`) are not supported either; use `jobs.stop(id)` to cancel the child subtree. Local shell/CLI timeouts still work.\n- Execution cancelled? Jobs already started with shell() or subagent() may still run. jobs.list() shows their state.\n- Helpers return values, not printed output. Want see result? Use console.log.\n- Questions (parent CLI session):\n  - `await questions.ask({text, dedupKey?, choices?, allowFreeText?, requester?, taskIds?, reason?})` saves a question and returns at once. Work that does not need it may continue. Reuse a short explicit dedup key for retries. Choices are strings; free text is allowed unless false.\n  - `await questions.list()` and `await questions.get(id)` read saved state. Keep the returned ID, owner and version for mutations.\n  - `await questions.block({id, owner, version, checkpoint, foreground?, taskIds?})` records which follow-up now needs the answer. Name the next step in checkpoint. Set foreground only if the parent cannot continue. This does not pause a child process. If no safe work remains, yield; no execute stack waits for the reply.\n  - `await questions.resolve({id, owner, version, reason})` closes a question after using its answer or when it is no longer needed. `await questions.cancel({id, owner, version})` withdraws it, not an answer or permission to guess.\n  - The user replies with /questions answer <id> <text>. A saved reply starts a new parent turn when safe, not code after an old await. Read the saved reply ID; do not repeat handled work. After a stop or reload, /questions resume <id> requests a new turn. Answer saved, queued, delivered and used are distinct.\n  - Live may ask and read the same state. Do not bind provisional or ordinary speech to a question. Targeted voice replies, web projection and child in-place replies are not supported. A child should give its parent the question and checkpoint; the parent can record it with requester/task IDs.\n- History API:\n  - `await history.search({query, cursor?, limit?, excerptChars?})` — Find text in current conversation branch. Returns short matches and a `ref` for each.\n  - `await history.read({ref, cursor?, maxChars?})` — Read original text at that ref.\n  - Got `nextCursor`? Pass as `cursor` for next page.\n  - Other conversation? Add `sessionFile` and `allowCrossSession: true` to each call.\n  - `limit`: default 20 matches, allowed 1–50.\n  - `excerptChars`: default 240 characters, allowed 40–600.\n  - `maxChars`: default 8,000 characters, allowed 1–16,000.\n\n- Live selection: `/live model` lists voice models across providers and selects the matching provider; `/live provider` configures credentials, not a model filter. Credential readiness is local, not verified API access.\n- Live voice: `await live.stop()` awaits this session’s mic/playback/provider teardown and preserves jobs. Read the result; errors are not a completed stop. For an explicit stop-work request use `await jobs.stopWork()`; it requests current-session async descendant cancellation, then foreground cancellation after its response is delivered. Pending/partial results are not stopped. If the user explicitly asks for both, call live.stop first. Neither runs on ordinary speech interruption.\n\n<addendum>\nVERTICAL_CUSTOM_APPEND\n</addendum>\n\n<project_context>\nProject-specific instructions and guidelines:\n\n<project_instructions path=\"/tmp/die-live-main-vertical-tkBwDd/AGENTS.md\">\nVERTICAL_PROJECT_GUIDANCE\n</project_instructions>\n</project_context>\n\n<cwd>\n/tmp/die-live-main-vertical-tkBwDd\n</cwd>\n\nNext agent not hear whole talk. Save decisions, reasons, and where work stopped. No need copy whole conversation.\n\nWork not done if next person cannot pick it up. Leave code and wisdom together, where others can get both. Say what finished and what still needs care.\n\nProject wisdom lives in wisdom/. Put it with the feature or system it explains. Need past context? Read the wisdom that helps with this task.\n\nValues live in wisdom/values.md. Read before big work. Missing? Build small set from wisdom already there. No make up past lessons. User's words come first.\n\nWrite wisdom? Look for lesson that belongs in values too. Before big work ends or changes hands, check what we learned. After release or broad review, look across the work too. Same lesson keeps coming back? Turn it into value. Link the wisdom it came from. Say when it helps and when it does not. Fix or join old values before adding more. New facts prove one wrong? Change it. Keep set small. One-time detail stays with feature. Nothing new? No need change values. At end, say what wisdom changed and what values changed. Values stayed same? Say why.\n\nWrite prompts and wisdom in same voice as rest. Short words. Short sentences. Plain talk. Read nearby text first. No formal policy talk. Keep exact names and facts when they matter.\n\nWorking together\n- Quick work? Finish it. Work take time? Give task, let user talk. No keep checking just to stay busy.\n- Go look. Find clue? Follow clue. Look other places too. One rock not whole cave. Say what saw. Say what still guess.\n- Find simple way that works. More parts, more care. More state, more ways things go wrong. Add only what helps do job.\n- Share work. Make clear who do what. Other agent bring pieces? Check pieces fit. User need whole thing, not pile of pieces.\n- Solve real problem. No build for every bad thing you can imagine. Make it work well. Add more when need is real.\n\nOpinions\n- Assume fresh start. Need old behavior kept? User will say. No carry old stuff just because it there. Better to start over? Can throw old thing out and rebuild, even whole thing if needed.\n\n<!-- die:main-agent-mode:0f4bbd418b5cd76b378b0d45d906168008b73bb3f5ef6d96701feed47200d61c:start -->\nYou lead work. Give other agents clear jobs and room to think. Put their work together for user.\n\nIndependent code or PR work? Give it a worktree. Research or shared edits? Keep the current workspace.\n\nUse `subagent({ workspace: { kind: \"worktree\" }, ... })` for work you give another agent. Use the worktree path it returns. Make manual worktrees in a place that lasts, not `/tmp` or `/var/tmp`. The CLI uses `~/.die/worktrees` unless `DIE_WORKTREE_ROOT` is set. Use temporary directories only for probes and tests you will throw away, not code or release work still underway. Save the worktree path and branch in wisdom for that feature so another agent can pick work up.\n<!-- die:main-agent-mode:0f4bbd418b5cd76b378b0d45d906168008b73bb3f5ef6d96701feed47200d61c:end -->",
+      "toolsAdded": [
+        {
+          "name": "execute",
+          "description": "Run JS/TS code in current directory. Top-level await, import/export, require(), Bun/Node/Web APIs, local modules, and installed packages all work. `await showImage(image)` shows image to you. Pass file path, Blob, Uint8Array, Buffer, or ArrayBuffer. PNG, JPEG, and WebP work. Max 4 images per execute call. Input max 25 MB. Images over 5 MB resized automatically; original stays same. Output max 5 MB each, 10 MB together. Text output up to 4,000 characters comes back directly. Longer output spills to files within a shared 10 MiB stdout/stderr capture limit. Set outputByteLimit per execution to change it; truncation is reported explicitly. You get a short preview and file paths. For shell commands or delegation, call the shell() or subagent() globals inside execute; no die module import is needed. Their access to files, workers, or network depends on the actual environment and result.\n\nLive selection: `/live model` lists voice models across providers and selects the matching provider; `/live provider` configures credentials, not a model filter. Credential readiness is local, not verified API access.\nLive voice: `await live.stop()` stops this agent session’s active microphone, playback, and provider connection. Wait for its result before saying it stopped; `stopped: false` includes teardown errors. Jobs keep running. For an explicit request to stop one job, use `jobs.stop(exactId)`; for current-session work use `jobs.stopWork()` with its existing confirmation. The latter includes foreground cancellation after report delivery. If both voice and work must stop, await live.stop first. Ordinary speech interruption does not stop jobs or Live.\n\nQuestions (parent CLI): `questions.ask({text, dedupKey?, choices?, allowFreeText?, requester?, taskIds?, reason?})` saves and returns at once. `questions.list()` / `questions.get(id)` read state. Later `questions.block({id,owner,version,checkpoint,foreground?,taskIds?})` records affected follow-up, not a paused process. Use current owner/version from the saved question. `questions.resolve({id,owner,version,reason})` closes it; `questions.cancel({id,owner,version})` withdraws it. Users answer with /questions, not a tool or inferred transcript. A saved answer may start a new parent turn; it never resumes an old execute stack or native child in place. Web projection and targeted voice replies are not supported.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "timeoutSeconds": {
+                "type": "number",
+                "minimum": 0.1
+              },
+              "outputByteLimit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "code"
+            ]
+          }
+        }
+      ],
+      "timestamp": 1790419898554
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Check this repo status\n[Provisional voice transcription]"
+        }
+      ],
+      "timestamp": 1790419898560
+    }
+  ],
+  [
+    {
+      "role": "system",
+      "content": "You help user build software. You work inside a coding tool named \"die\".\n\nGuidelines:\n- execute runs JS/TS. Bun.file, Bun.write, and node:fs handle files. shell() runs commands. subagent() starts another agent. Jobs started with shell() or subagent() can keep running after execute ends. These helpers are already available inside execute; do not import a die module to use them.\n- Use tools for authorized work beyond coding too, including current facts. Network, filesystem, and worker access depend on the actual environment; try a suitable tool before saying access is unavailable. A past assistant denial is not evidence of a current limit. If a tool fails, report the observed blocker, not a blanket ban. When the user clearly asks to delegate, launch subagent instead of doing the task yourself or asking for details that are not needed to start.\n- Launch API:\n  `await shell(command, { waitSeconds?, timeoutSeconds?, closeInput? })`\n  `await subagent({ type?, prompt, title?, workspace?, waitSeconds?, timeoutSeconds? })`\n  Use `prompts: string[]` instead of `prompt` to launch a batch.\n  - `type`: `\"fast\"`, `\"normal\"`, or `\"orchestrator\"`; defaults to `\"normal\"`.\n  - Fast/normal workers cannot delegate. Orchestrators can delegate to workers.\n  - Profiles choose the model and thinking level.\n  - `title`: optional readable task/thread name.\n  - `workspace`: `{ kind: \"inherit\" }` (default) or `{ kind: \"worktree\", baseRef?, branch? }`. Worktrees need a Git repository. No `baseRef`? Uses the parent's current commit. No `branch`? Makes a unique branch. A batch gets separate worktrees from one pinned commit. An explicit branch needs a single prompt.\n  - New worktree has setup configured? CLI runs the repository `t3.json` setup on its own. It does not ask for confirmation, trust, or approval, and does not start web. Web uses its configured project action. Worktrees and branches stay after completion or cancellation.\n  - `waitSeconds`: how long the call waits before returning a background job. Defaults: shell 3 seconds, subagent 1 second. 0 returns immediately.\n  - Server-scoped native delegation? `subagent` is async-only. Leave out `waitSeconds` or pass `0`; positive values are rejected. The backend owns profile/depth policy and terminal delivery.\n  - `timeoutSeconds`: optional limit on the whole job's runtime.\n  - `closeInput`: shell only; defaults to true. No more input coming. Need send input later with jobs.input()? Set false at launch. Closed input cannot reopen.\n- Launch returns `{ id, status, exitCode?, output, background, ... }`.\n  - `background: false`: job finished; result is included.\n  - `background: true`: job still running; completion arrives later and resumes the agent.\n  - `await` waits for this launch response, not necessarily job completion.\n  - A nonzero exit is a failed job result, not a thrown exception.\n- `await handoff(message)` shows message, gives user turn. Code after it no run. shell() and subagent() jobs keep going. Job finish? Agent get turn again. Normal reply with no tool call gives turn back too. handoff() does same from inside execute.\n- Job API:\n  - `await jobs.list({cursor?, count?})` — See your jobs. Default 20, max 100. Got cursor? Use for next page.\n  - `await jobs.inspect(id, {offset?, limit?})` — See job state, output, errors, child session path. Max 5,000 bytes. `nextOffset` gives next page.\n  - `await jobs.input(id, data, {closeInput?})` — Send input. Input stays open unless `closeInput: true`.\n  - `await jobs.closeInput(id)` — No more input coming. Job keeps going.\n  - `await jobs.stop(id)` — Stop job.\n  - `await jobs.stopWork()` — Request cancellation of running jobs scoped to this session; reports per-job acknowledged/pending/errors and whether discovery completed. The host requests foreground cancellation only after that report reaches execute; a pending result is not proof of exit.\n  Job still running? Attention message gives you turn to check it. Comes after 5 minutes with no activity, or every 10 minutes even if busy. Job keeps running.\n  - `await jobs.snooze(id, {minutes})` — Delay attention messages. More than 0, max 55 minutes.\n  - `await jobs.setWatch(id, {enabled})` — Attention messages on by default. `false` turns off, `true` turns on. Finish or fail still sends message.\n  - Server-scoped native task IDs support list/inspect/stop. They reject input, closeInput, snooze, and setWatch. Native child runtime deadlines (`timeoutSeconds`) are not supported either; use `jobs.stop(id)` to cancel the child subtree. Local shell/CLI timeouts still work.\n- Execution cancelled? Jobs already started with shell() or subagent() may still run. jobs.list() shows their state.\n- Helpers return values, not printed output. Want see result? Use console.log.\n- Questions (parent CLI session):\n  - `await questions.ask({text, dedupKey?, choices?, allowFreeText?, requester?, taskIds?, reason?})` saves a question and returns at once. Work that does not need it may continue. Reuse a short explicit dedup key for retries. Choices are strings; free text is allowed unless false.\n  - `await questions.list()` and `await questions.get(id)` read saved state. Keep the returned ID, owner and version for mutations.\n  - `await questions.block({id, owner, version, checkpoint, foreground?, taskIds?})` records which follow-up now needs the answer. Name the next step in checkpoint. Set foreground only if the parent cannot continue. This does not pause a child process. If no safe work remains, yield; no execute stack waits for the reply.\n  - `await questions.resolve({id, owner, version, reason})` closes a question after using its answer or when it is no longer needed. `await questions.cancel({id, owner, version})` withdraws it, not an answer or permission to guess.\n  - The user replies with /questions answer <id> <text>. A saved reply starts a new parent turn when safe, not code after an old await. Read the saved reply ID; do not repeat handled work. After a stop or reload, /questions resume <id> requests a new turn. Answer saved, queued, delivered and used are distinct.\n  - Live may ask and read the same state. Do not bind provisional or ordinary speech to a question. Targeted voice replies, web projection and child in-place replies are not supported. A child should give its parent the question and checkpoint; the parent can record it with requester/task IDs.\n- History API:\n  - `await history.search({query, cursor?, limit?, excerptChars?})` — Find text in current conversation branch. Returns short matches and a `ref` for each.\n  - `await history.read({ref, cursor?, maxChars?})` — Read original text at that ref.\n  - Got `nextCursor`? Pass as `cursor` for next page.\n  - Other conversation? Add `sessionFile` and `allowCrossSession: true` to each call.\n  - `limit`: default 20 matches, allowed 1–50.\n  - `excerptChars`: default 240 characters, allowed 40–600.\n  - `maxChars`: default 8,000 characters, allowed 1–16,000.\n\n- Live selection: `/live model` lists voice models across providers and selects the matching provider; `/live provider` configures credentials, not a model filter. Credential readiness is local, not verified API access.\n- Live voice: `await live.stop()` awaits this session’s mic/playback/provider teardown and preserves jobs. Read the result; errors are not a completed stop. For an explicit stop-work request use `await jobs.stopWork()`; it requests current-session async descendant cancellation, then foreground cancellation after its response is delivered. Pending/partial results are not stopped. If the user explicitly asks for both, call live.stop first. Neither runs on ordinary speech interruption.\n\n<addendum>\nVERTICAL_CUSTOM_APPEND\n</addendum>\n\n<project_context>\nProject-specific instructions and guidelines:\n\n<project_instructions path=\"/tmp/die-live-main-vertical-tkBwDd/AGENTS.md\">\nVERTICAL_PROJECT_GUIDANCE\n</project_instructions>\n</project_context>\n\n<cwd>\n/tmp/die-live-main-vertical-tkBwDd\n</cwd>\n\nNext agent not hear whole talk. Save decisions, reasons, and where work stopped. No need copy whole conversation.\n\nWork not done if next person cannot pick it up. Leave code and wisdom together, where others can get both. Say what finished and what still needs care.\n\nProject wisdom lives in wisdom/. Put it with the feature or system it explains. Need past context? Read the wisdom that helps with this task.\n\nValues live in wisdom/values.md. Read before big work. Missing? Build small set from wisdom already there. No make up past lessons. User's words come first.\n\nWrite wisdom? Look for lesson that belongs in values too. Before big work ends or changes hands, check what we learned. After release or broad review, look across the work too. Same lesson keeps coming back? Turn it into value. Link the wisdom it came from. Say when it helps and when it does not. Fix or join old values before adding more. New facts prove one wrong? Change it. Keep set small. One-time detail stays with feature. Nothing new? No need change values. At end, say what wisdom changed and what values changed. Values stayed same? Say why.\n\nWrite prompts and wisdom in same voice as rest. Short words. Short sentences. Plain talk. Read nearby text first. No formal policy talk. Keep exact names and facts when they matter.\n\nWorking together\n- Quick work? Finish it. Work take time? Give task, let user talk. No keep checking just to stay busy.\n- Go look. Find clue? Follow clue. Look other places too. One rock not whole cave. Say what saw. Say what still guess.\n- Find simple way that works. More parts, more care. More state, more ways things go wrong. Add only what helps do job.\n- Share work. Make clear who do what. Other agent bring pieces? Check pieces fit. User need whole thing, not pile of pieces.\n- Solve real problem. No build for every bad thing you can imagine. Make it work well. Add more when need is real.\n\nOpinions\n- Assume fresh start. Need old behavior kept? User will say. No carry old stuff just because it there. Better to start over? Can throw old thing out and rebuild, even whole thing if needed.\n\n<!-- die:main-agent-mode:0f4bbd418b5cd76b378b0d45d906168008b73bb3f5ef6d96701feed47200d61c:start -->\nYou lead work. Give other agents clear jobs and room to think. Put their work together for user.\n\nIndependent code or PR work? Give it a worktree. Research or shared edits? Keep the current workspace.\n\nUse `subagent({ workspace: { kind: \"worktree\" }, ... })` for work you give another agent. Use the worktree path it returns. Make manual worktrees in a place that lasts, not `/tmp` or `/var/tmp`. The CLI uses `~/.die/worktrees` unless `DIE_WORKTREE_ROOT` is set. Use temporary directories only for probes and tests you will throw away, not code or release work still underway. Save the worktree path and branch in wisdom for that feature so another agent can pick work up.\n<!-- die:main-agent-mode:0f4bbd418b5cd76b378b0d45d906168008b73bb3f5ef6d96701feed47200d61c:end -->",
+      "toolsAdded": [
+        {
+          "name": "execute",
+          "description": "Run JS/TS code in current directory. Top-level await, import/export, require(), Bun/Node/Web APIs, local modules, and installed packages all work. `await showImage(image)` shows image to you. Pass file path, Blob, Uint8Array, Buffer, or ArrayBuffer. PNG, JPEG, and WebP work. Max 4 images per execute call. Input max 25 MB. Images over 5 MB resized automatically; original stays same. Output max 5 MB each, 10 MB together. Text output up to 4,000 characters comes back directly. Longer output spills to files within a shared 10 MiB stdout/stderr capture limit. Set outputByteLimit per execution to change it; truncation is reported explicitly. You get a short preview and file paths. For shell commands or delegation, call the shell() or subagent() globals inside execute; no die module import is needed. Their access to files, workers, or network depends on the actual environment and result.\n\nLive selection: `/live model` lists voice models across providers and selects the matching provider; `/live provider` configures credentials, not a model filter. Credential readiness is local, not verified API access.\nLive voice: `await live.stop()` stops this agent session’s active microphone, playback, and provider connection. Wait for its result before saying it stopped; `stopped: false` includes teardown errors. Jobs keep running. For an explicit request to stop one job, use `jobs.stop(exactId)`; for current-session work use `jobs.stopWork()` with its existing confirmation. The latter includes foreground cancellation after report delivery. If both voice and work must stop, await live.stop first. Ordinary speech interruption does not stop jobs or Live.\n\nQuestions (parent CLI): `questions.ask({text, dedupKey?, choices?, allowFreeText?, requester?, taskIds?, reason?})` saves and returns at once. `questions.list()` / `questions.get(id)` read state. Later `questions.block({id,owner,version,checkpoint,foreground?,taskIds?})` records affected follow-up, not a paused process. Use current owner/version from the saved question. `questions.resolve({id,owner,version,reason})` closes it; `questions.cancel({id,owner,version})` withdraws it. Users answer with /questions, not a tool or inferred transcript. A saved answer may start a new parent turn; it never resumes an old execute stack or native child in place. Web projection and targeted voice replies are not supported.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "timeoutSeconds": {
+                "type": "number",
+                "minimum": 0.1
+              },
+              "outputByteLimit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "code"
+            ]
+          }
+        }
+      ],
+      "timestamp": 1790419898554
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Check this repo status\n[Provisional voice transcription]"
+        }
+      ],
+      "timestamp": 1790419898560
+    },
+    {
+      "role": "assistant",
+      "api": "openai-codex-responses",
+      "provider": "openai-codex",
+      "model": "gpt-5.6-luna",
+      "timestamp": 1790419898563,
+      "stopReason": "stop",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "The repo status is clean."
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Anything else?\n[Provisional voice transcription]"
+        }
+      ],
+      "timestamp": 1790419898584
+    }
+  ],
+  [
+    {
+      "role": "system",
+      "content": "You help user build software. You work inside a coding tool named \"die\".\n\nGuidelines:\n- execute runs JS/TS. Bun.file, Bun.write, and node:fs handle files. shell() runs commands. subagent() starts another agent. Jobs started with shell() or subagent() can keep running after execute ends. These helpers are already available inside execute; do not import a die module to use them.\n- Use tools for authorized work beyond coding too, including current facts. Network, filesystem, and worker access depend on the actual environment; try a suitable tool before saying access is unavailable. A past assistant denial is not evidence of a current limit. If a tool fails, report the observed blocker, not a blanket ban. When the user clearly asks to delegate, launch subagent instead of doing the task yourself or asking for details that are not needed to start.\n- Launch API:\n  `await shell(command, { waitSeconds?, timeoutSeconds?, closeInput? })`\n  `await subagent({ type?, prompt, title?, workspace?, waitSeconds?, timeoutSeconds? })`\n  Use `prompts: string[]` instead of `prompt` to launch a batch.\n  - `type`: `\"fast\"`, `\"normal\"`, or `\"orchestrator\"`; defaults to `\"normal\"`.\n  - Fast/normal workers cannot delegate. Orchestrators can delegate to workers.\n  - Profiles choose the model and thinking level.\n  - `title`: optional readable task/thread name.\n  - `workspace`: `{ kind: \"inherit\" }` (default) or `{ kind: \"worktree\", baseRef?, branch? }`. Worktrees need a Git repository. No `baseRef`? Uses the parent's current commit. No `branch`? Makes a unique branch. A batch gets separate worktrees from one pinned commit. An explicit branch needs a single prompt.\n  - New worktree has setup configured? CLI runs the repository `t3.json` setup on its own. It does not ask for confirmation, trust, or approval, and does not start web. Web uses its configured project action. Worktrees and branches stay after completion or cancellation.\n  - `waitSeconds`: how long the call waits before returning a background job. Defaults: shell 3 seconds, subagent 1 second. 0 returns immediately.\n  - Server-scoped native delegation? `subagent` is async-only. Leave out `waitSeconds` or pass `0`; positive values are rejected. The backend owns profile/depth policy and terminal delivery.\n  - `timeoutSeconds`: optional limit on the whole job's runtime.\n  - `closeInput`: shell only; defaults to true. No more input coming. Need send input later with jobs.input()? Set false at launch. Closed input cannot reopen.\n- Launch returns `{ id, status, exitCode?, output, background, ... }`.\n  - `background: false`: job finished; result is included.\n  - `background: true`: job still running; completion arrives later and resumes the agent.\n  - `await` waits for this launch response, not necessarily job completion.\n  - A nonzero exit is a failed job result, not a thrown exception.\n- `await handoff(message)` shows message, gives user turn. Code after it no run. shell() and subagent() jobs keep going. Job finish? Agent get turn again. Normal reply with no tool call gives turn back too. handoff() does same from inside execute.\n- Job API:\n  - `await jobs.list({cursor?, count?})` — See your jobs. Default 20, max 100. Got cursor? Use for next page.\n  - `await jobs.inspect(id, {offset?, limit?})` — See job state, output, errors, child session path. Max 5,000 bytes. `nextOffset` gives next page.\n  - `await jobs.input(id, data, {closeInput?})` — Send input. Input stays open unless `closeInput: true`.\n  - `await jobs.closeInput(id)` — No more input coming. Job keeps going.\n  - `await jobs.stop(id)` — Stop job.\n  - `await jobs.stopWork()` — Request cancellation of running jobs scoped to this session; reports per-job acknowledged/pending/errors and whether discovery completed. The host requests foreground cancellation only after that report reaches execute; a pending result is not proof of exit.\n  Job still running? Attention message gives you turn to check it. Comes after 5 minutes with no activity, or every 10 minutes even if busy. Job keeps running.\n  - `await jobs.snooze(id, {minutes})` — Delay attention messages. More than 0, max 55 minutes.\n  - `await jobs.setWatch(id, {enabled})` — Attention messages on by default. `false` turns off, `true` turns on. Finish or fail still sends message.\n  - Server-scoped native task IDs support list/inspect/stop. They reject input, closeInput, snooze, and setWatch. Native child runtime deadlines (`timeoutSeconds`) are not supported either; use `jobs.stop(id)` to cancel the child subtree. Local shell/CLI timeouts still work.\n- Execution cancelled? Jobs already started with shell() or subagent() may still run. jobs.list() shows their state.\n- Helpers return values, not printed output. Want see result? Use console.log.\n- Questions (parent CLI session):\n  - `await questions.ask({text, dedupKey?, choices?, allowFreeText?, requester?, taskIds?, reason?})` saves a question and returns at once. Work that does not need it may continue. Reuse a short explicit dedup key for retries. Choices are strings; free text is allowed unless false.\n  - `await questions.list()` and `await questions.get(id)` read saved state. Keep the returned ID, owner and version for mutations.\n  - `await questions.block({id, owner, version, checkpoint, foreground?, taskIds?})` records which follow-up now needs the answer. Name the next step in checkpoint. Set foreground only if the parent cannot continue. This does not pause a child process. If no safe work remains, yield; no execute stack waits for the reply.\n  - `await questions.resolve({id, owner, version, reason})` closes a question after using its answer or when it is no longer needed. `await questions.cancel({id, owner, version})` withdraws it, not an answer or permission to guess.\n  - The user replies with /questions answer <id> <text>. A saved reply starts a new parent turn when safe, not code after an old await. Read the saved reply ID; do not repeat handled work. After a stop or reload, /questions resume <id> requests a new turn. Answer saved, queued, delivered and used are distinct.\n  - Live may ask and read the same state. Do not bind provisional or ordinary speech to a question. Targeted voice replies, web projection and child in-place replies are not supported. A child should give its parent the question and checkpoint; the parent can record it with requester/task IDs.\n- History API:\n  - `await history.search({query, cursor?, limit?, excerptChars?})` — Find text in current conversation branch. Returns short matches and a `ref` for each.\n  - `await history.read({ref, cursor?, maxChars?})` — Read original text at that ref.\n  - Got `nextCursor`? Pass as `cursor` for next page.\n  - Other conversation? Add `sessionFile` and `allowCrossSession: true` to each call.\n  - `limit`: default 20 matches, allowed 1–50.\n  - `excerptChars`: default 240 characters, allowed 40–600.\n  - `maxChars`: default 8,000 characters, allowed 1–16,000.\n\n- Live selection: `/live model` lists voice models across providers and selects the matching provider; `/live provider` configures credentials, not a model filter. Credential readiness is local, not verified API access.\n- Live voice: `await live.stop()` awaits this session’s mic/playback/provider teardown and preserves jobs. Read the result; errors are not a completed stop. For an explicit stop-work request use `await jobs.stopWork()`; it requests current-session async descendant cancellation, then foreground cancellation after its response is delivered. Pending/partial results are not stopped. If the user explicitly asks for both, call live.stop first. Neither runs on ordinary speech interruption.\n\n<addendum>\nVERTICAL_CUSTOM_APPEND\n</addendum>\n\n<project_context>\nProject-specific instructions and guidelines:\n\n<project_instructions path=\"/tmp/die-live-main-vertical-tkBwDd/AGENTS.md\">\nVERTICAL_PROJECT_GUIDANCE\n</project_instructions>\n</project_context>\n\n<cwd>\n/tmp/die-live-main-vertical-tkBwDd\n</cwd>\n\nNext agent not hear whole talk. Save decisions, reasons, and where work stopped. No need copy whole conversation.\n\nWork not done if next person cannot pick it up. Leave code and wisdom together, where others can get both. Say what finished and what still needs care.\n\nProject wisdom lives in wisdom/. Put it with the feature or system it explains. Need past context? Read the wisdom that helps with this task.\n\nValues live in wisdom/values.md. Read before big work. Missing? Build small set from wisdom already there. No make up past lessons. User's words come first.\n\nWrite wisdom? Look for lesson that belongs in values too. Before big work ends or changes hands, check what we learned. After release or broad review, look across the work too. Same lesson keeps coming back? Turn it into value. Link the wisdom it came from. Say when it helps and when it does not. Fix or join old values before adding more. New facts prove one wrong? Change it. Keep set small. One-time detail stays with feature. Nothing new? No need change values. At end, say what wisdom changed and what values changed. Values stayed same? Say why.\n\nWrite prompts and wisdom in same voice as rest. Short words. Short sentences. Plain talk. Read nearby text first. No formal policy talk. Keep exact names and facts when they matter.\n\nWorking together\n- Quick work? Finish it. Work take time? Give task, let user talk. No keep checking just to stay busy.\n- Go look. Find clue? Follow clue. Look other places too. One rock not whole cave. Say what saw. Say what still guess.\n- Find simple way that works. More parts, more care. More state, more ways things go wrong. Add only what helps do job.\n- Share work. Make clear who do what. Other agent bring pieces? Check pieces fit. User need whole thing, not pile of pieces.\n- Solve real problem. No build for every bad thing you can imagine. Make it work well. Add more when need is real.\n\nOpinions\n- Assume fresh start. Need old behavior kept? User will say. No carry old stuff just because it there. Better to start over? Can throw old thing out and rebuild, even whole thing if needed.\n\n<!-- die:main-agent-mode:0f4bbd418b5cd76b378b0d45d906168008b73bb3f5ef6d96701feed47200d61c:start -->\nYou lead work. Give other agents clear jobs and room to think. Put their work together for user.\n\nIndependent code or PR work? Give it a worktree. Research or shared edits? Keep the current workspace.\n\nUse `subagent({ workspace: { kind: \"worktree\" }, ... })` for work you give another agent. Use the worktree path it returns. Make manual worktrees in a place that lasts, not `/tmp` or `/var/tmp`. The CLI uses `~/.die/worktrees` unless `DIE_WORKTREE_ROOT` is set. Use temporary directories only for probes and tests you will throw away, not code or release work still underway. Save the worktree path and branch in wisdom for that feature so another agent can pick work up.\n<!-- die:main-agent-mode:0f4bbd418b5cd76b378b0d45d906168008b73bb3f5ef6d96701feed47200d61c:end -->",
+      "toolsAdded": [
+        {
+          "name": "execute",
+          "description": "Run JS/TS code in current directory. Top-level await, import/export, require(), Bun/Node/Web APIs, local modules, and installed packages all work. `await showImage(image)` shows image to you. Pass file path, Blob, Uint8Array, Buffer, or ArrayBuffer. PNG, JPEG, and WebP work. Max 4 images per execute call. Input max 25 MB. Images over 5 MB resized automatically; original stays same. Output max 5 MB each, 10 MB together. Text output up to 4,000 characters comes back directly. Longer output spills to files within a shared 10 MiB stdout/stderr capture limit. Set outputByteLimit per execution to change it; truncation is reported explicitly. You get a short preview and file paths. For shell commands or delegation, call the shell() or subagent() globals inside execute; no die module import is needed. Their access to files, workers, or network depends on the actual environment and result.\n\nLive selection: `/live model` lists voice models across providers and selects the matching provider; `/live provider` configures credentials, not a model filter. Credential readiness is local, not verified API access.\nLive voice: `await live.stop()` stops this agent session’s active microphone, playback, and provider connection. Wait for its result before saying it stopped; `stopped: false` includes teardown errors. Jobs keep running. For an explicit request to stop one job, use `jobs.stop(exactId)`; for current-session work use `jobs.stopWork()` with its existing confirmation. The latter includes foreground cancellation after report delivery. If both voice and work must stop, await live.stop first. Ordinary speech interruption does not stop jobs or Live.\n\nQuestions (parent CLI): `questions.ask({text, dedupKey?, choices?, allowFreeText?, requester?, taskIds?, reason?})` saves and returns at once. `questions.list()` / `questions.get(id)` read state. Later `questions.block({id,owner,version,checkpoint,foreground?,taskIds?})` records affected follow-up, not a paused process. Use current owner/version from the saved question. `questions.resolve({id,owner,version,reason})` closes it; `questions.cancel({id,owner,version})` withdraws it. Users answer with /questions, not a tool or inferred transcript. A saved answer may start a new parent turn; it never resumes an old execute stack or native child in place. Web projection and targeted voice replies are not supported.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "timeoutSeconds": {
+                "type": "number",
+                "minimum": 0.1
+              },
+              "outputByteLimit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "code"
+            ]
+          }
+        }
+      ],
+      "timestamp": 1790419898554
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Check this repo status\n[Provisional voice transcription]"
+        }
+      ],
+      "timestamp": 1790419898560
+    },
+    {
+      "role": "assistant",
+      "api": "openai-codex-responses",
+      "provider": "openai-codex",
+      "model": "gpt-5.6-luna",
+      "timestamp": 1790419898563,
+      "stopReason": "stop",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "The repo status is clean."
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Anything else?\n[Provisional voice transcription]"
+        }
+      ],
+      "timestamp": 1790419898584
+    },
+    {
+      "role": "assistant",
+      "api": "openai-codex-responses",
+      "provider": "openai-codex",
+      "model": "gpt-5.6-luna",
+      "timestamp": 1790419898585,
+      "stopReason": "stop",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "content": [
+        {
+          "type": "text",
+          "text": "The repo status is clean."
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Typed after voice is off"
+        }
+      ],
+      "timestamp": 1790419898610
+    }
+  ]
+]

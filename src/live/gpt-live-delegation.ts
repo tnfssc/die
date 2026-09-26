@@ -55,6 +55,10 @@ function boundedData(value: unknown, max = 3800): string {
 export class GptLiveDelegationBridge {
   private fragments: LiveFragment[] = [];
   private omitted = 0;
+  private readonly consumedFragments = new WeakSet<LiveFragment>();
+  private readonly pendingFragments = new WeakSet<LiveFragment>();
+  private readonly pendingEvicted = new WeakSet<LiveFragment>();
+  private consumedOmitted = 0;
   private revision = 0;
   private epoch = 0;
   private closed = false;
@@ -96,8 +100,9 @@ export class GptLiveDelegationBridge {
     this.fragments.push({ ...fragment });
     this.revision++;
     while (this.fragments.length > 32 || JSON.stringify(this.fragments).length > 6000) {
-      this.fragments.shift();
-      this.omitted++;
+      const removed = this.fragments.shift()!;
+      if (this.pendingFragments.has(removed)) this.pendingEvicted.add(removed);
+      else if (!this.consumedFragments.has(removed)) this.omitted++;
     }
   }
 
@@ -130,20 +135,32 @@ export class GptLiveDelegationBridge {
     const revision = this.revision;
     const context = [...this.contexts].reverse().find((entry) => entry.offsetMs <= event.offsetMs);
     if (!context) return { kind: "unavailable", id };
+    const omittedAtCapture = this.omitted;
+    const selected = this.fragments.filter(
+      (fragment) =>
+        !this.consumedFragments.has(fragment) &&
+        !this.pendingFragments.has(fragment) &&
+        fragment.endMs <= event.offsetMs,
+    );
     const snapshot: DelegationSnapshot = {
       delegationId: id,
       offsetMs: event.offsetMs,
       revision,
-      fragments: this.fragments.filter((fragment) => fragment.endMs <= event.offsetMs).map((f) => ({ ...f })),
-      omittedFragments: this.omitted,
+      fragments: selected.map((f) => ({ ...f })),
+      omittedFragments: Math.max(0, omittedAtCapture - this.consumedOmitted),
       uncertain: true,
       hostContext: context.data,
       hostContextOffsetMs: context.offsetMs,
       contextClock: "local-capture-approximate",
     };
+    for (const fragment of selected) this.pendingFragments.add(fragment);
     try {
       // No synthetic tool names, task text, cancellation, or exact speech check.
       const result = await this.host.submitContextual(id, snapshot);
+      if (result && "queued" in result && result.queued === true) {
+        for (const fragment of selected) this.consumedFragments.add(fragment);
+        this.consumedOmitted = Math.max(this.consumedOmitted, omittedAtCapture);
+      }
       if (this.closed || this.epoch !== epoch || this.revision !== revision) return { kind: "stale", id };
       if (result && "queued" in result && result.queued === true)
         return { kind: "queued", id, revision, commentary: "Passed your request to the current agent." };
@@ -155,6 +172,14 @@ export class GptLiveDelegationBridge {
       if (this.closed || this.epoch !== epoch || this.revision !== revision) return { kind: "stale", id };
       // Do not expose raw errors or untrusted backend output as speech.
       return { kind: "unavailable", id };
+    } finally {
+      for (const fragment of selected) {
+        this.pendingFragments.delete(fragment);
+        // Evicted pending evidence is lost only if admission failed; an admitted
+        // request already carries it in ordinary agent history.
+        if (this.pendingEvicted.has(fragment) && !this.consumedFragments.has(fragment)) this.omitted++;
+        this.pendingEvicted.delete(fragment);
+      }
     }
   }
 }

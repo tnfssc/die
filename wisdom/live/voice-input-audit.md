@@ -33,3 +33,13 @@ The existing context notes are at `wisdom/live/prompt-line-review.md` and `wisdo
 ### UI/logging, not an additional model-input route
 
 `src/live/extension.ts:402-417,527-555` receives/display-groups input and output transcript fragments; Realtime’s display callback does not re-authorize speech (`:527-536`). `src/live/extension.ts:586-590` writes **`Agent event: `** plus a cleaned 180-character update to visible lines only; the model receives the separate observation path above. Transcript persistence/display in `src/live/transcript.ts` and the extension’s render path is likewise not itself a provider send. Provider connection errors, transport failures, usage/cost reporting, and UI warnings are not automatically model messages; only the explicitly listed host updates, tool responses, GPT-Live append events, and audio/truncation events cross these model boundaries.
+
+### GPT-Live client delegation correction (2026-09-26)
+
+The earlier sections document the **before** state. See [actual model/TUI evidence](clean-gpt-model-input-evidence.md) for current behavior and full captures.
+
+Delegation now sends only newly unconsumed eligible speech to the current owner. No transport snapshot or host context is copied into the spoken user turn. Empty speech does not dispatch; actual omitted/overlapping fragments receive concise factual wording. Admission consumes selected fragment instances rather than a timestamp cutoff, so late corrections remain eligible. Concurrent reservations prevent duplicate dispatch; rejected admission retains evidence when possible. Replayed IDs stay deduplicated and interruption only invalidates spoken feedback, never cancels work.
+
+Bounded original snapshots and passive input/output observations remain internal branch audit history with uncertainty/timing/playback facts. The always-active context projection removes their raw representation, including after voice stops or reloads. It also cleans recognized historical snapshot user prompts without rewriting disk history. The coding model receives the speech plus only [Provisional voice transcription], not a generic clarification policy; the visible user turn remains plain speech. Existing host permissions, stop confirmation and tool helpers remain authoritative.
+
+Canonical context still flows to GPT-Live as bounded quoted observations with honest truncation, without repeated JSON transport fields or echoing its own passive transcripts. It is not nested back into the next coding-agent request. Old completed work therefore remains ordinary history rather than a newly authorized request.

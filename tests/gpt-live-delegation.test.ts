@@ -42,7 +42,7 @@ describe("GPT-Live contextual delegation", () => {
     ]);
     bridge.addFragment({ startMs: 0, endMs: 80, text: "late correction" });
     expect(await bridge.handleCreated({ target: "client", id: "d2", offsetMs: 100 })).toMatchObject({ kind: "queued" });
-    expect(captured[1]?.fragments.map((f) => f.text)).toEqual(["draft a", "late correction"]);
+    expect(captured[1]?.fragments.map((f) => f.text)).toEqual(["late correction"]);
   });
 
   test("dedupes concurrently and across interruption; backend work continues", async () => {
@@ -185,4 +185,88 @@ test("delayed delegation uses saved host context at its offset, not future task 
   expect(snapshots[1]?.hostContext).toContain("after");
   expect(snapshots[1]?.hostContextOffsetMs).toBe(200);
   expect(snapshots[1]?.contextClock).toBe("local-capture-approximate");
+});
+
+test("accepted delegations consume speech once; late corrections remain available", async () => {
+  const { bridge, captured } = fixture();
+  bridge.addFragment({ startMs: 1800, endMs: 7000, text: "Pull latest changes" });
+  await bridge.handleCreated({ id: "initial", target: "client", offsetMs: 7100 });
+  bridge.addFragment({ startMs: 60800, endMs: 61800, text: "Anything else?" });
+  await bridge.handleCreated({ id: "followup", target: "client", offsetMs: 62000 });
+  bridge.addFragment({ startMs: 85600, endMs: 86800, text: "Stop" });
+  await bridge.handleCreated({ id: "stop", target: "client", offsetMs: 87000 });
+  expect(captured.map((snapshot) => snapshot.fragments.map((fragment) => fragment.text))).toEqual([
+    ["Pull latest changes"],
+    ["Anything else?"],
+    ["Stop"],
+  ]);
+  bridge.addFragment({ startMs: 85600, endMs: 86800, text: "Stop voice" });
+  await bridge.handleCreated({ id: "correction", target: "client", offsetMs: 88000 });
+  expect(captured[3]?.fragments.map((fragment) => fragment.text)).toEqual(["Stop voice"]);
+});
+
+test("distinct concurrent delegations do not dispatch the same pending fragments twice", async () => {
+  let release!: (result: { queued: true }) => void;
+  const captured: DelegationSnapshot[] = [];
+  const { bridge } = fixture(async (_id, snapshot) => {
+    captured.push(snapshot);
+    if (!snapshot.fragments.length) return { clarification: true };
+    return new Promise<{ queued: true }>((resolve) => {
+      release = resolve;
+    });
+  });
+  bridge.addFragment({ startMs: 1, endMs: 2, text: "Do this once" });
+  const first = bridge.handleCreated({ id: "first", target: "client", offsetMs: 3 });
+  expect((await bridge.handleCreated({ id: "second", target: "client", offsetMs: 3 })).kind).toBe("clarification");
+  expect(captured.map((s) => s.fragments.map((f) => f.text))).toEqual([["Do this once"], []]);
+  release({ queued: true });
+  expect((await first).kind).toBe("queued");
+});
+
+test("failed admission releases reserved fragments for a new delegation", async () => {
+  let attempt = 0;
+  const captured: DelegationSnapshot[] = [];
+  const { bridge } = fixture(async (_id, snapshot) => {
+    captured.push(snapshot);
+    if (++attempt === 1) throw new Error("not admitted");
+    return { queued: true };
+  });
+  bridge.addFragment({ startMs: 1, endMs: 2, text: "Still unhandled" });
+  expect((await bridge.handleCreated({ id: "failed", target: "client", offsetMs: 3 })).kind).toBe("unavailable");
+  expect((await bridge.handleCreated({ id: "retry", target: "client", offsetMs: 3 })).kind).toBe("queued");
+  expect(captured[1]?.fragments[0]?.text).toBe("Still unhandled");
+});
+
+test("evicting already handled fragments does not invent missing speech", async () => {
+  const { bridge, captured } = fixture();
+  for (let i = 0; i < 50; i++) {
+    bridge.addFragment({ startMs: i, endMs: i, text: "Handled request " + i });
+    await bridge.handleCreated({ id: "handled-" + i, target: "client", offsetMs: i });
+  }
+  expect(captured.every((s) => s.omittedFragments === 0)).toBe(true);
+});
+
+test("pending eviction is missing only when admission fails", async () => {
+  for (const admitted of [true, false]) {
+    let release!: (result: { queued: true } | { clarification: true }) => void;
+    const snapshots: DelegationSnapshot[] = [];
+    const bridge = new GptLiveDelegationBridge({
+      context: () => ({}),
+      submitContextual: async (_id, snapshot) => {
+        snapshots.push(snapshot);
+        if (snapshots.length === 1)
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        return { queued: true };
+      },
+    });
+    for (let i = 0; i < 32; i++) bridge.addFragment({ startMs: i, endMs: i, text: "first" });
+    const pending = bridge.handleCreated({ id: "pending", target: "client", offsetMs: 31 });
+    for (let i = 32; i < 64; i++) bridge.addFragment({ startMs: i, endMs: i, text: "next" });
+    release(admitted ? { queued: true } : { clarification: true });
+    await pending;
+    await bridge.handleCreated({ id: "next", target: "client", offsetMs: 64 });
+    expect(snapshots[1]?.omittedFragments).toBe(admitted ? 0 : 32);
+  }
 });

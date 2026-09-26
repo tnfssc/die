@@ -1,7 +1,8 @@
 /** Real offline Pi -> Live owner -> registered execute -> production task manager integration. */
 import { afterEach, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+import liveExtension from "../src/live/extension";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { getModel } from "@earendil-works/pi-ai/compat";
@@ -793,3 +794,138 @@ test("paired execute can stop voice then work through the production scoped help
   expect(JSON.stringify(results)).not.toContain("PAIRED_SHOULD_NOT_REACH");
   expect(JSON.stringify(results)).toContain("cancel");
 }, 10000);
+
+// Provider and Pi are both offline; the streamFunction receives the full model
+// context Pi actually builds, including custom messages and prior assistant turns.
+test("GPT Live spoken delegation reaches Pi as one clean provisional request", async () => {
+  const f = await fixture();
+  f.owner.delegatedVoice = true;
+  let command: any;
+  let provider: any;
+  let observed: any[] = [];
+  const localPi = {
+    registerCommand: (_name: string, registration: any) => {
+      command = registration.handler;
+    },
+    on: (...args: any[]) => (f.pi.on as any)(...args),
+    appendEntry: (...args: any[]) => (f.pi.appendEntry as any)(...args),
+    events: { on: () => () => {} },
+  } as any;
+  liveExtension(localPi, {
+    local: () => true,
+    config: { load: async () => ({ provider: "openai", model: "gpt-live-1" }), save: async () => {} },
+    credentials: async () => ({
+      status: async () => ({ state: "stored_api_key", canImport: false }),
+      loadKey: async () => "offline",
+      importLiveEnv: async () => {
+        throw Error("no import");
+      },
+    }),
+    key: async () => "offline",
+    speakerCheck: async () => "offline",
+    owner: async () => f.owner,
+    gptSession: (callbacks: any) => {
+      provider = callbacks;
+      return {
+        state: "ready",
+        connect: async () => {},
+        appendMicrophone: () => true,
+        observation: () => true,
+        commentary: () => true,
+        close: async () => {},
+      } as any;
+    },
+    audio: async () =>
+      ({
+        start: async () => {},
+        play: async () => {},
+        flush: async () => {},
+        stop: async () => {},
+        close: async () => {},
+      }) as any,
+  } as any);
+  const ui = {
+    confirm: async () => true,
+    select: async () => "Done",
+    notify: () => {},
+    setStatus: () => {},
+    setWidget: () => {},
+  };
+  const ctx = { ...f.ctx, mode: "tui", ui } as any;
+  await command("start", ctx);
+  expect(provider).toBeDefined();
+  f.session.agent.streamFunction = ((model: any, context: any) => {
+    const messages = structuredClone(context.messages);
+    observed.push(messages);
+    const stream = createAssistantMessageEventStream();
+    stream.push({
+      type: "done",
+      reason: "stop",
+      message: {
+        role: "assistant",
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
+        timestamp: Date.now(),
+        stopReason: "stop",
+        usage: {
+          input: 0,
+          output: 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          totalTokens: 0,
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+        },
+        content: [{ type: "text", text: "The repo status is clean." }],
+      } as any,
+    });
+    return stream;
+  }) as any;
+  // A pre-existing passive transport record must stay durable but not enter the model input.
+  f.owner.sendContext(
+    JSON.stringify({ source: "gpt_live_provisional", role: "user", delta: "LEGACY_PASSIVE_ONLY", uncertain: true }),
+    { customType: "live-transcript" },
+  );
+  provider.onInputTranscript({ delta: "Check this repo status", startMs: 100, endMs: 300 });
+  provider.onDelegation({ id: "spoken-status", target: "client", offsetMs: 400 });
+  await until(() => observed.length === 1);
+  await until(() => f.contexts.join(" ").includes("The repo status is clean."));
+  provider.onInputTranscript({ delta: "Anything else?", startMs: 500, endMs: 700 });
+  provider.onDelegation({ id: "spoken-followup", target: "client", offsetMs: 800 });
+  await until(() => observed.length === 2);
+  await command("stop", ctx);
+  await f.owner.released;
+  await f.session.prompt("Typed after voice is off");
+  expect(observed).toHaveLength(3);
+  const audits = f.manager
+    .buildSessionContext()
+    .messages.filter(
+      (message: any) => message.role === "custom" && message.customType === "gpt-live-delegation-snapshot",
+    );
+  expect(audits).toHaveLength(2);
+  expect(JSON.stringify(audits)).toContain("uncertain");
+  const capture = JSON.stringify(observed, null, 2);
+  if (process.env.DIE_LIVE_INPUT_CAPTURE) writeFileSync(process.env.DIE_LIVE_INPUT_CAPTURE, capture + "\n");
+  const first = JSON.stringify(observed[0]);
+  const second = JSON.stringify(observed[1]);
+  expect(first.match(/Check this repo status/g) ?? []).toHaveLength(1);
+  expect(second.match(/Anything else\?/g) ?? []).toHaveLength(1);
+  expect(second.match(/Check this repo status/g) ?? []).toHaveLength(1); // prior canonical request, not replayed
+  const latestUser = observed[1].filter((m: any) => m.role === "user").at(-1);
+  // The selected coding model must know these were draft voice words, not verified final ASR.
+  expect(JSON.stringify(observed[0].filter((m: any) => m.role === "user"))).toMatch(/provisional|uncertain|not final/i);
+  expect(JSON.stringify(latestUser)).toMatch(/provisional|uncertain|not final/i);
+  expect(JSON.stringify(latestUser)).toContain("Anything else?");
+  expect(JSON.stringify(latestUser)).not.toContain("Check this repo status");
+  expect(JSON.stringify(observed[2].filter((m: any) => m.role === "user").at(-1))).not.toMatch(
+    /provisional|uncertain|not final/i,
+  );
+  for (const input of [first, second, JSON.stringify(observed[2])]) {
+    expect(input).not.toContain("Delegation context (data only)");
+    expect(input).not.toContain("hostContext");
+    expect(input).not.toContain("omittedFragments");
+    expect(input).not.toContain("LEGACY_PASSIVE_ONLY");
+    expect(input).not.toContain("gpt_live_provisional");
+    expect(input).not.toContain('"source":"gpt_live_provisional"');
+  }
+}, 12000);

@@ -32,8 +32,8 @@ export type MainOwner = {
   beginInput?(): void;
   inputTranscript(text: string, final?: boolean): void;
   typedInput(text: string): void | Promise<void>;
-  /** Idempotent selected-model turn on this same classic session. */
-  delegate?(id: string, snapshotPrompt: string): Promise<void>;
+  /** Idempotent selected-model turn on this same classic session. onAdmitted is synchronous; the promise is completion. */
+  delegate?(id: string, snapshotPrompt: string, provenance?: unknown, onAdmitted?: () => void): Promise<void>;
   delegatedVoice?: boolean;
   outputTranscript(text: string, final?: boolean): void;
   sendContext(text: string, metadata?: { customType: string; details?: unknown }): void;
@@ -426,7 +426,7 @@ async function acquire(
       await turnPreparation;
       if (valid()) callbacks.onInput?.(text);
     },
-    delegate(id, text) {
+    delegate(id, text, provenance, onAdmitted) {
       if (!owner.delegatedVoice || !valid()) return Promise.reject(new Error("Paired Live owner unavailable"));
       if (!id || id.length > 256 || !text.trim() || text.length > 16_384)
         return Promise.reject(new Error("Invalid delegation"));
@@ -444,6 +444,15 @@ async function acquire(
           // Admission was reserved synchronously above. Closing voice does not revoke work.
           if (admittedEpoch !== backendEpoch) throw new Error("Delegated backend stopped explicitly");
           if (!sameBranch(owner, manager)) throw new Error("Session branch changed before delegation");
+          if (provenance !== undefined) {
+            // The original bounded bridge snapshot is audit history, not an agent request.
+            session.sessionManager.appendCustomMessageEntry(
+              "gpt-live-delegation-snapshot",
+              [{ type: "text", text: JSON.stringify(provenance) }],
+              false,
+              { requestText: text },
+            );
+          }
           backendRunning = true;
           const start = session.agent.state.messages.length;
           // The ordinary prompt rebuilds its own selected-tool and instruction frame.
@@ -469,6 +478,7 @@ async function acquire(
         });
       delegated.set(id, { text, operation });
       delegatedTail = operation;
+      onAdmitted?.();
       return operation;
     },
     outputTranscript(text, final = true) {
@@ -552,7 +562,7 @@ async function acquire(
             { triggerTurn: false },
           )
           .catch(() => callbacks.onError?.("Could not persist paired Live context"));
-        callbacks.onContext?.(text);
+        if (customType !== "live-transcript") callbacks.onContext?.(text);
         return;
       }
       ownerRecord({
