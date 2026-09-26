@@ -44,3 +44,10 @@ Existing surface values still apply; feature audit/evidence updated.
 Parent full local CI gate passed, including current web/CLI build,
 format/lint/typecheck and standalone smoke. Final test count and log
 are artifacts/clean-input-ci.log. No paid/device proof, no release yet.
+
+## Released
+
+User requested release. v0.15.1 published after local and hosted gates.
+See wisdom/releases/release-v0.15.1.md for exact SHA, workflow links and
+limits. No local install or paid/device acceptance claimed. Prior progress
+entries above are history.

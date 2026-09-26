@@ -1,0 +1,57 @@
+{
+  "assets": [
+    {
+      "name": "die-android-arm64",
+      "size": 208205568
+    },
+    {
+      "name": "die-android-arm64.sha256",
+      "size": 84
+    },
+    {
+      "name": "die-darwin-arm64",
+      "size": 183012210
+    },
+    {
+      "name": "die-darwin-arm64.sha256",
+      "size": 83
+    },
+    {
+      "name": "die-linux-arm64",
+      "size": 200984872
+    },
+    {
+      "name": "die-linux-arm64.sha256",
+      "size": 82
+    },
+    {
+      "name": "die-linux-x64",
+      "size": 201029088
+    },
+    {
+      "name": "die-linux-x64.sha256",
+      "size": 80
+    },
+    {
+      "name": "LICENSE",
+      "size": 1081
+    },
+    {
+      "name": "SOURCE.txt",
+      "size": 793
+    },
+    {
+      "name": "THIRD_PARTY_LICENSES.txt",
+      "size": 708007
+    },
+    {
+      "name": "THIRD_PARTY_NOTICES.md",
+      "size": 1385
+    }
+  ],
+  "draft": false,
+  "html_url": "https://github.com/tnfssc/die/releases/tag/v0.15.1",
+  "prerelease": false,
+  "published_at": "2026-09-26T11:40:17Z",
+  "tag_name": "v0.15.1"
+}
