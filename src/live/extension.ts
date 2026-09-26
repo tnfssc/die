@@ -622,12 +622,11 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         if (this.gpt) this.gptPlayback?.start();
         else this.playback.start();
         if (!this.alive) return;
-        this.ctx.ui.notify(
-          this.gpt
-            ? "GPT-Live speaks for your selected coding agent. Typed and spoken work share this session; /live stop closes voice, not work."
-            : "Live owns this session. Typed messages go to voice; /live stop returns to text. Speech interruption does not cancel work.",
-          "info",
-        );
+        if (this.gpt)
+          this.ctx.ui.notify(
+            "GPT-Live speaks for your selected coding agent. Typed and spoken work share this session; /live stop closes voice, not work.",
+            "info",
+          );
         this.waveTimer = setInterval(() => this.render(true), 80);
         this.waveTimer.unref?.();
         this.render(true);
