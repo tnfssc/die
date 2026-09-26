@@ -16,7 +16,10 @@ import {
  * ClassicSession that ordinary turns use, Direct providers own tool turns; paired GPT-Live admits ordinary session.prompt turns. */
 type OwnerSession = ClassicSession & {
   _toolRegistry: Map<string, any>;
-  sendCustomMessage(message: { customType: string; content: { type: "text"; text: string }[]; display: boolean; details?: unknown }, options: { triggerTurn: boolean }): Promise<void>;
+  sendCustomMessage(
+    message: { customType: string; content: { type: "text"; text: string }[]; display: boolean; details?: unknown },
+    options: { triggerTurn: boolean },
+  ): Promise<void>;
   _isAgentRunActive?: boolean;
   _extensionRunner: NonNullable<ClassicSession["_extensionRunner"]>;
   sessionManager: ExtensionContext["sessionManager"] & {
@@ -48,7 +51,9 @@ const delegatedAdmission = new AsyncLocalStorage<object>();
 export function runDelegatedMainTurn<T>(manager: object, run: () => Promise<T>): Promise<T> {
   return delegatedAdmission.run(manager, run);
 }
-function isDelegated(manager: object): boolean { return delegatedAdmission.getStore() === manager; }
+function isDelegated(manager: object): boolean {
+  return delegatedAdmission.getStore() === manager;
+}
 const owners = new WeakMap<object, MainOwner & { identity: string; accepting: boolean }>();
 const pending = new WeakMap<object, Promise<void>>();
 const drainingOwners = new WeakMap<object, MainOwner & { identity: string; accepting: boolean }>();
@@ -195,7 +200,7 @@ async function acquire(
   let delegatedTail: Promise<void> = Promise.resolve();
   const admittedNotifications = new Set<string>();
   let backendRunning = false;
-  let backendStopped = false;
+  let backendEpoch = 0;
   let release!: () => void;
   const released = new Promise<void>((resolve) => {
     release = resolve;
@@ -423,26 +428,45 @@ async function acquire(
     },
     delegate(id, text) {
       if (!owner.delegatedVoice || !valid()) return Promise.reject(new Error("Paired Live owner unavailable"));
-      if (!id || id.length > 256 || !text.trim() || text.length > 16_384) return Promise.reject(new Error("Invalid delegation"));
+      if (!id || id.length > 256 || !text.trim() || text.length > 16_384)
+        return Promise.reject(new Error("Invalid delegation"));
       const prior = delegated.get(id);
-      if (prior) return prior.text === text ? prior.operation : Promise.reject(new Error("Delegation ID reused with different context"));
+      if (prior)
+        return prior.text === text
+          ? prior.operation
+          : Promise.reject(new Error("Delegation ID reused with different context"));
       if (delegated.size >= 256) return Promise.reject(new Error("Live delegation capacity reached"));
       inFlight++;
-      const operation = delegatedTail.catch(() => {}).then(async () => {
-        // Admission was reserved synchronously above. Closing voice does not revoke work.
-        if (backendStopped) throw new Error("Delegated backend stopped explicitly");
-        if (!sameBranch(owner, manager)) throw new Error("Session branch changed before delegation");
-        backendRunning = true;
-        const start = session.agent.state.messages.length;
-        // The ordinary prompt rebuilds its own selected-tool and instruction frame.
-        session._runSystemPromptOptions = undefined;
-        try {
-          await runDelegatedMainTurn(manager, () => session.prompt(text, { expandPromptTemplates: false, source: "extension" }));
-          const reply = session.agent.state.messages.slice(start).filter((m) => m.role === "assistant")
-            .flatMap((m) => m.content.filter((p) => p.type === "text").map((p) => p.text)).join("\n").trim();
-          if (reply && sameBranch(owner, manager)) callbacks.onContext?.(reply, { triggerResponse: true });
-        } finally { backendRunning = false; }
-      }).finally(() => { inFlight--; checkRelease(); });
+      const admittedEpoch = backendEpoch;
+      const operation = delegatedTail
+        .catch(() => {})
+        .then(async () => {
+          // Admission was reserved synchronously above. Closing voice does not revoke work.
+          if (admittedEpoch !== backendEpoch) throw new Error("Delegated backend stopped explicitly");
+          if (!sameBranch(owner, manager)) throw new Error("Session branch changed before delegation");
+          backendRunning = true;
+          const start = session.agent.state.messages.length;
+          // The ordinary prompt rebuilds its own selected-tool and instruction frame.
+          session._runSystemPromptOptions = undefined;
+          try {
+            await runDelegatedMainTurn(manager, () =>
+              session.prompt(text, { expandPromptTemplates: false, source: "extension" }),
+            );
+            const reply = session.agent.state.messages
+              .slice(start)
+              .filter((m) => m.role === "assistant")
+              .flatMap((m) => m.content.filter((p) => p.type === "text").map((p) => p.text))
+              .join("\n")
+              .trim();
+            if (reply && sameBranch(owner, manager)) callbacks.onContext?.(reply, { triggerResponse: true });
+          } finally {
+            backendRunning = false;
+          }
+        })
+        .finally(() => {
+          inFlight--;
+          checkRelease();
+        });
       delegated.set(id, { text, operation });
       delegatedTail = operation;
       return operation;
@@ -469,31 +493,73 @@ async function acquire(
         }
         admittedNotifications.add(key);
         inFlight++;
-        const operation = delegatedTail.catch(() => {}).then(async () => {
-          if (backendStopped) return; // explicit stop-work cancels queued continuations
-          if (!sameBranch(owner, manager)) return;
-          backendRunning = true;
-          const start = session.agent.state.messages.length;
-          // The pinned Pi custom-message API invokes the canonical session's agent
-          // with this non-user message. It retains its normal tools, hooks and history.
-          session._runSystemPromptOptions = undefined;
-          try {
-            await runDelegatedMainTurn(manager, () => session.sendCustomMessage({
-              customType, content: [{ type: "text", text }], display: true, details: metadata?.details,
-            }, { triggerTurn: true }));
-            const reply = session.agent.state.messages.slice(start).filter((m) => m.role === "assistant")
-              .flatMap((m) => m.content.filter((p) => p.type === "text").map((p) => p.text)).join("\n").trim();
-            if (reply && sameBranch(owner, manager)) callbacks.onContext?.(reply);
-          } finally { backendRunning = false; }
-        }).catch(error => callbacks.onError?.(error instanceof Error ? error.message : String(error)))
-          .finally(() => { inFlight--; checkRelease(); });
+        const admittedEpoch = backendEpoch;
+        const operation = delegatedTail
+          .catch(() => {})
+          .then(async () => {
+            if (admittedEpoch !== backendEpoch) return; // explicit stop-work cancels queued continuations
+            if (!sameBranch(owner, manager)) return;
+            backendRunning = true;
+            const start = session.agent.state.messages.length;
+            // The pinned Pi custom-message API invokes the canonical session's agent
+            // with this non-user message. It retains its normal tools, hooks and history.
+            session._runSystemPromptOptions = undefined;
+            try {
+              await runDelegatedMainTurn(manager, () =>
+                session.sendCustomMessage(
+                  {
+                    customType,
+                    content: [{ type: "text", text }],
+                    display: true,
+                    details: metadata?.details,
+                  },
+                  { triggerTurn: true },
+                ),
+              );
+              const reply = session.agent.state.messages
+                .slice(start)
+                .filter((m) => m.role === "assistant")
+                .flatMap((m) => m.content.filter((p) => p.type === "text").map((p) => p.text))
+                .join("\n")
+                .trim();
+              if (reply && sameBranch(owner, manager)) callbacks.onContext?.(reply, { triggerResponse: true });
+            } finally {
+              backendRunning = false;
+            }
+          })
+          .catch((error) => callbacks.onError?.(error instanceof Error ? error.message : String(error)))
+          .finally(() => {
+            inFlight--;
+            checkRelease();
+          });
         delegatedTail = operation;
         callbacks.onContext?.(text);
         return;
       }
+      if (owner.delegatedVoice) {
+        // Pi defers passive records until the active tool pair/turn is complete.
+        // Appending directly here can split a tool call from its result on replay.
+        void session
+          .sendCustomMessage(
+            {
+              customType,
+              content: [{ type: "text", text }],
+              display: true,
+              details: metadata?.details,
+            },
+            { triggerTurn: false },
+          )
+          .catch(() => callbacks.onError?.("Could not persist paired Live context"));
+        callbacks.onContext?.(text);
+        return;
+      }
       ownerRecord({
-        role: "custom", customType, details: metadata?.details,
-        content: [{ type: "text", text }], display: true, timestamp: Date.now(),
+        role: "custom",
+        customType,
+        details: metadata?.details,
+        content: [{ type: "text", text }],
+        display: true,
+        timestamp: Date.now(),
       });
       owner.identity = identity(manager);
       callbacks.onContext?.(text);
@@ -515,7 +581,7 @@ async function acquire(
       for (const controller of controllers) stopWorkReports.set(controller, report);
     },
     stopForeground() {
-      backendStopped = true;
+      backendEpoch++;
       for (const controller of controllers) controller.abort("stop-work");
       if (backendRunning) void session.abort();
     },

@@ -592,7 +592,6 @@ test("stop voice then stop work in one real execute still cancels the draining v
   await f.owner.released;
 });
 
-
 test("paired backend survives production input routing: voice and typed turns each run once", async () => {
   const f = await fixture();
   f.owner.delegatedVoice = true;
@@ -601,10 +600,20 @@ test("paired backend survives production input routing: voice and typed turns ea
     calls++;
     const stream = createAssistantMessageEventStream();
     const message: any = {
-      role: "assistant", api: model.api, provider: model.provider, model: model.id,
-      timestamp: Date.now(), stopReason: "stop",
-      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      role: "assistant",
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      timestamp: Date.now(),
+      stopReason: "stop",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
       content: [{ type: "text", text: "CANONICAL_PAIRED_RESULT_" + calls }],
     };
     stream.push({ type: "done", reason: "stop", message });
@@ -618,3 +627,91 @@ test("paired backend survives production input routing: voice and typed turns ea
   expect(history).toContain("Provisional spoken request with provenance");
   expect(history).toContain("Typed request through production input handler");
 }, 5000);
+
+test("paired backend resumes from production async task notification without inventing a user turn", async () => {
+  const f = await fixture();
+  f.owner.delegatedVoice = true;
+  const originalBeforeTool = f.session.agent.beforeToolCall!;
+  f.session.agent.beforeToolCall = (async (...args: any[]) => {
+    const result = await (originalBeforeTool as any)(...args);
+    f.owner.sendContext("Provisional overlapping voice transcript", { customType: "live-transcript" });
+    return result;
+  }) as any;
+  let calls = 0;
+  f.session.agent.streamFunction = ((model: any, context: any) => {
+    const step = ++calls;
+    const stream = createAssistantMessageEventStream();
+    if (step >= 3) expect(JSON.stringify(context.messages)).toContain("PAIRED_ASYNC_REAL_MARKER");
+    const message: any = {
+      role: "assistant",
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      timestamp: Date.now(),
+      stopReason: step === 1 ? "toolUse" : "stop",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      content:
+        step === 1
+          ? [
+              {
+                type: "toolCall",
+                id: "paired-async-launch",
+                name: "execute",
+                arguments: {
+                  code: 'console.log(await shell("sleep 0.2; printf PAIRED_ASYNC_REAL_MARKER", {waitSeconds:0}))',
+                },
+              },
+            ]
+          : [{ type: "text", text: step === 2 ? "Background work queued." : "PAIRED_ASYNC_VERIFIED_COMPLETION" }],
+    };
+    stream.push({ type: "done", reason: step === 1 ? "toolUse" : "stop", message });
+    return stream;
+  }) as any;
+  await f.owner.delegate!("spoken-async", "Launch the requested background marker job");
+  await until(() => f.contexts.some((text) => text.includes("PAIRED_ASYNC_VERIFIED_COMPLETION")), 8000);
+  expect(calls).toBe(3);
+  const messages = f.manager.buildSessionContext().messages;
+  expect(messages.filter((m) => m.role === "user")).toHaveLength(1);
+  const toolIndex = messages.findIndex((m) => m.role === "assistant" && JSON.stringify(m).includes("paired-async-launch"));
+  expect(messages[toolIndex + 1]?.role).toBe("toolResult");
+  expect(messages.some((m: any) => m.role === "custom" && m.customType === "live-transcript")).toBe(true);
+  expect(messages.some((m: any) => m.role === "custom" && m.customType === "task-complete")).toBe(true);
+}, 12000);
+
+
+test("paired execute can stop voice then work through the production scoped helpers", async () => {
+  const f = await fixture();
+  f.owner.delegatedVoice = true;
+  registerLiveStop(f.pi, async () => {
+    f.owner.close();
+    return { stopped: true, errors: [], jobsUnchanged: true };
+  });
+  let calls = 0;
+  f.session.agent.streamFunction = ((model: any) => {
+    calls++;
+    const stream = createAssistantMessageEventStream();
+    const message: any = {
+      role: "assistant", api: model.api, provider: model.provider, model: model.id,
+      timestamp: Date.now(), stopReason: "toolUse",
+      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+      content: [{ type: "toolCall", id: "paired-stop-both", name: "execute", arguments: {
+        code: 'console.log(await live.stop()); console.log(await jobs.stopWork()); await Bun.sleep(1000); console.log("PAIRED_SHOULD_NOT_REACH")', timeoutSeconds: 5 } }],
+    };
+    stream.push({ type: "done", reason: "toolUse", message });
+    return stream;
+  }) as any;
+  await f.owner.delegate!("explicit-both-stop", "Explicit user request: stop voice then current-session work");
+  await f.owner.released;
+  expect(calls).toBe(1);
+  const results = f.manager.buildSessionContext().messages.filter((m) => m.role === "toolResult");
+  expect(JSON.stringify(results)).not.toContain("PAIRED_SHOULD_NOT_REACH");
+  expect(JSON.stringify(results)).toContain("cancel");
+}, 10000);

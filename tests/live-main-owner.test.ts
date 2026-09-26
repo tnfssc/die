@@ -544,3 +544,20 @@ test("GPT-Live delegation reuses one configured session turn, retries never reru
   await owner.released;
   expect(calls).toHaveLength(1);
 });
+
+test("paired stop-work fences queued work but allows a later new request without restarting voice", async () => {
+  const f = fixture();
+  const calls: string[] = [];
+  (f.session as any).prompt = async (text: string) => {
+    calls.push(text);
+  };
+  const owner = await acquireMainOwner({} as any, f.ctx);
+  owner.delegatedVoice = true;
+  const prior = owner.delegate!("before-stop", "queued before stop");
+  owner.stopForeground();
+  await expect(prior).rejects.toThrow("stopped explicitly");
+  await owner.delegate!("after-stop", "new explicit request");
+  expect(calls).toEqual(["new explicit request"]);
+  owner.close();
+  await owner.released;
+});
