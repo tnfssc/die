@@ -35,9 +35,14 @@ function records(value: unknown): Question[] {
   return [];
 }
 
-function renderQuestion(question: Question): string {
+function shortId(question: Question, all: Question[]): string {
+  const prefix = question.id.slice(0, 10);
+  return all.filter((entry) => entry.id.startsWith(prefix)).length === 1 ? prefix : question.id;
+}
+
+function renderQuestion(question: Question, id = question.id): string {
   return [
-    question.id,
+    id,
     question.status
       ? "[" +
         question.status +
@@ -104,6 +109,14 @@ export function registerQuestions(
     }
   };
 
+  const resolveId = async (service: QuestionCommands, id: string): Promise<string> => {
+    if (id.length < 8) return id;
+    const matches = records(await service.handle("questions.list", {})).filter((q) => q.id.startsWith(id));
+    if (matches.some((q) => q.id === id)) return id;
+    if (matches.length > 1) throw new Error("Question ID is ambiguous; use more characters from /questions.");
+    return matches[0]?.id ?? id;
+  };
+
   pi.registerCommand("questions", {
     description: "List, inspect, answer, cancel or resume questions",
     async handler(args, ctx) {
@@ -115,10 +128,17 @@ export function registerQuestions(
         if (verb === "list") {
           if (id) throw new Error("Usage: /questions [list|detail <id>|answer <id> <text>|cancel <id>|resume <id>]");
           const questions = records(await service.handle("questions.list", {}));
-          ctx.ui.notify(questions.length ? questions.map(renderQuestion).join("\n") : "No questions", "info");
+          ctx.ui.notify(
+            questions.length
+              ? questions.map((q) => renderQuestion(q, shortId(q, questions))).join("\n")
+              : "No questions",
+            "info",
+          );
         } else if (verb === "detail") {
           if (!id || rest.length) throw new Error("Usage: /questions detail <id>");
-          const question = (await service.handle("questions.get", { id })) as Question | null;
+          const question = (await service.handle("questions.get", {
+            id: await resolveId(service, id),
+          })) as Question | null;
           if (!question) throw new Error("Question not found: " + id);
           ctx.ui.notify(
             [
@@ -163,15 +183,15 @@ export function registerQuestions(
               .match(/^answer\s+\S+\s+([\s\S]+)$/)?.[1]
               .trim() ?? "";
           if (!id || !answer) throw new Error("Usage: /questions answer <id> <text>");
-          await service.handle("questions.answer", { id, answer });
+          await service.handle("questions.answer", { id: await resolveId(service, id), answer });
           ctx.ui.notify("Answer saved for " + id, "info");
         } else if (verb === "resume") {
           if (!id || rest.length) throw new Error("Usage: /questions resume <id>");
-          await service.handle("questions.resume", { id });
+          await service.handle("questions.resume", { id: await resolveId(service, id) });
           ctx.ui.notify("Saved answer queued for a new parent turn: " + id, "info");
         } else if (verb === "cancel") {
           if (!id || rest.length) throw new Error("Usage: /questions cancel <id>");
-          await service.handle("questions.cancel", { id });
+          await service.handle("questions.cancel", { id: await resolveId(service, id) });
           ctx.ui.notify("Question " + id + " cancelled", "info");
         } else throw new Error("Usage: /questions [list|detail <id>|answer <id> <text>|cancel <id>|resume <id>]");
         await refresh();

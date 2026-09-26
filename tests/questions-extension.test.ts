@@ -82,3 +82,75 @@ test("CLI binds the ID without flattening free-text spacing", async () => {
   await command.handler("answer q_one keep  these   spaces\nnext line", ctx);
   expect(received).toEqual({ id: "q_one", answer: "keep  these   spaces\nnext line" });
 });
+
+test("CLI lists actionable short IDs and resolves them without guessing ambiguous prefixes", async () => {
+  let command: any;
+  const notices: string[] = [];
+  const id = "q_12345678-aaaa-bbbb-cccc-111111111111";
+  const questions = [{ id, text: "Which target?", status: "pending" }];
+  const calls: Array<{ method: string; params: any }> = [];
+  const service = {
+    handle: (method: string, params: any) => {
+      calls.push({ method, params });
+      if (method === "questions.list") return questions;
+      if (method === "questions.get") return questions.find((q) => q.id === params.id);
+      if (method === "questions.answer") return questions[0];
+    },
+  };
+  const ctx = { ui: { notify: (text: string) => notices.push(text), setStatus: () => {} } };
+  registerQuestions(
+    {
+      on: () => {},
+      registerCommand: (_name: string, value: any) => {
+        command = value;
+      },
+    } as any,
+    () => service,
+  );
+  await command.handler("list", ctx);
+  expect(notices.pop()).toContain("q_12345678 [pending] Which target?");
+  await command.handler("answer q_12345678 Playback", ctx);
+  expect(calls.find((call) => call.method === "questions.answer")).toEqual({
+    method: "questions.answer",
+    params: { id, answer: "Playback" },
+  });
+  questions.push({ id: "q_12345678-other", text: "Another?", status: "pending" });
+  await command.handler("list", ctx);
+  expect(notices.pop()).toContain(id);
+  await command.handler("answer q_12345678 Playback", ctx);
+  expect(notices.pop()).toContain("ambiguous");
+  expect(calls.at(-1)?.method).toBe("questions.list");
+});
+
+test("empty list and failed refresh remain visibly distinct", async () => {
+  let command: any;
+  let fail = false;
+  const statuses: Array<string | undefined> = [];
+  const notices: string[] = [];
+  const service = {
+    handle: () => {
+      if (fail) throw Error("Question ledger unavailable");
+      return [];
+    },
+  };
+  const ctx = {
+    ui: {
+      setStatus: (_name: string, text: string | undefined) => statuses.push(text),
+      notify: (text: string) => notices.push(text),
+    },
+  };
+  const pi = {
+    on: () => {},
+    registerCommand: (_name: string, value: any) => {
+      command = value;
+    },
+  };
+  const { refresh } = registerQuestions(pi as any, () => service);
+  await command.handler("list", ctx as any);
+  expect(notices.pop()).toBe("No questions");
+  fail = true;
+  await refresh();
+  expect(statuses.at(-1)).toBe("/questions unavailable");
+  await command.handler("list", ctx as any);
+  expect(notices.pop()).toBe("Question ledger unavailable");
+});
