@@ -16,3 +16,5 @@ Reviewed wisdom/questions/final-surface-review.md and wisdom/values.md. Kept val
 
 Validation: bun test tests/goals.test.ts tests/goals-marker-sdk.test.ts: 29 pass, 0 fail, 140 assertions; tsc --noEmit: pass (using existing sibling node_modules/runtime-assets temporarily symlinked, then removed; no install). Broader tests/goals-sdk.test.ts requires absent dist/die: ENOENT posix_spawn; attempted run stopped after fixture failures, not a passing broader-suite claim.
 Previously persisted generated reminders may still be present in older session history; persisted user messages do not carry a reliable source discriminator, so rewriting them would risk corrupting intentional typed lookalikes. This patch prevents new transport markers; test resumes a session generated after the fix.
+
+Integrated follow-up: exact continuation+trailer match is required before stripping, so an altered extension payload cannot consume a valid queued ID; blocked foreground turns still discard the queued reminder. tests/goals.test.ts covers both.

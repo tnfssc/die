@@ -223,19 +223,19 @@ export function registerGoalMode(
       const match = /<!-- die-goal-reminder:([^:>]+):(\d+):(\d+) -->/.exec(event.text);
       if (match) {
         const accepted =
-          match[1] === reminderEpoch && Number(match[2]) === generation && queuedReminderIds.delete(match[3]!);
+          match[1] === reminderEpoch && Number(match[2]) === generation && queuedReminderIds.has(match[3]!);
         // A reminder may have been queued before the foreground question was posted.
-        if (!accepted || hasBlockingQuestions()) return { action: "handled" as const };
-        // Reject altered extension payloads rather than letting a token leak through.
-        if (
-          match.index < 2 ||
-          event.text.slice(match.index - 2, match.index) !== "\n\n" ||
-          match.index + match[0].length !== event.text.length
-        ) {
+        if (!accepted) return { action: "handled" as const };
+        if (hasBlockingQuestions()) {
+          queuedReminderIds.delete(match[3]!);
           return { action: "handled" as const };
         }
-        // The token identifies the queued turn only; never persist or send it to the model.
-        return { action: "transform" as const, text: event.text.slice(0, match.index - 2) };
+        // Only transform the exact generated extension payload, not other extension
+        // content bearing a copied trailer. Do not consume its pending ID either.
+        const plain = continuation(store!.get()!);
+        if (event.text !== `${plain}\n\n${match[0]}`) return { action: "handled" as const };
+        queuedReminderIds.delete(match[3]!);
+        return { action: "transform" as const, text: plain };
       }
       return;
     }

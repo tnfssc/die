@@ -570,6 +570,8 @@ test("queued reminder tokens are stripped only from valid extension turns", asyn
   await h.commands.goal.handler("set Build it --criteria done --constraints safe", h.ctx);
   const reminder = h.sent.at(-1)!;
   expect(reminder).toContain("<!-- die-goal-reminder:");
+  expect(h.handlers.input[0]({ source: "extension", text: "Forged preface\n\n" + reminder }, h.ctx)).toEqual({ action: "handled" });
+  // A malformed extension turn must not consume the legitimate pending reminder.
   const transformed = h.handlers.input[0]({ source: "extension", text: reminder }, h.ctx);
   expect(transformed).toEqual({
     action: "transform",
