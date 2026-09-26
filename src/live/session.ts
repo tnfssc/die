@@ -1,5 +1,5 @@
 import { voiceToolResult } from "./tool-result";
-import { Behavior, FunctionResponseScheduling, GoogleGenAI, Modality } from "@google/genai";
+import { Behavior, FunctionResponseScheduling, GoogleGenAI, Modality, ThinkingLevel } from "@google/genai";
 import { toolFailureResponse } from "./tool-failure";
 import liveSystemInstruction from "../prompts/live.md" with { type: "text" };
 import { VOICE_MODEL, isLiveModel } from "./providers";
@@ -129,6 +129,9 @@ export class VoiceSession {
         config: {
           systemInstruction: this.orchestration?.instructions ?? liveSystemInstruction,
           responseModalities: [Modality.AUDIO],
+          ...(this.model === "gemini-3.8-live-extended-thinking"
+            ? { thinkingConfig: { thinkingLevel: ThinkingLevel.LOW } }
+            : {}),
           ...(this.orchestration?.tools.length
             ? {
                 tools: [
@@ -411,6 +414,13 @@ export class VoiceSession {
       if (this.stateValue !== "ready") return;
     }
     if (content) {
+      if (
+        this.model === "gemini-3.8-live-extended-thinking" &&
+        (content.interactionStatus === "IN_PROGRESS" || content.interactionStatus === "IDLE")
+      ) {
+        this.emit(() => this.callbacks.onInteractionStatus?.(content.interactionStatus as "IN_PROGRESS" | "IDLE"));
+        if (this.stateValue !== "ready") return;
+      }
       if (content.inputTranscription || content.interrupted) ++this.inputRevision;
       if (content.interrupted) {
         this.orchestration?.beginUserTurn?.();

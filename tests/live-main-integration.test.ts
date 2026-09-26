@@ -516,60 +516,65 @@ test("prompt-dependent per-turn changes fail closed instead of dispatching with 
   await f.owner.released;
 });
 
-test("Gemini adapter direct function call executes real shell and receives async completion on its voice wire", async () => {
-  const f = await fixture();
-  let params: any;
-  const wire: any[] = [];
-  const voice = new VoiceSession(
-    { onInputTranscript: (t) => f.owner.inputTranscript(t.text, t.finished) },
-    () => ({
-      live: {
-        connect: async (p: any) => {
-          params = p;
-          return {
-            sendRealtimeInput() {},
-            sendClientContent(v: any) {
-              wire.push({ context: v });
-            },
-            sendToolResponse(v: any) {
-              wire.push({ tool: v });
-            },
-            close() {},
-          } as any;
+test.each(["gemini-3.8-live", "gemini-3.8-live-extended-thinking"])(
+  "%s direct function call executes real shell and receives async completion on its voice wire",
+  async (model) => {
+    const f = await fixture();
+    let params: any;
+    const wire: any[] = [];
+    const voice = new VoiceSession(
+      { onInputTranscript: (t) => f.owner.inputTranscript(t.text, t.finished) },
+      () => ({
+        live: {
+          connect: async (p: any) => {
+            params = p;
+            return {
+              sendRealtimeInput() {},
+              sendClientContent(v: any) {
+                wire.push({ context: v });
+              },
+              sendToolResponse(v: any) {
+                wire.push({ tool: v });
+              },
+              close() {},
+            } as any;
+          },
         },
+      }),
+      f.owner.orchestration,
+      model,
+    );
+    cleanup.push(() => voice.close());
+    await voice.connect("offline-injected-adapter-no-network");
+    f.setContextSink((text, options) => voice.sendContext(text, options));
+    expect(params.model).toBe(model);
+    expect(params.config.systemInstruction).toBe(f.owner.orchestration.instructions);
+    expect(params.config.tools[0].functionDeclarations.map((tool: any) => tool.name)).toEqual(["execute"]);
+    params.callbacks.onmessage({
+      serverContent: { inputTranscription: { text: "run offline marker", finished: true } },
+      toolCall: {
+        functionCalls: [
+          {
+            id: "wire-shell",
+            name: "execute",
+            args: { code: 'console.log(await shell("sleep 0.2; printf VOICE_WIRE_COMPLETION", {waitSeconds:0}))' },
+          },
+        ],
       },
-    }),
-    f.owner.orchestration,
-  );
-  cleanup.push(() => voice.close());
-  await voice.connect("offline-injected-adapter-no-network");
-  f.setContextSink((text, options) => voice.sendContext(text, options));
-  expect(params.config.systemInstruction).toBe(f.owner.orchestration.instructions);
-  expect(params.config.tools[0].functionDeclarations.map((tool: any) => tool.name)).toEqual(["execute"]);
-  params.callbacks.onmessage({
-    serverContent: { inputTranscription: { text: "run offline marker", finished: true } },
-    toolCall: {
-      functionCalls: [
-        {
-          id: "wire-shell",
-          name: "execute",
-          args: { code: 'console.log(await shell("sleep 0.2; printf VOICE_WIRE_COMPLETION", {waitSeconds:0}))' },
-        },
-      ],
-    },
-  });
-  await until(() => wire.some((event) => event.tool?.functionResponses?.id === "wire-shell"), 8000);
-  await until(
-    () =>
-      wire.some(
-        (event) =>
-          event.context?.turnComplete === true && JSON.stringify(event.context).includes("VOICE_WIRE_COMPLETION"),
-      ),
-    8000,
-  );
-  expect(f.streamCalls()).toBe(0);
-  expect(JSON.stringify(f.manager.getBranch())).toContain('"toolCallId":"wire-shell"');
-});
+    });
+    await until(() => wire.some((event) => event.tool?.functionResponses?.id === "wire-shell"), 8000);
+    await until(
+      () =>
+        wire.some(
+          (event) =>
+            event.context?.turnComplete === true && JSON.stringify(event.context).includes("VOICE_WIRE_COMPLETION"),
+        ),
+      8000,
+    );
+    expect(f.streamCalls()).toBe(0);
+    expect(JSON.stringify(f.manager.getBranch())).toContain('"toolCallId":"wire-shell"');
+  },
+);
 
 test("stop voice then stop work in one real execute still cancels the draining voice foreground after its report", async () => {
   const f = await fixture();

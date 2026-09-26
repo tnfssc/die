@@ -26,7 +26,12 @@ describe("Live voice settings (offline)", () => {
         modelForProvider("openai", { provider: "google", model: "gemini-3.8-live", openaiModel: chosen.model }),
       ).toBe("gpt-realtime-2.1-mini");
       expect(await readFile(path, "utf8")).not.toContain("apiKey");
-      const thinking = { provider: "google" as const, model: "gemini-3.8-live-extended-thinking" as const, googleModel: "gemini-3.8-live-extended-thinking" as const, openaiModel: chosen.model };
+      const thinking = {
+        provider: "google" as const,
+        model: "gemini-3.8-live-extended-thinking" as const,
+        googleModel: "gemini-3.8-live-extended-thinking" as const,
+        openaiModel: chosen.model,
+      };
       await saveLiveConfig(thinking, path);
       expect(await loadLiveConfig(path)).toEqual(thinking);
       expect(modelForProvider("openai", thinking)).toBe(chosen.model);

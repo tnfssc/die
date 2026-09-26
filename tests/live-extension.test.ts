@@ -1370,3 +1370,21 @@ test("branch navigation waits for admitted tool results before moving the owning
   await moving;
   expect(navigated).toBe(true);
 });
+
+test("extended thinking stays busy across filler turn completion until provider idle", async () => {
+  const t = setup({
+    config: {
+      load: async () => ({ provider: "google", model: "gemini-3.8-live-extended-thinking" }),
+      save: async () => {},
+    },
+  });
+  await t.run("start");
+  t.voice.onInteractionStatus?.("IN_PROGRESS");
+  t.voice.onTurnComplete?.(0);
+  await t.run("status");
+  expect(t.notices.at(-1)).toContain("Live thinking");
+  t.voice.onInteractionStatus?.("IDLE");
+  await t.run("status");
+  expect(t.notices.at(-1)).toContain("Live listening");
+  await t.run("stop");
+});

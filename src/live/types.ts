@@ -39,6 +39,8 @@ export interface VoiceCallbacks {
   onInterrupted?: (playbackEpoch: number) => void;
   /** turn is a monotonic turn identifier, not a reason to flush playback. */
   onTurnComplete?: (turn: number) => void;
+  /** Background reasoning may continue after an audio turn completes. */
+  onInteractionStatus?: (status: "IN_PROGRESS" | "IDLE") => void;
   onState?: (state: VoiceState) => void;
   onError?: (error: VoiceError) => void;
 }

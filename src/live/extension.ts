@@ -124,6 +124,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     private audioLaunchPending = false;
     state = "starting"; // lifecycle only: capture and pump run regardless of presentation
     speaking = false;
+    thinking = false;
     generationFinished = false;
     heardQueue = false;
     private renderTimer?: ReturnType<typeof setTimeout>;
@@ -188,7 +189,14 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         this.renderTimer = undefined;
       }
       this.lastRender = Date.now();
-      const presentation = this.state === "running" ? (this.speaking ? "speaking" : "listening") : "connecting";
+      const presentation =
+        this.state === "running"
+          ? this.speaking
+            ? "speaking"
+            : this.thinking
+              ? "thinking"
+              : "listening"
+          : "connecting";
       const status =
         "Live " +
         presentation +
@@ -403,6 +411,11 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               },
               getPlayedAudioMs: () => this.playback.playedMs,
               onInterrupted: (epoch) => this.interrupt(epoch),
+              onInteractionStatus: (status) => {
+                if (!this.alive) return;
+                this.thinking = status === "IN_PROGRESS";
+                this.render();
+              },
               onTurnComplete: () => {
                 if (this.provider === "google") this.cost.turnComplete();
                 if (this.alive) {
@@ -557,7 +570,13 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         ctx.ui.notify(
           current
             ? "Live " +
-                (current.state === "running" ? (current.speaking ? "speaking" : "listening") : "connecting") +
+                (current.state === "running"
+                  ? current.speaking
+                    ? "speaking"
+                    : current.thinking
+                      ? "thinking"
+                      : "listening"
+                  : "connecting") +
                 " · " +
                 LIVE_PROVIDERS[current.provider].label +
                 " voice model " +

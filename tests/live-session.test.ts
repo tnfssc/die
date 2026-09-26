@@ -1,3 +1,4 @@
+import { ThinkingLevel } from "@google/genai";
 import { describe, expect, test } from "bun:test";
 import { VoiceSession } from "../src/live/session.js";
 import liveSystemInstruction from "../src/prompts/live.md" with { type: "text" };
@@ -74,6 +75,7 @@ describe("voice-only SDK session", () => {
     });
     const connecting = s.connect("fake");
     expect(h.params.config?.systemInstruction).toBe("ordinary root prompt");
+    expect(h.params.config?.thinkingConfig).toBeUndefined();
     expect(h.params.config?.tools).toMatchObject([{ functionDeclarations: [{ name: "execute" }] }]);
     h.ready();
     await connecting;
@@ -108,17 +110,37 @@ describe("voice-only SDK session", () => {
   test("extended-thinking selected endpoint retains direct owner setup and transcription finality", async () => {
     const h = harness();
     const heard: unknown[] = [];
-    const s = new VoiceSession({ onInputTranscript: (t) => heard.push(t) }, h.adapter, {
-      instructions: "root", directMainAgent: true, tools: [{ name: "execute", parametersJsonSchema: { type: "object" } }],
-      userTranscript: () => {}, execute: async () => ({ content: [] }),
-    }, "gemini-3.8-live-extended-thinking");
+    const statuses: string[] = [];
+    const s = new VoiceSession(
+      { onInputTranscript: (t) => heard.push(t), onInteractionStatus: (status) => statuses.push(status) },
+      h.adapter,
+      {
+        instructions: "root",
+        directMainAgent: true,
+        tools: [{ name: "execute", parametersJsonSchema: { type: "object" } }],
+        userTranscript: () => {},
+        execute: async () => ({ content: [] }),
+      },
+      "gemini-3.8-live-extended-thinking",
+    );
     const pending = s.connect("fake");
     expect(h.params.model).toBe("gemini-3.8-live-extended-thinking");
-    expect(h.params.config).toMatchObject({ systemInstruction: "root", responseModalities: ["AUDIO"], tools: [{ functionDeclarations: [{ name: "execute" }] }] });
+    expect(h.params.config?.thinkingConfig?.thinkingLevel).toBe(ThinkingLevel.LOW);
+    expect(h.params.config).toMatchObject({
+      systemInstruction: "root",
+      responseModalities: ["AUDIO"],
+      tools: [{ functionDeclarations: [{ name: "execute" }] }],
+    });
     h.ready();
     await pending;
     h.params.callbacks.onmessage(msg({ serverContent: { inputTranscription: { text: "hello" } } }));
-    expect(heard).toEqual([expect.objectContaining({ text: "hello", finished: true, finalitySource: "model_contract" })]);
+    expect(heard).toEqual([
+      expect.objectContaining({ text: "hello", finished: true, finalitySource: "model_contract" }),
+    ]);
+    h.params.callbacks.onmessage(msg({ serverContent: { interactionStatus: "IN_PROGRESS", turnComplete: true } }));
+    expect(statuses).toEqual(["IN_PROGRESS"]);
+    h.params.callbacks.onmessage(msg({ serverContent: { interactionStatus: "IDLE", turnComplete: true } }));
+    expect(statuses).toEqual(["IN_PROGRESS", "IDLE"]);
     s.close();
   });
   test("ready only after SDK setup-accepted promise, VAD, mic and end idempotence", async () => {

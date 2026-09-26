@@ -13,3 +13,30 @@ Acceptance limits: offline fake transport is not a paid Google Live connection. 
 
 Durable worktree: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_1a7b19db-a86675007a5e-task_36c60681
 Branch: die/gemini-supported-thinking-implementation-36c60681
+
+Integration review added the missing thinking-session setup and UI lifecycle:
+- https://ai.google.dev/gemini-api/docs/live-api/thinking requires nonblocking
+  tools and distinguishes background reasoning from audio turn completion.
+- https://ai.google.dev/gemini-api/docs/live-api/capabilities lists low/medium/high
+  for Extended Thinking; minimal is unsupported and ordinary 3.8 must omit it.
+- Extended Thinking now sends SDK ThinkingLevel.LOW explicitly, matching Google's
+  example; no reasoning-level picker is added. Ordinary 3.8 sends no thinkingConfig.
+- SDK 2.24.0 exposes interactionStatus on LiveServerContent (not the top-level
+  message used in some guide snippets). IN_PROGRESS retains thinking presentation
+  across filler turnComplete; only IDLE clears it. Audio turn bookkeeping/cost and
+  transcript boundaries remain per provider turn, not conflated with session idle.
+- Both exact Gemini models exercise the real main-owner execute/shell/completion
+  route with fake provider transport and zero text-model streams.
+
+Parent integration path: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_1a7b19db
+Branch: die/restore-gpt-live-and-add-gemini-live-thi-1a7b19db.
+The first worker (task_643e2f05) was stopped after a tool syntax error and stalled
+model response; no code from it was integrated. Replacement task_36c60681 supplied
+ad14518 (integrated as aa6b1e7), then parent added the lifecycle fixes above.
+Values unchanged: honest state, one owner and protocol evidence already apply.
+
+Final integrated gate: bun run check passed; matching private CLI build using
+--reuse-web passed; SHELL=/bin/sh bun test ./tests: 1109 pass, 17 skip, 0 fail,
+27452 assertions / 1126 tests / 149 files (103.69s). Focused config/extension/
+session/cost suite: 79 pass, 0 fail. git diff --check passed. The 17 opt-in skips
+are not paid/device/LLM acceptance. No publish, release or install was performed.
