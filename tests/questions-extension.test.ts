@@ -236,8 +236,23 @@ test("detail uses the same unambiguous short ID as list, including saved-answer 
       throw Error(method);
     },
   };
-  registerQuestions({ on() {}, registerCommand(_name: string, value: any) { command = value; } } as any, () => service);
-  const ctx = { ui: { notify(text: string) { notices.push(text); }, setStatus() {} } };
+  registerQuestions(
+    {
+      on() {},
+      registerCommand(_name: string, value: any) {
+        command = value;
+      },
+    } as any,
+    () => service,
+  );
+  const ctx = {
+    ui: {
+      notify(text: string) {
+        notices.push(text);
+      },
+      setStatus() {},
+    },
+  };
   await command.handler("detail " + id, ctx);
   expect(notices.at(-1)).toContain("q_12345678 [answered] Which target?");
   expect(notices.at(-1)).toContain("/questions resume q_12345678");

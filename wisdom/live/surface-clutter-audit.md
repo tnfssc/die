@@ -18,3 +18,15 @@ Reviewed scoped paths: src/questions/extension.ts, src/ui/footer.ts, src/ui/star
 Integrated: bun test tests/goals.test.ts tests/goals-marker-sdk.test.ts tests/questions-extension.test.ts: 36 pass; TypeScript tsc --noEmit pass using temporary symlinks to sibling existing node_modules/runtime-assets (removed after checks). Initial combined run: 35 pass, two failures (goal blocked reminder regression fixed in subsequent change; questions TUI timed out waiting for “2 /questions” because this worktree lacks built dist/die). CLI worker had successful built-CLI TUI test and actual tmux frames; parent should run full gate with built CLI. Web worker targeted tests/tsc/build on its pinned source; integrated web build/browser not rerun here. No install, push or release.
 
 Values review: [wisdom/values.md](../values.md) #6 protects user input, #8 makes truth of actual surfaces central, #7 discourages unnecessary persistence, #10 requires resumable evidence. They already express the lesson; no values edit warranted. No new broad redesign proposed.
+
+## Parent integrated gate
+
+Integrated with history-banner removal, speech retention/no synthetic user
+prefixes and Realtime/Gemini streamed-duration fix. Parent full local gate
+passed:1194 tests,17 opt-in skips,zero failures;28661 assertions across
+166 files. Fresh CLI/web build, integrated web suites, format/lint/typecheck
+and standalone smoke passed. Log artifacts/surface-audio-retention-ci.log.
+Includes actual CLI PTY and offline provider input tests. No browser pixel,
+paid provider or physical audio acceptance. No push/release/install yet.
+Values reviewed again: existing clean-surface, truthful-state and bounded
+resource guidance covers these fixes. No values edit needed.

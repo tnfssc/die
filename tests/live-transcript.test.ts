@@ -125,12 +125,7 @@ test("finishing a live voice draft does not shrink the transcript widget", () =>
   for (let i = 0; i < 5; i++) log.receive("You", { text: `turn ${i}`, finished: true });
   log.receive("Voice", { text: "reply in progress" });
   const speaking = log.view((text) => text);
-  expect(speaking).toEqual([
-    "You: turn 2",
-    "You: turn 3",
-    "You: turn 4",
-    "Voice: reply in progress",
-  ]);
+  expect(speaking).toEqual(["You: turn 2", "You: turn 3", "You: turn 4", "Voice: reply in progress"]);
   log.finish("Voice", "turn-boundary");
   expect(log.view((text) => text)).toEqual(speaking);
 });
