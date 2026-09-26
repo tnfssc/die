@@ -607,7 +607,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         for (const update of this.initialContext) {
           if (this.gpt) {
             for (const chunk of gptLiveContext(update.text)) {
-              if (!this.gpt.observation(chunk)) throw new Error("GPT-Live initial context capacity reached");
+              if (!this.gpt.observation(chunk, update.options?.triggerResponse === true))
+                throw new Error("GPT-Live initial context capacity reached");
             }
           } else this.voice?.sendContext?.(update.text, update.options);
         }
