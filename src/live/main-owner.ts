@@ -255,7 +255,7 @@ async function acquire(
     if (!owner.accepting && !inFlight) {
       pending.delete(manager);
       if (drainingOwners.get(manager) === owner) drainingOwners.delete(manager);
-      if (!owner.delegatedVoice) session._runSystemPromptOptions = previousRunOptions;
+      session._runSystemPromptOptions = previousRunOptions;
       calls.clear();
       release();
     }

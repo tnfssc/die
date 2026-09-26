@@ -517,6 +517,18 @@ test("before-agent-start setActiveTools denial is not undone by Live acquisition
   expect(currentMainOwner(f.manager)).toBeUndefined();
 });
 
+test("paired voice stop without a backend turn restores the ordinary prompt options", async () => {
+  const f = fixture();
+  const previous = { selectedTools: ["execute"], forceSystemPrompt: "prior prompt" };
+  (f.session as any)._runSystemPromptOptions = previous;
+  const owner = await acquireMainOwner({} as any, f.ctx);
+  owner.delegatedVoice = true;
+  expect((f.session as any)._runSystemPromptOptions).not.toBe(previous);
+  owner.close();
+  await owner.released;
+  expect((f.session as any)._runSystemPromptOptions).toBe(previous);
+});
+
 test("GPT-Live delegation reuses one configured session turn, retries never rerun and voice stop does not cancel work", async () => {
   const f = fixture();
   const calls: string[] = [];
