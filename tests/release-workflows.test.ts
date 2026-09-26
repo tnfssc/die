@@ -219,10 +219,12 @@ describe("release automation", () => {
   test("publish selects only notes for the validated tag and fails closed", async () => {
     const workflow = await read(".github/workflows/release.yml");
     const publish = workflow.slice(workflow.indexOf("  publish:"));
-    expect(publish).toContain('notes_file=$(bun scripts/select-release-notes.ts "$RELEASE_TAG")');
-    expect(publish).toContain('--notes-file "$notes_file"');
-    expect(publish).not.toContain("--notes-file support/release-v0.11.1.md");
-    expect(publish.indexOf("notes_file=$(bun")).toBeLessThan(publish.indexOf("gh release create"));
+    expect(publish).toContain("bun scripts/publish-release.ts");
+    const implementation = await read("scripts/publish-release.ts");
+    expect(implementation).toContain("scripts/select-release-notes.ts");
+    expect(implementation).toContain('"--notes-file",');
+    expect(implementation).not.toContain("--notes-file support/release-v0.11.1.md");
+    expect(implementation.indexOf("scripts/select-release-notes.ts")).toBeLessThan(implementation.indexOf('"create",'));
     const directory = await mkdtemp(join(tmpdir(), "die-release-notes-"));
     try {
       await mkdir(join(directory, "support"));

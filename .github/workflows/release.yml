@@ -363,31 +363,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          notes_file=$(bun scripts/select-release-notes.ts "$RELEASE_TAG")
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            # No workflow starts from a GITHUB_TOKEN tag push; publish here after gates.
-            git fetch origin develop --tags
-            test "$(git rev-parse origin/develop)" = "$RELEASE_SHA" || { echo 'develop advanced during verification; refusing stale publication'; exit 1; }
-            if git show-ref --verify --quiet "refs/tags/$RELEASE_TAG"; then
-              echo 'Release tag already exists; refusing duplicate publication'; exit 1
-            fi
-            git push origin "$RELEASE_SHA:refs/tags/$RELEASE_TAG"
-          fi
-          gh release create "$RELEASE_TAG" \
-            --verify-tag \
-            --generate-notes \
-            --notes-file "$notes_file" \
-            --title "$RELEASE_TAG" \
-            dist/release/die-linux-x64 \
-            dist/release/die-linux-x64.sha256 \
-            dist/release/die-linux-arm64 \
-            dist/release/die-linux-arm64.sha256 \
-            dist/release/die-darwin-arm64 \
-            dist/release/die-darwin-arm64.sha256 \
-            dist/release/die-android-arm64 \
-            dist/release/die-android-arm64.sha256 \
-            dist/release/LICENSE \
-            dist/release/THIRD_PARTY_NOTICES.md \
-            dist/release/THIRD_PARTY_LICENSES.txt \
-            dist/release/SOURCE.txt
+          bun scripts/publish-release.ts
           echo "Published $RELEASE_TAG from $RELEASE_SHA with verified release assets." >> "$GITHUB_STEP_SUMMARY"

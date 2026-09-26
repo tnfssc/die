@@ -94,9 +94,11 @@ describe("manual release preparation", () => {
     expect(release).toContain('"$RELEASE_TAG"');
     expect(release).toContain("sha256sum die-linux-x64");
     const publish = jobs.publish!.steps.map((step) => step.run ?? "").join("\n");
-    expect(publish).toContain("git push origin");
-    expect(publish).toContain("--verify-tag");
-    expect(publish).toContain("die-android-arm64.sha256");
-    expect(publish).toContain("THIRD_PARTY_LICENSES.txt");
+    expect(publish).toContain("bun scripts/publish-release.ts");
+    const implementation = await Bun.file("scripts/publish-release.ts").text();
+    expect(implementation).toContain('git("push"');
+    expect(implementation).toContain("--verify-tag");
+    expect(implementation).toContain("die-android-arm64.sha256");
+    expect(implementation).toContain("THIRD_PARTY_LICENSES.txt");
   });
 });
