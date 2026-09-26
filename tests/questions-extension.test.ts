@@ -223,3 +223,23 @@ test("no-history sessions do not show a passive questions failure", async () => 
   await command.handler("list", ctx);
   expect(notices).toEqual(["Questions require a persistent session file"]);
 });
+
+test("detail uses the same unambiguous short ID as list, including saved-answer recovery", async () => {
+  let command: any;
+  const notices: string[] = [];
+  const id = "q_12345678-1234-4abc-8def-123456789abc";
+  const question = { id, text: "Which target?", status: "answered", answer: "Playback", delivery: "saved" };
+  const service = {
+    handle(method: string, params: any) {
+      if (method === "questions.list") return [question];
+      if (method === "questions.get") return params.id === id ? question : null;
+      throw Error(method);
+    },
+  };
+  registerQuestions({ on() {}, registerCommand(_name: string, value: any) { command = value; } } as any, () => service);
+  const ctx = { ui: { notify(text: string) { notices.push(text); }, setStatus() {} } };
+  await command.handler("detail " + id, ctx);
+  expect(notices.at(-1)).toContain("q_12345678 [answered] Which target?");
+  expect(notices.at(-1)).toContain("/questions resume q_12345678");
+  expect(notices.at(-1)).not.toContain(id);
+});

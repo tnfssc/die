@@ -1,0 +1,35 @@
+ Independent progress 25
+ Independent progress 26
+ Independent progress 27
+ Independent progress 28
+ Independent progress 29
+ Independent progress 30
+ Independent progress 31
+ Independent progress 32
+ Independent progress 33
+ Independent progress 34
+ Independent progress 35
+ Independent progress 36
+ Independent progress 37
+ Independent progress 38
+ Independent progress 39
+ Independent progress 40
+ Independent progress 41
+ Independent progress 42
+ Independent progress 43
+ Independent progress 44
+ Independent progress 45
+ Independent progress 46
+ Independent progress 47
+ Independent progress 48
+ Independent progress 49
+ Independent work complete
+
+
+ q_8e2aebb3-bd89-4d11-b040-692e195be030 [pending; waiting on you] Where is the crackle?
+ Requester: Audio diagnosis
+ Choices: Playback | Recording | Both (or your own answer)
+ Blocked follow-up: parent — Need the next audio test
+
+
+die-questions-tui-TE8U05 · 2 /questions · waiting on you · mode: orchestrator · $0.000 · ctx 0.2% · cache est ?   gpt-4o

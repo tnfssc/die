@@ -1,0 +1,40 @@
+[Skill conflicts]
+  ~/.die/agent/skills/malformed-fixture/SKILL.md
+    description is required
+
+
+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf
+ and restart tmux.
+
+
+die-startup-pty-LRmE4V · $0.000 · ctx 0% · cache est ?                                                            gpt-4o
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

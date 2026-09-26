@@ -81,12 +81,20 @@ test.skipIf(!hasTmux)(
       await send("/qprogress");
       expect(await until("Independent work complete")).toContain("2 /questions");
       await send("/questions detail " + q.id);
-      expect(await until("Audio diagnosis")).toContain("Need the next audio test");
+      const detailFrame = await until("Audio diagnosis");
+      expect(detailFrame).toContain("Need the next audio test");
+      expect(detailFrame).toContain(q.id.slice(0, 10) + " [pending");
+      expect(detailFrame).not.toContain(q.id + " [pending");
+      if (process.env.DIE_QUESTIONS_FRAME) await writeFile(process.env.DIE_QUESTIONS_FRAME, detailFrame);
       await send("/questions cancel " + second.id);
       await until("1 /questions");
       await tmux("kill-session", "-t", name);
       expect((await tmux("new-session", "-d", "-s", name, "-x", "120", "-y", "35", "-c", home, launch)).code).toBe(0);
       expect(await until("1 /questions")).toContain("waiting");
+      await send("/questions detail " + q.id.slice(0, 10));
+      const resumedDetail = await until("Audio diagnosis");
+      expect(resumedDetail).toContain(q.id.slice(0, 10) + " [pending");
+      expect(resumedDetail).not.toContain(q.id + " [pending");
       expect(service.get(ctx, q.id).status).toBe("pending");
       expect(service.get(ctx, second.id).status).toBe("cancelled");
     } finally {

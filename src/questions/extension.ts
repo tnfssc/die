@@ -145,9 +145,11 @@ export function registerQuestions(
             id: await resolveId(service, id),
           })) as Question | null;
           if (!question) throw new Error("Question not found: " + id);
+          const all = records(await service.handle("questions.list", {}));
+          const displayId = shortId(question, all);
           ctx.ui.notify(
             [
-              renderQuestion(question),
+              renderQuestion(question, displayId),
               question.requester && "Requester: " + question.requester,
               question.reason && "Why: " + question.reason,
               question.choices?.length &&
@@ -172,7 +174,7 @@ export function registerQuestions(
                     ? "Answer sent to parent"
                     : question.delivery === "queued"
                       ? "Answer saved · waiting for parent"
-                      : "Answer saved · /questions resume " + question.id),
+                      : "Answer saved · /questions resume " + displayId),
               question.resolutionReason && "Closed: " + question.resolutionReason,
               question.taskIds?.length &&
                 "Tasks: " + question.taskIds.join(", ") + ". Child in-place replies are not supported.",
