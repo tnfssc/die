@@ -68,6 +68,10 @@ Install your local build:
 bun run install:local
 ```
 
+## Maintainer release
+
+On GitHub (including mobile): **Actions → Release → Run workflow → develop → Run workflow**. No version input is needed: the workflow uses latest develop, prepares the next patch version and notes unless a newer stable version is already prepared, runs the native/build/updater/licensing gates, then publishes the checked assets from the exact tested commit. Check that the **Publish** job succeeds; a preparation commit alone is not a release. Requires the Actions bot to have permission to push develop and tags. Failed gates leave an untagged preparation commit; see [manual release recovery and limitations](wisdom/releases/manual-release-dispatch.md).
+
 ## Project wisdom
 
 - Released binaries currently support Linux x64/arm64, macOS Apple Silicon, and Android Termux arm64.
