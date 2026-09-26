@@ -1,4 +1,5 @@
-import { questionService, type Question } from "../questions/service";
+import { registerQuestions } from "../questions/extension";
+import { registerQuestionRuntime } from "../questions/runtime";
 import { currentMainOwner, currentMainToolOwner } from "../live/main-owner";
 import { requestForegroundStop } from "../tasks/foreground-stop";
 import { SessionHost, type SessionTaskPort } from "../session/host";
@@ -434,6 +435,9 @@ export default function asynchronousTasksExtension(
   registerTaskMonitor(pi, getManager);
   registerResumeSafeguards(pi);
 
+  const questions = registerQuestionRuntime(pi, { supported: () => subagentDepth === 0 && !t3NativeSession });
+  registerQuestions(pi, (ctx) => questions.commands(ctx));
+
   goals = registerGoalMode(pi, {
     runningIds: () =>
       new Set(
@@ -447,7 +451,7 @@ export default function asynchronousTasksExtension(
       if (!task) return "unavailable";
       return task.status === "running" ? "running" : "finished";
     },
-  });
+  }, { hasBlockingQuestions: () => questions.hasBlockingQuestions() });
   const history = new HistoryService();
   let service: JobService | undefined;
   const getService = (ctx: ExtensionContext) => {
@@ -517,52 +521,12 @@ export default function asynchronousTasksExtension(
   projectWisdom = registerProjectWisdom(pi, {
     isRoot: () => subagentDepth === 0,
   });
-  // The saved answer, not an execute socket or transcript guess, is the continuation authority.
-  // Only this live parent process may start a new turn; answers survive restart for manual resume.
-  const questionQueue: Array<{ question: Question; ctx: import("@earendil-works/pi-coding-agent").ExtensionContext }> =
-    [];
-  const deliverQuestions = () => {
-    while (questionQueue.length) {
-      const { question, ctx } = questionQueue[0]!;
-      const manager = ctx.sessionManager;
-      if (
-        !manager ||
-        manager.getSessionId() !== question.owner.sessionId ||
-        !manager.getBranch().some((entry) => entry.id === question.owner.branchId)
-      ) {
-        questionQueue.shift(); // Saved answer remains readable; wrong branch must never receive it.
-        continue;
-      }
-      if (!ctx.isIdle() || currentMainToolOwner(manager)) return;
-      questionQueue.shift();
-      pi.sendUserMessage(
-        "Answer saved for question " +
-          question.id +
-          " (version " +
-          question.version +
-          "): " +
-          question.answer +
-          "\nContinue from this answered question on the current parent branch. Do not resume a native child in place.",
-        { deliverAs: "followUp" },
-      );
-      return;
-    }
-  };
-  if (subagentDepth === 0) {
-    questionService.onAnswered = (question, ctx) => {
-      questionQueue.push({ question, ctx: ctx as import("@earendil-works/pi-coding-agent").ExtensionContext });
-      queueMicrotask(deliverQuestions);
-    };
-    pi.on("agent_end", () => {
-      setTimeout(deliverQuestions, 0);
-    });
-  }
   const executeControl = registerExecuteTool(
     pi,
     async (ctx, method, params, signal) => {
       if (method.startsWith("history.")) return history.handle(method, params, ctx);
       if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
-      if (method.startsWith("questions.")) return questionService.handle(method, params, ctx);
+      if (method.startsWith("questions.")) return questions.handle(ctx, method, params);
       if ((method === "jobs.stop" || method === "jobs.stopWork") && sessionHost)
         await sessionHost.confirmDelegatedAgentStop(
           method === "jobs.stopWork"
@@ -573,6 +537,7 @@ export default function asynchronousTasksExtension(
         );
       const result = await getService(ctx).handle(method, params, ctx, signal);
       if (method !== "jobs.stopWork") return result;
+      questions.pause();
       // The helper result must reach execute before aborting that foreground.
       // Async jobs are already requested through the same scoped JobService.
       const voiceOwner = currentMainToolOwner(ctx.sessionManager);

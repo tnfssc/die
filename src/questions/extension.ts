@@ -26,7 +26,7 @@ function renderQuestion(question: Question): string {
 /** No modal, focus transfer or repeated notification on background changes. */
 export function registerQuestions(
   pi: ExtensionAPI,
-  getService: () => QuestionCommands,
+  getService: (ctx: ExtensionContext) => QuestionCommands,
 ): { refresh: () => Promise<void> } {
   let context: ExtensionContext | undefined;
   let unsubscribe: (() => void) | undefined;
@@ -37,7 +37,7 @@ export function registerQuestions(
     if (!current) return;
     const token = generation;
     try {
-      const service = getService();
+      const service = getService(current);
       if (subscribed !== service) {
         unsubscribe?.();
         subscribed = service;
@@ -66,7 +66,7 @@ export function registerQuestions(
       const parts = args.trim().split(/\s+/).filter(Boolean);
       const [verb = "list", id, ...rest] = parts;
       try {
-        const service = getService();
+        const service = getService(ctx);
         if (verb === "list") {
           if (id) throw new Error("Usage: /questions [list|detail <id>|answer <id> <text>|cancel <id>]");
           const questions = records(await service.handle("questions.list", {}));
@@ -84,6 +84,10 @@ export function registerQuestions(
           if (!id || !answer) throw new Error("Usage: /questions answer <id> <text>");
           await service.handle("questions.answer", { id, answer });
           ctx.ui.notify("Answer saved for " + id, "info");
+        } else if (verb === "resume") {
+          if (!id || rest.length) throw new Error("Usage: /questions resume <id>");
+          await service.handle("questions.resume", { id });
+          ctx.ui.notify("Saved answer queued for a new parent turn: " + id, "info");
         } else if (verb === "cancel") {
           if (!id || rest.length) throw new Error("Usage: /questions cancel <id>");
           await service.handle("questions.cancel", { id });
@@ -102,6 +106,9 @@ export function registerQuestions(
     void refresh();
   };
   pi.on("session_start", (_event, ctx) => attach(ctx));
+  pi.on("session_switch", (_event, ctx) => attach(ctx));
+  pi.on("session_tree", (_event, ctx) => attach(ctx));
+  pi.on("tool_execution_end", (_event, ctx) => attach(ctx));
   pi.on("before_agent_start", (_event, ctx) => {
     if (context !== ctx) attach(ctx);
     else void refresh();
