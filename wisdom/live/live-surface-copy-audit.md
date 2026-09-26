@@ -7,3 +7,13 @@ Reviewed the rendered status/widget path, start/stop and setup handlers, model/p
 Retained actual state and facts: status still gives provider/model, connection, tools, native processing/configuration uncertainty, counters and provider interruptions; check status says the provider is disconnected, speaker result says it cannot prove AEC/barge-in, mic consent explains local privacy, setup gives concrete credential steps, errors remain actionable, stop reports incomplete teardown, and successful stop says Live off. Agent prompts and main-owner guards express required routing/stop semantics and were not simplified. Replayed transcripts use TranscriptLog content without a new banner; no historical messages rewritten. The exact direct-start ownership notice is owned by task_23cf854e and is intentionally untouched here (same file, different hunk); the GPT-Live start variant also remains for its separate semantics.
 
 Evidence: tests/live-extension.test.ts exercises actual notification/status generation including off/active, selected model and local checks; tests/live-picker-tui.test.ts renders the 80-column picker and "Live off · OpenAI voice model gpt-live-1." after selection; tests/live-transcript.test.ts verifies replay without banner. Targeted 81 tests passed; tsc --noEmit passed with installed Bun/TypeScript via explicit paths. Not paid-provider, physical-audio or browser acceptance. This is a focused copy pass, not an exhaustive audit of all tools, UI or old persisted history.
+
+Parent integration also removes the equivalent GPT-Live startup lecture.
+Both startup paths stay quiet; routing and stop semantics are unchanged.
+
+Integrated validation: typecheck and 64 focused extension/notice tests passed.
+Actual terminal picker tests passed at 80 and 120 columns with explicit
+Bun/Node PATH and SHELL=/bin/sh. First run failed before fixture startup
+with inherited shell environment; no production workaround added.
+No provider/device acceptance, push or release. Values unchanged; existing
+clean-surface guidance covers this removal.
