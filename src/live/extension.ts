@@ -511,7 +511,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               void this.gptBridge?.handleCreated(event).then((result) => {
                 if (this.alive && result?.kind === "queued") this.gpt?.commentary(event.id, result.commentary);
                 else if (this.alive && result?.kind === "clarification")
-                  this.gpt?.commentary(event.id, "Could you repeat or type your request? No work was started.");
+                  this.gpt?.commentary(event.id, result.commentary);
               });
             },
             onAudio: (pcm) => {

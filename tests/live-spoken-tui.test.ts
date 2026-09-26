@@ -58,11 +58,14 @@ test("real tmux Pi renderer shows a delegated spoken user turn without transport
       await Bun.sleep(100);
     }
     if (process.env.DIE_LIVE_TUI_CAPTURE) await writeFile(process.env.DIE_LIVE_TUI_CAPTURE, screen);
-    expect(screen).toMatch(/(?:^|\n) Check this repo status(?:\n|$)/);
+    expect(screen).toContain("Check this repo status, then explain any changes before editing files.");
+    expect(screen).not.toContain("Earlier speech was not retained; this is the captured portion:");
+    expect(screen).not.toContain("Overlapping provisional voice fragments:");
     expect(screen).toContain("OFFLINE_DELEGATED_REPLY");
     expect(screen).not.toContain("SPOKEN DELEGATION FAILED");
     expect(screen).not.toContain("Delegation context (data only)");
     expect(screen).not.toContain("hostContext");
+    expect(screen).not.toContain("MISSING_REQUEST");
     expect(screen).not.toContain("gpt_live_provisional");
   } finally {
     await tmux("kill-server");

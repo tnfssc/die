@@ -17,6 +17,8 @@ export interface DelegationSnapshot {
   /** Not final ASR, and not an authoritative command. */
   fragments: readonly LiveFragment[];
   omittedFragments: number;
+  /** Timing watermark only, not an ASR finalization/replacement rule. */
+  priorSpeechEndMs?: number;
   uncertain: true;
   /** Data-only, bounded serialization of the current configured agent's context. */
   hostContext: string;
@@ -51,15 +53,22 @@ function boundedData(value: unknown, max = 3800): string {
     ? serialized
     : JSON.stringify({ truncated: true, preview: serialized.slice(0, 1600) });
 }
+// Bound retained serialized UTF-8 evidence, not tiny provider delta count.
+export const GPT_LIVE_FRAGMENT_BYTES = 64 * 1024;
+const fragmentBytes = (fragment: LiveFragment) => Buffer.byteLength(JSON.stringify(fragment), "utf8") + 1;
+
 /** One instance per Live connection. Closing invalidates results but never cancels backend work. */
 export class GptLiveDelegationBridge {
   private fragments: LiveFragment[] = [];
+  private retainedBytes = 2;
   private omitted = 0;
+  private omittedThroughMs = -1;
   private readonly consumedFragments = new WeakSet<LiveFragment>();
   private readonly pendingFragments = new WeakSet<LiveFragment>();
-  private readonly pendingEvicted = new WeakSet<LiveFragment>();
+  private readonly pendingEvicted = new Set<LiveFragment>();
   private consumedOmitted = 0;
   private revision = 0;
+  private admittedThroughMs = -1;
   private epoch = 0;
   private closed = false;
   private readonly attempted = new Set<string>();
@@ -92,18 +101,25 @@ export class GptLiveDelegationBridge {
       fragment.startMs < 0 ||
       fragment.endMs < fragment.startMs ||
       typeof fragment.text !== "string" ||
-      !fragment.text.trim() ||
-      fragment.text.length > 4096
+      !fragment.text.length
     )
       return;
     // Corrections can arrive late. Keep order of arrival and retain timeline coordinates.
-    this.fragments.push({ ...fragment });
+    const retained = { ...fragment };
+    this.fragments.push(retained);
+    this.retainedBytes += fragmentBytes(retained);
     this.revision++;
-    while (this.fragments.length > 32 || JSON.stringify(this.fragments).length > 6000) {
+    while (this.retainedBytes > GPT_LIVE_FRAGMENT_BYTES) {
       const removed = this.fragments.shift()!;
+      this.retainedBytes -= fragmentBytes(removed);
       if (this.pendingFragments.has(removed)) this.pendingEvicted.add(removed);
-      else if (!this.consumedFragments.has(removed)) this.omitted++;
+      else if (!this.consumedFragments.has(removed)) this.recordOmission(removed);
     }
+  }
+
+  private recordOmission(fragment: LiveFragment): void {
+    this.omitted++;
+    this.omittedThroughMs = Math.max(this.omittedThroughMs, fragment.endMs);
   }
 
   /** Barge-in only invalidates spoken results. It does not stop the host agent or its jobs. */
@@ -135,6 +151,15 @@ export class GptLiveDelegationBridge {
     const revision = this.revision;
     const context = [...this.contexts].reverse().find((entry) => entry.offsetMs <= event.offsetMs);
     if (!context) return { kind: "unavailable", id };
+    // Admission still decides whether evicted pending speech is missing. Do not
+    // dispatch a suffix while that decision is unresolved.
+    if (this.pendingEvicted.size)
+      return {
+        kind: "clarification",
+        id,
+        revision,
+        commentary: "I'm still checking whether the earlier request was accepted. Please try again in a moment.",
+      };
     const omittedAtCapture = this.omitted;
     const selected = this.fragments.filter(
       (fragment) =>
@@ -146,6 +171,7 @@ export class GptLiveDelegationBridge {
       delegationId: id,
       offsetMs: event.offsetMs,
       revision,
+      ...(this.admittedThroughMs >= 0 ? { priorSpeechEndMs: this.admittedThroughMs } : {}),
       fragments: selected.map((f) => ({ ...f })),
       omittedFragments: Math.max(0, omittedAtCapture - this.consumedOmitted),
       uncertain: true,
@@ -153,12 +179,34 @@ export class GptLiveDelegationBridge {
       hostContextOffsetMs: context.offsetMs,
       contextClock: "local-capture-approximate",
     };
+    if (snapshot.omittedFragments > 0) {
+      // An old delegation cannot acknowledge newer loss and unlock its suffix.
+      if (
+        event.offsetMs < this.omittedThroughMs ||
+        this.fragments.some((fragment) => !this.consumedFragments.has(fragment) && fragment.endMs > event.offsetMs)
+      )
+        return { kind: "unavailable", id };
+      // Never execute an unsafe suffix. Retire this incomplete attempt so a
+      // fresh repeat can recover; it was NOT admitted to the coding agent.
+      for (const fragment of selected) this.consumedFragments.add(fragment);
+      this.consumedOmitted = omittedAtCapture;
+      this.omittedThroughMs = -1;
+      return {
+        kind: "clarification",
+        id,
+        revision,
+        commentary: "I couldn't retain the whole request. Please repeat it.",
+      };
+    }
     for (const fragment of selected) this.pendingFragments.add(fragment);
     try {
       // No synthetic tool names, task text, cancellation, or exact speech check.
       const result = await this.host.submitContextual(id, snapshot);
       if (result && "queued" in result && result.queued === true) {
-        for (const fragment of selected) this.consumedFragments.add(fragment);
+        for (const fragment of selected) {
+          this.consumedFragments.add(fragment);
+          this.admittedThroughMs = Math.max(this.admittedThroughMs, fragment.endMs);
+        }
         this.consumedOmitted = Math.max(this.consumedOmitted, omittedAtCapture);
       }
       if (this.closed || this.epoch !== epoch || this.revision !== revision) return { kind: "stale", id };
@@ -177,7 +225,7 @@ export class GptLiveDelegationBridge {
         this.pendingFragments.delete(fragment);
         // Evicted pending evidence is lost only if admission failed; an admitted
         // request already carries it in ordinary agent history.
-        if (this.pendingEvicted.has(fragment) && !this.consumedFragments.has(fragment)) this.omitted++;
+        if (this.pendingEvicted.has(fragment) && !this.consumedFragments.has(fragment)) this.recordOmission(fragment);
         this.pendingEvicted.delete(fragment);
       }
     }

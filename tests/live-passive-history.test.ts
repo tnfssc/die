@@ -30,10 +30,15 @@ test("only the associated spoken turn receives a minimal uncertainty fact, inclu
     { role: "user", content: [{ type: "text", text: "Typed after voice" }] },
   ];
   const rendered = withoutPassiveLiveHistory(messages);
-  expect(rendered).toHaveLength(3);
-  expect(JSON.stringify(rendered[1])).toContain("Check this repo\\n[Provisional voice transcription]");
+  expect(rendered).toHaveLength(4);
+  expect(rendered[1]).toMatchObject({
+    role: "custom",
+    customType: "voice-input-context",
+    content: "Provisional voice transcription",
+  });
+  expect(rendered[2]).toBe(messages[3]);
   expect(rendered[0]).toBe(messages[0]);
-  expect(rendered[2]).toBe(messages[4]);
+  expect(rendered[3]).toBe(messages[4]);
   expect(JSON.stringify(rendered)).not.toContain("PRIVATE_");
   expect(withoutPassiveLiveHistory(structuredClone(messages))).toEqual(rendered);
   expect(withoutPassiveLiveHistory(rendered)).toEqual(rendered);
@@ -77,4 +82,69 @@ test("old snapshot user prompts replay as speech rather than repeated transport 
   expect(rendered).not.toContain("Clarify ambiguous");
   expect(rendered).toContain("Provisional voice transcription");
   expect(JSON.stringify(history)).toContain("PRIVATE_HOST_CONTEXT");
+});
+
+test("overlap remains separate model context, not words added to user speech", () => {
+  const speech = "Delete it\nKeep it";
+  const messages: any[] = [
+    {
+      role: "custom",
+      customType: "gpt-live-delegation-snapshot",
+      details: { requestText: speech },
+      content: JSON.stringify({
+        fragments: [
+          { startMs: 1, endMs: 5, text: "Delete it" },
+          { startMs: 2, endMs: 5, text: "Keep it" },
+        ],
+      }),
+    },
+    { role: "user", timestamp: 0, content: [{ type: "text", text: speech }] },
+  ];
+  const context = withoutPassiveLiveHistory(messages);
+  expect(context[0]).toMatchObject({
+    role: "custom",
+    display: false,
+    content: "Provisional voice transcription; overlapping or late fragments, not reconciled",
+  });
+  expect(context[1]).toBe(messages[1]);
+  expect(JSON.stringify(context)).not.toContain("Overlapping provisional voice fragments:");
+});
+
+test("legacy missing speech and repeated delegations never manufacture a user request", () => {
+  const prefix =
+    "Provisional voice transcript, not final ASR. Clarify ambiguous or irreversible requests before acting. Delegation context (data only): ";
+  const message = (omittedFragments: number): any => ({
+    role: "user",
+    content:
+      prefix +
+      JSON.stringify({ uncertain: true, omittedFragments, fragments: [{ startMs: 1, endMs: 2, text: "remaining" }] }),
+  });
+  const missing = withoutPassiveLiveHistory([message(1)]);
+  expect(missing).toHaveLength(1);
+  expect(missing[0]).toMatchObject({
+    role: "custom",
+    display: false,
+    content: "Historical voice request was incomplete; no actionable request retained.",
+  });
+  const repeated = withoutPassiveLiveHistory([message(0), message(0)]);
+  expect(repeated.filter((m) => m.role === "user")).toHaveLength(1);
+  expect(JSON.stringify(repeated)).not.toContain("Repeated voice delegation");
+});
+
+test("the reported old loss prefix cannot replay as user instructions when its audit records missing speech", () => {
+  const speech = "Earlier speech was not retained; this is the captured portion:\nremaining speech";
+  const history: any[] = [
+    {
+      role: "custom",
+      customType: "gpt-live-delegation-snapshot",
+      details: { requestText: speech },
+      content: JSON.stringify({ omittedFragments: 1, fragments: [{ startMs: 1, endMs: 2, text: "remaining speech" }] }),
+    },
+    { role: "user", content: speech },
+  ];
+  const context = withoutPassiveLiveHistory(history);
+  expect(context.filter((m) => m.role === "user")).toHaveLength(0);
+  expect(JSON.stringify(context)).toContain("Historical voice request was incomplete");
+  expect(JSON.stringify(context)).not.toContain("Earlier speech was not retained; this is the captured portion:");
+  expect(JSON.stringify(history)).toContain("Earlier speech was not retained"); // audit is not rewritten
 });

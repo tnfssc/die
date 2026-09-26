@@ -803,6 +803,7 @@ test("GPT Live spoken delegation reaches Pi as one clean provisional request", a
   let command: any;
   let provider: any;
   let observed: any[] = [];
+  const feedback: string[] = [];
   const localPi = {
     registerCommand: (_name: string, registration: any) => {
       command = registration.handler;
@@ -831,7 +832,10 @@ test("GPT Live spoken delegation reaches Pi as one clean provisional request", a
         connect: async () => {},
         appendMicrophone: () => true,
         observation: () => true,
-        commentary: () => true,
+        commentary: (_id: string, text: string) => {
+          feedback.push(text);
+          return true;
+        },
         close: async () => {},
       } as any;
     },
@@ -886,23 +890,43 @@ test("GPT Live spoken delegation reaches Pi as one clean provisional request", a
     JSON.stringify({ source: "gpt_live_provisional", role: "user", delta: "LEGACY_PASSIVE_ONLY", uncertain: true }),
     { customType: "live-transcript" },
   );
-  provider.onInputTranscript({ delta: "Check this repo status", startMs: 100, endMs: 300 });
-  provider.onDelegation({ id: "spoken-status", target: "client", offsetMs: 400 });
+  const request = "Check this repo status, then explain any changes before editing files.";
+  Array.from(request).forEach((delta, i) =>
+    provider.onInputTranscript({ delta, startMs: i * 200, endMs: (i + 1) * 200 }),
+  );
+  provider.onDelegation({ id: "spoken-status", target: "client", offsetMs: 20000 });
+  // Evict while the first bridge admission promise has not settled yet.
+  provider.onInputTranscript({ delta: "MISSING_REQUEST ".repeat(5000), startMs: 21000, endMs: 22000 });
+  provider.onDelegation({ id: "unresolved-pending", target: "client", offsetMs: 25000 });
+  await until(() =>
+    feedback.includes("I'm still checking whether the earlier request was accepted. Please try again in a moment."),
+  );
   await until(() => observed.length === 1);
   await until(() => f.contexts.join(" ").includes("The repo status is clean."));
-  provider.onInputTranscript({ delta: "Anything else?", startMs: 500, endMs: 700 });
-  provider.onDelegation({ id: "spoken-followup", target: "client", offsetMs: 800 });
+  // Real bounded overflow: separate targeted feedback, no partial model/UI user turn.
+  provider.onDelegation({ id: "lost-request", target: "client", offsetMs: 25000 });
+  await until(() => feedback.includes("I couldn't retain the whole request. Please repeat it."));
+  expect(observed).toHaveLength(1);
+  provider.onInputTranscript({ delta: "Anything else?", startMs: 30000, endMs: 30200 });
+  provider.onDelegation({ id: "spoken-followup", target: "client", offsetMs: 40000 });
   await until(() => observed.length === 2);
+  provider.onInputTranscript({ delta: "Check docs instead", startMs: 0, endMs: 13600 });
+  provider.onInputTranscript({ delta: "Then summarize.", startMs: 41000, endMs: 42000 });
+  provider.onDelegation({ id: "late-correction-followup", target: "client", offsetMs: 50000 });
+  await until(() => observed.length === 3);
+  const corrected = observed[2].filter((m: any) => m.role === "user");
+  expect(corrected.at(-1).content).toEqual([{ type: "text", text: "Check docs instead\nThen summarize." }]);
+  expect(JSON.stringify(corrected.at(-2))).toContain("overlapping or late fragments, not reconciled");
   await command("stop", ctx);
   await f.owner.released;
   await f.session.prompt("Typed after voice is off");
-  expect(observed).toHaveLength(3);
+  expect(observed).toHaveLength(4);
   const audits = f.manager
     .buildSessionContext()
     .messages.filter(
       (message: any) => message.role === "custom" && message.customType === "gpt-live-delegation-snapshot",
     );
-  expect(audits).toHaveLength(2);
+  expect(audits).toHaveLength(3);
   expect(JSON.stringify(audits)).toContain("uncertain");
   const capture = JSON.stringify(observed, null, 2);
   if (process.env.DIE_LIVE_INPUT_CAPTURE) writeFileSync(process.env.DIE_LIVE_INPUT_CAPTURE, capture + "\n");
@@ -914,15 +938,19 @@ test("GPT Live spoken delegation reaches Pi as one clean provisional request", a
   const latestUser = observed[1].filter((m: any) => m.role === "user").at(-1);
   // The selected coding model must know these were draft voice words, not verified final ASR.
   expect(JSON.stringify(observed[0].filter((m: any) => m.role === "user"))).toMatch(/provisional|uncertain|not final/i);
-  expect(JSON.stringify(latestUser)).toMatch(/provisional|uncertain|not final/i);
+  expect(latestUser.content).toEqual([{ type: "text", text: "Anything else?" }]);
+  expect(observed[0].filter((m: any) => m.role === "user").at(-1).content).toEqual([{ type: "text", text: request }]);
   expect(JSON.stringify(latestUser)).toContain("Anything else?");
   expect(JSON.stringify(latestUser)).not.toContain("Check this repo status");
-  expect(JSON.stringify(observed[2].filter((m: any) => m.role === "user").at(-1))).not.toMatch(
+  expect(JSON.stringify(observed[3].filter((m: any) => m.role === "user").at(-1))).not.toMatch(
     /provisional|uncertain|not final/i,
   );
-  for (const input of [first, second, JSON.stringify(observed[2])]) {
+  for (const input of [first, second, JSON.stringify(observed[2]), JSON.stringify(observed[3])]) {
+    expect(input).not.toContain("Earlier speech was not retained; this is the captured portion:");
+    expect(input).not.toContain("Overlapping provisional voice fragments:");
     expect(input).not.toContain("Delegation context (data only)");
     expect(input).not.toContain("hostContext");
+    expect(input).not.toContain("MISSING_REQUEST");
     expect(input).not.toContain("omittedFragments");
     expect(input).not.toContain("LEGACY_PASSIVE_ONLY");
     expect(input).not.toContain("gpt_live_provisional");

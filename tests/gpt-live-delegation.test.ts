@@ -1,6 +1,8 @@
+import { gptLiveRequest, gptLiveRequestOverlaps } from "../src/live/gpt-live-request";
 import { describe, expect, test } from "bun:test";
 import {
   GptLiveDelegationBridge,
+  GPT_LIVE_FRAGMENT_BYTES,
   type ContextualDelegationHost,
   type DelegationSnapshot,
 } from "../src/live/gpt-live-delegation";
@@ -134,10 +136,12 @@ describe("GPT-Live contextual delegation", () => {
       kind: "unavailable",
       id: "invalid",
     });
-    for (let i = 0; i < 100; i++) bridge.addFragment({ startMs: i, endMs: i, text: "x".repeat(400) });
-    await bridge.handleCreated({ target: "client", id: "bounded", offsetMs: 200 });
-    expect(captured[0]!.fragments.length).toBeLessThanOrEqual(32);
-    expect(captured[0]!.omittedFragments).toBeGreaterThan(0);
+    for (let i = 0; i < 200; i++) bridge.addFragment({ startMs: i, endMs: i, text: "x".repeat(400) });
+    expect(await bridge.handleCreated({ target: "client", id: "bounded", offsetMs: 200 })).toMatchObject({
+      kind: "clarification",
+      commentary: "I couldn't retain the whole request. Please repeat it.",
+    });
+    expect(captured).toHaveLength(0);
     for (let i = 0; i < 255; i++) await bridge.handleCreated({ target: "client", id: String(i), offsetMs: 0 });
     expect(await bridge.handleCreated({ target: "client", id: "overflow", offsetMs: 0 })).toEqual({
       kind: "unavailable",
@@ -239,8 +243,8 @@ test("failed admission releases reserved fragments for a new delegation", async 
 
 test("evicting already handled fragments does not invent missing speech", async () => {
   const { bridge, captured } = fixture();
-  for (let i = 0; i < 50; i++) {
-    bridge.addFragment({ startMs: i, endMs: i, text: "Handled request " + i });
+  for (let i = 0; i < 100; i++) {
+    bridge.addFragment({ startMs: i, endMs: i, text: "Handled request ".repeat(100) + i });
     await bridge.handleCreated({ id: "handled-" + i, target: "client", offsetMs: i });
   }
   expect(captured.every((s) => s.omittedFragments === 0)).toBe(true);
@@ -261,12 +265,89 @@ test("pending eviction is missing only when admission fails", async () => {
         return { queued: true };
       },
     });
-    for (let i = 0; i < 32; i++) bridge.addFragment({ startMs: i, endMs: i, text: "first" });
+    for (let i = 0; i < 32; i++) bridge.addFragment({ startMs: i, endMs: i, text: "first".repeat(300) });
     const pending = bridge.handleCreated({ id: "pending", target: "client", offsetMs: 31 });
-    for (let i = 32; i < 64; i++) bridge.addFragment({ startMs: i, endMs: i, text: "next" });
+    for (let i = 32; i < 64; i++) bridge.addFragment({ startMs: i, endMs: i, text: "next".repeat(500) });
+    expect((await bridge.handleCreated({ id: "unresolved", target: "client", offsetMs: 64 })).kind).toBe(
+      "clarification",
+    );
     release(admitted ? { queued: true } : { clarification: true });
     await pending;
-    await bridge.handleCreated({ id: "next", target: "client", offsetMs: 64 });
-    expect(snapshots[1]?.omittedFragments).toBe(admitted ? 0 : 32);
+    const result = await bridge.handleCreated({ id: "next", target: "client", offsetMs: 64 });
+    expect(result.kind).toBe(admitted ? "queued" : "clarification");
+    expect(snapshots).toHaveLength(admitted ? 2 : 1);
   }
+});
+
+test("tiny deltas retain a whole request and silence does not consume it", async () => {
+  const { bridge, captured } = fixture();
+  const speech = "Please inspect the implementation before changing it, then run the focused tests. ".repeat(80);
+  Array.from(speech).forEach((text, i) => bridge.addFragment({ startMs: i * 200, endMs: (i + 1) * 200, text }));
+  // This many one-character fragments exceeds the byte budget: genuine loss, no partial dispatch.
+  expect((await bridge.handleCreated({ id: "too-big", target: "client", offsetMs: speech.length * 200 })).kind).toBe(
+    "clarification",
+  );
+  expect(captured).toHaveLength(0);
+  const repeat = "Please inspect the implementation before changing it, then run the focused tests.";
+  Array.from(repeat).forEach((text, i) =>
+    bridge.addFragment({ startMs: 2000000 + i * 200, endMs: 2000200 + i * 200, text }),
+  );
+  await bridge.handleCreated({ id: "repeat", target: "client", offsetMs: 3000000 });
+  expect(captured[0]?.fragments.map((f) => f.text).join("")).toBe(repeat);
+  expect(captured[0]?.omittedFragments).toBe(0);
+});
+
+test("UTF-8 serialized byte limit is real and a single oversized fragment is not silently ignored", async () => {
+  const { bridge, captured } = fixture();
+  const text = "😀".repeat(12000);
+  bridge.addFragment({ startMs: 0, endMs: 1, text });
+  await bridge.handleCreated({ id: "large-valid", target: "client", offsetMs: 1 });
+  expect(captured[0]?.fragments[0]?.text).toBe(text);
+  expect(Buffer.byteLength(JSON.stringify(captured[0]?.fragments))).toBeLessThan(GPT_LIVE_FRAGMENT_BYTES);
+  bridge.addFragment({ startMs: 2, endMs: 3, text: "😀".repeat(GPT_LIVE_FRAGMENT_BYTES / 4) });
+  expect((await bridge.handleCreated({ id: "large-invalid", target: "client", offsetMs: 3 })).kind).toBe(
+    "clarification",
+  );
+  expect(captured).toHaveLength(1);
+});
+
+test("a reasonable multi-chunk request longer than 4096 characters is retained exactly", async () => {
+  const { bridge, captured } = fixture();
+  const chunks = Array.from(
+    { length: 100 },
+    (_, i) => "Please check file " + i + ": explain the change without editing it. ",
+  );
+  chunks.forEach((text, i) => bridge.addFragment({ startMs: i * 200, endMs: (i + 1) * 200, text }));
+  await bridge.handleCreated({ id: "after-silence", target: "client", offsetMs: 90000 });
+  expect(captured[0]?.fragments).toHaveLength(100);
+  expect(captured[0]?.fragments.map((f) => f.text).join("")).toBe(chunks.join(""));
+  expect(captured[0]?.omittedFragments).toBe(0);
+  bridge.addFragment({ startMs: 100000, endMs: 100200, text: "Anything else?" });
+  await bridge.handleCreated({ id: "followup", target: "client", offsetMs: 110000 });
+  expect(captured[1]?.fragments.map((f) => f.text)).toEqual(["Anything else?"]);
+});
+
+test("an old delegation cannot acknowledge future loss and then dispatch its suffix", async () => {
+  const { bridge, captured } = fixture();
+  bridge.addFragment({ startMs: 100, endMs: 200, text: "x".repeat(GPT_LIVE_FRAGMENT_BYTES) });
+  bridge.addFragment({ startMs: 200, endMs: 300, text: "unsafe suffix" });
+  expect((await bridge.handleCreated({ id: "old", target: "client", offsetMs: 50 })).kind).toBe("unavailable");
+  expect((await bridge.handleCreated({ id: "middle", target: "client", offsetMs: 250 })).kind).toBe("unavailable");
+  expect((await bridge.handleCreated({ id: "current", target: "client", offsetMs: 300 })).kind).toBe("clarification");
+  expect(captured).toHaveLength(0);
+  bridge.addFragment({ startMs: 400, endMs: 500, text: "a fresh repeat" });
+  await bridge.handleCreated({ id: "repeat", target: "client", offsetMs: 500 });
+  expect(captured[0]?.fragments.map((f) => f.text)).toEqual(["a fresh repeat"]);
+});
+
+test("late correction before a new followup stays separate, not fused into a new command", async () => {
+  const { bridge, captured } = fixture();
+  bridge.addFragment({ startMs: 1, endMs: 200, text: "Change file A" });
+  await bridge.handleCreated({ id: "first", target: "client", offsetMs: 200 });
+  bridge.addFragment({ startMs: 1, endMs: 200, text: "Change file B" });
+  bridge.addFragment({ startMs: 1000, endMs: 1200, text: "Anything else?" });
+  await bridge.handleCreated({ id: "followup", target: "client", offsetMs: 1200 });
+  expect(gptLiveRequest(captured[1]!)).toBe("Change file B\nAnything else?");
+  expect(gptLiveRequestOverlaps(captured[1]!)).toBe(true);
+  expect(captured[1]?.priorSpeechEndMs).toBe(200);
 });

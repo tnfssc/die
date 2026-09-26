@@ -1,3 +1,5 @@
+Follow-up: [retained GPT speech](retained-gpt-speech.md) corrects the small fragment cap, second truncation, and synthetic loss/overlap wording described below. These original captures document the earlier implementation, not the current retention guarantee.
+
 # Clean GPT-Live coding-agent input
 
 Baseline d9a2d32 sent the speech repeatedly: passive custom records converted to user messages, plus a user prompt beginning "Provisional voice transcript, not final ASR. Clarify ambiguous or irreversible requests before acting. Delegation context (data only): " followed by a full snapshot. The snapshot included text/delta copies, IDs, offsets and serialized host context. Later snapshots replayed old requests.

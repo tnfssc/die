@@ -30,14 +30,10 @@ test("overlapping provisional alternatives are not fabricated into one command",
         { startMs: 2, endMs: 5, text: "Keep it" },
       ]),
     ),
-  ).toBe("Overlapping provisional voice fragments:\nDelete it\nKeep it");
+  ).toBe("Delete it\nKeep it");
 });
-test("actual loss is explicit and an absent request stays absent", () => {
+test("missing speech refuses a partial request; retained speech is never sliced again", () => {
   expect(gptLiveRequest(snapshot([], 3))).toBe("");
-  expect(gptLiveRequest(snapshot([{ startMs: 1, endMs: 2, text: "remaining speech" }], 1))).toBe(
-    "Earlier speech was not retained; this is the captured portion:\nremaining speech",
-  );
-  expect(gptLiveRequest(snapshot([{ startMs: 1, endMs: 2, text: "a".repeat(5000) }]))).toContain(
-    "Earlier speech was not retained",
-  );
+  expect(gptLiveRequest(snapshot([{ startMs: 1, endMs: 2, text: "remaining speech" }], 1))).toBe("");
+  expect(gptLiveRequest(snapshot([{ startMs: 1, endMs: 2, text: "a".repeat(5000) }]))).toBe("a".repeat(5000));
 });
