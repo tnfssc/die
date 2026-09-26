@@ -61,3 +61,24 @@ test("question commands keep status pinned without stealing focus or repeating n
   hooks.get("session_shutdown")!({}, ctx);
   expect(statuses.has("die-questions")).toBe(false);
 });
+
+test("CLI binds the ID without flattening free-text spacing", async () => {
+  let command: any;
+  let received: any;
+  const pi = {
+    on: () => {},
+    registerCommand: (_name: string, value: any) => {
+      command = value;
+    },
+  };
+  const service = {
+    handle: (method: string, params: any) => {
+      if (method === "questions.answer") received = params;
+      return [];
+    },
+  };
+  const ctx = { ui: { setStatus: () => {}, notify: () => {} } };
+  registerQuestions(pi as any, () => service);
+  await command.handler("answer q_one keep  these   spaces\nnext line", ctx);
+  expect(received).toEqual({ id: "q_one", answer: "keep  these   spaces\nnext line" });
+});

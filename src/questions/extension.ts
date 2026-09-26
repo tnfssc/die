@@ -157,7 +157,11 @@ export function registerQuestions(
             "info",
           );
         } else if (verb === "answer") {
-          const answer = rest.join(" ").trim();
+          const answer =
+            args
+              .trim()
+              .match(/^answer\s+\S+\s+([\s\S]+)$/)?.[1]
+              .trim() ?? "";
           if (!id || !answer) throw new Error("Usage: /questions answer <id> <text>");
           await service.handle("questions.answer", { id, answer });
           ctx.ui.notify("Answer saved for " + id, "info");
