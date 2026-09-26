@@ -316,7 +316,16 @@ export class VoiceSession {
     if (this.stateValue !== "ready" || !this.connection) return;
     try {
       this.connection.sendToolResponse({
-        functionResponses: { id, name, response, scheduling: FunctionResponseScheduling.WHEN_IDLE },
+        functionResponses: {
+          id,
+          name,
+          response,
+          // Extended Thinking rejects function response scheduling; use its
+          // required asynchronous tool flow without WHEN_IDLE.
+          ...(this.model === "gemini-3.8-live-extended-thinking"
+            ? {}
+            : { scheduling: FunctionResponseScheduling.WHEN_IDLE }),
+        },
       });
     } catch {
       this.fail("transport_error", "Could not send tool response");

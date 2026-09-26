@@ -137,6 +137,12 @@ describe("voice-only SDK session", () => {
     expect(heard).toEqual([
       expect.objectContaining({ text: "hello", finished: true, finalitySource: "model_contract" }),
     ]);
+    h.params.callbacks.onmessage(msg({ toolCall: { functionCalls: [{ id: "extended-1", name: "execute", args: {} }] } }));
+    await Bun.sleep(0);
+    expect(h.sends).toContainEqual({
+      functionResponses: { id: "extended-1", name: "execute", response: expect.any(Object) },
+    });
+    expect(JSON.stringify(h.sends)).not.toContain("WHEN_IDLE");
     h.params.callbacks.onmessage(msg({ serverContent: { interactionStatus: "IN_PROGRESS", turnComplete: true } }));
     expect(statuses).toEqual(["IN_PROGRESS"]);
     h.params.callbacks.onmessage(msg({ serverContent: { interactionStatus: "IDLE", turnComplete: true } }));
