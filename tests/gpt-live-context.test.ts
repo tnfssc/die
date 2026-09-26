@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { gptLiveContext } from "../src/live/gpt-live-context";
 
 test("voice observations are bounded UTF8 JSON data with explicit canonical provenance and loss", () => {
-  for (const text of ["", "typed message", "\\\"\n".repeat(3000), "💬".repeat(3000)]) {
+  for (const text of ["", "typed message", '\\"\n'.repeat(3000), "💬".repeat(3000)]) {
     const chunks = gptLiveContext(text);
     expect(chunks.length).toBeLessThanOrEqual(40);
     for (const [index, chunk] of chunks.entries()) {

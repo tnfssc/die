@@ -11,6 +11,7 @@ import {
 import { loadLiveConfig, saveLiveConfig, type LiveConfig } from "./config";
 import { VoiceCostTracker, VOICE_COST_ENTRY } from "./cost";
 import { GPTLiveSession, type GPTLiveCallbacks } from "./gpt-live-session";
+import { gptLiveContext } from "./gpt-live-context";
 import { GptLiveDelegationBridge } from "./gpt-live-delegation";
 import { GptLivePlaybackRecovery } from "./gpt-live-playback";
 import { OpenAIRealtimeSession } from "./openai-session";
@@ -119,7 +120,10 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
     gpt?: GPTLiveSession;
     gptBridge?: GptLiveDelegationBridge;
     gptPlayback?: GptLivePlaybackRecovery;
-    private gptStartedAt = 0;
+    private gptCaptureMs = 0;
+    private gptContext = "";
+    private gptContextOmitted = 0;
+    private gptSpeechEpoch = 0;
 
     orchestration?: VoiceOrchestration;
     private inputUtterance = "";
@@ -341,9 +345,20 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
       try {
         const deliver = (text: string, options?: { triggerResponse?: boolean }) => {
           if (!this.alive) return;
+          // Already heard/produced by the frontend; persist for the coder without echoing it.
+          if (text.startsWith('{"source":"gpt_live_provisional"')) return;
+          if (this.model === OPENAI_LIVE_MODEL) {
+            this.gptContext = text.slice(-3200);
+            this.gptContextOmitted = Math.max(0, text.length - 3200);
+          }
           if (this.gpt?.state === "ready") {
-            this.gptBridge?.saveContext(Math.max(0, Math.floor(performance.now() - this.gptStartedAt)));
-            this.gpt.observation(text);
+            this.gptBridge?.saveContext(Math.floor(this.gptCaptureMs));
+            for (const chunk of gptLiveContext(text)) {
+              if (!this.gpt.observation(chunk, options?.triggerResponse === true)) {
+                this.fail("GPT-Live context delivery capacity reached; reconnect voice. Coding work is unchanged.");
+                return;
+              }
+            }
           } else if (this.voice?.state === "ready") this.voice.sendContext?.(text, options);
           else {
             this.initialContextBytes += Buffer.byteLength(text);
@@ -376,11 +391,13 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 if (this.gpt) {
                   const transition = this.gptPlayback?.capture(pcm);
                   if (transition === "started") {
+                    this.gptSpeechEpoch++;
                     this.gptBridge?.interrupt();
                     this.owner?.interrupt();
                     this.transcriptLog.finish("Voice", "interrupted");
                   }
                   this.gpt.appendMicrophone(pcm);
+                  this.gptCaptureMs += pcm.length / 32;
                 } else this.voice?.sendAudio(pcm.toString("base64"));
                 this.render();
               }
@@ -415,9 +432,15 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         }
         stage = "provider-construction";
         if (this.model === OPENAI_LIVE_MODEL) {
-          this.gptStartedAt = performance.now();
+          this.gptCaptureMs = 0;
           this.gptBridge = new GptLiveDelegationBridge({
-            context: () => ({ sessionId: this.sessionId, selectedModel: this.ctx.model?.id, cwd: this.ctx.cwd }),
+            context: () => ({
+              sessionId: this.sessionId,
+              selectedModel: this.ctx.model?.id,
+              cwd: this.ctx.cwd,
+              canonicalContext: this.gptContext,
+              omittedContextCharacters: this.gptContextOmitted,
+            }),
             submitContextual: async (id, snapshot) => {
               if (!this.alive || !this.owner?.delegate) return { clarification: true };
               const speech = snapshot.fragments
@@ -426,6 +449,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 .slice(-4096)
                 .trim();
               if (!speech) return { clarification: true };
+              const speechEpoch = this.gptSpeechEpoch;
               // Admission precedes completion; do not await long-running work on the socket callback.
               void this.owner
                 .delegate(
@@ -435,7 +459,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
                 )
                 .then(
                   () => {
-                    if (this.alive)
+                    if (this.alive && this.gptSpeechEpoch === speechEpoch)
                       this.gpt?.commentary(
                         id,
                         "Configured coding-agent turn ended; consult session history for its outcome.",
@@ -462,11 +486,25 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
             onInputTranscript: (fragment) => {
               if (!this.alive) return;
               this.gptBridge?.addFragment({ ...fragment, text: fragment.delta });
+              this.owner?.sendContext(
+                JSON.stringify({ source: "gpt_live_provisional", role: "user", ...fragment, uncertain: true }),
+                { customType: "live-transcript" },
+              );
               this.transcriptLog.receive("You", { text: fragment.delta, finished: false });
               this.render();
             },
             onOutputTranscript: (fragment) => {
               if (!this.alive) return;
+              this.owner?.sendContext(
+                JSON.stringify({
+                  source: "gpt_live_provisional",
+                  role: "assistant",
+                  ...fragment,
+                  uncertain: true,
+                  playbackVerified: false,
+                }),
+                { customType: "live-transcript" },
+              );
               this.transcriptLog.receive("Voice", { text: fragment.delta, finished: false });
               this.render();
             },
@@ -482,7 +520,10 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
               if (this.alive) this.gptPlayback?.output(Buffer.from(pcm));
             },
             onUsage: (usage) => this.cost.usage(usage),
-            onError: () => this.fail("GPT-Live provider failed"),
+            onError: (message) => this.fail(message),
+            onClosed: () => {
+              if (this.alive) this.fail("GPT-Live provider closed");
+            },
           });
         } else {
           this.voice = deps.voice(
@@ -561,8 +602,11 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           return;
         }
         for (const update of this.initialContext) {
-          if (this.gpt) this.gpt.observation(update.text);
-          else this.voice?.sendContext?.(update.text, update.options);
+          if (this.gpt) {
+            for (const chunk of gptLiveContext(update.text)) {
+              if (!this.gpt.observation(chunk)) throw new Error("GPT-Live initial context capacity reached");
+            }
+          } else this.voice?.sendContext?.(update.text, update.options);
         }
         this.initialContext = [];
         this.initialContextBytes = 0;
@@ -575,7 +619,9 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         else this.playback.start();
         if (!this.alive) return;
         this.ctx.ui.notify(
-          "Live owns this session. Typed messages go to voice; /live stop returns to text. Speech interruption does not cancel work.",
+          this.gpt
+            ? "GPT-Live speaks for your selected coding agent. Typed and spoken work share this session; /live stop closes voice, not work."
+            : "Live owns this session. Typed messages go to voice; /live stop returns to text. Speech interruption does not cancel work.",
           "info",
         );
         this.waveTimer = setInterval(() => this.render(true), 80);
@@ -622,12 +668,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           selected = await loading;
           loaded = true;
         } catch (error) {
-          ctx.ui.notify(
-            String(error).includes("GPT-Live is no longer supported")
-              ? "GPT-Live is no longer supported. Edit ~/.die/live-settings.json to select gpt-realtime-2.1, or remove it to use Gemini. No fallback was started."
-              : "Could not read Live settings; selection unchanged. Fix settings before using Live.",
-            "error",
-          );
+          ctx.ui.notify("Could not read Live settings; selection unchanged. Fix settings before using Live.", "error");
           loading = undefined;
           return;
         }

@@ -14,6 +14,7 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
   let sessionStart!: () => void;
   let beforeTree!: () => Promise<void>;
   let voiceCallbacks!: VoiceCallbacks;
+  let ownerCallbacks: any;
   let orchestration: VoiceOrchestration | undefined;
   const contexts: string[] = [];
   const ownerEvents: any[] = [];
@@ -57,6 +58,7 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
     speakerCheck: async () => "Test signal detected; compare mic/speaker route manually.",
     owner: async (_pi, _ctx, callbacks) => {
       ownerAcquires++;
+      ownerCallbacks = callbacks;
       return {
         orchestration: {
           instructions: "Effective main-agent instructions",
@@ -184,6 +186,7 @@ function setup(overrides: Partial<LiveDependencies> = {}) {
     },
   };
   return {
+    deliverContext: (text: string) => ownerCallbacks?.onContext?.(text),
     navigate: () => beforeTree(),
     stop: (context: any = ctx) => stopCurrentLive(pi, context),
     run: (arg: string) => handler(arg, ctx),
@@ -1172,7 +1175,7 @@ describe("Live provider selection", () => {
       return undefined;
     };
     await restarted.run("model");
-    expect(choices[0]).toEqual(["gpt-realtime-2.1", "gpt-realtime-2.1-mini (selected)"]);
+    expect(choices[0]).toEqual(["gpt-realtime-2.1", "gpt-realtime-2.1-mini (selected)", "gpt-live-1"]);
     expect(keys).toEqual([]);
     expect(models).toEqual([]);
     expect(audio).toBe(0);
@@ -1386,7 +1389,17 @@ test("GPT-Live routes client delegation to selected main owner, keeps transcript
   });
   await f.run("start");
   expect(f.starts).toBe(1);
+  f.deliverContext("canonical coding result ".repeat(1000));
+  expect(observations.length).toBeGreaterThan(1);
+  for (const chunk of observations) expect(Buffer.byteLength(chunk)).toBeLessThanOrEqual(480);
+  const beforeTranscript = observations.length;
+  callbacks.onOutputTranscript({ delta: "provisional answer", startMs: 20, endMs: 80 });
   callbacks.onInputTranscript({ delta: "please inspect", startMs: 100, endMs: 300 });
+  expect(observations).toHaveLength(beforeTranscript);
+  expect(f.contexts.some((text) => text.includes("gpt_live_provisional") && text.includes("playbackVerified"))).toBe(
+    true,
+  );
+  callbacks.onDelegation({ id: "d1", target: "client", offsetMs: 400 });
   callbacks.onDelegation({ id: "d1", target: "client", offsetMs: 400 });
   await tick();
   const delegated = f.ownerEvents.filter((event: any) => event[0] === "delegate");
