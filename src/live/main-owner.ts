@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { validateToolArguments } from "@earendil-works/pi-ai";
@@ -27,8 +28,8 @@ export type MainOwner = {
   beginInput?(): void;
   inputTranscript(text: string, final?: boolean): void;
   typedInput(text: string): void | Promise<void>;
-  /** GPT-Live client delegation uses the selected ordinary agent, never voice tool arguments. */
-  delegate?(id: string, text: string): Promise<void>;
+  /** Idempotent selected-model turn on this same classic session. */
+  delegate?(id: string, snapshotPrompt: string): Promise<void>;
   delegatedVoice?: boolean;
   outputTranscript(text: string, final?: boolean): void;
   sendContext(text: string, metadata?: { customType: string; details?: unknown }): void;
@@ -42,6 +43,11 @@ export type MainOwner = {
   stopForeground(): void;
   captureStopWorkReport?(report: unknown): void;
 };
+const delegatedAdmission = new AsyncLocalStorage<object>();
+export function runDelegatedMainTurn<T>(manager: object, run: () => Promise<T>): Promise<T> {
+  return delegatedAdmission.run(manager, run);
+}
+function isDelegated(manager: object): boolean { return delegatedAdmission.getStore() === manager; }
 const owners = new WeakMap<object, MainOwner & { identity: string; accepting: boolean }>();
 const pending = new WeakMap<object, Promise<void>>();
 const drainingOwners = new WeakMap<object, MainOwner & { identity: string; accepting: boolean }>();
@@ -83,6 +89,7 @@ export function currentMainToolOwner(manager: object): MainOwner | undefined {
 /** Installed at the already-pinned instruction-continuity seam. */
 export async function beforeOrdinaryPrompt(manager: object): Promise<void> {
   const owner = currentMainOwner(manager);
+  if (isDelegated(manager)) return;
   if (owner || acquiring.has(manager))
     throw new Error("Ordinary text model runs are unavailable while Live owns this session");
   await pending.get(manager);
@@ -91,6 +98,7 @@ export async function beforeOrdinaryPrompt(manager: object): Promise<void> {
 }
 /** Keep the admission check and the text-run reservation in the same synchronous step. */
 export async function withOrdinaryMainTurn<T>(manager: object, run: () => Promise<T>): Promise<T> {
+  if (isDelegated(manager)) return run();
   const draining = pending.get(manager);
   if (draining) await draining;
   if (currentMainOwner(manager) || acquiring.has(manager))
@@ -182,6 +190,10 @@ async function acquire(
   const instruction = prepared.systemPromptOptions.forceSystemPrompt ?? session.systemPrompt;
   if (!instruction) throw new Error("Effective root instructions are unavailable");
   let inFlight = 0;
+  const delegated = new Map<string, { text: string; operation: Promise<void> }>();
+  let delegatedTail: Promise<void> = Promise.resolve();
+  let backendRunning = false;
+  let backendStopped = false;
   let release!: () => void;
   const released = new Promise<void>((resolve) => {
     release = resolve;
@@ -190,8 +202,6 @@ async function acquire(
   let outputDraft = "";
   let counter = 0;
   let retainedToolBytes = 0;
-  const delegated = new Map<string, { text: string; operation: Promise<void> }>();
-  let delegatedTail: Promise<void> = Promise.resolve();
   let turnPreparation: Promise<void> = Promise.resolve();
   // A revoked ASR turn must not authorize a waiting execute (or poison the next turn).
   let pendingTranscript: { result: Promise<boolean>; settle: (final: boolean) => void } | undefined;
@@ -238,7 +248,7 @@ async function acquire(
     if (!owner.accepting && !inFlight) {
       pending.delete(manager);
       if (drainingOwners.get(manager) === owner) drainingOwners.delete(manager);
-      session._runSystemPromptOptions = previousRunOptions;
+      if (!owner.delegatedVoice) session._runSystemPromptOptions = previousRunOptions;
       calls.clear();
       release();
     }
@@ -390,21 +400,17 @@ async function acquire(
       inputDraft = text;
       if (final) {
         const finalText = inputDraft;
-        appendText("user", finalText);
+        if (!owner.delegatedVoice) {
+          appendText("user", finalText);
+          prepareUserTurn(finalText);
+        }
         inputDraft = "";
-        prepareUserTurn(finalText);
         settleTranscript(true);
       }
     },
     async typedInput(text) {
       if (owner.delegatedVoice) {
-        void owner.delegate?.("typed-" + ++counter, text).then(
-          () =>
-            callbacks.onContext?.(
-              "Typed request: configured coding-agent turn ended; consult session history for outcome.",
-            ),
-          (error) => callbacks.onError?.("Typed Live delegation failed: " + String(error)),
-        );
+        await owner.delegate!("typed-" + ++counter, text);
         return;
       }
       if (!valid()) return;
@@ -414,29 +420,27 @@ async function acquire(
       if (valid()) callbacks.onInput?.(text);
     },
     delegate(id, text) {
-      if (!valid()) return Promise.reject(new Error("Live owner is no longer active"));
-      if (!id || id.length > 256 || !text.trim() || text.length > 16_384)
-        return Promise.reject(new Error("Invalid delegation"));
-      const previous = delegated.get(id);
-      if (previous) {
-        if (previous.text !== text) return Promise.reject(new Error("Delegation ID reused with different context"));
-        return previous.operation; // Never repeat an admitted operation after interruption.
-      }
+      if (!owner.delegatedVoice || !valid()) return Promise.reject(new Error("Paired Live owner unavailable"));
+      if (!id || id.length > 256 || !text.trim() || text.length > 16_384) return Promise.reject(new Error("Invalid delegation"));
+      const prior = delegated.get(id);
+      if (prior) return prior.text === text ? prior.operation : Promise.reject(new Error("Delegation ID reused with different context"));
       if (delegated.size >= 256) return Promise.reject(new Error("Live delegation capacity reached"));
       inFlight++;
-      const operation = delegatedTail
-        .catch(() => {})
-        .then(async () => {
-          if (!valid()) throw new Error("Live owner closed before delegation");
-          // Pi owns the selected model, effective instructions, permission hooks, tools,
-          // persistence and continuation. Calling the session agent directly avoids a
-          // second coding-agent session or a fabricated execute function call.
-          await (session as OwnerSession & { _runAgentPrompt(messages: string): Promise<void> })._runAgentPrompt(text);
-        })
-        .finally(() => {
-          inFlight--;
-          checkRelease();
-        });
+      const operation = delegatedTail.catch(() => {}).then(async () => {
+        // Admission was reserved synchronously above. Closing voice does not revoke work.
+        if (backendStopped) throw new Error("Delegated backend stopped explicitly");
+        if (!sameBranch(owner, manager)) throw new Error("Session branch changed before delegation");
+        backendRunning = true;
+        const start = session.agent.state.messages.length;
+        // The ordinary prompt rebuilds its own selected-tool and instruction frame.
+        session._runSystemPromptOptions = undefined;
+        try {
+          await runDelegatedMainTurn(manager, () => session.prompt(text, { expandPromptTemplates: false, source: "interactive" }));
+          const reply = session.agent.state.messages.slice(start).filter((m) => m.role === "assistant")
+            .flatMap((m) => m.content.filter((p) => p.type === "text").map((p) => p.text)).join("\n").trim();
+          if (reply && sameBranch(owner, manager)) callbacks.onContext?.(reply);
+        } finally { backendRunning = false; }
+      }).finally(() => { inFlight--; checkRelease(); });
       delegated.set(id, { text, operation });
       delegatedTail = operation;
       return operation;
@@ -479,8 +483,9 @@ async function acquire(
       for (const controller of controllers) stopWorkReports.set(controller, report);
     },
     stopForeground() {
-      if (owner.delegatedVoice && inFlight) session.agent.abort();
+      backendStopped = true;
       for (const controller of controllers) controller.abort("stop-work");
+      if (backendRunning) void session.abort();
     },
     close() {
       if (!owner.accepting) return;

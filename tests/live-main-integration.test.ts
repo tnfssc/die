@@ -203,7 +203,7 @@ test("main Live owns first-turn instructions, actual execute and background comp
 test("Live first turn applies production context and before/after tool hooks; typed route cannot steal owner", async () => {
   const f = await fixture({ hooks: true });
   expect(f.observed.context).toBeGreaterThan(0);
-  await f.session.prompt("typed turn must not invoke another model");
+  await f.owner.typedInput("typed turn must not invoke another model");
   expect(f.typed).toEqual(["typed turn must not invoke another model"]);
   expect(f.streamCalls()).toBe(0);
   const denied = await f.owner.orchestration.execute({

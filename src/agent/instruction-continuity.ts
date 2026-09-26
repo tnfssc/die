@@ -1,4 +1,4 @@
-import { withOrdinaryMainTurn } from "../live/main-owner";
+import { beforeOrdinaryPrompt, withOrdinaryMainTurn } from "../live/main-owner";
 import type { Agent, AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import { AgentSession, type NormalizedBuildSystemPromptOptions } from "@earendil-works/pi-coding-agent";
@@ -26,6 +26,8 @@ export type ClassicSession = {
   getActiveToolNames(): string[];
   _runSystemPromptOptions?: NormalizedBuildSystemPromptOptions;
   _runAgentPrompt(messages: AgentMessage | AgentMessage[]): Promise<void>;
+  prompt(text: string, options?: { expandPromptTemplates?: boolean; source?: "interactive" }): Promise<void>;
+  abort(): Promise<void>;
   _preparePromptAndToolLoadout(
     options: NormalizedBuildSystemPromptOptions,
     messages?: AgentMessage[],
@@ -136,13 +138,18 @@ export function installCurrentConversationAdapter(): void {
   if (classicAdapterInstalled) return;
   const prototype = AgentSession.prototype as unknown as ClassicSession;
   const runAgentPrompt = prototype._runAgentPrompt;
+  const prompt = prototype.prompt;
   const buildRuntime = prototype._buildRuntime;
-  if (typeof runAgentPrompt !== "function" || typeof buildRuntime !== "function") {
+  if (typeof runAgentPrompt !== "function" || typeof prompt !== "function" || typeof buildRuntime !== "function") {
     throw new Error(
       "die instruction continuity is unsupported by this Pi runtime: required private AgentSession._runAgentPrompt/_buildRuntime seams are unavailable",
     );
   }
   classicAdapterInstalled = true;
+  prototype.prompt = async function (this: ClassicSession, text, options) {
+    await beforeOrdinaryPrompt(this.sessionManager);
+    return prompt.call(this, text, options);
+  };
   prototype._runAgentPrompt = async function (this: ClassicSession, messages: AgentMessage | AgentMessage[]) {
     return withOrdinaryMainTurn(this.sessionManager, async () => {
       const frame = currentInstructionFrame(this.sessionManager);
