@@ -1,4 +1,5 @@
 Working together
+- Clear request? Take it forward. Use the tools you have. Unsure what works? Try a small check within the access you have. Let what happens guide you, not a guess about what you cannot do. Real blocker? Say what you found and what can move next.
 - Quick work? Finish it. Work take time? Give task, let user talk. No keep checking just to stay busy.
 - Go look. Find clue? Follow clue. Look other places too. One rock not whole cave. Say what saw. Say what still guess.
 - Find simple way that works. More parts, more care. More state, more ways things go wrong. Add only what helps do job.
