@@ -215,7 +215,7 @@ export function completionPreview(
     component((width) => {
       if (expanded)
         return foldedRows(text, width, 0, 0, true).map((line, index) =>
-          index === 0 ? theme.fg(kind === "task-attention" ? "warning" : "accent", line) : line,
+          index === 0 && kind !== "task-attention" ? theme.fg("accent", line) : line,
         );
       if (width < 1) return [];
       const tasks = Array.isArray(details?.tasks) ? details.tasks : [];
@@ -226,7 +226,7 @@ export function completionPreview(
 
       if (kind === "task-attention") {
         const label = "⚠ Task attention · " + (first || "running task needs attention");
-        return [truncateToWidth(theme.fg("warning", label), width)];
+        return [truncateToWidth(label, width)];
       }
 
       const aggregate = details?.taskStatusCounts;
@@ -243,8 +243,8 @@ export function completionPreview(
       }
 
       const pieces: string[] = [];
-      const add = (color: "success" | "error" | "warning", value: string) => {
-        if (value) pieces.push(theme.fg(color, value));
+      const add = (color: "success" | "error" | "warning" | "normal", value: string) => {
+        if (value) pieces.push(color === "normal" ? value : theme.fg(color, value));
       };
 
       // Metadata can be capped for large batches. Surface an omitted failure
@@ -274,9 +274,9 @@ export function completionPreview(
 
       for (const notice of attention) {
         const id = safeMetadata(notice?.id);
-        add("warning", "⚠ " + (id ? id + " needs attention" : "task needs attention"));
+        add("normal", "⚠ " + (id ? id + " needs attention" : "task needs attention"));
       }
-      if (omittedAttention) add("warning", "⚠ " + omittedAttention + " more need attention");
+      if (omittedAttention) add("normal", "⚠ " + omittedAttention + " more need attention");
 
       if (omittedTasks && !hasAggregate) add("warning", "? " + omittedTasks + " task details omitted");
       if (!pieces.length) add("warning", "? Task completion · " + (first || "unknown task update"));

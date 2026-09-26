@@ -162,6 +162,33 @@ test("task completion and attention collapse to recognizable summaries without o
   expect(attention.join("\n")).not.toContain("SECRET_PROGRESS");
 });
 
+test("attention notices use normal terminal color without weakening failures", () => {
+  const colors: string[] = [];
+  const trackingTheme = {
+    fg: (color: string, text: string) => {
+      colors.push(color);
+      return text;
+    },
+  } as any;
+  const content = "task_2 needs a progress checkpoint.\nProgress details";
+  for (const expanded of [false, true]) {
+    colors.length = 0;
+    const rows = completionPreview(content, expanded, trackingTheme, 0, "task-attention").render(100);
+    expect(rows.join("\n")).toContain("task_2 needs a progress checkpoint");
+    expect(colors).not.toContain("warning");
+  }
+  colors.length = 0;
+  const mixed = completionPreview("tasks updated", false, trackingTheme, 0, "task-complete", {
+    tasks: [{ id: "task_bad", status: "failed" }],
+    attention: [{ id: "task_waiting" }],
+    omittedAttention: 1,
+  }).render(100);
+  expect(mixed[0]).toContain("task_waiting needs attention");
+  expect(mixed[0]).toContain("1 more need attention");
+  expect(colors).toContain("error");
+  expect(colors).not.toContain("warning");
+});
+
 test("failed task and execute summaries retain failure status", () => {
   const failedTask = completionPreview("1 asynchronous task completed.\noutput", false, theme, 0, "task-complete", {
     tasks: [{ id: "task_bad", status: "failed", exitCode: 7 }],
