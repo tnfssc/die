@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { LiveFragmentGroups } from "../src/live/transcript";
 import { TranscriptLog, type TranscriptEntry } from "../src/session/transcript";
 
-test("complete received text persists while viewport identifies clipped and omitted lines", () => {
+test("complete received text persists while viewport clips long lines without history banner", () => {
   const saved: TranscriptEntry[] = [];
   const log = new TranscriptLog((e) => saved.push(e));
   const long = "x".repeat(3000);
@@ -11,8 +11,9 @@ test("complete received text persists while viewport identifies clipped and omit
   expect(saved[0]).toEqual({ speaker: "You", text: long, status: "final" });
   expect(log.view((s) => s)[0]).toContain("earlier text saved");
   for (let i = 0; i < 40; i++) log.receive("Voice", { text: String(i), finished: true });
-  expect(log.view((s) => s)[0]).toContain("Earlier conversation saved");
-  expect(saved.length).toBe(41);
+  expect(log.view((s) => s)).toHaveLength(4);
+  expect(log.view((s) => s).join("\n")).not.toContain("Earlier conversation saved");
+  expect(saved).toHaveLength(41);
 });
 
 test("model-contract final segments are distinct; turn boundaries and interruptions do not imply hearing", () => {
@@ -125,7 +126,6 @@ test("finishing a live voice draft does not shrink the transcript widget", () =>
   log.receive("Voice", { text: "reply in progress" });
   const speaking = log.view((text) => text);
   expect(speaking).toEqual([
-    "Earlier conversation saved in session history.",
     "You: turn 2",
     "You: turn 3",
     "You: turn 4",
