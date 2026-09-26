@@ -26,3 +26,9 @@ Replacement task_4c542233:
 branch die/finish-and-verify-unified-live-picker-4c542233
 base e6242a75a925e399fa7e286f11226616c87b90ce.
 It will review/apply draft and finish actual picker proof and commits.
+
+## Released
+
+Included in v0.15.0. See wisdom/releases/release-v0.15.0.md for final
+proof, scope and limits. Prior in-progress entries above are history.
+No local installation or paid/device acceptance claimed.

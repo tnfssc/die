@@ -17,3 +17,9 @@ branch die/research-persistent-asynchronous-user-qu-ccdefa31
 base 2b58227be64c72f83c4c9050a4e668e2e4eabbad.
 Will produce wisdom/questions/ source-based research and architecture fit.
 No follow-up release authorization requested or given yet.
+
+## Released
+
+Included in v0.15.0. See wisdom/releases/release-v0.15.0.md for final
+proof, scope and limits. Prior in-progress entries above are history.
+No local installation or paid/device acceptance claimed.

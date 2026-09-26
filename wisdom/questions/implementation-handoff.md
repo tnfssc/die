@@ -53,3 +53,9 @@ Final frozen-source surface reviewer task_ca07c996:
 branch die/final-questions-user-and-agent-surface-r-ca07c996.
 It checks actual terminal and model-facing surfaces plus runtime/races.
 Await review and model picker task_a3d8cf19, combine, then release gate.
+
+## Released
+
+Included in v0.15.0. See wisdom/releases/release-v0.15.0.md for final
+proof, scope and limits. Prior in-progress entries above are history.
+No local installation or paid/device acceptance claimed.
