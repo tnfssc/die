@@ -21,6 +21,8 @@ describe("manual release preparation", () => {
       );
       await writeFile(join(root, "package.json"), '{"version": "0.15.2"}\n');
       git("init", "-q");
+      git("config", "user.name", "Test");
+      git("config", "user.email", "test@example.com");
       git(
         "-c",
         "user.name=Test",
