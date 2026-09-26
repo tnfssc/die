@@ -77,3 +77,15 @@ and verification preference. Updated remote historical metadata and this release
 handoff; added concise support notes. Values unchanged: whole-path proof, truthful
 limits, bounded state, simple ownership and clean user/agent surfaces already cover
 the repeated lessons. No new blanket caveat or value is warranted.
+
+## Published
+
+v0.15.2 published at 2026-09-26T13:06:54Z: https://github.com/tnfssc/die/releases/tag/v0.15.2.
+Tag SHA: 3a0fa90e806b274214bc8ca15b5fbc56cad0290c.
+Exact-SHA CI: https://github.com/tnfssc/die/actions/runs/36243471112.
+Exact-SHA release dry run: https://github.com/tnfssc/die/actions/runs/36243471109.
+Tag release: https://github.com/tnfssc/die/actions/runs/36243984065.
+All passed. All 12 release assets are uploaded and nonempty; release is public,
+not draft or prerelease. Metadata: [publication](v0.15.2-publication.json).
+No binary download or local install. Post-release values review found no new
+lesson beyond existing surface clarity, whole-path proof and honest limits.
