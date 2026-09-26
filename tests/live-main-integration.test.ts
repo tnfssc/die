@@ -695,8 +695,9 @@ test("paired execute can stop voice then work through the production scoped help
     return { stopped: true, errors: [], jobsUnchanged: true };
   });
   let calls = 0;
-  f.session.agent.streamFunction = ((model: any) => {
-    calls++;
+  let observedAbort = false;
+  f.session.agent.streamFunction = ((model: any, _context: any, options: any) => {
+    if (!options?.signal?.aborted) calls++;
     const stream = createAssistantMessageEventStream();
     const message: any = {
       role: "assistant",
@@ -725,13 +726,25 @@ test("paired execute can stop voice then work through the production scoped help
         },
       ],
     };
-    stream.push({ type: "done", reason: "toolUse", message });
+    if (options?.signal?.aborted) {
+      observedAbort = true;
+      message.content = [];
+      message.stopReason = "aborted";
+      stream.push({ type: "error", reason: "aborted", error: message });
+      return stream;
+    }
+    if (calls > 1) {
+      message.content = [{ type: "text", text: "Unexpected extra model turn" }];
+      message.stopReason = "stop";
+    }
+    stream.push({ type: "done", reason: calls > 1 ? "stop" : "toolUse", message });
     return stream;
   }) as any;
   await f.owner.delegate!("explicit-both-stop", "Explicit user request: stop voice then current-session work");
   await f.owner.released;
-  expect(calls).toBe(1);
   const results = f.manager.buildSessionContext().messages.filter((m) => m.role === "toolResult");
+  expect(observedAbort).toBe(true);
+  expect(calls).toBe(1);
   expect(JSON.stringify(results)).not.toContain("PAIRED_SHOULD_NOT_REACH");
   expect(JSON.stringify(results)).toContain("cancel");
 }, 10000);
