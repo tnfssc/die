@@ -7,15 +7,15 @@ Bounded experiments, not a feature, service installer, or SSH implementation.
 
 From the repository root, with its locked dependencies and Bun on PATH:
 
-
 ```sh
 bun run prepare:assets
 bun experiments/remote-workspaces/demo.ts
 ```
 
-The demo creates disposable private fixture directories, starts two independent local
-runtime processes over owner-only Unix sockets, asserts results, then terminates its
-processes and removes the fixtures. On macOS and Linux (uses /bin/sh and Unix sockets).
+The demo uses a short `/tmp` socket path for Unix socket compatibility on macOS. It
+creates disposable private fixture directories, starts two independent local runtime
+processes over owner-only Unix sockets, asserts results, then terminates its processes
+and removes the fixtures. On macOS and Linux (uses /bin/sh and Unix sockets).
 No compiled die binary or model/provider access needed.
 
 Expected summary:
@@ -28,7 +28,6 @@ B: link closed while shell running; local scripted controller suspended
 B reconnect: {"job":"completed","remoteAgentStarts":0,"nextTurnWhileDetached":false,...}
 B: abandoned response reconciled by ID; second execute side effect exactly once
 PASS: target fs + shell; A controller continues; B only job continues; status/output reconnect; no duplicate effects
-
 ```
 
 ## What it exercises
@@ -50,7 +49,6 @@ PASS: target fs + shell; A controller continues; B only job continues; status/ou
   the same ID. Different code under an existing ID is rejected. Side effects occur once.
 
 ## Actual agent loop, offline fake model
-
 
 ```sh
 bun run build  # if dist/die is not already built

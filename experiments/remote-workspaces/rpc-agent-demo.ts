@@ -4,6 +4,7 @@
  */
 import { mkdir, mkdtemp, readFile, writeFile, rename, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const rootArg = process.argv[3];
 if (process.argv[2] === "--viewer" || process.argv[2] === "--reconnect") {
@@ -31,7 +32,7 @@ if (process.argv[2] === "--viewer" || process.argv[2] === "--reconnect") {
   }
   throw Error("viewer timed out");
 }
-const root = await mkdtemp("/var/tmp/die-option-a-");
+const root = await mkdtemp(join(tmpdir(), "die-option-a-"));
 const target = join(root, "target"),
   home = join(root, "home"),
   agentDir = join(root, "agent");

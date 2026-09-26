@@ -7,8 +7,7 @@
 - Worktree: /Users/sharath/.die/worktrees/die-f528e86af6b5-task_3515c928
 - Branch: die/prototype-persistent-remote-workspace-3515c928
 - Code/commands: [experiments/remote-workspaces](../../experiments/remote-workspaces/README.md).
-- Prior research read from parent: /Users/sharath/Private/home/Code/die/wisdom/remote-workspaces/ssh-research.md
-  (absent at this worktree's base). Read values before work and checked them again before handoff.
+- Prior research copied from the parent into [ssh-research.md](ssh-research.md). Read values before work and checked them again before handoff.
 - Discovery worker: /Users/sharath/.die/worktrees/die-f528e86af6b5-task_3515c928-f528e86af6b5-task_3ded1446,
   branch die/discover-remote-session-reuse-3ded1446 (research only, no edits).
 - Actual-agent offline probe worker: /Users/sharath/.die/worktrees/die-f528e86af6b5-task_3515c928-f528e86af6b5-task_946f2a5e,
@@ -146,3 +145,11 @@ execute replay. Implement only the chosen product shape, not both as a new frame
 
 Values unchanged: truthful evidence, one owner, stable IDs/reconciliation and using the
 simplest existing boundary already cover these lessons. Added feature-specific wisdom.
+
+## PR preparation (2026-09-26)
+
+- Final worktree: `/Users/sharath/.die/worktrees/die-f528e86af6b5-task_7a2ffa64`; branch: `die/pr-remote-workspace-research-and-prototy-7a2ffa64`; base: `origin/develop` at `eb56ca2`. Historical prototype worktree above retained for provenance.
+- Cherry-picked only the two prototype commits; copied the relevant parent `ssh-research.md` into this feature wisdom. No production code or voice fix changed. The research remains advisory; this PR implements neither SSH transport nor a remote service.
+- Reviewed disposable fixture cleanup, private local sockets, fake loopback model credentials, bounded event handling and no external listeners. Changed the actual-agent fixture to use system temp directory; kept short `/tmp` path for the Unix-socket A/B demo on macOS. Removed parent-machine research path from runnable context.
+- On this macOS worktree: `bun install --frozen-lockfile`, `bun run build`, both commands in the experiment README passed. A/B probe reported local target fs/shell, detached owner continuation and explicit B suspension; actual-agent probe reported PASS with three fake model turns and two execute tools. These are local process observations, **not real SSH/provider proof**. Direct strict experiment `tsc --ignoreConfig --noEmit --strict --skipLibCheck --target ES2022 --module Preserve --moduleResolution Bundler --types bun experiments/remote-workspaces/*.ts src/assets.d.ts` passed. Markdown links and `git diff --check` passed. Biome check does not process `experiments/**` by repository configuration (zero files, exit 1), not a code-lint result. No production test suite or real remote host tested.
+- PR URL: pending creation (record in a follow-up commit). Values unchanged: placement, truthful evidence and handoff lessons are already covered.
