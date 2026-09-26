@@ -54,14 +54,15 @@ export class TranscriptLog {
       // The complete received entry is kept separately in session history.
       return label + ": " + (text.length > 2400 ? "… [earlier text saved] " + text.slice(-2400) : text);
     };
-    const entries = this.recent.slice(-4);
+    // Reserve viewport slots for drafts before they become recent entries. Otherwise
+    // finishing speech evicts an older row and moves the prompt up one line.
+    const pending = (["You", "Voice"] as const).filter((speaker) => this.pending[speaker]);
+    const entries = this.recent.slice(-(4 - pending.length));
     const hidden = this.omitted + this.recent.length - entries.length;
     return [
       ...(hidden ? ["Earlier conversation saved in session history."] : []),
       ...entries.map(render),
-      ...(["You", "Voice"] as const)
-        .filter((s) => this.pending[s])
-        .map((s) => render({ speaker: s, text: this.pending[s], status: "partial" })),
+      ...pending.map((s) => render({ speaker: s, text: this.pending[s], status: "partial" })),
     ];
   }
 }

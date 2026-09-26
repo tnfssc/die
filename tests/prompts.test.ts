@@ -133,7 +133,8 @@ test("execute tool description uses the embedded Markdown source", async () => {
   expect(tool.description).toContain("shared 10 MiB stdout/stderr capture limit");
   expect(tool.description).toContain("truncation is reported explicitly");
   expect(tool.description).toStartWith("Run JS/TS code in current directory.");
-  expect(tool.description).not.toContain("shell(");
+  expect(tool.description).toContain("call the shell() or subagent() globals inside execute");
+  expect(tool.description).toContain("depends on the actual environment and result");
   expect(tool.description).not.toContain("handoff");
   expect(executeReference.join("\n")).toContain("Execution cancelled? Jobs already started");
 });

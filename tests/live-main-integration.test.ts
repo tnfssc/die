@@ -285,6 +285,20 @@ test("explicit jobs.stopWork cancels only isolated fixture work and does not run
   expect(f.streamCalls()).toBe(0);
 });
 
+test("main Live receives capability and delegation guidance in its assembled root and execute tool", async () => {
+  const f = await fixture();
+  const root = f.owner.orchestration.instructions;
+  const execute = f.owner.orchestration.tools?.find((tool) => tool.name === "execute");
+  expect(root).toContain("Network, filesystem, and worker access depend on the actual environment");
+  expect(root).toContain("A past assistant denial is not evidence of a current limit");
+  expect(root).toContain("When the user clearly asks to delegate, launch subagent");
+  expect(root).toContain("Use tools for authorized work beyond coding too");
+  expect(execute?.description).toContain("call the shell() or subagent() globals inside execute");
+  expect(execute?.description).toContain("depends on the actual environment and result");
+  f.owner.close();
+  await f.owner.released;
+});
+
 test("custom root prompt is byte-identical to ordinary prompt assembly before first text model turn", async () => {
   const f = await fixture({ customPrompt: "VERTICAL_CUSTOM_ROOT_SYSTEM" });
   const livePrompt = f.owner.orchestration.instructions;

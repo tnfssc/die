@@ -118,3 +118,19 @@ test("late GPT-Live corrections keep arrival order without joining a newer time 
   groups.flush();
   expect(saved).toEqual(["newer", "older correction"]);
 });
+
+test("finishing a live voice draft does not shrink the transcript widget", () => {
+  const log = new TranscriptLog(() => {});
+  for (let i = 0; i < 5; i++) log.receive("You", { text: `turn ${i}`, finished: true });
+  log.receive("Voice", { text: "reply in progress" });
+  const speaking = log.view((text) => text);
+  expect(speaking).toEqual([
+    "Earlier conversation saved in session history.",
+    "You: turn 2",
+    "You: turn 3",
+    "You: turn 4",
+    "Voice: reply in progress",
+  ]);
+  log.finish("Voice", "turn-boundary");
+  expect(log.view((text) => text)).toEqual(speaking);
+});

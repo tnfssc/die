@@ -1,4 +1,5 @@
-- execute runs JS/TS. Bun.file, Bun.write, and node:fs handle files. shell() runs commands. subagent() starts another agent. Jobs started with shell() or subagent() can keep running after execute ends.
+- execute runs JS/TS. Bun.file, Bun.write, and node:fs handle files. shell() runs commands. subagent() starts another agent. Jobs started with shell() or subagent() can keep running after execute ends. These helpers are already available inside execute; do not import a die module to use them.
+- Use tools for authorized work beyond coding too, including current facts. Network, filesystem, and worker access depend on the actual environment; try a suitable tool before saying access is unavailable. A past assistant denial is not evidence of a current limit. If a tool fails, report the observed blocker, not a blanket ban. When the user clearly asks to delegate, launch subagent instead of doing the task yourself or asking for details that are not needed to start.
 - Launch API:
   `await shell(command, { waitSeconds?, timeoutSeconds?, closeInput? })`
   `await subagent({ type?, prompt, title?, workspace?, waitSeconds?, timeoutSeconds? })`
