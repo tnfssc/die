@@ -22,7 +22,25 @@ New tests/gpt-live-waveform.test.ts uses nonzero437Hz PCM rather than silence-on
 
 Reproduction: use installed Bun1.4.2 explicitly: /home/tnfssc/.local/share/mise/installs/bun/1.4.2/bin/bun test tests/gpt-live-waveform.test.ts. The shell's mise hook reports untrusted worktree config; we did not trust/run that config, and used the already installed executable. Dependencies for broader tests reuse a local untracked node_modules symlink to /home/tnfssc/Code/die/node_modules; no install/release/push.
 
-Validation so far: waveform3 pass/74 assertions; focused GPT session/playback + shared playback/audio lifecycle suite58 pass/20711 assertions before third waveform case added; Realtime session/schema/diagnostics and Live extension111 pass/640 assertions. Asset preparation then TypeScript noEmit passed. Initial noEmit caught a Buffer generic mismatch in new test plus absent generated assets; corrected test and prepared assets before passing. Native evidence recorded below when worker completes.
+Validation so far: waveform3 pass/74 assertions; focused GPT session/playback + shared playback/audio lifecycle suite58 pass/20711 assertions before third waveform case added; Realtime session/schema/diagnostics and Live extension111 pass/640 assertions. Asset preparation then TypeScript noEmit passed. Initial noEmit caught a Buffer generic mismatch in new test plus absent generated assets; corrected test and prepared assets before passing. Final combined run:170 pass,0 fail,21355 assertions across10 files. git diff --check passed.
+
+## Proven native defect and bounded fix
+
+High confidence in a native packet-boundary interpolation defect, NOT in its attribution to the user report. AudioCore holds the last source sample when lookahead is absent. Previously, if a new packet arrived while that held sample was still being rendered, it did not retry the lookahead until after the tail finished. At fractional output phases this replaces the intended interpolated value with a held sample; at non-integer device rate ratios it can also reset phase late. Fix: retry pull while tail is held and retain the existing interpolation phase. No queue size, scheduling budget, mic gate, activity threshold, provider format or normal fully-buffered render path changes.
+
+Native test-core now covers two48k boundary timings plus packetized/contiguous equivalence at24k/44.1k/48k/96k. It checks true starvation drains to zero, a flush between callbacks discards held old-epoch lookahead, and stale writes fail. These are sequential deterministic flush/callback interleavings, NOT exhaustive simultaneous producer/render-thread race proofs. Existing admission/overflow/capture tests remain intact. Compile/run passed with warnings-as-errors and ASan/UBSan:
+
+    clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined native/live/AudioCore.c native/live/test-core.c -o /tmp/live-core-test && /tmp/live-core-test
+
+Against original1f4e096, a two-sample packet boundary in a ramp fixture failed contiguous equivalence at44.1k: maximum normalized error0.305175781; fixed output was bit-identical at all four rates.24k already matched and is a preservation case.
+
+Durable native/live/test-waveform.c reproduces a more audio-like case: one second437Hz PCM16 sine, amplitude10000, source24k/render48k,480-source-sample/20ms packets. First render consumes958 output frames, subsequent packets arrive before the held sample finishes, then960-output-frame callbacks. Fully buffered and packetized waveforms should match:
+
+    clang -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined native/live/AudioCore.c native/live/test-waveform.c -lm -o /tmp/live-wave-test && /tmp/live-wave-test
+
+Original1f4e096 renderer:49 mismatched output samples (one per packet seam), maximum error0.017425537 full-scale (about571 PCM16 units), RMS error0.000390131. Fixed renderer:0 mismatches and0 maximum/RMS error. To reproduce original, use git show 1f4e096:native/live/AudioCore.c > /tmp/live-core-before.c and compile that with -I native/live and the same test-waveform.c; it prints baseline metrics then intentionally fails errors==0. This is computed offline waveform evidence, not a listened-to or device-captured recording. The waveform probe is standalone; test-core regressions run through existing native CI commands.
+
+The fix necessarily touches shared native rendering, but only the demonstrated missing-lookahead case. Gemini/Realtime wire/JS paths are unchanged. Native worker and independent reviewer both identified the narrow boundary defect; main investigator reproduced before/after and sanitizer tests. Reviewer task_33fb11c4 workspace: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_31e38b23-a86675007a5e-task_33fb11c4, branch die/review-native-packet-tail-fix-33fb11c4. Its requested multi-rate/starvation/flush-between-callback coverage was added; no claim of physical shared-provider acceptance.
 
 ## Limits and next diagnostic
 
@@ -34,6 +52,6 @@ First ask: is the crackle in assistant sound, and does it persist when the user 
 
 Main: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_31e38b23.
 Wire audit worker task_d6a876cf: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_31e38b23-a86675007a5e-task_d6a876cf, branch die/gpt-wire-audio-contract-audit-d6a876cf. Public primary docs/source review found no wire mismatch; no code commit, worker did not rerun Bun (parent ran suites).
-Native worker task_8b783441: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_31e38b23-a86675007a5e-task_8b783441, branch die/native-playback-crackle-investigation-8b783441. Pending final evidence.
+Native worker task_8b783441: /home/tnfssc/.die/worktrees/die-a86675007a5e-task_31e38b23-a86675007a5e-task_8b783441, branch die/native-playback-crackle-investigation-8b783441. Produced the minimal patch and two48k regression cases, but model response stalled. Parent requested cancellation after15 minutes; worker subsequently exited143. No worker commit/final evidence claim; parent copied the preserved patch, independently validated it, and completed the cross-rate tests.
 
 Values review: unchanged. Existing whole-path proof, distinguish evidence from inference, minimal justified changes, shared-path safety, and durable handoff cover this investigation; adding a new global rule is not justified.

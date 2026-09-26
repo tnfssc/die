@@ -76,6 +76,11 @@ void ll_render(LLCore *c, float *out, int count, double rate) {
             if (!pull(c,gen,&c->b)) { c->b=c->a; c->tail=1; }
             c->primed=1; c->phase=0;
         }
+        // Running out of lookahead is not an end-of-stream marker. A newly
+        // published packet may arrive before the held sample is rendered (or
+        // during its fractional output at higher device rates). Resume the
+        // same interpolation phase rather than inserting a repeated sample.
+        if (c->tail && pull(c, gen, &c->b)) c->tail=0;
         out[i]=(float)(c->a+(c->b-c->a)*c->phase)/32768.0f;
         c->phase+=step;
         while(c->phase>=1.0) {
