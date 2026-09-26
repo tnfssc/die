@@ -2,7 +2,7 @@ import { voiceToolResult } from "./tool-result";
 import { Behavior, FunctionResponseScheduling, GoogleGenAI, Modality } from "@google/genai";
 import { toolFailureResponse } from "./tool-failure";
 import liveSystemInstruction from "../prompts/live.md" with { type: "text" };
-import { VOICE_MODEL } from "./providers";
+import { VOICE_MODEL, isLiveModel } from "./providers";
 import {
   type LiveAdapter,
   type LiveConnection,
@@ -302,7 +302,7 @@ export class VoiceSession {
             finished: value.finished,
             ...(input ? { rawFinished: value.finished, finalitySource: "provider" as const } : {}),
           }
-        : input && this.model === VOICE_MODEL && text
+        : input && isLiveModel("google", this.model) && text
           ? { finished: true, finalitySource: "model_contract" as const }
           : {}),
       ...(value.languageCode ? { languageCode: value.languageCode } : {}),

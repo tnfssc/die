@@ -26,6 +26,11 @@ describe("Live voice settings (offline)", () => {
         modelForProvider("openai", { provider: "google", model: "gemini-3.8-live", openaiModel: chosen.model }),
       ).toBe("gpt-realtime-2.1-mini");
       expect(await readFile(path, "utf8")).not.toContain("apiKey");
+      const thinking = { provider: "google" as const, model: "gemini-3.8-live-extended-thinking" as const, googleModel: "gemini-3.8-live-extended-thinking" as const, openaiModel: chosen.model };
+      await saveLiveConfig(thinking, path);
+      expect(await loadLiveConfig(path)).toEqual(thinking);
+      expect(modelForProvider("openai", thinking)).toBe(chosen.model);
+      expect(modelForProvider("google", { ...thinking, provider: "openai", model: chosen.model })).toBe(thinking.model);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -38,6 +43,8 @@ describe("Live voice settings (offline)", () => {
       { provider: "openai", model: "gemini-3.8-live" },
       { provider: "openai", model: "gpt-realtime-2.1-unknown" },
       { provider: "google", model: "gemini-3.8-live", openaiModel: "invented" },
+      { provider: "google", model: "gemini-3.8-live", googleModel: "invented" },
+      { provider: "openai", model: "gemini-3.8-live-extended-thinking" },
     ])
       expect(() => parseLiveConfig(config)).toThrow();
     expect(parseLiveConfig({ provider: "openai", model: "gpt-realtime-2.1-mini" })).toEqual({

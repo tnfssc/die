@@ -105,6 +105,22 @@ describe("voice-only SDK session", () => {
     expect(usage).toEqual([{ promptTokensDetails: [{ modality: "AUDIO", tokenCount: 100 }] }]);
     s.close();
   });
+  test("extended-thinking selected endpoint retains direct owner setup and transcription finality", async () => {
+    const h = harness();
+    const heard: unknown[] = [];
+    const s = new VoiceSession({ onInputTranscript: (t) => heard.push(t) }, h.adapter, {
+      instructions: "root", directMainAgent: true, tools: [{ name: "execute", parametersJsonSchema: { type: "object" } }],
+      userTranscript: () => {}, execute: async () => ({ content: [] }),
+    }, "gemini-3.8-live-extended-thinking");
+    const pending = s.connect("fake");
+    expect(h.params.model).toBe("gemini-3.8-live-extended-thinking");
+    expect(h.params.config).toMatchObject({ systemInstruction: "root", responseModalities: ["AUDIO"], tools: [{ functionDeclarations: [{ name: "execute" }] }] });
+    h.ready();
+    await pending;
+    h.params.callbacks.onmessage(msg({ serverContent: { inputTranscription: { text: "hello" } } }));
+    expect(heard).toEqual([expect.objectContaining({ text: "hello", finished: true, finalitySource: "model_contract" })]);
+    s.close();
+  });
   test("ready only after SDK setup-accepted promise, VAD, mic and end idempotence", async () => {
     const h = harness();
     const events: string[] = [];

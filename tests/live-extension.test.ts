@@ -1152,12 +1152,15 @@ describe("Live provider selection", () => {
       },
     };
     const t = setup(overrides);
+    await t.run("model gemini-3.8-live-extended-thinking");
+    expect(saved).toMatchObject({ provider: "google", model: "gemini-3.8-live-extended-thinking" });
     await t.run("provider openai");
     await t.run("model gpt-realtime-2.1-mini");
     expect(saved).toMatchObject({ provider: "openai", model: "gpt-realtime-2.1-mini" });
     await t.run("model unlisted");
     expect(saved.model).toBe("gpt-realtime-2.1-mini");
     await t.run("provider google");
+    expect(saved.model).toBe("gemini-3.8-live-extended-thinking");
     await t.run("provider openai");
     expect(saved.model).toBe("gpt-realtime-2.1-mini");
     const restarted = setup(overrides);

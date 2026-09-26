@@ -20,6 +20,6 @@ test("maintained web patch retains web runtime without voice routes, controls or
 });
 
 test("CLI /live retains Gemini and OpenAI realtime models without retired GPT-Live", () => {
-  expect(LIVE_PROVIDERS.google.models).toContain("gemini-3.8-live");
+  expect(LIVE_PROVIDERS.google.models).toEqual(["gemini-3.8-live", "gemini-3.8-live-extended-thinking"]);
   expect(LIVE_PROVIDERS.openai.models).toEqual(["gpt-realtime-2.1", "gpt-realtime-2.1-mini"]);
 });

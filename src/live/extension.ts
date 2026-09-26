@@ -75,7 +75,7 @@ const defaults: LiveDependencies = {
       throw new Error("GPT-Live is unavailable. Use /live model gpt-realtime-2.1 instead.");
     return provider === "openai"
       ? new OpenAIRealtimeSession(callbacks, undefined, orchestration, model as (typeof OPENAI_REALTIME_MODELS)[number])
-      : new VoiceSession(callbacks, undefined, orchestration);
+      : new VoiceSession(callbacks, undefined, orchestration, model);
   },
   owner: acquireMainOwner,
   audio: (callbacks, signal) => LiveAudio.launch({ callbacks, signal }),
@@ -633,6 +633,8 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
           const next: LiveConfig = {
             provider: choice,
             model: modelForProvider(choice, selected),
+            googleModel:
+              selected.provider === "google" ? (selected.model as LiveConfig["googleModel"]) : selected.googleModel,
             openaiModel:
               selected.provider === "openai" ? (selected.model as LiveConfig["openaiModel"]) : selected.openaiModel,
           };
@@ -697,6 +699,7 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         const next: LiveConfig = {
           ...selected,
           model: choice as LiveModelId,
+          googleModel: selected.provider === "google" ? (choice as LiveConfig["googleModel"]) : selected.googleModel,
           openaiModel: selected.provider === "openai" ? (choice as LiveConfig["openaiModel"]) : selected.openaiModel,
         };
         saving = true;

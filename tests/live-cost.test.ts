@@ -61,6 +61,8 @@ describe("provider-reported CLI voice cost", () => {
       10,
     );
     expect(voiceCost("google", "gemini-3.8-live", { promptTokenCount: 100, candidatesTokenCount: 20 })).toBeUndefined();
+    expect(voiceCost("google", "gemini-3.8-live-extended-thinking", usage(100))).toBeCloseTo(voiceCost("google", "gemini-3.8-live", usage(100))!);
+    expect(voiceCost("google", "gemini-3.8-live-extended-thinking", { ...usage(100), thoughtsTokenCount: 3 })).toBeUndefined();
   });
   test("Gemini cached counts and both SDK detail spellings are unknown, not full-rate", () => {
     const base = {

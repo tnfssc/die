@@ -14,7 +14,7 @@ export function voiceCost(provider: "google" | "openai", model: string, usage: u
     const seconds = number(u.seconds);
     return seconds === undefined ? undefined : (seconds * 0.05) / 60;
   }
-  if (model === "gemini-3.8-live") {
+  if (model === "gemini-3.8-live" || model === "gemini-3.8-live-extended-thinking") {
     // Live usageMetadata is per model turn; require modality detail rather than
     // treating all input as audio or all output as text.
     const price = (parts: unknown, rates: Record<string, number>): number | undefined => {

@@ -7,6 +7,7 @@ import { isLiveModel, type LiveModelId, type LiveProviderId, defaultLiveConfig }
 export interface LiveConfig {
   provider: LiveProviderId;
   model: LiveModelId;
+  googleModel?: typeof import("./providers").GOOGLE_LIVE_MODELS[number];
   openaiModel?: typeof import("./providers").LIVE_PROVIDERS.openai.models[number];
 }
 export function liveConfigPath(): string {
@@ -14,7 +15,7 @@ export function liveConfigPath(): string {
 }
 export function parseLiveConfig(value: unknown): LiveConfig {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid Live settings");
-  const { provider, model, openaiModel } = value as Record<string, unknown>;
+  const { provider, model, openaiModel, googleModel } = value as Record<string, unknown>;
   if (model === "gpt-live-1" || openaiModel === "gpt-live-1")
     throw new Error(
       "GPT-Live is no longer supported. Edit ~/.die/live-settings.json to select gpt-realtime-2.1, or remove it to use Gemini. No fallback was started.",
@@ -22,9 +23,11 @@ export function parseLiveConfig(value: unknown): LiveConfig {
   if ((provider !== "google" && provider !== "openai") || !isLiveModel(provider, model))
     throw new Error("Invalid Live provider/model selection");
   if (openaiModel !== undefined && !isLiveModel("openai", openaiModel)) throw new Error("Invalid OpenAI voice model");
+  if (googleModel !== undefined && !isLiveModel("google", googleModel)) throw new Error("Invalid Google voice model");
   return {
     provider,
     model,
+    ...(googleModel === undefined ? {} : { googleModel: googleModel as LiveConfig["googleModel"] }),
     ...(openaiModel === undefined ? {} : { openaiModel: openaiModel as LiveConfig["openaiModel"] }),
   };
 }
