@@ -13,6 +13,15 @@ export type Question = {
   updatedAt: string;
   answer?: string;
   dedupKey?: string;
+  choices?: string[];
+  allowFreeText?: boolean;
+  requester?: string;
+  taskIds?: string[];
+  reason?: string;
+  blocked?: { checkpoint: string; foreground?: boolean; taskIds?: string[] };
+  delivery?: "resume-needed" | "queued" | "delivered";
+  replyId?: string;
+  replyVersion?: number;
 };
 export type QuestionContext = {
   sessionManager: {
@@ -20,6 +29,7 @@ export type QuestionContext = {
     getSessionFile(): string | undefined;
     getLeafId(): string | null;
     getBranch(): Array<{ id: string }>;
+    getEntries?(): Array<{ id: string; parentId?: string | null }>;
   };
 };
 export type QuestionMutation = { id: string; owner: QuestionOwner; version: number };
@@ -106,104 +116,138 @@ export class QuestionService {
       unlinkSync(lock);
     }
   }
+  // First child of an anchor owns its continuation; later siblings can inspect, not mutate.
+  private owns(ctx: QuestionContext, q: Question): boolean {
+    const m = ctx.sessionManager;
+    if (m.getSessionId() !== q.owner.sessionId) return false;
+    const branch = m.getBranch().map(e => e.id);
+    const at = branch.indexOf(q.owner.branchId);
+    if (at < 0) return false;
+    if (at === branch.length - 1) return true;
+    const children = m.getEntries?.().filter(e => e.parentId === q.owner.branchId);
+    return !children?.length || children[0]?.id === branch[at + 1];
+  }
   list(ctx: QuestionContext): Question[] {
     const current = activeOwner(ctx);
-    const ancestors = new Set(ctx.sessionManager.getBranch().map((e) => e.id));
+    const ancestors = new Set(ctx.sessionManager.getBranch().map(e => e.id));
     ancestors.add(current.branchId);
-    return read(path(ctx)).filter((q) => q.owner.sessionId === current.sessionId && ancestors.has(q.owner.branchId));
+    return read(path(ctx)).filter(q => q.owner.sessionId === current.sessionId && ancestors.has(q.owner.branchId));
   }
   get(ctx: QuestionContext, id: string): Question {
-    const q = this.list(ctx).find((q) => q.id === id);
+    const q = this.list(ctx).find(q => q.id === id);
     if (!q) throw new Error("Question not found on current branch");
     return q;
   }
-  ask(ctx: QuestionContext, input: { text: string; blocked: true; dedupKey?: string }): Promise<Question> {
-    if (input?.blocked !== true) throw new Error("questions.ask requires blocked: true");
-    const question = text(input.text, 4000, "text");
+  ask(ctx: QuestionContext, input: { text: string; dedupKey?: string; choices?: string[]; allowFreeText?: boolean; requester?: string; taskIds?: string[]; reason?: string }): Promise<Question> {
+    const question = text(input?.text, 4000, "text");
     const key = input.dedupKey === undefined ? undefined : text(input.dedupKey, 128, "dedupKey");
+    const choices = input.choices?.map(c => text(c, 500, "choice"));
+    if (choices && (choices.length < 1 || choices.length > 20 || new Set(choices).size !== choices.length)) throw new Error("Invalid choices");
+    if (input.allowFreeText !== undefined && typeof input.allowFreeText !== "boolean") throw new Error("Invalid allowFreeText");
+    const requester = input.requester === undefined ? undefined : text(input.requester, 200, "requester");
+    const reason = input.reason === undefined ? undefined : text(input.reason, 2000, "reason");
+    const taskIds = ids(input.taskIds);
     const owner = activeOwner(ctx);
-    const ancestors = new Set(ctx.sessionManager.getBranch().map((e) => e.id));
-    ancestors.add(owner.branchId);
-    return this.change(path(ctx), (records) => {
+    return this.change(path(ctx), records => {
+      activeOwner(ctx, owner.branchId); // navigation may have changed while waiting for the lock
+      if (ctx.sessionManager.getLeafId() !== owner.branchId) throw new Error("Session navigation changed");
       if (key) {
-        const existing = records.find(
-          (q) => q.owner.sessionId === owner.sessionId && ancestors.has(q.owner.branchId) && q.dedupKey === key,
-        );
+        const existing = records.find(q => q.dedupKey === key && this.owns(ctx, q));
         if (existing) {
-          if (existing.text !== question) throw new Error("dedupKey already used with different text");
+          if (JSON.stringify([existing.text, existing.choices, existing.allowFreeText, existing.requester, existing.taskIds, existing.reason]) !==
+              JSON.stringify([question, choices, input.allowFreeText, requester, taskIds, reason])) throw new Error("dedupKey already used with different request");
           return { result: existing, changed: false };
         }
       }
-      if (records.filter((q) => q.status === "pending").length >= maxPending)
-        throw new Error("Too many active questions");
+      if (records.filter(q => q.status === "pending").length >= maxPending) throw new Error("Too many active questions");
+      if (records.length >= maxPending + maxHistory) throw new Error("Question ledger full; retain unconsumed history");
       const now = new Date().toISOString();
-      const result: Question = {
-        id: "q_" + randomUUID(),
-        owner,
-        text: question,
-        status: "pending",
-        version: 1,
-        createdAt: now,
-        updatedAt: now,
-        ...(key ? { dedupKey: key } : {}),
-      };
+      const result: Question = { id: "q_" + randomUUID(), owner, text: question, status: "pending", version: 1,
+        createdAt: now, updatedAt: now, ...(key ? { dedupKey: key } : {}), ...(choices ? { choices } : {}),
+        ...(input.allowFreeText !== undefined ? { allowFreeText: input.allowFreeText } : {}),
+        ...(requester ? { requester } : {}), ...(taskIds ? { taskIds } : {}), ...(reason ? { reason } : {}) };
       records.push(result);
-      const terminal = records.filter((q) => q.status !== "pending");
-      if (terminal.length > maxHistory) {
-        const excess = new Set(terminal.slice(0, terminal.length - maxHistory).map((q) => q.id));
-        for (let i = records.length - 1; i >= 0; i--) if (excess.has(records[i]!.id)) records.splice(i, 1);
-      }
       return { result, changed: true };
     });
   }
-  private mutate(
-    ctx: QuestionContext,
-    input: QuestionMutation,
-    status: "answered" | "cancelled",
-    answer?: string,
-  ): Promise<Question> {
-    if (!input || !/^q_[0-9a-f-]{36}$/.test(input.id) || !Number.isSafeInteger(input.version))
+  private mutate(ctx: QuestionContext, input: QuestionMutation, edit: (q: Question) => boolean): Promise<Question> {
+    if (!input || !/^q_[0-9a-f-]{36}$/.test(input.id) || !Number.isSafeInteger(input.version) || input.version < 1)
       throw new Error("Invalid question ID or version");
-    const owner = activeOwner(ctx, input.owner?.branchId);
-    if (input.owner?.sessionId !== owner.sessionId) throw new Error("Owner session mismatch");
-    return this.change(path(ctx), (records) => {
-      const q = records.find(
-        (q) => q.id === input.id && q.owner.sessionId === owner.sessionId && q.owner.branchId === owner.branchId,
-      );
-      if (!q) throw new Error("Question not found for owner");
-      if (q.version !== input.version) throw new Error("Stale question version: current " + q.version);
-      if (q.status !== "pending") throw new Error("Question already " + q.status);
-      q.status = status;
-      q.version++;
-      q.updatedAt = new Date().toISOString();
-      if (answer !== undefined) q.answer = answer;
-      return { result: q, changed: true };
+    const sessionId = ctx.sessionManager.getSessionId();
+    if (input.owner?.sessionId !== sessionId) throw new Error("Owner session mismatch");
+    return this.change(path(ctx), records => {
+      if (ctx.sessionManager.getSessionId() !== sessionId) throw new Error("Session navigation changed");
+      const q = records.find(q => q.id === input.id && q.owner.sessionId === sessionId && q.owner.branchId === input.owner.branchId);
+      if (!q || !this.owns(ctx, q)) throw new Error("Question not found for owner branch");
+      const changed = edit(q);
+      if (changed) { q.version++; q.updatedAt = new Date().toISOString(); }
+      return { result: q, changed };
     });
   }
-  async answer(ctx: QuestionContext, input: QuestionMutation & { text: string }): Promise<Question> {
-    const result = await this.mutate(ctx, input, "answered", text(input?.text, 8000, "answer"));
-    this.onAnswered?.(result, ctx);
+  block(ctx: QuestionContext, input: QuestionMutation & { checkpoint: string; foreground?: boolean; taskIds?: string[] }): Promise<Question> {
+    const checkpoint = text(input?.checkpoint, 4000, "checkpoint");
+    if (input.foreground !== undefined && typeof input.foreground !== "boolean") throw new Error("Invalid foreground");
+    const taskIds = ids(input.taskIds);
+    if (!input.foreground && !taskIds?.length) throw new Error("Block requires foreground or task IDs");
+    return this.mutate(ctx, input, q => {
+      check(q, input.version);
+      q.blocked = { checkpoint, ...(input.foreground ? { foreground: true } : {}), ...(taskIds ? { taskIds } : {}) };
+      return true;
+    });
+  }
+  resolve(ctx: QuestionContext, input: QuestionMutation & { reason: string }): Promise<Question> {
+    const reason = text(input?.reason, 2000, "reason");
+    return this.mutate(ctx, input, q => { check(q, input.version); q.status = "cancelled"; q.reason = reason; return true; });
+  }
+  async answer(ctx: QuestionContext, input: QuestionMutation & { text: string; replyId?: string }): Promise<Question> {
+    const answer = text(input?.text, 8000, "answer");
+    if (input.replyId !== undefined && !/^[a-zA-Z0-9_-]{1,128}$/.test(input.replyId)) throw new Error("Invalid replyId");
+    let accepted = false;
+    const result = await this.mutate(ctx, input, q => {
+      if (q.status === "answered" && q.replyVersion === input.version && q.answer === answer && (!input.replyId || q.replyId === input.replyId)) return false;
+      check(q, input.version);
+      if (q.choices && q.allowFreeText === false && !q.choices.includes(answer)) throw new Error("Answer must match a choice");
+      q.status = "answered"; q.answer = answer; q.replyId = input.replyId ?? "reply_" + randomUUID();
+      q.replyVersion = input.version; q.delivery = "resume-needed"; accepted = true;
+      return true;
+    });
+    if (accepted) this.onAnswered?.(result, ctx);
     return result;
   }
   cancel(ctx: QuestionContext, input: QuestionMutation): Promise<Question> {
-    return this.mutate(ctx, input, "cancelled");
+    return this.mutate(ctx, input, q => { check(q, input.version); q.status = "cancelled"; return true; });
+  }
+  setDelivery(ctx: QuestionContext, input: QuestionMutation & { delivery: "resume-needed" | "queued" | "delivered" }): Promise<Question> {
+    if (!["resume-needed", "queued", "delivered"].includes(input.delivery)) throw new Error("Invalid delivery");
+    return this.mutate(ctx, input, q => {
+      if (q.version !== input.version) throw new Error("Stale question version: current " + q.version);
+      if (q.status !== "answered") throw new Error("Question not answered");
+      q.delivery = input.delivery; return true;
+    });
   }
   handle(method: string, params: unknown, ctx: QuestionContext): Promise<Question | Question[]> {
     const p = params as Record<string, unknown> | undefined;
     switch (method) {
-      case "questions.ask":
-        return this.ask(ctx, p as Parameters<QuestionService["ask"]>[1]);
-      case "questions.list":
-        return Promise.resolve(this.list(ctx));
-      case "questions.get":
-        return Promise.resolve(this.get(ctx, p?.id as string));
-      case "questions.answer":
-        return this.answer(ctx, p as Parameters<QuestionService["answer"]>[1]);
-      case "questions.cancel":
-        return this.cancel(ctx, p as Parameters<QuestionService["cancel"]>[1]);
-      default:
-        throw new Error("Unknown questions method");
+      case "questions.ask": return this.ask(ctx, p as Parameters<QuestionService["ask"]>[1]);
+      case "questions.list": return Promise.resolve(this.list(ctx));
+      case "questions.get": return Promise.resolve(this.get(ctx, p?.id as string));
+      case "questions.block": return this.block(ctx, p as Parameters<QuestionService["block"]>[1]);
+      case "questions.resolve": return this.resolve(ctx, p as Parameters<QuestionService["resolve"]>[1]);
+      case "questions.cancel": return this.cancel(ctx, p as Parameters<QuestionService["cancel"]>[1]);
+      case "questions.answer": throw new Error("UI reply only: call answer from trusted UI/service route");
+      default: throw new Error("Unknown questions method");
     }
   }
+}
+function ids(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 20 || !value.length) throw new Error("Invalid task IDs");
+  const result = value.map(v => text(v, 200, "task ID"));
+  if (new Set(result).size !== result.length) throw new Error("Duplicate task IDs");
+  return result;
+}
+function check(q: Question, version: number): void {
+  if (q.version !== version) throw new Error("Stale question version: current " + q.version);
+  if (q.status !== "pending") throw new Error("Question already " + q.status);
 }
 export const questionService = new QuestionService();
