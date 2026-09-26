@@ -67,3 +67,11 @@ On source 110765a, the standard harness reopened the saved session as questions-
 Final source typecheck passed (bun run check). Current CLI compiled with Bun 1.4.2 and the reused base web archive. The paid/provider and hardware acceptance tests remain gated; no device or production-web claim follows from these checks.
 
 Final integration also rejects replies from a navigated ancestor (not only sibling forks). Cancelling a question withdraws it but leaves its dependent follow-up blocked until the owner resolves it with a new plan. This does not restart a goal or cancel the underlying job. Targeted tests cover both boundaries.
+
+## Check environment and last gate
+
+A later repeated broad run hit the existing Live snapshot cache's 64-file budget in the shared OS temporary directory. Three unchanged Live-host tests reported “Transcript snapshot budget exhausted”; no user snapshot files were removed. The last broad run uses a dedicated TMPDIR (/tmp/die-questions-final-suite) plus SHELL=/bin/bash. This isolates test snapshots instead of weakening the runtime budget. The final tiny CLI parser fix keeps internal spaces/newlines in free-text replies; its focused test passes. Do not compare a test file edited during a run with a module cached before that edit.
+
+At source a040062, the current focused command (questions bridge/store/runtime/CLI/real SDK/TUI plus goal and footer tests) passed 67 tests, 0 failed; typecheck passed. Lint returned success with style/test warnings, not a zero-warning claim. Full-suite result is appended below once the frozen run ends.
+
+Final frozen source a040062: 1,151 passed, 17 skipped, 0 failed across 159 files (1,168 tests, 28,137 assertions), 112.17s. Command: SHELL=/bin/bash TMPDIR=/tmp/die-questions-final-suite bun test ./tests, after current CLI compilation. Log: /tmp/questions-proof-suite.log. Skips are gated paid/provider/hardware acceptance paths; no production-web question test was claimed. Final typecheck and 67 focused tests also passed.
