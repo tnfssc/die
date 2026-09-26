@@ -23,9 +23,7 @@
                 "maximum": 9007199254740991
               }
             },
-            "required": [
-              "code"
-            ]
+            "required": ["code"]
           }
         }
       ],
@@ -86,9 +84,7 @@
                 "maximum": 9007199254740991
               }
             },
-            "required": [
-              "code"
-            ]
+            "required": ["code"]
           }
         }
       ],

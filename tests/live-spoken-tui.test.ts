@@ -9,7 +9,8 @@ test("real tmux Pi renderer shows a delegated spoken user turn without transport
   const home = await mkdtemp(join(tmpdir(), "die-spoken-tui-"));
   const root = resolve(import.meta.dir, "..");
   const socket = "die-spoken-" + process.pid;
-  const tmux = (...args: string[]) => run([Bun.which("tmux") ?? "/usr/bin/tmux", "-L", socket, "-f", join(home, "tmux.conf"), ...args]);
+  const tmux = (...args: string[]) =>
+    run([Bun.which("tmux") ?? "/usr/bin/tmux", "-L", socket, "-f", join(home, "tmux.conf"), ...args]);
   const frame = async () => (await tmux("capture-pane", "-p", "-t", "spoken")).stdout;
   const quote = (v: string) => "'" + v.replaceAll("'", "'\''") + "'";
   try {
@@ -19,10 +20,31 @@ test("real tmux Pi renderer shows a delegated spoken user turn without transport
     const themeDir = join(home, ".die/runtime", version, "dist/modes/interactive");
     await mkdir(themeDir, { recursive: true });
     await symlink(join(home, ".die/runtime", version, "theme"), join(themeDir, "theme"));
-    await writeFile(join(home, "tmux.conf"), (await readFile(join(root, "scripts/tmux.conf"), "utf8")) + "\nset -g default-shell /bin/sh\nset -g remain-on-exit on\n");
-    const launch = ["env", "HOME=" + home, "PI_OFFLINE=1", "OPENAI_API_KEY=offline-test-key", "DIE_SUBAGENT_DEPTH=0", process.execPath,
-      join(root, "src/cli.ts"), "--offline", "--no-session", "--no-extensions", "-e",
-      join(root, "tests/fixtures/live-spoken-tui.ts"), "--provider", "openai", "--model", "gpt-4o"].map(quote).join(" ");
+    await writeFile(
+      join(home, "tmux.conf"),
+      (await readFile(join(root, "scripts/tmux.conf"), "utf8")) +
+        "\nset -g default-shell /bin/sh\nset -g remain-on-exit on\n",
+    );
+    const launch = [
+      "env",
+      "HOME=" + home,
+      "PI_OFFLINE=1",
+      "OPENAI_API_KEY=offline-test-key",
+      "DIE_SUBAGENT_DEPTH=0",
+      process.execPath,
+      join(root, "src/cli.ts"),
+      "--offline",
+      "--no-session",
+      "--no-extensions",
+      "-e",
+      join(root, "tests/fixtures/live-spoken-tui.ts"),
+      "--provider",
+      "openai",
+      "--model",
+      "gpt-4o",
+    ]
+      .map(quote)
+      .join(" ");
     expect((await tmux("new-session", "-d", "-s", "spoken", "-x", "100", "-y", "40", "-c", root, launch)).code).toBe(0);
     await waitForLiveTuiStartup(frame, (key) => tmux("send-keys", "-t", "spoken", key), "SPOKEN FIXTURE LOADED");
     await tmux("send-keys", "-t", "spoken", "-l", "/spokenfixture");

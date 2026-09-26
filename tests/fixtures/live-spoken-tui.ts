@@ -12,7 +12,27 @@ export default function (pi: any) {
       const session = getInstructionContinuitySession(ctx.sessionManager) as any;
       session.agent.streamFunction = (model: any) => {
         const stream = createAssistantMessageEventStream();
-        stream.push({ type: "done", reason: "stop", message: { role: "assistant", api: model.api, provider: model.provider, model: model.id, timestamp: Date.now(), stopReason: "stop", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, content: [{ type: "text", text: "OFFLINE_DELEGATED_REPLY" }] } });
+        stream.push({
+          type: "done",
+          reason: "stop",
+          message: {
+            role: "assistant",
+            api: model.api,
+            provider: model.provider,
+            model: model.id,
+            timestamp: Date.now(),
+            stopReason: "stop",
+            usage: {
+              input: 0,
+              output: 0,
+              cacheRead: 0,
+              cacheWrite: 0,
+              totalTokens: 0,
+              cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+            },
+            content: [{ type: "text", text: "OFFLINE_DELEGATED_REPLY" }],
+          },
+        });
         return stream;
       };
       // Do not inject the user text into the TUI: the paired owner must submit

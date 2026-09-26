@@ -308,10 +308,7 @@ export class SessionHost implements SessionOperations {
       this.assertActive();
       if (this.host.context.sessionManager.getLeafId() !== leaf)
         throw new Error("Host branch changed during delegation");
-      this.host.sendUserMessage(
-        context,
-        { deliverAs: "steer", expandPromptTemplates: false },
-      );
+      this.host.sendUserMessage(context, { deliverAs: "steer", expandPromptTemplates: false });
       return { queued: true } as const;
     });
   }
