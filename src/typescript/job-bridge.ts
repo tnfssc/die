@@ -95,6 +95,34 @@ export interface ExecuteJobGlobals {
     clear(): Promise<unknown>;
   };
   live: { stop(): Promise<unknown> };
+  questions: {
+    ask(input: {
+      text: string;
+      dedupKey?: string;
+      choices?: string[];
+      allowFreeText?: boolean;
+      requester?: string;
+      taskIds?: string[];
+      reason?: string;
+    }): Promise<unknown>;
+    list(): Promise<unknown>;
+    get(id: string): Promise<unknown>;
+    block(input: {
+      id: string;
+      owner: { sessionId: string; branchId: string };
+      version: number;
+      checkpoint: string;
+      foreground?: boolean;
+      taskIds?: string[];
+    }): Promise<unknown>;
+    resolve(input: {
+      id: string;
+      owner: { sessionId: string; branchId: string };
+      version: number;
+      reason: string;
+    }): Promise<unknown>;
+    cancel(input: { id: string; owner: { sessionId: string; branchId: string }; version: number }): Promise<unknown>;
+  };
   jobs: {
     list(options?: Options): Promise<unknown>;
     inspect(id: string, options?: Options): Promise<unknown>;
@@ -118,6 +146,7 @@ declare global {
   var goal: ExecuteJobGlobals["goal"];
   var jobs: ExecuteJobGlobals["jobs"];
   var live: ExecuteJobGlobals["live"];
+  var questions: ExecuteJobGlobals["questions"];
 }
 
 /** Signal a confirmed cooperative handoff to the execute runner. */
@@ -315,6 +344,14 @@ export function installJobGlobals(socket?: Duplex): { finish(): Promise<void> } 
       clear: async () => request("goal.clear", {}),
     },
     live: { stop: async () => request("live.stop", {}) },
+    questions: {
+      ask: async (input) => request("questions.ask", input),
+      list: async () => request("questions.list", {}),
+      get: async (id) => request("questions.get", { id }),
+      block: async (input) => request("questions.block", input),
+      resolve: async (input) => request("questions.resolve", input),
+      cancel: async (input) => request("questions.cancel", input),
+    },
     jobs: {
       list: async (options) => request("jobs.list", options ?? {}),
       inspect: async (id, options) => request("jobs.inspect", combine(options, { id })),

@@ -137,7 +137,7 @@ test("active progress is bounded and duplicate milestones are idempotent", () =>
   expect(() => store.update({ status: "active", progress: "x".repeat(501) })).toThrow("too long");
 });
 
-function harness(entries: any[] = []) {
+function harness(entries: any[] = [], options: { hasBlockingQuestions?: () => boolean } = {}) {
   const handlers: Record<string, Function[]> = {};
   const commands: Record<string, any> = {};
   const sent: string[] = [];
@@ -161,7 +161,7 @@ function harness(entries: any[] = []) {
   const runtime = registerGoalMode(pi, {
     runningIds: () => new Set([...statuses].filter(([, status]) => status === "running").map(([id]) => id)),
     status: (id) => statuses.get(id) ?? "unavailable",
-  });
+  }, options);
   const ctx: any = {
     sessionManager: {
       getBranch: () => entries,
@@ -386,6 +386,51 @@ test("waiting job completion reactivates at the next turn boundary", () => {
   const result = h.handlers.context[0]({ messages: [] }, h.ctx);
   expect(result.messages.at(-1).content).toContain("Persistent goal state");
   expect(result.messages.at(-1).content).toContain("Status: active");
+});
+
+test("foreground question suppresses completion continuation until answered without changing goal status", () => {
+  let blocked = false;
+  const h = harness([], { hasBlockingQuestions: () => blocked });
+  h.runtime.handle("goal.set", input);
+  const handoff = { toolName: "execute", isError: false, result: { details: { handoff: "Waiting" } } };
+  h.handlers.tool_execution_end[0](handoff, h.ctx);
+  expect(h.runtime.get()?.status).toBe("waiting");
+  blocked = true;
+  h.statuses.set("job_1", "finished");
+  h.runtime.jobsChanged();
+  expect(h.runtime.get()?.status).toBe("active");
+  h.handlers.agent_settled[0]({}, h.ctx);
+  expect(h.sent).toHaveLength(0);
+  // Completing an owned job does not answer or clear the independent question blocker.
+  h.runtime.jobsChanged();
+  h.handlers.agent_settled[0]({}, h.ctx);
+  expect(h.sent).toHaveLength(0);
+  blocked = false;
+  h.handlers.agent_settled[0]({}, h.ctx);
+  expect(h.sent).toHaveLength(1);
+});
+
+test("queued goal reminder is rejected if foreground becomes blocked after it was sent", async () => {
+  let blocked = false;
+  const h = harness([], { hasBlockingQuestions: () => blocked });
+  await h.commands.goal.handler("set Build it --criteria done --constraints safe", h.ctx);
+  const reminder = h.sent.at(-1)!;
+  blocked = true;
+  expect(h.handlers.input[0]({ source: "extension", text: reminder }, h.ctx)).toEqual({ action: "handled" });
+  expect(h.runtime.get()?.status).toBe("active");
+  blocked = false;
+  // The discarded reminder cannot revive when the question is answered.
+  expect(h.handlers.input[0]({ source: "extension", text: reminder }, h.ctx)).toEqual({ action: "handled" });
+  h.handlers.agent_settled[0]({}, h.ctx);
+  expect(h.sent).toHaveLength(2);
+});
+
+test("child-only question does not suppress goal continuation", () => {
+  // The integration callback reports foreground blockers, not all outstanding questions.
+  const h = harness([], { hasBlockingQuestions: () => false });
+  h.runtime.handle("goal.set", input);
+  h.handlers.agent_settled[0]({}, h.ctx);
+  expect(h.sent).toHaveLength(1);
 });
 
 test("resumed waiting work that is no longer owned pauses visibly", () => {

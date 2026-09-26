@@ -1,3 +1,5 @@
+import { registerQuestions } from "../questions/extension";
+import { registerQuestionRuntime } from "../questions/runtime";
 import { currentMainOwner, currentMainToolOwner } from "../live/main-owner";
 import { requestForegroundStop } from "../tasks/foreground-stop";
 import { SessionHost, type SessionTaskPort } from "../session/host";
@@ -433,20 +435,27 @@ export default function asynchronousTasksExtension(
   registerTaskMonitor(pi, getManager);
   registerResumeSafeguards(pi);
 
-  goals = registerGoalMode(pi, {
-    runningIds: () =>
-      new Set(
-        manager
-          ?.list()
-          .filter((task) => task.status === "running")
-          .map((task) => task.id) ?? [],
-      ),
-    status: (id) => {
-      const task = manager?.list().find((item) => item.id === id);
-      if (!task) return "unavailable";
-      return task.status === "running" ? "running" : "finished";
+  const questions = registerQuestionRuntime(pi, { supported: () => subagentDepth === 0 && !t3NativeSession });
+  registerQuestions(pi, (ctx) => questions.commands(ctx));
+
+  goals = registerGoalMode(
+    pi,
+    {
+      runningIds: () =>
+        new Set(
+          manager
+            ?.list()
+            .filter((task) => task.status === "running")
+            .map((task) => task.id) ?? [],
+        ),
+      status: (id) => {
+        const task = manager?.list().find((item) => item.id === id);
+        if (!task) return "unavailable";
+        return task.status === "running" ? "running" : "finished";
+      },
     },
-  });
+    { hasBlockingQuestions: () => questions.hasBlockingQuestions() },
+  );
   const history = new HistoryService();
   let service: JobService | undefined;
   const getService = (ctx: ExtensionContext) => {
@@ -521,6 +530,7 @@ export default function asynchronousTasksExtension(
     async (ctx, method, params, signal) => {
       if (method.startsWith("history.")) return history.handle(method, params, ctx);
       if (method.startsWith("goal.")) return Promise.resolve(goals.handle(method, params));
+      if (method.startsWith("questions.")) return questions.handle(ctx, method, params);
       if ((method === "jobs.stop" || method === "jobs.stopWork") && sessionHost)
         await sessionHost.confirmDelegatedAgentStop(
           method === "jobs.stopWork"
@@ -531,6 +541,7 @@ export default function asynchronousTasksExtension(
         );
       const result = await getService(ctx).handle(method, params, ctx, signal);
       if (method !== "jobs.stopWork") return result;
+      questions.pause();
       // The helper result must reach execute before aborting that foreground.
       // Async jobs are already requested through the same scoped JobService.
       const voiceOwner = currentMainToolOwner(ctx.sessionManager);

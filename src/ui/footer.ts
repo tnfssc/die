@@ -271,6 +271,33 @@ export function renderCompactFooter(
   const statuses = data.getExtensionStatuses();
   const task = singleLine(statuses.get("die-tasks") ?? "").replace(/^(\d+ tasks?) running$/, "$1");
   const shortTask = task.replace(/^(\d+) tasks?$/, "$1t");
+  const questionStatus = singleLine(statuses.get("die-questions") ?? "");
+  const questionCount = questionStatus.match(/^([0-9]+) questions?(?: pending)?/);
+  const savedQuestions = questionStatus.match(/ · ([0-9]+) saved/)?.[1];
+  const questions = questionStatus
+    ? questionCount
+      ? questionCount[1] +
+        " /questions" +
+        (questionStatus.includes("follow-up blocked")
+          ? " · follow-up blocked"
+          : questionStatus.includes("waiting on you")
+            ? " · waiting on you"
+            : "") +
+        (savedQuestions ? " · " + savedQuestions + " saved" : "")
+      : questionStatus
+    : "";
+  const shortQuestions = questionStatus
+    ? questionCount
+      ? questionCount[1] +
+        " /questions" +
+        (questionStatus.includes("follow-up blocked")
+          ? " blocked"
+          : questionStatus.includes("waiting on you")
+            ? " waiting"
+            : "") +
+        (savedQuestions ? " " + savedQuestions + " saved" : "")
+      : "/questions unavailable"
+    : "";
   const mode = singleLine(statuses.get("die-mode") ?? "");
   // Native fast mode owns the bolt badge; it is provider status, never an editor spinner.
   const nativeFast = singleLine(statuses.get("die-native-fast") ?? "");
@@ -287,6 +314,7 @@ export function renderCompactFooter(
   const otherCount = [...statuses.keys()].filter(
     (key) =>
       key !== "die-tasks" &&
+      key !== "die-questions" &&
       key !== "die-mode" &&
       key !== "die-native-fast" &&
       key !== "die-live" &&
@@ -319,6 +347,7 @@ export function renderCompactFooter(
         accent(live),
         branch ? `${project}:${singleLine(branch)}` : project,
         accent(task),
+        questions,
         accent(mode),
         accent(nativeFast),
         cost,
@@ -330,16 +359,41 @@ export function renderCompactFooter(
       " · ",
     ],
     [
-      [accent(live), project, accent(task), accent(mode), accent(nativeFast), cost, context("ctx "), cacheText, extra],
+      [
+        accent(live),
+        project,
+        accent(task),
+        questions,
+        accent(mode),
+        accent(nativeFast),
+        cost,
+        context("ctx "),
+        cacheText,
+        extra,
+      ],
       modelWithThinking,
       " · ",
     ],
     [
-      [accent(live), accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, project, extra],
+      [
+        accent(live),
+        accent(shortTask),
+        shortQuestions,
+        accent(shortNativeFast),
+        cost,
+        context("C"),
+        cacheText,
+        project,
+        extra,
+      ],
       model,
       " ",
     ],
-    [[accent(live), accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, extra], model, " "],
+    [
+      [shortQuestions, accent(live), accent(shortTask), accent(shortNativeFast), cost, context("C"), cacheText, extra],
+      model,
+      " ",
+    ],
   ];
   for (const [parts, right, separator] of candidates) {
     const left = parts.filter(Boolean).join(separator);
