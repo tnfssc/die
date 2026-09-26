@@ -679,12 +679,13 @@ test("paired backend resumes from production async task notification without inv
   expect(calls).toBe(3);
   const messages = f.manager.buildSessionContext().messages;
   expect(messages.filter((m) => m.role === "user")).toHaveLength(1);
-  const toolIndex = messages.findIndex((m) => m.role === "assistant" && JSON.stringify(m).includes("paired-async-launch"));
+  const toolIndex = messages.findIndex(
+    (m) => m.role === "assistant" && JSON.stringify(m).includes("paired-async-launch"),
+  );
   expect(messages[toolIndex + 1]?.role).toBe("toolResult");
   expect(messages.some((m: any) => m.role === "custom" && m.customType === "live-transcript")).toBe(true);
   expect(messages.some((m: any) => m.role === "custom" && m.customType === "task-complete")).toBe(true);
 }, 12000);
-
 
 test("paired execute can stop voice then work through the production scoped helpers", async () => {
   const f = await fixture();
@@ -698,12 +699,31 @@ test("paired execute can stop voice then work through the production scoped help
     calls++;
     const stream = createAssistantMessageEventStream();
     const message: any = {
-      role: "assistant", api: model.api, provider: model.provider, model: model.id,
-      timestamp: Date.now(), stopReason: "toolUse",
-      usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0,
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
-      content: [{ type: "toolCall", id: "paired-stop-both", name: "execute", arguments: {
-        code: 'console.log(await live.stop()); console.log(await jobs.stopWork()); await Bun.sleep(1000); console.log("PAIRED_SHOULD_NOT_REACH")', timeoutSeconds: 5 } }],
+      role: "assistant",
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      timestamp: Date.now(),
+      stopReason: "toolUse",
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      content: [
+        {
+          type: "toolCall",
+          id: "paired-stop-both",
+          name: "execute",
+          arguments: {
+            code: 'console.log(await live.stop()); console.log(await jobs.stopWork()); await Bun.sleep(1000); console.log("PAIRED_SHOULD_NOT_REACH")',
+            timeoutSeconds: 5,
+          },
+        },
+      ],
     };
     stream.push({ type: "done", reason: "toolUse", message });
     return stream;
