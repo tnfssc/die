@@ -175,9 +175,9 @@ describe("direct Live main owner", () => {
       expect((owner.orchestration as any).instructions).toContain("POST_HOOK_FOR_VOICE");
       expect(owner.orchestration.tools.map((t) => t.name)).toEqual(["execute"]);
       // The Realtime/Google function declaration uses this registered description,
-      // not a separate shell tool. Keep the invocation visible on that wire.
-      expect(owner.orchestration.tools[0].description).toContain('await shell("pwd")');
-      expect(owner.orchestration.tools[0].description).toContain('echo "shell unavailable"');
+      // not a separate shell tool. Both helpers must be discoverable on that wire.
+      expect(owner.orchestration.tools[0].description).toMatch(/await shell\(/);
+      expect(owner.orchestration.tools[0].description).toContain("subagent()");
       expect(JSON.stringify(owner.orchestration.tools[0].parametersJsonSchema)).toContain('code');
       expect((owner.orchestration as any).instructions).toContain('shell() runs commands');
       expect(await owner.orchestration.execute({ name: "execute", args: {} })).toHaveProperty("isError", true);
