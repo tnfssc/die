@@ -22,3 +22,7 @@ At this baseline:
 - `bun run check` passes with TypeScript 7.0.2. Biome can also parse Bun import attributes (`with { type: "file" }` and `with { type: "text" }`) and the `*.md` ambient module declaration.
 
 CI uses `bun install --frozen-lockfile`. It then runs `bun run format:check`, `bun run lint`, and `bun run check` as separate steps. The release workflow runs the same quality gates.
+
+## PR #6 format gate (2026-09-26)
+
+The Linux CI run 36246843468 stopped at `format:check`: two new assertions in `tests/live-main-owner.test.ts` used single quotes where Biome requires double quotes. The macOS device-free lane passed; later Linux gates did not run. For prompt-only changes with test edits, run `bun run format:check` locally before handing off; fix the test formatting rather than changing the prompt behavior.
