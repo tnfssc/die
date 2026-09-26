@@ -44,6 +44,42 @@ export function tagAction(remoteSha: string | undefined, expectedSha: string): "
 const git = (...args: string[]) => execFileSync("git", args, { encoding: "utf8" }).trim();
 const gh = (...args: string[]) => execFileSync("gh", args, { encoding: "utf8", stdio: "inherit" });
 
+// Draft releases can return 404 from /releases/tags even after gh release create succeeds.
+// The authenticated releases list includes drafts for the workflow's write-capable token.
+export async function findRelease(repo: string, tag: string, token: string): Promise<Release | undefined> {
+  const base = "https://api.github.com/repos/" + repo + "/releases";
+  const headers = { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" };
+  const response = await fetch(base + "/tags/" + encodeURIComponent(tag), { headers });
+  if (response.ok) return parseRelease(await response.json());
+  if (response.status !== 404) throw new Error("GitHub release lookup failed: HTTP " + response.status);
+  // Check all pages so a hidden draft cannot trigger a duplicate creation.
+  for (let page = 1; ; page++) {
+    const list = await fetch(base + "?per_page=100&page=" + page, { headers });
+    if (!list.ok) throw new Error("GitHub release list failed: HTTP " + list.status);
+    const entries: unknown = await list.json();
+    if (!Array.isArray(entries)) throw new Error("Invalid release list response");
+    const matches = entries.filter(
+      (entry) => entry && typeof entry === "object" && "tag_name" in entry && entry.tag_name === tag,
+    );
+    if (matches.length > 1) throw new Error("Multiple releases for tag " + tag);
+    if (matches.length) return parseRelease(matches[0]);
+    if (entries.length < 100) return undefined;
+  }
+}
+
+function parseRelease(data: unknown): Release {
+  if (
+    !data ||
+    typeof data !== "object" ||
+    !("draft" in data) ||
+    !("assets" in data) ||
+    typeof data.draft !== "boolean" ||
+    !Array.isArray(data.assets)
+  )
+    throw new Error("Invalid release response");
+  return data as Release;
+}
+
 async function main() {
   const {
     RELEASE_TAG: tag,
@@ -96,25 +132,7 @@ async function main() {
       digest: "sha256:" + createHash("sha256").update(bytes).digest("hex"),
     });
   }
-  const url = "https://api.github.com/repos/" + repo + "/releases/tags/" + encodeURIComponent(tag);
-  const getRelease = async (): Promise<Release | undefined> => {
-    const response = await fetch(url, {
-      headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json" },
-    });
-    if (response.status === 404) return undefined;
-    if (!response.ok) throw new Error("GitHub release lookup failed: HTTP " + response.status);
-    const data: unknown = await response.json();
-    if (
-      !data ||
-      typeof data !== "object" ||
-      !("draft" in data) ||
-      !("assets" in data) ||
-      typeof data.draft !== "boolean" ||
-      !Array.isArray(data.assets)
-    )
-      throw new Error("Invalid release response");
-    return data as Release;
-  };
+  const getRelease = () => findRelease(repo, tag, token);
   const notes = execFileSync("bun", ["scripts/select-release-notes.ts", tag], { encoding: "utf8" }).trim();
   let release = await getRelease();
   if (!release) {
