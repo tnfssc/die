@@ -1,0 +1,18 @@
+Goal continuation transport audit (SDK v0.87.1, offline provider, bun 1.4.2)
+
+Real path: pi.sendUserMessage(message, {deliverAs: "followUp"}) -> AgentSession.sendUserMessage -> prompt(source="extension") -> _runInputHandlers -> runner.emitInput -> _queueFollowUp / prompt user content -> provider streamSimple(context.messages). The original goal input hook validated the token then returned undefined; SDK treats that as "continue", preserving original text in the provider request and persisted session user turn. The generation HTML comment was also present in that user message.
+
+Actual provider dispatch capture, from tests/goals-marker-sdk.test.ts against original HEAD extension (temporary swap, restored):
+DISPATCHED_REMINDER "Goal still active. Do next useful step, not another recap.\n\n<!-- die-goal-generation:1 -->\n\n<!-- die-goal-reminder:8014fd0f-295d-4f89-9ddd-4307c0590af6:1:1 -->"
+Test: 0 pass, 1 fail; expected absence of die-goal-reminder.
+
+Same SDK provider capture after fix:
+DISPATCHED_REMINDER "Goal still active. Do next useful step, not another recap."
+Test: 1 pass, 0 fail. Session disk history lacks generated marker, and resumed session provider input and history retain a user's literal lookalike "Typed literal <!-- die-goal-reminder:fake:1:1 -->".
+
+The transport trailer remains until input validation, where valid queued extension turns transform to plain continuation; stale/replayed/blocked turns remain handled, not dispatched. An interactive typed message is never transformed. Removed redundant die-goal-generation comment: it was only emitted and had no reader; generation remains in transport validation token.
+
+Reviewed wisdom/questions/final-surface-review.md and wisdom/values.md. Kept value #8 (actual user/model surfaces rather than handler-only assertions), #6 (typed content untouched), #7 (no additional persistence mechanism). Unreviewed: real network provider/UI renderer; offline SDK provider seam and session disk inspected, no live API/UI claim. No value edits: existing #8 already states this lesson.
+
+Validation: bun test tests/goals.test.ts tests/goals-marker-sdk.test.ts: 29 pass, 0 fail, 140 assertions; tsc --noEmit: pass (using existing sibling node_modules/runtime-assets temporarily symlinked, then removed; no install). Broader tests/goals-sdk.test.ts requires absent dist/die: ENOENT posix_spawn; attempted run stopped after fixture failures, not a passing broader-suite claim.
+Previously persisted generated reminders may still be present in older session history; persisted user messages do not carry a reliable source discriminator, so rewriting them would risk corrupting intentional typed lookalikes. This patch prevents new transport markers; test resumes a session generated after the fix.

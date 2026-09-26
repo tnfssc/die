@@ -564,3 +564,23 @@ test("resumed waiting goal preserves all affected task references in pause expla
   expect(resumed.runtime.get()?.status).toBe("paused");
   for (const id of ids) expect(resumed.runtime.get()?.pauseReason).toContain(id);
 });
+
+test("queued reminder tokens are stripped only from valid extension turns", async () => {
+  const h = harness();
+  await h.commands.goal.handler("set Build it --criteria done --constraints safe", h.ctx);
+  const reminder = h.sent.at(-1)!;
+  expect(reminder).toContain("<!-- die-goal-reminder:");
+  const transformed = h.handlers.input[0]({ source: "extension", text: reminder }, h.ctx);
+  expect(transformed).toEqual({
+    action: "transform",
+    text: "Goal still active. Do next useful step, not another recap.",
+  });
+  expect(h.handlers.input[0]({ source: "extension", text: reminder }, h.ctx)).toEqual({ action: "handled" });
+  expect(h.handlers.input[0]({ source: "interactive", text: reminder }, h.ctx)).toBeUndefined();
+  expect(h.handlers.input[0]({ source: "extension", text: reminder + " extra" }, h.ctx)).toEqual({ action: "handled" });
+  await h.commands.goal.handler("resume", h.ctx);
+  const stale = h.sent.at(-1)!;
+  expect(h.handlers.input[0]({ source: "extension", text: stale + " extra" }, h.ctx)).toEqual({ action: "handled" });
+  await h.commands.goal.handler("pause", h.ctx);
+  expect(h.handlers.input[0]({ source: "extension", text: stale }, h.ctx)).toEqual({ action: "handled" });
+});

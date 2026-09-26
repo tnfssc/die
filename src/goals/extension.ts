@@ -29,11 +29,11 @@ function formatGoal(goal?: GoalState): string {
     .join("\n");
 }
 
-function continuation(goal: GoalState, generation: number): string {
+function continuation(goal: GoalState): string {
   // The context hook injects the complete authoritative state on every request.
   // The follow-up only signals why a new turn exists, avoiding duplicate mutable state.
   if (goal.status !== "active") throw new Error("Only active goals can continue automatically");
-  return goalContinuation.trimEnd() + `\n\n<!-- die-goal-generation:${generation} -->`;
+  return goalContinuation.trimEnd();
 }
 
 function parseSet(args: string): { objective: string; criteria: string[]; constraints: string[] } {
@@ -131,8 +131,7 @@ export function registerGoalMode(
     const id = String(++reminderSequence);
     if (queuedReminderIds.size >= 16) queuedReminderIds.delete(queuedReminderIds.values().next().value!);
     queuedReminderIds.add(id);
-    const message =
-      continuation(goal, generation) + `\n\n<!-- die-goal-reminder:${reminderEpoch}:${generation}:${id} -->`;
+    const message = continuation(goal) + `\n\n<!-- die-goal-reminder:${reminderEpoch}:${generation}:${id} -->`;
     controller.markAutomaticStart(goal);
     pi.sendUserMessage(message, { deliverAs: "followUp" });
   };
@@ -227,6 +226,16 @@ export function registerGoalMode(
           match[1] === reminderEpoch && Number(match[2]) === generation && queuedReminderIds.delete(match[3]!);
         // A reminder may have been queued before the foreground question was posted.
         if (!accepted || hasBlockingQuestions()) return { action: "handled" as const };
+        // Reject altered extension payloads rather than letting a token leak through.
+        if (
+          match.index < 2 ||
+          event.text.slice(match.index - 2, match.index) !== "\n\n" ||
+          match.index + match[0].length !== event.text.length
+        ) {
+          return { action: "handled" as const };
+        }
+        // The token identifies the queued turn only; never persist or send it to the model.
+        return { action: "transform" as const, text: event.text.slice(0, match.index - 2) };
       }
       return;
     }
