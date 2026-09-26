@@ -154,3 +154,72 @@ test("empty list and failed refresh remain visibly distinct", async () => {
   await command.handler("list", ctx as any);
   expect(notices.pop()).toBe("Question ledger unavailable");
 });
+
+test("corrupt question data has a readable command error", async () => {
+  let command: any;
+  const notices: string[] = [];
+  registerQuestions(
+    {
+      on() {},
+      registerCommand(_name: string, value: any) {
+        command = value;
+      },
+    } as any,
+    () => ({
+      handle() {
+        throw new SyntaxError("JSON Parse error: Unexpected identifier");
+      },
+    }),
+  );
+  await command.handler("list", {
+    ui: {
+      setStatus() {},
+      notify(text: string) {
+        notices.push(text);
+      },
+    },
+  });
+  expect(notices).toEqual(["Could not read saved questions: invalid data. Repair the questions file before retrying."]);
+});
+
+test("no-history sessions do not show a passive questions failure", async () => {
+  const hooks = new Map<string, any>();
+  let command: any;
+  const notices: string[] = [];
+  const statuses: unknown[] = [];
+  registerQuestions(
+    {
+      on(name: string, fn: any) {
+        hooks.set(name, fn);
+      },
+      registerCommand(_name: string, value: any) {
+        command = value;
+      },
+    } as any,
+    () => ({
+      handle() {
+        throw new Error("Questions require a persistent session file");
+      },
+    }),
+  );
+  const ctx = {
+    sessionManager: {
+      getSessionFile() {
+        return undefined;
+      },
+    },
+    ui: {
+      setStatus(_name: string, text: unknown) {
+        statuses.push(text);
+      },
+      notify(text: string) {
+        notices.push(text);
+      },
+    },
+  };
+  hooks.get("session_start")({}, ctx);
+  await Bun.sleep(0);
+  expect(statuses).toEqual([undefined]);
+  await command.handler("list", ctx);
+  expect(notices).toEqual(["Questions require a persistent session file"]);
+});

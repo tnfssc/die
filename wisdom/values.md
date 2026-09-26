@@ -46,9 +46,9 @@ From: [worktree design](t3/t3-worktree-design.md), [resource triage](resources/m
 
 ## 8. Show what is real
 
-UI, tools, and logs must tell truth. Unknown is not zero. Summary is not full transcript. Watching is not steering. Message arrived does not mean work done. Unresolved state must stay easy to find after its notice scrolls away. Show what needs action and which work is blocked. Show gaps and failures. Optional logging must not change main work or hide its error.
+UI, tools, and logs must tell truth. User and agent surfaces are core behavior. Check rendered views and actual tool prompts/results. Keep needed state clear; leave out extra subtitles and internal metadata. Unknown is not zero. Summary is not full transcript. Watching is not steering. Message arrived does not mean work done. Unresolved state must stay easy to find after its notice scrolls away. Show what needs action and which work is blocked. Show gaps and failures. Optional logging must not change main work or hide its error.
 
-From: [task UI semantics](t3/t3-task-ui-research.md), [pending questions](questions/persistent-questions-proposal.md), [empty cost summary](t3/t3-preview-hide-empty-cost-summary.md), [diagnostics](quality/diagnostics.md).
+From: [task UI semantics](t3/t3-task-ui-research.md), [pending questions](questions/persistent-questions-proposal.md), [surface review](questions/final-surface-review.md), [empty cost summary](t3/t3-preview-hide-empty-cost-summary.md), [diagnostics](quality/diagnostics.md).
 
 ## 9. Know what a change means
 

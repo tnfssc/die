@@ -71,6 +71,11 @@ export function registerQuestions(
   const refresh = async () => {
     const current = context;
     if (!current) return;
+    // No-history sessions cannot own durable questions. This is not a storage failure.
+    if (current.sessionManager?.getSessionFile && !current.sessionManager.getSessionFile()) {
+      current.ui.setStatus("die-questions", undefined);
+      return;
+    }
     const token = generation;
     try {
       const service = getService(current);
@@ -196,7 +201,14 @@ export function registerQuestions(
         } else throw new Error("Usage: /questions [list|detail <id>|answer <id> <text>|cancel <id>|resume <id>]");
         await refresh();
       } catch (error) {
-        ctx.ui.notify(error instanceof Error ? error.message : String(error), "warning");
+        ctx.ui.notify(
+          error instanceof SyntaxError
+            ? "Could not read saved questions: invalid data. Repair the questions file before retrying."
+            : error instanceof Error
+              ? error.message
+              : String(error),
+          "warning",
+        );
       }
     },
   });

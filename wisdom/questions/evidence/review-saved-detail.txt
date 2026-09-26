@@ -1,0 +1,35 @@
+ Independent progress 30
+ Independent progress 31
+ Independent progress 32
+ Independent progress 33
+ Independent progress 34
+ Independent progress 35
+ Independent progress 36
+ Independent progress 37
+ Independent progress 38
+ Independent progress 39
+ Independent progress 40
+ Independent progress 41
+ Independent progress 42
+ Independent progress 43
+ Independent progress 44
+ Independent progress 45
+ Independent progress 46
+ Independent progress 47
+ Independent progress 48
+ Independent progress 49
+ Independent work complete
+
+
+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf
+ and restart tmux.
+
+ q_26dd17ed-dd32-4617-b97e-b7f01c43a517 [answered] Where is the crackle?
+ Requester: Audio diagnosis
+ Choices: Playback | Recording | Both (or your own answer)
+ Blocked follow-up: parent — Need the next audio test
+ Answer: Playback
+ Answer saved · /questions resume q_26dd17ed-dd32-4617-b97e-b7f01c43a517
+
+
+die-questions-tui-9Nh8OT · 1 /questions · 1 saved · mode: orchestrator · $0.000 · ctx 0.2% · cache est ?          gpt-4o

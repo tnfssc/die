@@ -858,7 +858,11 @@ export default function liveExtension(pi: ExtensionAPI, injected: Partial<LiveDe
         if (owner !== sequence) return;
         selected = next;
         ctx.ui.notify(
-          "Live voice: " + LIVE_PROVIDERS[selected.provider].label + " · " + selected.model + ". /live provider configures keys.",
+          "Live voice: " +
+            LIVE_PROVIDERS[selected.provider].label +
+            " · " +
+            selected.model +
+            ". /live provider configures keys.",
           "info",
         );
       } else if (action === "mic-check") {

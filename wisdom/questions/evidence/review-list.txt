@@ -1,0 +1,35 @@
+
+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys on` to ~/.tmux.conf
+ and restart tmux.
+
+ q_26dd17ed [pending; waiting on you] Where is the crackle?
+ q_911a9e54 [pending] Second independent question?
+
+
+die-questions-tui-9Nh8OT · 2 /questions · waiting on you · mode: orchestrator · $0.000 · ctx 0% · cache est ?     gpt-4o
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

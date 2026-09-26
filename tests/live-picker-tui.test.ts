@@ -77,6 +77,7 @@ for (const width of [80, 120])
       ])
         expect(rendered).toContain(label);
       expect(rendered).toContain("Live voice model");
+      expect(rendered).not.toContain("/questions unavailable");
       console.log("PICKER " + width + " cols\n" + rendered);
       for (let i = 0; i < 4; i++) await tmux("send-keys", "-t", "picker", "Down");
       await tmux("send-keys", "-t", "picker", "Enter");

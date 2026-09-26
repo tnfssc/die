@@ -158,10 +158,14 @@ function harness(entries: any[] = [], options: { hasBlockingQuestions?: () => bo
       sent.push(message);
     },
   };
-  const runtime = registerGoalMode(pi, {
-    runningIds: () => new Set([...statuses].filter(([, status]) => status === "running").map(([id]) => id)),
-    status: (id) => statuses.get(id) ?? "unavailable",
-  }, options);
+  const runtime = registerGoalMode(
+    pi,
+    {
+      runningIds: () => new Set([...statuses].filter(([, status]) => status === "running").map(([id]) => id)),
+      status: (id) => statuses.get(id) ?? "unavailable",
+    },
+    options,
+  );
   const ctx: any = {
     sessionManager: {
       getBranch: () => entries,
